@@ -5,16 +5,13 @@
 const { test, expect } = require('@playwright/test');
 const { login, navigateTo, assertNoHorizontalOverflow } = require('./helpers');
 
+// Updated 2026-04-24 — Accounting "tabs" became sidebar children
+// (commit 12e6d75); each describe block now navigates directly to
+// the child page instead of clicking an in-page tab.
 test.describe('Bank Transactions Management', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Accounting');
-    // Navigate to Bank Transactions tab
-    const bankTab = page.locator('button:has-text("Bank Transactions"), button:has-text("Bank Import")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
-    }
+    await navigateTo(page, 'Bank Transactions');
   });
 
   // ── Feed Cards ──
@@ -120,9 +117,7 @@ test.describe('Bank Transactions Management', () => {
 test.describe('Chart of Accounts Management', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Accounting');
-    await page.locator('text=Chart of Accounts').first().click();
-    await page.waitForTimeout(1500);
+    await navigateTo(page, 'Chart of Accounts');
   });
 
   test('COA has edit and toggle buttons on each account', async ({ page }) => {
@@ -156,13 +151,7 @@ test.describe('Chart of Accounts Management', () => {
 test.describe('Reports Export', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Accounting');
-    // Navigate to Reports tab
-    const reportsTab = page.locator('button:has-text("Reports")').first();
-    if (await reportsTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await reportsTab.click();
-      await page.waitForTimeout(1500);
-    }
+    await navigateTo(page, 'Reports');
   });
 
   test('reports catalog is visible with report cards', async ({ page }) => {
@@ -209,9 +198,7 @@ test.describe('Reports Export', () => {
 test.describe('Ledger Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Accounting');
-    await page.locator('text=Chart of Accounts').first().click();
-    await page.waitForTimeout(1500);
+    await navigateTo(page, 'Chart of Accounts');
   });
 
   test('clicking account opens ledger overlay', async ({ page }) => {

@@ -73,6 +73,15 @@ const NESTED_UNDER_PROPERTIES = new Set([
   'Insurance', 'Tax Bills', 'Inspections',
 ]);
 
+// Added 2026-04-24: Accounting got the same nested-children pattern
+// as Properties when its in-page tab sidebar was retired in favor of
+// global-sidebar children (commit 12e6d75).
+const NESTED_UNDER_ACCOUNTING = new Set([
+  'Opening Balances', 'Chart of Accounts', 'Journal Entries',
+  'Recurring Entries', 'Bank Transactions', 'Reconcile',
+  'Class Tracking', 'Reports',
+]);
+
 async function navigateTo(page, label) {
   // On mobile: open hamburger first
   const hamburger = page.locator('button:has-text("menu")').first();
@@ -81,13 +90,27 @@ async function navigateTo(page, label) {
     await page.waitForTimeout(300);
   }
   const target = page.locator(`button:has-text("${label}")`).first();
-  // If target isn't visible and it's known-nested under Properties,
-  // expand the Properties group first.
-  if (NESTED_UNDER_PROPERTIES.has(label) && !await target.isVisible({ timeout: 1000 }).catch(() => false)) {
-    const chevron = page.locator('button:has(span:has-text("expand_more"))').first();
-    if (await chevron.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await chevron.click();
-      await page.waitForTimeout(400);
+  // If target isn't visible and it's known-nested, expand the
+  // appropriate parent group first. Tries Properties' chevron, then
+  // Accounting's, since both use the same expand_more icon and the
+  // `.first()` selector would otherwise hit whichever DOM-renders first.
+  const isNested = NESTED_UNDER_PROPERTIES.has(label) || NESTED_UNDER_ACCOUNTING.has(label);
+  if (isNested && !await target.isVisible({ timeout: 1000 }).catch(() => false)) {
+    const parentLabel = NESTED_UNDER_PROPERTIES.has(label) ? 'Properties' : 'Accounting';
+    // Find the parent's expand chevron — scoped to the parent's row
+    // so we don't accidentally toggle the wrong section.
+    const parentRow = page.locator(`button:has-text("${parentLabel}")`).first();
+    if (await parentRow.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const chevron = parentRow.locator('xpath=following-sibling::button').first();
+      if (await chevron.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(400);
+      } else {
+        // Fall back to clicking the parent itself — App.js auto-expands
+        // when you click into the parent page.
+        await parentRow.click();
+        await page.waitForTimeout(400);
+      }
     }
   }
   await target.click();

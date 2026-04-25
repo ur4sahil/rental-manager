@@ -4,28 +4,23 @@
 const { test, expect } = require('@playwright/test');
 const { login, navigateTo, goToPage } = require('./helpers');
 
+// Updated 2026-04-24 — Bank Transactions is its own sidebar child
+// page now (commit 12e6d75); no in-page tab to click.
 test.describe('Bank Transactions Page', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Accounting');
-    await page.waitForTimeout(1500);
+    await navigateTo(page, 'Bank Transactions');
   });
 
-  test('Bank Transactions tab loads', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(2000);
-      const hasContent = await page.locator('text=Bank Transactions').first().isVisible({ timeout: 3000 }).catch(() => false);
-      expect(hasContent).toBeTruthy();
-    }
+  test('Bank Transactions page loads', async ({ page }) => {
+    const hasContent = await page.locator('text=Bank Transactions').first().isVisible({ timeout: 5000 }).catch(() => false);
+    expect(hasContent).toBeTruthy();
   });
 
   test('shows Import CSV button', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       const importBtn = page.locator('button:has-text("Import CSV")').first();
       const hasImport = await importBtn.isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasImport).toBeTruthy();
@@ -33,10 +28,9 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('shows Connect Bank button', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       const connectBtn = page.locator('button:has-text("Connect Bank")').first();
       const hasConnect = await connectBtn.isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasConnect).toBeTruthy();
@@ -45,15 +39,9 @@ test.describe('Bank Transactions Page', () => {
 
   test('shows Rules button', async ({ page }) => {
     // Rules tab "Rules (N)" only renders after a bank feed is connected
-    // (see Banking.js tab config — it's alongside For Review /
-    // Recognized / Categorized / Excluded). In the seeded Sandbox LLC,
-    // no bank account is connected, so the page lands in its empty
-    // state with "+ Add Bank Account" / "Connect Bank" instead.
-    const bankTab = page.locator('button:has-text("account_balance"):has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(2000);
-    }
+    // (see Banking.js tab config). In the seeded Sandbox LLC, no bank
+    // account is connected, so the page lands in its empty state with
+    // "+ Add Bank Account" / "Connect Bank" instead.
     const body = await page.locator('body').innerText();
     const isEmptyState = /\+ Add Bank Account|Connect Bank/.test(body);
     if (isEmptyState) {
@@ -68,10 +56,9 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('Import CSV wizard opens and shows steps', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       const importBtn = page.locator('button:has-text("Import CSV")').first();
       if (await importBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await importBtn.click();
@@ -85,10 +72,9 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('New Account modal opens', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       // Look for "+ New Account" card or "Add Bank Account" button
       const addBtn = page.locator('text=New Account, text=Add Bank Account').first();
       if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -101,10 +87,9 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('tabs show For Review / Categorized / Excluded', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       const hasReview = await page.locator('button:has-text("For Review")').first().isVisible({ timeout: 3000 }).catch(() => false);
       const hasCategorized = await page.locator('button:has-text("Categorized")').first().isVisible({ timeout: 3000 }).catch(() => false);
       const hasExcluded = await page.locator('button:has-text("Excluded")').first().isVisible({ timeout: 3000 }).catch(() => false);
@@ -114,10 +99,9 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('Rules panel opens and shows form', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
-    if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bankTab.click();
-      await page.waitForTimeout(1500);
+    {
+      // Already on Bank Transactions via beforeEach. Keep block scope
+      // to preserve indentation/diff of the body below.
       const rulesBtn = page.locator('button:has-text("Rules")').first();
       if (await rulesBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await rulesBtn.click();

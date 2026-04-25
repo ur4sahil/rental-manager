@@ -130,13 +130,20 @@ test.describe('Public e-sign page (/sign/:token)', () => {
       await page.locator('button:has-text("Type Name")').click();
       await page.locator('input[placeholder*="legal name"]').fill('Tenant E2E Signer');
 
-      // Consent + submit
-      await page.locator('input[type="checkbox"]').check();
+      // Three separate consent checkboxes per ESIGN §101(c) (commit 69f3ffa):
+      //   1. Consent to electronic records
+      //   2. Hardware/software acknowledgment
+      //   3. Signature legal-effect agreement
+      // The Sign button stays disabled until all three are checked.
+      const boxes = page.locator('input[type="checkbox"]');
+      const boxCount = await boxes.count();
+      for (let i = 0; i < boxCount; i++) await boxes.nth(i).check();
       await page.locator('button:has-text("Sign")').last().click();
 
-      // Success screen
+      // Success screen — wording shifted from "Audit hash" to
+      // "Signature hash" + "Document hash at send" in commit 69f3ffa.
       await expect(page.locator('text=/signature recorded|thanks/i')).toBeVisible({ timeout: 15000 });
-      await expect(page.locator('text=/Audit hash/i')).toBeVisible();
+      await expect(page.locator('text=/Signature hash|Audit hash|Document hash/i')).toBeVisible();
 
       // DB: signed row populated, envelope flipped to completed
       const { data: afterSign } = await svc.from('doc_signatures').select('*').eq('id', sigs[0].id).single();

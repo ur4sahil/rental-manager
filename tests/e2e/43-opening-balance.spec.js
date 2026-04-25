@@ -11,31 +11,30 @@
 const { test, expect } = require('@playwright/test');
 const { login, navigateTo } = require('./helpers');
 
+// Updated 2026-04-24 — Opening Balances is a sidebar child page now
+// (commit 12e6d75), not an in-page tab under a SETUP section header.
 test.describe('Opening Balance tab', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
+  });
+
+  test('Opening Balances child appears in Accounting sidebar', async ({ page }) => {
     await navigateTo(page, 'Accounting');
-    await page.waitForTimeout(1500);
+    const child = page.locator('button:has-text("Opening Balances")').first();
+    await expect(child).toBeVisible({ timeout: 5000 });
   });
 
-  test('Opening Balances tab exists under SETUP', async ({ page }) => {
-    const tab = page.locator('button:has-text("Opening Balances")').first();
-    await expect(tab).toBeVisible({ timeout: 5000 });
-  });
-
-  test('tab shows entry grid or posted state', async ({ page }) => {
-    await page.locator('button:has-text("Opening Balances")').first().click();
+  test('page shows entry grid or posted state', async ({ page }) => {
+    await navigateTo(page, 'Opening Balances');
     await page.waitForTimeout(1500);
     const body = await page.locator('body').innerText();
-    // Either the empty-state grid (opening date + groups) OR the
-    // posted-state view (next step banner). Both are valid end states.
     const hasEntryGrid = /Opening date|Assets|Plug to 3000/.test(body);
     const hasPostedState = /Opening balance posted|Reverse opening balance/.test(body);
     expect(hasEntryGrid || hasPostedState).toBeTruthy();
   });
 
   test('plug indicator updates as user types a balance', async ({ page }) => {
-    await page.locator('button:has-text("Opening Balances")').first().click();
+    await navigateTo(page, 'Opening Balances');
     await page.waitForTimeout(1500);
     const body = await page.locator('body').innerText();
     // Skip if the company already has a posted opening JE — covered

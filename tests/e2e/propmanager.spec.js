@@ -141,17 +141,17 @@ test('Maintenance page: loads with seeded work orders', async ({ page }) => {
 // ═══════════════════════════════════════════════════
 test('Accounting: tabs visible, COA shows accounts', async ({ page }) => {
   await login(page);
-  await navigateTo(page, 'Accounting');
 
-  // Accounting tabs evolved: the old "Overview" is now the default
-  // Dashboard tab; "Bank Import" was renamed to "Bank Transactions".
-  const tabs = ['Chart of Accounts', 'Journal Entries', 'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
-  for (const tab of tabs) {
-    await expect(page.locator(`button:has-text("${tab}")`).first()).toBeVisible({ timeout: 3000 });
+  // 2026-04-24 — Accounting in-page tabs were retired in favor of
+  // global-sidebar children (commit 12e6d75). navigateTo() expands
+  // the parent and routes to the child page.
+  await navigateTo(page, 'Accounting');
+  const children = ['Chart of Accounts', 'Journal Entries', 'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
+  for (const c of children) {
+    await expect(page.locator(`button:has-text("${c}")`).first()).toBeVisible({ timeout: 3000 });
   }
 
-  await page.locator('button:has-text("Chart of Accounts")').first().click();
-  await page.waitForTimeout(1000);
+  await navigateTo(page, 'Chart of Accounts');
   const hasCOA = await page.locator('text=Checking Account').first().isVisible().catch(() => false)
     || await page.locator('text=Rental Income').first().isVisible().catch(() => false)
     || await page.locator('text=1000').first().isVisible().catch(() => false);

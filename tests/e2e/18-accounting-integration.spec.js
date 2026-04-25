@@ -23,40 +23,29 @@ async function bodyText(page) {
 // on a tab-specific content marker — the initial flake was that the
 // helper returned before the content swapped, so downstream text
 // assertions ran against the previous tab.
+// Updated 2026-04-24 — accounting "tabs" are now top-level sidebar
+// children pages (commit 12e6d75). navigateTo() handles the parent
+// expansion and routes to the child page.
 async function goToAccountingTab(page, tabName) {
-  await navigateTo(page, 'Accounting');
-  await page.waitForTimeout(1500);
-  const ICON_FOR = {
-    'Dashboard': 'dashboard',
-    'Journal Entries': 'receipt_long',
-    'Recurring Entries': 'autorenew',
-    'Bank Transactions': 'account_balance',
-    'Reconcile': 'account_balance_wallet',
-    'Chart of Accounts': 'account_balance',
-    'Class Tracking': 'category',
-    'Reports': 'assessment',
-    'Overview': 'dashboard',
+  // Map legacy tab names → current child page labels
+  const REMAP = {
+    'Overview': 'Accounting',
+    'Dashboard': 'Accounting',
+    'Recurring': 'Recurring Entries',
+    'Bank Import': 'Bank Transactions',
   };
+  const target = REMAP[tabName] || tabName;
+  await navigateTo(page, target);
+  await page.waitForTimeout(800);
+  // Per-child marker wait so flaky load timing doesn't ripple through
   const MARKER_FOR = {
-    'Journal Entries': 'text=/All\\s*\\(|Add Journal Entry|No journal entries/i',
+    'Journal Entries': 'text=/All\\s*\\(|New Journal Entry|No journal entries/i',
     'Chart of Accounts': 'text=/Checking Account|Rental Income|Asset|Liability/i',
-    'Reconcile': 'heading:has-text("Start Bank Reconciliation"), heading:has-text("Previous Reconciliations")',
-    'Overview': 'text=/At a glance|Revenue|Recent Journal Entries/i',
-    'Dashboard': 'text=/At a glance|Revenue|Recent Journal Entries/i',
+    'Reconcile': 'text=/Start Bank Reconciliation|Previous Reconciliations|Reconcile/i',
   };
-  const icon = ICON_FOR[tabName] || '';
-  const tab = icon
-    ? page.locator(`button:has-text("${icon}"):has-text("${tabName}")`).first()
-    : page.locator(`button:has-text("${tabName}")`).first();
-  if (await tab.isVisible({ timeout: 4000 }).catch(() => false)) {
-    await tab.click();
-    await page.waitForTimeout(500);
-    const marker = MARKER_FOR[tabName];
-    if (marker) {
-      await page.locator(marker).first().waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-    } else {
-      await page.waitForTimeout(1500);
-    }
+  const marker = MARKER_FOR[target];
+  if (marker) {
+    await page.locator(marker).first().waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
   }
 }
 

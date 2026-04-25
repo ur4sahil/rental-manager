@@ -3541,7 +3541,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       switch sub-pages without opening the slide-out menu. Desktop
       navigates via the Accounting children expanded in the global
       sidebar (App.js ALL_NAV) — same pattern as Properties. */}
-  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white -mx-4 -mt-2">
+  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
   {acctSidebarItems.flatMap(g => g.items).map(item => (
     <button key={item.id} onClick={() => setActiveTab(item.id)} className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-brand-50 text-brand-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
       <span className="material-icons-outlined text-base w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>

@@ -11,15 +11,27 @@ async function bodyText(page) {
   return (await page.locator('body').textContent()) || '';
 }
 
-// Helper: navigate to Accounting → specific tab
+// Helper: navigate to a specific Accounting child page. Updated
+// 2026-04-24 — accounting tabs are sidebar children now (commit
+// 12e6d75), so navigateTo() goes directly to the child page and
+// helpers.js auto-expands the Accounting parent.
 async function goToAccountingTab(page, tabName) {
-  await navigateTo(page, 'Accounting');
-  await page.waitForTimeout(1500);
-  const tab = page.locator(`button:has-text("${tabName}")`).first();
-  if (await tab.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await tab.click();
-    await page.waitForTimeout(1500);
-  }
+  // Map old tab labels to new sidebar child labels
+  const map = {
+    'Chart of Accounts': 'Chart of Accounts',
+    'Journal Entries': 'Journal Entries',
+    'Recurring': 'Recurring Entries',
+    'Recurring Entries': 'Recurring Entries',
+    'Reconcile': 'Reconcile',
+    'Class Tracking': 'Class Tracking',
+    'Reports': 'Reports',
+    'Bank Import': 'Bank Transactions',
+    'Bank Transactions': 'Bank Transactions',
+    'Opening Balances': 'Opening Balances',
+  };
+  const child = map[tabName] || tabName;
+  await navigateTo(page, child);
+  await page.waitForTimeout(800);
 }
 
 // ═══════════════════════════════════════════════════════════════
