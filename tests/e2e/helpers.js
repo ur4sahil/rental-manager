@@ -93,7 +93,17 @@ async function navigateTo(page, label) {
     await hamburger.click();
     await page.waitForTimeout(300);
   }
-  const target = page.locator(`button:has-text("${label}")`).first();
+  // Scope to the sidebar <nav>. Several pages render quick-access buttons
+  // with the same labels as the sidebar (e.g. Accounting overview has
+  // "Chart of Accounts" + "Journal Entries" tile buttons). A bare
+  // `button:has-text("Foo").first()` may resolve to those tiles —
+  // sometimes hidden, sometimes leading to a different state — instead
+  // of the sidebar link. Falling back to the broader selector keeps
+  // backwards-compat for headers / non-nav buttons.
+  const navTarget = page.locator('nav button').filter({ hasText: label }).first();
+  const target = await navTarget.count() > 0
+    ? navTarget
+    : page.locator(`button:has-text("${label}")`).first();
   // If target isn't visible and it's known-nested, expand the
   // appropriate parent group first. Tries Properties' chevron, then
   // Accounting's, since both use the same expand_more icon and the
@@ -116,6 +126,11 @@ async function navigateTo(page, label) {
         await page.waitForTimeout(400);
       }
     }
+    // After expand, wait up to 5s for the child target to actually render
+    // before attempting to click. On heavier company datasets (Smith) the
+    // 400ms post-chevron wait wasn't enough — React state + child render
+    // can stretch past it.
+    await target.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
   }
   await target.click();
   await page.waitForTimeout(1500);
