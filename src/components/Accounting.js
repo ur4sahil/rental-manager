@@ -363,7 +363,13 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   });
   });
 
-  return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome, arByTenant, arAging, arAgingByTenant };
+  // Normalize arAgingByTenant to an array — every consumer (the AR
+  // Aging Summary report at line 2616, getCollectionsReport at 1573,
+  // and the AR aging Excel export at 2123) calls .filter() / .map() on
+  // it. A bare object trips ".filter is not a function" → ErrorBoundary
+  // (PM-8009) when the user clicks "AR Aging Summary".
+  const arAgingByTenantArr = Object.entries(arAgingByTenant).map(([tenant, agg]) => ({ tenant, ...agg }));
+  return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome, arByTenant, arAging, arAgingByTenant: arAgingByTenantArr };
 };
 
 export const getTrialBalance = (accounts, journalEntries, endDate) => {
