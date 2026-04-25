@@ -6,17 +6,21 @@ const { expect } = require('@playwright/test');
 /**
  * Login to the app with test credentials.
  * Handles landing → sign-in → company selector → dashboard flow.
+ *
+ * @param {Page} page
+ * @param {string} [companySlug='sandbox-llc'] — companies.id (TEXT) to auto-select
+ *   via ?company= query param. Pass a UUID for the click-test suite which targets
+ *   Smith Properties LLC ('dce4974d-afa9-4e65-afdf-1189b815195d').
  */
-async function login(page) {
-  // Pass ?company=sandbox-llc on the initial navigation. App.js
-  // captures this param at mount (App.js:334-335) and, after the
-  // auth flow resolves, auto-selects the matching membership and
-  // routes straight to the dashboard (App.js:433-446) — bypassing
-  // the Company Selector entirely. That matters here because the
-  // selector's cursor-pointer row has been flaky to click under
-  // retry pressure (onClick bubble + concurrent redirect race), and
-  // the URL path is deterministic.
-  await page.goto('/?company=sandbox-llc', { timeout: 30000 });
+async function login(page, companySlug = 'sandbox-llc') {
+  // Pass ?company=<id> on the initial navigation. App.js captures this
+  // param at mount (App.js:485-498) and, after the auth flow resolves,
+  // auto-selects the matching membership and routes straight to the
+  // dashboard — bypassing the Company Selector. The selector's
+  // cursor-pointer row has been flaky to click under retry pressure
+  // (onClick bubble + concurrent redirect race); the URL path is
+  // deterministic.
+  await page.goto('/?company=' + encodeURIComponent(companySlug), { timeout: 30000 });
 
   // Success markers: the sidebar Dashboard button (desktop) OR the
   // Dashboard page heading (mobile, where the sidebar is hidden

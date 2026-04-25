@@ -39,7 +39,10 @@
     "test:report": "npx playwright show-report",
     "seed": "node seed-test-data.js",
     "cleanup": "node cleanup-test-data.js",
-    "browsers:install": "npx playwright install"
+    "browsers:install": "npx playwright install",
+    "seed:click": "node seed-clicktest-data.js",
+    "seed:click:cleanup": "node seed-clicktest-data.js --cleanup",
+    "test:click": "npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",
