@@ -108,21 +108,38 @@ module.exports = async (req, res) => {
   }
 
   // 4. Persist path + hash via service-role-only RPC (idempotent).
+  //    The RPC also fans out a notification_queue row per signer
+  //    (type='signed_doc_copy') so the email-delivery worker can
+  //    pick them up later. See migration 20260424000012.
   const { data: setRes, error: setErr } = await sb.rpc("set_signed_pdf", {
     p_doc_id: doc_id,
     p_pdf_path: path,
     p_pdf_hash: pdfHash,
   });
   if (setErr) {
-    // Couldn't write back — best-effort orphan cleanup.
     sb.storage.from("signed-documents").remove([path]).catch(() => {});
     res.status(500).json({ error: "set_signed_pdf failed: " + setErr.message }); return;
+  }
+
+  // 5. Mint a 24h signed URL so the just-signed signer can
+  //    download their copy immediately without waiting for the
+  //    email-delivery worker. The bucket is private — only this
+  //    service-role-signed URL can read the object.
+  let downloadUrl = null;
+  try {
+    const { data: signed } = await sb.storage.from("signed-documents")
+      .createSignedUrl(path, 24 * 60 * 60); // 24 hours
+    downloadUrl = signed?.signedUrl || null;
+  } catch (_e) {
+    // Non-fatal — the row is in queue, worker can re-sign later.
   }
 
   res.status(200).json({
     signed_pdf_path: path,
     signed_pdf_hash: pdfHash,
     bytes: pdfBytes.length,
+    download_url: downloadUrl,
+    signers_queued: setRes?.signers_queued ?? 0,
     already_set: !!setRes?.already_set,
   });
 };

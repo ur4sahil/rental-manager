@@ -106,7 +106,13 @@ export default function PublicSignPage({ token }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
       setPdfStatus("stored");
-      setDoneInfo(prev => ({ ...prev, signed_pdf_path: j.signed_pdf_path, signed_pdf_hash: j.signed_pdf_hash }));
+      setDoneInfo(prev => ({
+        ...prev,
+        signed_pdf_path: j.signed_pdf_path,
+        signed_pdf_hash: j.signed_pdf_hash,
+        download_url: j.download_url,
+        signers_queued: j.signers_queued,
+      }));
     } catch (e) {
       // Best-effort. Failure here doesn't invalidate the signature
       // — the DB still has the integrity_hash + doc_hash_at_send for
@@ -198,6 +204,22 @@ export default function PublicSignPage({ token }) {
               {pdfStatus === "stored" && <div className="text-success-700">✓ Signed PDF stored ({(doneInfo.signed_pdf_hash || "").slice(0, 12)}…)</div>}
               {pdfStatus === "error" && <div className="text-warn-700">PDF generation deferred — your signature is still recorded.</div>}
             </div>
+          )}
+          {doneInfo?.download_url && (
+            <a
+              href={doneInfo.download_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
+            >
+              <span className="material-icons-outlined text-base">download</span>
+              Download your signed copy
+            </a>
+          )}
+          {doneInfo?.all_signed && doneInfo?.signers_queued > 0 && (
+            <p className="text-[11px] text-neutral-400 mt-2">
+              All {doneInfo.signers_queued} signers will receive a copy by email.
+            </p>
           )}
           <div className="flex flex-col gap-2 mt-4">
             {!paperCopyRequested && (
