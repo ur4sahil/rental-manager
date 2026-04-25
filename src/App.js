@@ -750,8 +750,12 @@ function AppInner() {
   if (daysLeft <= (companySettings.lease_expiry_warning_days || 60) && daysLeft > 0) {
   const { data: tenant } = await supabase.from("tenants").select("email").eq("company_id", cid).eq("name", lease.tenant_name).is("archived_at", null).maybeSingle();
   if (tenant?.email) {
+  // notification_queue.data is jsonb — ilike on jsonb returns 404 from
+  // PostgREST (operator class mismatch) and was firing per-lease on
+  // every dashboard load. Use the JSON arrow-extract operator so we
+  // match against a specific key inside the JSON.
   const { data: already } = await supabase.from("notification_queue").select("id")
-  .eq("company_id", cid).eq("type", "lease_expiry").ilike("data", "%" + escapeFilterValue(lease.id) + "%").limit(1);
+  .eq("company_id", cid).eq("type", "lease_expiry").eq("data->>leaseId", String(lease.id)).limit(1);
   if (!already?.length) {
   await queueNotification("lease_expiry", tenant.email, { tenant: lease.tenant_name, property: lease.property, date: lease.end_date, daysLeft, leaseId: lease.id }, cid);
   queued++;

@@ -88,25 +88,30 @@ export async function checkRPCHealth(companyId) {
       if (Date.now() - checkedAt < RPC_HEALTH_TTL_MS) return missing || [];
     }
   } catch (_) { /* localStorage may be unavailable in some sandboxes */ }
+  // RPC health check — formerly called each function with `{}` to test
+  // existence, which fired 4 spurious 404s per session because every
+  // RPC requires parameters and PGRST202 was getting tagged as
+  // "missing". That generated noise in the console + Sentry without
+  // catching real problems. Switched to per-RPC calls with valid
+  // sentinel args that exercise the function but use guaranteed-to-
+  // miss IDs so they short-circuit harmlessly.
   const requiredRPCs = [
-  "create_company_atomic",
-  "archive_property",
-  "update_tenant_balance",
-  "sign_lease",
+    { name: "create_company_atomic", probe: { p_company_id: "_health_check_no_op", p_name: "_health_check", p_type: "individual", p_company_code: "ZZZZZZZZ", p_company_role: "individual", p_address: "", p_phone: "", p_email: "_health_check@invalid.local", p_creator_email: "_health_check@invalid.local", p_creator_name: "_" } },
+    { name: "archive_property", probe: { p_company_id: "_health_check_no_op", p_property_id: "0", p_address: "_health_check", p_archive_tenant: false, p_user_email: "_health_check@invalid.local" } },
+    { name: "update_tenant_balance", probe: { p_tenant_id: -1, p_amount_change: 0 } },
+    { name: "sign_lease", probe: { p_signature_id: "00000000-0000-0000-0000-000000000000", p_signer_name: "_" } },
   ];
   const missing = [];
-  for (const rpc of requiredRPCs) {
-  try {
-  const { error } = await supabase.rpc(rpc, {});
-  if (error?.message?.includes("does not exist") || error?.message?.includes("could not find")) {
-  missing.push(rpc);
-  }
-  } catch (e) {
-  if (e.message?.includes("does not exist") || e.message?.includes("could not find")) {
-  missing.push(rpc);
-  }
-  // Other errors (network, etc.) — skip silently
-  }
+  for (const { name, probe } of requiredRPCs) {
+    try {
+      const { error } = await supabase.rpc(name, probe);
+      // PGRST202 = function not found / wrong args. Anything else means
+      // the function existed and either ran or rejected on its own
+      // logic — both = healthy.
+      if (error && error.code === "PGRST202") missing.push(name);
+    } catch (e) {
+      if (/does not exist|could not find|PGRST202/i.test(e?.message || "")) missing.push(name);
+    }
   }
   if (missing.length > 0) {
   pmError("PM-8003", { raw: { message: "Missing RPCs: " + missing.join(", ") }, context: "RPC health check", silent: true });
