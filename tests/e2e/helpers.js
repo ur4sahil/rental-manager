@@ -289,6 +289,7 @@ async function goToPage(page, pageId) {
   const routableHiddenPages = new Set([
     'leases', 'documents', 'vendors', 'inspections', 'autopay',
     'moveout', 'evictions', 'latefees', 'tax_bills', 'tasks',
+    'owners',
   ]);
   if (routableHiddenPages.has(pageId)) {
     await page.evaluate((hash) => {
