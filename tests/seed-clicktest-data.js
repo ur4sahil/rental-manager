@@ -555,13 +555,393 @@ async function seedOwners(props) {
 }
 
 // ── Tasks: there is NO `tasks` table on this schema. The Tasks &
-// Approvals page is a UNION over manager_approvals +
-// doc_exception_requests + wizard_skipped_approvals, so we seed those
-// instead in a later phase (TODO: separate seedApprovals() once the
-// admin/exception specs are in scope). For now this is a no-op.
+// Approvals page reads from doc_exception_requests (seeded below).
 async function seedTasks() {
   header('Step 8 — tasks (skipped — no `tasks` table on this schema)');
-  logOk('skipped (table not in schema; covered by approvals seeds in a later step)');
+  logOk('skipped (table not in schema; covered by doc_exception_requests below)');
+}
+
+// ── Property children — Utilities, HOA, Loans, Insurance, Tax Bills ──
+async function seedPropertyChildren(props) {
+  header('Step 10 — property children (utilities/hoa/loans/insurance/tax)');
+  if (!props || !props.length) return;
+  const propAddr = (i) => props[i]?.address || props[i]?.address_line_1 || PROPS[i].address;
+  const today = new Date().toISOString().slice(0, 10);
+  const future = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+  // utilities (Utilities.js): cleanup keyed by property_id (CT props),
+  // status mix so filter pills render
+  const utilExisting = await sb.from('utilities').select('id').eq('company_id', COMPANY_ID)
+    .in('property_id', props.map(p => p.id));
+  if ((utilExisting.data || []).length === 0) {
+    const utilRows = [
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, provider: TAG + ' Dominion Energy', amount: 145.50, status: 'pending',         responsibility: 'owner',  due_date: future(7) },
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, provider: TAG + ' Fairfax Water',  amount: 62.30,  status: 'paid',            responsibility: 'tenant', due_date: today },
+      { company_id: COMPANY_ID, property: propAddr(1), property_id: props[1].id, provider: TAG + ' WGL Gas',        amount: 98.00,  status: 'pending_review',  responsibility: 'owner',  due_date: future(3) },
+      { company_id: COMPANY_ID, property: propAddr(2), property_id: props[2].id, provider: TAG + ' Cox Internet',   amount: 75.00,  status: 'pending',         responsibility: 'tenant', due_date: future(14) },
+    ];
+    const { error } = await sb.from('utilities').insert(utilRows);
+    if (error) logErr('utilities', 'insert', error);
+    else logOk(`${utilRows.length} utilities inserted`);
+  } else logOk(`${utilExisting.data.length} utilities already present`);
+
+  // hoa_payments
+  const hoaExisting = await sb.from('hoa_payments').select('id').eq('company_id', COMPANY_ID).ilike('hoa_name', '%' + TAG + '%');
+  if ((hoaExisting.data || []).length === 0) {
+    const rows = [
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, hoa_name: TAG + ' Oakwood HOA',     amount: 250, frequency: 'monthly',   status: 'paid',    due_date: today,        paid_date: today },
+      { company_id: COMPANY_ID, property: propAddr(1), property_id: props[1].id, hoa_name: TAG + ' Maple Ridge HOA', amount: 185, frequency: 'monthly',   status: 'pending', due_date: future(5)  },
+      { company_id: COMPANY_ID, property: propAddr(2), property_id: props[2].id, hoa_name: TAG + ' Cedar Pines HOA', amount: 125, frequency: 'quarterly', status: 'pending', due_date: future(-3) /* overdue */ },
+    ];
+    const { error } = await sb.from('hoa_payments').insert(rows);
+    if (error) logErr('hoa_payments', 'insert', error);
+    else logOk(`${rows.length} hoa_payments inserted`);
+  } else logOk(`${hoaExisting.data.length} hoa_payments already present`);
+
+  // property_loans (note: real table name is property_loans, not loans)
+  const loansExisting = await sb.from('property_loans').select('id').eq('company_id', COMPANY_ID).ilike('lender_name', '%' + TAG + '%');
+  if ((loansExisting.data || []).length === 0) {
+    const rows = [
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, lender_name: TAG + ' Wells Fargo Home', loan_type: 'mortgage', original_amount: 250000, current_balance: 198000, interest_rate: 6.5, monthly_payment: 1580, status: 'active' },
+      { company_id: COMPANY_ID, property: propAddr(1), property_id: props[1].id, lender_name: TAG + ' Chase HELOC',      loan_type: 'heloc',    original_amount: 50000,  current_balance: 0,      interest_rate: 7.25, monthly_payment: 0, status: 'paid_off' },
+    ];
+    const { error } = await sb.from('property_loans').insert(rows);
+    if (error) logErr('property_loans', 'insert', error);
+    else logOk(`${rows.length} property_loans inserted`);
+  } else logOk(`${loansExisting.data.length} property_loans already present`);
+
+  // property_insurance
+  const insExisting = await sb.from('property_insurance').select('id').eq('company_id', COMPANY_ID).ilike('provider', '%' + TAG + '%');
+  if ((insExisting.data || []).length === 0) {
+    const rows = [
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, provider: TAG + ' Allstate', policy_number: 'CT-12345', premium_amount: 1200, premium_frequency: 'annual', coverage_amount: 350000, expiration_date: future(180) },
+      { company_id: COMPANY_ID, property: propAddr(1), property_id: props[1].id, provider: TAG + ' State Farm', policy_number: 'CT-67890', premium_amount: 950,  premium_frequency: 'annual', coverage_amount: 275000, expiration_date: future(20) /* expiring soon */ },
+    ];
+    const { error } = await sb.from('property_insurance').insert(rows);
+    if (error) logErr('property_insurance', 'insert', error);
+    else logOk(`${rows.length} property_insurance inserted`);
+  } else logOk(`${insExisting.data.length} property_insurance already present`);
+
+  // property_tax_bills
+  const taxExisting = await sb.from('property_tax_bills').select('id').eq('company_id', COMPANY_ID).ilike('paid_notes', '%' + TAG + '%');
+  if ((taxExisting.data || []).length === 0) {
+    const rows = [
+      // status check constraint accepts 'pending'; 'paid'/'overdue' are
+      // derived from paid_date / due_date in the UI, not stored as
+      // separate enum values.
+      { company_id: COMPANY_ID, property: propAddr(0), property_id: props[0].id, tax_year: 2025, installment_label: 'H2 2025', expected_amount: 1450, status: 'pending', paid_amount: 1450, paid_date: today, paid_notes: TAG + ' paid', due_date: future(-90) },
+      { company_id: COMPANY_ID, property: propAddr(1), property_id: props[1].id, tax_year: 2026, installment_label: 'H1 2026', expected_amount: 1620, status: 'pending', paid_notes: TAG + ' due',     due_date: future(20) },
+      { company_id: COMPANY_ID, property: propAddr(2), property_id: props[2].id, tax_year: 2026, installment_label: 'H1 2026', expected_amount: 1380, status: 'pending', paid_notes: TAG + ' overdue', due_date: future(-15) },
+    ];
+    const { error } = await sb.from('property_tax_bills').insert(rows);
+    if (error) logErr('property_tax_bills', 'insert', error);
+    else logOk(`${rows.length} property_tax_bills inserted`);
+  } else logOk(`${taxExisting.data.length} property_tax_bills already present`);
+}
+
+// ── Accounting: journal entries + recurring entries ──
+async function seedAccounting(props) {
+  header('Step 11 — accounting JEs + recurring');
+  // Resolve a few real account IDs (cash, AR, rent income, repairs)
+  // for double-entry. acct_accounts is per-company auto-seeded.
+  const { data: accts } = await sb.from('acct_accounts').select('id, code, name')
+    .eq('company_id', COMPANY_ID).in('code', ['1000', '1100', '4000', '5300']);
+  const byCode = Object.fromEntries((accts || []).map(a => [a.code, a]));
+  if (!byCode['1000'] || !byCode['4000']) { logErr('accounting', 'missing core accounts (1000/4000)'); return; }
+
+  // Journal entries — 6 across draft/posted/voided
+  const { data: jeExisting } = await sb.from('acct_journal_entries').select('id, reference')
+    .eq('company_id', COMPANY_ID).ilike('description', '%' + TAG + '%');
+  if ((jeExisting || []).length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [
+      { company_id: COMPANY_ID, number: 'CTJE-001', date: today, description: TAG + ' Test rent receipt — posted', reference: 'CT-' + Date.now() + '-1', status: 'posted', property: props[0]?.address || '' },
+      { company_id: COMPANY_ID, number: 'CTJE-002', date: today, description: TAG + ' Test repair expense — posted', reference: 'CT-' + Date.now() + '-2', status: 'posted', property: props[1]?.address || '' },
+      { company_id: COMPANY_ID, number: 'CTJE-003', date: today, description: TAG + ' Test draft entry', reference: 'CT-' + Date.now() + '-3', status: 'draft' },
+      { company_id: COMPANY_ID, number: 'CTJE-004', date: today, description: TAG + ' Test draft 2', reference: 'CT-' + Date.now() + '-4', status: 'draft' },
+      { company_id: COMPANY_ID, number: 'CTJE-005', date: today, description: TAG + ' Test voided', reference: 'CT-' + Date.now() + '-5', status: 'voided' },
+    ];
+    const { data: inserted, error } = await sb.from('acct_journal_entries').insert(rows).select('id, reference');
+    if (error) { logErr('acct_journal_entries', 'insert', error); return; }
+    // Add lines (DR cash / CR rent income — keeps balance real)
+    const lines = [];
+    for (const je of inserted || []) {
+      lines.push({ company_id: COMPANY_ID, journal_entry_id: je.id, account_id: byCode['1000'].id, account_name: byCode['1000'].name, debit: 1500, credit: 0, memo: TAG });
+      lines.push({ company_id: COMPANY_ID, journal_entry_id: je.id, account_id: byCode['4000'].id, account_name: byCode['4000'].name, debit: 0, credit: 1500, memo: TAG });
+    }
+    const { error: lineErr } = await sb.from('acct_journal_lines').insert(lines);
+    if (lineErr) logErr('acct_journal_lines', 'insert', lineErr);
+    else logOk(`${rows.length} JEs + ${lines.length} lines inserted`);
+  } else logOk(`${jeExisting.length} CT journal entries already present`);
+
+  // Recurring journal entries — active/paused mix
+  const { data: recExisting } = await sb.from('recurring_journal_entries').select('id')
+    .eq('company_id', COMPANY_ID).ilike('description', '%' + TAG + '%');
+  if ((recExisting || []).length === 0) {
+    // recurring_journal_entries uses `status` ('active'/'paused'),
+    // not is_active. Constraint recurring_je_tenant_pair_check
+    // requires tenant_id + tenant_name to BOTH be set or BOTH null.
+    // Look up the seeded tenant id once.
+    const { data: aliceRow } = await sb.from('tenants').select('id, name')
+      .eq('company_id', COMPANY_ID).ilike('email', EMAIL_TAG + 'alice@test.com').maybeSingle();
+    const rows = [
+      // Tenant pair: tenant_id + tenant_name BOTH set (only when alice exists)
+      ...(aliceRow ? [{ company_id: COMPANY_ID, description: TAG + ' Monthly rent — Alice', frequency: 'monthly', day_of_month: 1, amount: 1500, tenant_id: aliceRow.id, tenant_name: aliceRow.name, property: props[0]?.address || '', debit_account_id: byCode['1100']?.id || byCode['1000'].id, debit_account_name: 'AR', credit_account_id: byCode['4000'].id, credit_account_name: 'Rent Income', status: 'active' }] : []),
+      // Property-only entries (no tenant pair) — both tenant fields null
+      { company_id: COMPANY_ID, description: TAG + ' Monthly HOA — Oak',      frequency: 'monthly', day_of_month: 5,  amount: 250, property: props[0]?.address || '', debit_account_id: byCode['5300']?.id || byCode['1000'].id, debit_account_name: 'Repairs', credit_account_id: byCode['1000'].id, credit_account_name: 'Cash', status: 'active' },
+      { company_id: COMPANY_ID, description: TAG + ' Quarterly HOA — paused', frequency: 'monthly', day_of_month: 15, amount: 125, property: props[2]?.address || '', debit_account_id: byCode['5300']?.id || byCode['1000'].id, debit_account_name: 'Repairs', credit_account_id: byCode['1000'].id, credit_account_name: 'Cash', status: 'paused' },
+    ];
+    const { error } = await sb.from('recurring_journal_entries').insert(rows);
+    if (error) logErr('recurring_journal_entries', 'insert', error);
+    else logOk(`${rows.length} recurring JEs inserted`);
+  } else logOk(`${recExisting.length} recurring entries already present`);
+}
+
+// ── Leases + lease_templates ──
+async function seedLeases(props, tenants) {
+  header('Step 12 — leases + lease_templates');
+  if (!tenants || !tenants.length) return;
+
+  const { data: tplExisting } = await sb.from('lease_templates').select('id').ilike('name', '%' + TAG + '%');
+  if ((tplExisting || []).length === 0) {
+    const rows = [
+      { name: TAG + ' Standard 12-month MD', description: 'Click-test template', clauses: 'Standard MD residential lease', default_lease_months: 12, default_deposit_months: 1, default_escalation_pct: 3, payment_due_day: 1, is_active: true },
+      { name: TAG + ' Month-to-month',       description: 'Click-test M2M',     clauses: 'Month-to-month tenancy',          default_lease_months: 0,  default_deposit_months: 1, default_escalation_pct: 0, payment_due_day: 1, is_active: true },
+    ];
+    const { error } = await sb.from('lease_templates').insert(rows);
+    if (error) logErr('lease_templates', 'insert', error);
+    else logOk(`${rows.length} lease_templates inserted`);
+  } else logOk(`${tplExisting.length} lease_templates already present`);
+
+  const { data: leaseExisting } = await sb.from('leases').select('id')
+    .eq('company_id', COMPANY_ID).ilike('special_terms', '%' + TAG + '%');
+  if ((leaseExisting || []).length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = [];
+    for (let i = 0; i < Math.min(tenants.length, 4); i++) {
+      const t = tenants[i];
+      // leases.status check constraint allows 'active' / 'terminated'.
+      // The expiring/expired UI states are derived from end_date, not
+      // a separate status enum.
+      rows.push({
+        company_id: COMPANY_ID,
+        tenant_id: t.id,
+        tenant_name: t.name,
+        property: t.property,
+        status: i === 3 ? 'terminated' : 'active',
+        start_date: new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10),
+        end_date:   new Date(Date.now() + (i === 2 ? 25 : i === 3 ? -10 : 165) * 86400000).toISOString().slice(0, 10),
+        rent_amount: 1500 + i * 50,
+        payment_due_day: 1,
+        security_deposit: 1500 + i * 50,
+        special_terms: TAG + ' click-test lease',
+        signature_status: 'fully_signed',
+      });
+    }
+    const { error } = await sb.from('leases').insert(rows);
+    if (error) logErr('leases', 'insert', error);
+    else logOk(`${rows.length} leases inserted`);
+  } else logOk(`${leaseExisting.length} leases already present`);
+}
+
+// ── Documents + doc_templates + doc_generated ──
+async function seedDocuments(props, tenants) {
+  header('Step 13 — documents + templates + generated');
+
+  // doc_templates — system templates exist; add custom CT ones
+  const { data: tplExisting } = await sb.from('doc_templates').select('id')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if ((tplExisting || []).length === 0) {
+    const rows = [
+      { company_id: COMPANY_ID, name: TAG + ' Notice of Entry',  category: 'notice',     description: 'Click-test template', body: 'Notice for {{tenant_name}} at {{property}}', fields: ['tenant_name','property'], is_system: false, is_active: true },
+      { company_id: COMPANY_ID, name: TAG + ' Pet Addendum',     category: 'addendum',   description: 'Click-test addendum', body: 'Pet addendum for {{tenant_name}}.',          fields: ['tenant_name'],            is_system: false, is_active: true },
+    ];
+    const { error } = await sb.from('doc_templates').insert(rows);
+    if (error) logErr('doc_templates', 'insert', error);
+    else logOk(`${rows.length} doc_templates inserted`);
+  } else logOk(`${tplExisting.length} doc_templates already present`);
+
+  // documents (uploaded files)
+  const { data: docsExisting } = await sb.from('documents').select('id')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if ((docsExisting || []).length === 0) {
+    const rows = [
+      { company_id: COMPANY_ID, name: TAG + ' lease.pdf',       tenant: tenants[0]?.name || '', property: tenants[0]?.property || '', type: 'lease',    url: 'https://example.com/ct-lease.pdf',    file_name: 'ct-lease.pdf',    size: 245000 },
+      { company_id: COMPANY_ID, name: TAG + ' insurance.pdf',   tenant: '', property: props[0]?.address || '',                          type: 'insurance', url: 'https://example.com/ct-ins.pdf',     file_name: 'ct-ins.pdf',      size: 88000  },
+      { company_id: COMPANY_ID, name: TAG + ' inspection.jpg',  tenant: '', property: props[1]?.address || '',                          type: 'inspection',url: 'https://example.com/ct-insp.jpg',    file_name: 'ct-insp.jpg',     size: 410000 },
+    ];
+    const { error } = await sb.from('documents').insert(rows);
+    if (error) logErr('documents', 'insert', error);
+    else logOk(`${rows.length} documents inserted`);
+  } else logOk(`${docsExisting.length} documents already present`);
+}
+
+// ── Inspections ──
+async function seedInspections(props) {
+  header('Step 14 — inspections');
+  const { data: existing } = await sb.from('inspections').select('id')
+    .eq('company_id', COMPANY_ID).ilike('notes', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} inspections already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = [
+    { company_id: COMPANY_ID, property: props[0]?.address || '', date: today, type: 'move_in',   status: 'completed', inspector: 'CT Inspector', notes: TAG + ' move-in inspection',  checklist: { kitchen: true, bath: true, walls: true } },
+    { company_id: COMPANY_ID, property: props[1]?.address || '', date: today, type: 'periodic',  status: 'scheduled', inspector: 'CT Inspector', notes: TAG + ' periodic inspection', checklist: {} },
+    { company_id: COMPANY_ID, property: props[6]?.address || '', date: today, type: 'move_out',  status: 'completed', inspector: 'CT Inspector', notes: TAG + ' move-out inspection', checklist: { walls: true, floor: false } },
+  ];
+  const { error } = await sb.from('inspections').insert(rows);
+  if (error) logErr('inspections', 'insert', error);
+  else logOk(`${rows.length} inspections inserted`);
+}
+
+// ── Autopay schedules ──
+async function seedAutopay(tenants) {
+  header('Step 15 — autopay_schedules');
+  if (!tenants || tenants.length < 3) return;
+  const { data: existing } = await sb.from('autopay_schedules').select('id')
+    .eq('company_id', COMPANY_ID).in('tenant', tenants.slice(0, 3).map(t => t.name));
+  if ((existing || []).length > 0) { logOk(`${existing.length} autopay schedules already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = [
+    { company_id: COMPANY_ID, tenant: tenants[0].name, property: tenants[0].property, amount: 1500, frequency: 'monthly', day_of_month: 1, start_date: today, method: 'stripe', active: true  },
+    { company_id: COMPANY_ID, tenant: tenants[1].name, property: tenants[1].property, amount: 1550, frequency: 'monthly', day_of_month: 1, start_date: today, method: 'stripe', active: false /* paused */ },
+    { company_id: COMPANY_ID, tenant: tenants[2].name, property: tenants[2].property, amount: 1600, frequency: 'monthly', day_of_month: 5, start_date: today, method: 'ach',    active: true  },
+  ];
+  const { error } = await sb.from('autopay_schedules').insert(rows);
+  if (error) logErr('autopay_schedules', 'insert', error);
+  else logOk(`${rows.length} autopay_schedules inserted`);
+}
+
+// ── Late fee rules ──
+async function seedLateFeeRules() {
+  header('Step 16 — late_fee_rules');
+  const { data: existing } = await sb.from('late_fee_rules').select('id')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} late_fee_rules already present`); return; }
+  const rows = [
+    { company_id: COMPANY_ID, name: TAG + ' Standard MD',  grace_days: 5, fee_amount: 50,    fee_type: 'fixed',      apply_to: 'all' },
+    { company_id: COMPANY_ID, name: TAG + ' VA 5pct',      grace_days: 7, fee_amount: 5,     fee_type: 'percentage', apply_to: 'all' },
+  ];
+  const { error } = await sb.from('late_fee_rules').insert(rows);
+  if (error) logErr('late_fee_rules', 'insert', error);
+  else logOk(`${rows.length} late_fee_rules inserted`);
+}
+
+// ── Owner statements + distributions ──
+async function seedOwnerStatements() {
+  header('Step 17 — owner_statements + owner_distributions');
+  // Find CT owners
+  const { data: ctOwners } = await sb.from('owners').select('id, name')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if (!ctOwners || ctOwners.length === 0) { logOk('no CT owners — skipping statements'); return; }
+
+  const { data: stExisting } = await sb.from('owner_statements').select('id')
+    .eq('company_id', COMPANY_ID).in('owner_id', ctOwners.map(o => o.id));
+  if ((stExisting || []).length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const rows = [];
+    for (const o of ctOwners.slice(0, 2)) {
+      rows.push({
+        company_id: COMPANY_ID, owner_id: o.id, owner_name: o.name,
+        period: 'Mar 2026', start_date: monthAgo, end_date: today,
+        total_income: 4500, total_expenses: 800, management_fee: 450, net_to_owner: 3250,
+        line_items: [{ desc: 'Rent — 101', amount: 1500 }, { desc: 'Repairs', amount: -800 }],
+        status: 'sent',
+      });
+      rows.push({
+        company_id: COMPANY_ID, owner_id: o.id, owner_name: o.name,
+        period: 'Apr 2026', start_date: today, end_date: today,
+        total_income: 4500, total_expenses: 0, management_fee: 450, net_to_owner: 4050,
+        line_items: [{ desc: 'Rent — 101', amount: 1500 }],
+        status: 'draft',
+      });
+    }
+    const { error } = await sb.from('owner_statements').insert(rows);
+    if (error) logErr('owner_statements', 'insert', error);
+    else logOk(`${rows.length} owner_statements inserted`);
+  } else logOk(`${stExisting.length} statements already present`);
+
+  // owner_distributions
+  const { data: distExisting } = await sb.from('owner_distributions').select('id')
+    .eq('company_id', COMPANY_ID).in('owner_id', ctOwners.map(o => o.id));
+  if ((distExisting || []).length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    // owner_distributions has owner_id but not owner_name; the UI
+    // joins to the owners table for the display name.
+    const rows = ctOwners.slice(0, 2).map(o => ({
+      company_id: COMPANY_ID, owner_id: o.id,
+      date: today, amount: 3250, method: 'ach', notes: TAG + ' distribution',
+    }));
+    const { error } = await sb.from('owner_distributions').insert(rows);
+    if (error) logErr('owner_distributions', 'insert', error);
+    else logOk(`${rows.length} owner_distributions inserted`);
+  } else logOk(`${distExisting.length} distributions already present`);
+}
+
+// ── Audit trail ──
+async function seedAuditTrail() {
+  header('Step 18 — audit_trail (sample entries for filter testing)');
+  const { data: existing } = await sb.from('audit_trail').select('id')
+    .eq('company_id', COMPANY_ID).ilike('details', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} CT audit rows already present`); return; }
+  const modules = ['tenants', 'properties', 'payments', 'maintenance', 'leases', 'accounting'];
+  const actions = ['create', 'update', 'archive', 'restore', 'login', 'logout'];
+  const rows = [];
+  for (let i = 0; i < 18; i++) {
+    rows.push({
+      company_id: COMPANY_ID,
+      action: actions[i % actions.length],
+      module: modules[i % modules.length],
+      details: TAG + ' synthetic audit entry #' + i,
+      user_email: TEST_EMAIL,
+      user_role: 'admin',
+    });
+  }
+  const { error } = await sb.from('audit_trail').insert(rows);
+  if (error) logErr('audit_trail', 'insert', error);
+  else logOk(`${rows.length} audit_trail entries inserted`);
+}
+
+// ── Doc exception requests (Tasks page) ──
+async function seedDocExceptions(tenants) {
+  header('Step 19 — doc_exception_requests (Tasks page)');
+  if (!tenants || !tenants.length) return;
+  const { data: existing } = await sb.from('doc_exception_requests').select('id')
+    .eq('company_id', COMPANY_ID).ilike('reason', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} doc_exception_requests already present`); return; }
+  const rows = [
+    { company_id: COMPANY_ID, tenant_name: tenants[0].name, property: tenants[0].property, requested_by: TEST_EMAIL, approver_email: TEST_EMAIL, reason: TAG + ' missing W9',         status: 'pending' },
+    { company_id: COMPANY_ID, tenant_name: tenants[1].name, property: tenants[1].property, requested_by: TEST_EMAIL, approver_email: TEST_EMAIL, reason: TAG + ' lease scan delayed', status: 'pending' },
+  ];
+  const { error } = await sb.from('doc_exception_requests').insert(rows);
+  if (error) logErr('doc_exception_requests', 'insert', error);
+  else logOk(`${rows.length} doc_exception_requests inserted`);
+}
+
+// ── Messages ──
+async function seedMessages(tenants) {
+  header('Step 20 — messages');
+  if (!tenants || tenants.length < 2) return;
+  const { data: existing } = await sb.from('messages').select('id')
+    .eq('company_id', COMPANY_ID).ilike('message', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} messages already present`); return; }
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    const t = tenants[i];
+    rows.push({
+      company_id: COMPANY_ID, tenant: t.name, tenant_id: t.id, property: t.property,
+      sender: t.name, sender_email: t.email, sender_role: 'tenant',
+      message: TAG + ' Hi, when can someone come look at the leak? — msg ' + i, read: i > 0,
+    });
+    rows.push({
+      company_id: COMPANY_ID, tenant: t.name, tenant_id: t.id, property: t.property,
+      sender: 'Admin', sender_email: TEST_EMAIL, sender_role: 'admin',
+      message: TAG + ' Got it — sending a plumber tomorrow morning. Reply ' + i, read: true,
+    });
+  }
+  const { error } = await sb.from('messages').insert(rows);
+  if (error) logErr('messages', 'insert', error);
+  else logOk(`${rows.length} messages inserted`);
 }
 
 // ── Top-level ─────────────────────────────────────────────────────
@@ -583,6 +963,19 @@ async function main() {
   const owners = await seedOwners(props);
   await seedTasks();
   await seedPortalUsers(props);
+  // Phase 2 — close the ultraplan gap. These cover the modules that
+  // the click-coverage specs (50–66) actually exercise.
+  await seedPropertyChildren(props);
+  await seedAccounting(props);
+  if (tenants && tenants.length) await seedLeases(props, tenants);
+  if (tenants && tenants.length) await seedDocuments(props, tenants);
+  await seedInspections(props);
+  if (tenants && tenants.length) await seedAutopay(tenants);
+  await seedLateFeeRules();
+  await seedOwnerStatements();
+  await seedAuditTrail();
+  if (tenants && tenants.length) await seedDocExceptions(tenants);
+  if (tenants && tenants.length) await seedMessages(tenants);
 
   console.log('\n──────────────────────────────────────────────────');
   console.log(errors.length ? `⚠  Done with ${errors.length} soft errors:` : '✅ Done — no errors');
