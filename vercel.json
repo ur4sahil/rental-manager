@@ -5,16 +5,20 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/license-expiry-reminders",
+      "path": "/api/daily-reminders?task=licenses",
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/tax-bill-reminders",
+      "path": "/api/daily-reminders?task=tax-bills",
       "schedule": "0 14 * * *"
     },
     {
       "path": "/api/integrity-check",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/notification-worker",
+      "schedule": "*/5 * * * *"
     }
   ],
   "headers": [
