@@ -45,7 +45,9 @@
     "test:click": "npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list",
     "user-flow": "node seed-clicktest-data.js && npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list --workers=1",
     "user-flow:headed": "node seed-clicktest-data.js && npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list --workers=1 --headed",
-    "matrix": "node scripts/build-click-matrix.js"
+    "matrix": "node scripts/build-click-matrix.js",
+    "walkthrough": "node scripts/walkthrough.js",
+    "user-flow:full": "node seed-clicktest-data.js && node scripts/walkthrough.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",
