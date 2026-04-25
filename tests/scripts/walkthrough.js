@@ -102,6 +102,16 @@ async function tryClose(page) {
     pageErrors.push(e.message.slice(0, 220));
     log('  ERR(page): ' + e.message.slice(0, 200));
   });
+  // Log every non-2xx network response — that's the only way to see
+  // WHICH URL is throwing the "Failed to load resource: 404" from the
+  // browser console. Skip the well-known noisy ones.
+  page.on('response', (resp) => {
+    const status = resp.status();
+    if (status < 400) return;
+    const url = resp.url();
+    if (/favicon|manifest|service-worker|sw\.js$/.test(url)) return;
+    log('  HTTP ' + status + ' ' + url.slice(0, 180));
+  });
 
   // Login
   log(`Walk-through starting · ${new Date().toISOString()}`);

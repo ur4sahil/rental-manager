@@ -128,7 +128,18 @@ export function detectInfrastructureCode(errOrMessage, fallbackCode) {
   if (msg.includes("relation") && msg.includes("does not exist")) return "PM-8002";
   if (msg.includes("function") && msg.includes("does not exist")) return "PM-8003";
   if (msg.includes("timeout") || msg.includes("aborted")) return "PM-8004";
-  if (msg.includes("row-level security") || msg.includes("rls") || msg.includes("permission denied")) return "PM-8005";
+  // Database permission errors specifically — the bare "permission denied"
+  // pattern used to match the BROWSER's "Push permission denied" message
+  // when registerPushNotifications failed, mistagging it as a Postgres
+  // RLS error and flooding Sentry. Tighten so we only catch actual SQL
+  // contexts: relation-permission errors, RLS, or "permission denied for
+  // <table/schema/function>".
+  if (
+    msg.includes("row-level security") ||
+    msg.includes("rls") ||
+    msg.includes("permission denied for ") ||
+    msg.includes("permission denied to ")
+  ) return "PM-8005";
   if (msg.includes("duplicate key") || msg.includes("unique constraint")) return "PM-9005";
   return fallbackCode;
 }

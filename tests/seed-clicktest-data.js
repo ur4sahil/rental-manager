@@ -164,6 +164,30 @@ async function cleanup() {
   await tryDelete('wizard_skipped_approvals', () =>
     sb.from('wizard_skipped_approvals').delete().eq('company_id', COMPANY_ID).ilike('section_label', '%' + TAG + '%'));
 
+  // 6b. Phase-3 tables: evictions / doc_generated / vendor_invoices /
+  //     property_setup_wizard / bank feed+txns+rules+reconciliation
+  await tryDelete('eviction_cases', () =>
+    sb.from('eviction_cases').delete().eq('company_id', COMPANY_ID).ilike('notes', '%' + TAG + '%'));
+  await tryDelete('doc_generated', () =>
+    sb.from('doc_generated').delete().eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%'));
+  await tryDelete('vendor_invoices', () =>
+    sb.from('vendor_invoices').delete().ilike('description', '%' + TAG + '%'));
+  await tryDelete('property_setup_wizard', () =>
+    sb.from('property_setup_wizard').delete().eq('company_id', COMPANY_ID).ilike('property_address', '%Click Test%'));
+  // Bank: rules → txns → reconciliations → feed (FK order)
+  const { data: ctFeed } = await sb.from('bank_account_feed').select('id')
+    .eq('company_id', COMPANY_ID).ilike('account_name', '%' + TAG + '%').maybeSingle();
+  if (ctFeed) {
+    await tryDelete('bank_transaction_rule', () =>
+      sb.from('bank_transaction_rule').delete().eq('bank_account_feed_id', ctFeed.id));
+    await tryDelete('bank_feed_transaction', () =>
+      sb.from('bank_feed_transaction').delete().eq('bank_account_feed_id', ctFeed.id));
+  }
+  await tryDelete('bank_reconciliations', () =>
+    sb.from('bank_reconciliations').delete().eq('company_id', COMPANY_ID).ilike('notes', '%' + TAG + '%'));
+  await tryDelete('bank_account_feed', () =>
+    sb.from('bank_account_feed').delete().eq('company_id', COMPANY_ID).ilike('account_name', '%' + TAG + '%'));
+
   // 7b. Portal-user tenants/owners (separate from CT-tagged ones)
   await tryDelete('tenants-portal', () =>
     sb.from('tenants').delete().eq('company_id', COMPANY_ID).ilike('email', TENANT_TEST_EMAIL));
@@ -918,6 +942,203 @@ async function seedDocExceptions(tenants) {
   else logOk(`${rows.length} doc_exception_requests inserted`);
 }
 
+// ── Eviction cases ──
+async function seedEvictionCases(tenants) {
+  header('Step 21 — eviction_cases');
+  if (!tenants || tenants.length < 2) return;
+  const { data: existing } = await sb.from('eviction_cases').select('id')
+    .eq('company_id', COMPANY_ID).ilike('notes', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} eviction_cases already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  // eviction_cases.tenant_id is uuid but tenants.id is bigint; the
+  // foreign-key isn't enforced at the column level so we simply leave
+  // tenant_id null and rely on tenant_name + property for the join.
+  const rows = [
+    {
+      company_id: COMPANY_ID,
+      tenant_name: tenants[4].name, property: tenants[4].property,
+      reason: 'non_payment', notice_type: 'pay_or_quit', notice_days: 30,
+      notice_date: today,
+      cure_deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      current_stage: 'notice', status: 'active',
+      notes: TAG + ' Click-test active eviction',
+      stage_history: JSON.stringify([{ stage: 'notice', date: today, note: 'Pay-or-quit notice issued', cost: 0, by: TEST_EMAIL }]),
+      total_costs: 0,
+    },
+    {
+      company_id: COMPANY_ID,
+      tenant_name: tenants[5].name, property: tenants[5].property,
+      reason: 'lease_violation', notice_type: 'cure_or_quit', notice_days: 14,
+      notice_date: today,
+      cure_deadline: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10),
+      current_stage: 'closed', status: 'closed', outcome: 'tenant_cured',
+      notes: TAG + ' Click-test closed eviction (tenant cured)',
+      stage_history: JSON.stringify([
+        { stage: 'notice',  date: today, note: 'Cure-or-quit issued', cost: 0,   by: TEST_EMAIL },
+        { stage: 'closed',  date: today, note: 'Tenant cured',        cost: 350, by: TEST_EMAIL },
+      ]),
+      total_costs: 350,
+    },
+  ];
+  const { error } = await sb.from('eviction_cases').insert(rows);
+  if (error) logErr('eviction_cases', 'insert', error);
+  else logOk(`${rows.length} eviction_cases inserted`);
+}
+
+// ── Doc generated outputs (DocBuilder library) ──
+async function seedDocGenerated(props, tenants) {
+  header('Step 22 — doc_generated outputs');
+  if (!tenants || !tenants.length) return;
+  // Need a CT template to attach to
+  const { data: tpls } = await sb.from('doc_templates').select('id, name')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%').limit(1);
+  if (!tpls || !tpls.length) { logOk('no CT template — skipping'); return; }
+  const tplId = tpls[0].id;
+
+  const { data: existing } = await sb.from('doc_generated').select('id')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} doc_generated already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = [
+    { company_id: COMPANY_ID, template_id: tplId, name: TAG + ' Notice — Alice — draft', tenant_name: tenants[0].name, property_address: tenants[0].property, status: 'draft',     rendered_body: '<p>Notice draft</p>',           field_values: { tenant_name: tenants[0].name, property: tenants[0].property } },
+    { company_id: COMPANY_ID, template_id: tplId, name: TAG + ' Notice — Bob — sent',   tenant_name: tenants[1].name, property_address: tenants[1].property, status: 'sent',      rendered_body: '<p>Notice sent</p>',            field_values: { tenant_name: tenants[1].name, property: tenants[1].property }, sent_at: today },
+    { company_id: COMPANY_ID, template_id: tplId, name: TAG + ' Notice — Carol — completed', tenant_name: tenants[2].name, property_address: tenants[2].property, status: 'completed', rendered_body: '<p>Notice completed</p>', field_values: { tenant_name: tenants[2].name, property: tenants[2].property }, sent_at: today },
+  ];
+  const { error } = await sb.from('doc_generated').insert(rows);
+  if (error) logErr('doc_generated', 'insert', error);
+  else logOk(`${rows.length} doc_generated inserted`);
+}
+
+// ── Vendor invoices ──
+async function seedVendorInvoices() {
+  header('Step 23 — vendor_invoices');
+  // Need CT vendors to attach to
+  const { data: vens } = await sb.from('vendors').select('id, name')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%').limit(3);
+  if (!vens || !vens.length) { logOk('no CT vendors — skipping'); return; }
+  // vendor_invoices.company_id may not exist; insert defensively
+  const { data: existing } = await sb.from('vendor_invoices').select('id')
+    .ilike('description', '%' + TAG + '%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} vendor_invoices already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = [
+    { vendor_id: vens[0].id, vendor_name: vens[0].name, description: TAG + ' Plumbing repair', amount: 450, invoice_number: 'CT-INV-001', invoice_date: today, due_date: today, status: 'pending' },
+    { vendor_id: vens[1]?.id || vens[0].id, vendor_name: vens[1]?.name || vens[0].name, description: TAG + ' Electrical fix', amount: 320, invoice_number: 'CT-INV-002', invoice_date: today, due_date: today, status: 'paid', paid_date: today },
+  ];
+  const { error } = await sb.from('vendor_invoices').insert(rows);
+  if (error) logErr('vendor_invoices', 'insert', error);
+  else logOk(`${rows.length} vendor_invoices inserted`);
+}
+
+// ── Property setup wizard rows (Setup Drafts tab) ──
+async function seedSetupDrafts(props) {
+  header('Step 24 — property_setup_wizard (Setup Drafts tab)');
+  if (!props || !props.length) return;
+  const { data: existing } = await sb.from('property_setup_wizard').select('id')
+    .eq('company_id', COMPANY_ID).ilike('property_address', '%Click Test%');
+  if ((existing || []).length > 0) { logOk(`${existing.length} setup-wizard rows already present`); return; }
+  const inProgress = props.find(p => p.status === 'in_setup') || props[0];
+  const rows = [{
+    company_id: COMPANY_ID,
+    property_id: inProgress.id,
+    property_address: inProgress.address || inProgress.address_line_1 || PROPS[0].address,
+    current_step: 4,
+    completed_steps: ['property_details', 'tenant_lease', 'utilities', 'documents'],
+    skipped_approved_steps: [],
+    wizard_data: { source: 'CLICKTEST seed' },
+    status: 'in_progress',
+  }];
+  const { error } = await sb.from('property_setup_wizard').insert(rows);
+  if (error) logErr('property_setup_wizard', 'insert', error);
+  else logOk(`${rows.length} property_setup_wizard rows inserted`);
+}
+
+// ── Bank: a CT-tagged feed + a few transactions ──
+// (Independent from bank-recon-stress.test.js's seeded feed; keeping
+// the click-suite self-sufficient.)
+async function seedBank() {
+  header('Step 25 — bank_account_feed + bank_feed_transaction (CT)');
+  // Find checking GL account for this company
+  const { data: cash } = await sb.from('acct_accounts').select('id, code')
+    .eq('company_id', COMPANY_ID).eq('code', '1000').maybeSingle();
+  if (!cash) { logErr('bank', 'no checking account 1000'); return; }
+  let { data: feed } = await sb.from('bank_account_feed').select('id, account_name')
+    .eq('company_id', COMPANY_ID).eq('account_name', TAG + ' Test Bank Feed').maybeSingle();
+  if (!feed) {
+    const ins = await sb.from('bank_account_feed').insert({
+      company_id: COMPANY_ID, gl_account_id: cash.id,
+      account_name: TAG + ' Test Bank Feed', masked_number: '****0001',
+      account_type: 'checking', currency_code: 'USD',
+      bank_balance_current: 12500, ledger_balance_cached: 12500,
+      import_enabled: true, status: 'active',
+      institution_name: TAG + ' Test Bank', connection_type: 'csv',
+    }).select('id').single();
+    if (ins.error) { logErr('bank_account_feed', 'insert', ins.error); return; }
+    feed = ins.data;
+    logOk('inserted CT bank feed');
+  } else {
+    logOk('CT bank feed already present');
+  }
+
+  // Transactions — 6 across statuses
+  const { count: txCount } = await sb.from('bank_feed_transaction')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', COMPANY_ID).eq('bank_account_feed_id', feed.id);
+  if (txCount > 0) { logOk(`${txCount} bank txns already present`); return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const days = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  // fingerprint_hash is required (NOT NULL). Use the same
+  // feed|date|direction|cents|desc shape teller-sync builds.
+  const fp = (date, direction, amt, desc) =>
+    `${feed.id}|${date}|${direction}|${Math.round(amt * 100)}|${desc.toLowerCase().slice(0, 100)}`;
+  const txns = [
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(0),  amount: 1500, direction: 'inflow',  bank_description_raw: TAG + ' Rent — Alice Apr',     bank_description_clean: 'Rent Alice Apr',  status: 'for_review', fingerprint_hash: fp(days(0),  'inflow',  1500, 'rent alice apr') },
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(1),  amount: 1550, direction: 'inflow',  bank_description_raw: TAG + ' Rent — Bob Apr',       bank_description_clean: 'Rent Bob Apr',    status: 'for_review', fingerprint_hash: fp(days(1),  'inflow',  1550, 'rent bob apr')   },
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(2),  amount: 450,  direction: 'outflow', bank_description_raw: TAG + ' Plumbing — CT vendor', bank_description_clean: 'Plumbing CT',     status: 'for_review', fingerprint_hash: fp(days(2),  'outflow', 450,  'plumbing ct')    },
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(5),  amount: 1500, direction: 'inflow',  bank_description_raw: TAG + ' Rent — Alice Mar',     bank_description_clean: 'Rent Alice Mar',  status: 'matched',    fingerprint_hash: fp(days(5),  'inflow',  1500, 'rent alice mar') },
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(7),  amount: 250,  direction: 'outflow', bank_description_raw: TAG + ' HOA — Oakwood',        bank_description_clean: 'HOA Oakwood',     status: 'matched',    fingerprint_hash: fp(days(7),  'outflow', 250,  'hoa oakwood')    },
+    { company_id: COMPANY_ID, bank_account_feed_id: feed.id, source_type: 'csv', posted_date: days(15), amount: 35,   direction: 'outflow', bank_description_raw: TAG + ' Bank fee',             bank_description_clean: 'Bank fee',        status: 'excluded',   fingerprint_hash: fp(days(15), 'outflow', 35,   'bank fee')       },
+  ];
+  const { error } = await sb.from('bank_feed_transaction').insert(txns);
+  if (error) logErr('bank_feed_transaction', 'insert', error);
+  else logOk(`${txns.length} bank txns inserted`);
+
+  // Bank rules — 2 simple ones
+  const { data: rExisting } = await sb.from('bank_transaction_rule').select('id')
+    .eq('company_id', COMPANY_ID).ilike('name', '%' + TAG + '%');
+  if ((rExisting || []).length === 0) {
+    // rule_type check accepts 'assign' (live data only shows that value)
+    const rules = [
+      { company_id: COMPANY_ID, name: TAG + ' Auto-categorize Rent', priority: 10, enabled: true, bank_account_feed_id: feed.id, condition_json: { contains: 'Rent' },     action_json: { account_id: cash.id }, auto_accept: true,  stop_processing: false, rule_type: 'assign' },
+      { company_id: COMPANY_ID, name: TAG + ' Exclude bank fees',    priority: 20, enabled: true, bank_account_feed_id: feed.id, condition_json: { contains: 'Bank fee' }, action_json: { exclude: true       }, auto_accept: false, stop_processing: true,  rule_type: 'assign' },
+    ];
+    const { error: rErr } = await sb.from('bank_transaction_rule').insert(rules);
+    if (rErr) logErr('bank_transaction_rule', 'insert', rErr);
+    else logOk(`${rules.length} bank_transaction_rule inserted`);
+  } else logOk(`${rExisting.length} bank rules already present`);
+
+  // One reconciliation row
+  const { data: recExisting } = await sb.from('bank_reconciliations').select('id')
+    .eq('company_id', COMPANY_ID).ilike('notes', '%' + TAG + '%');
+  if ((recExisting || []).length === 0) {
+    const rec = await sb.from('bank_reconciliations').insert({
+      company_id: COMPANY_ID,
+      period: '2026-03',
+      bank_ending_balance: 12500,
+      book_balance: 12500,
+      difference: 0,
+      // status check accepts 'reconciled' / 'discrepancy' (per live data)
+      status: 'reconciled',
+      reconciled_items: 5,
+      unreconciled_items: 0,
+      notes: TAG + ' click-test reconciliation',
+      reconciled_by: TEST_EMAIL,
+    });
+    if (rec.error) logErr('bank_reconciliations', 'insert', rec.error);
+    else logOk('1 bank_reconciliation inserted');
+  } else logOk(`${recExisting.length} reconciliations already present`);
+}
+
 // ── Messages ──
 async function seedMessages(tenants) {
   header('Step 20 — messages');
@@ -976,6 +1197,13 @@ async function main() {
   await seedAuditTrail();
   if (tenants && tenants.length) await seedDocExceptions(tenants);
   if (tenants && tenants.length) await seedMessages(tenants);
+  // Phase 3 — even-deeper coverage: evictions, doc outputs, vendor
+  // invoices, setup-wizard drafts, bank feed/txns/rules/reconciliation.
+  if (tenants && tenants.length) await seedEvictionCases(tenants);
+  if (tenants && tenants.length) await seedDocGenerated(props, tenants);
+  await seedVendorInvoices();
+  await seedSetupDrafts(props);
+  await seedBank();
 
   console.log('\n──────────────────────────────────────────────────');
   console.log(errors.length ? `⚠  Done with ${errors.length} soft errors:` : '✅ Done — no errors');
