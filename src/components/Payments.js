@@ -21,10 +21,18 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   async function fetchPayments() {
   setLoading(true);
-  // Fetch payment-type JEs: PAY-, STRIPE-, or payment-related descriptions
+  // Payments tab is reserved for STRIPE payments only (per product
+  // decision 2026-04-26). Other money-in flows live elsewhere:
+  //   • Manual / ACH / check rent receipts → Tenant ledger drawer +
+  //     Accounting → Journal Entries
+  //   • Late fees received → Late Fees module
+  //   • Deposit receipts / returns → Move-In / Move-Out flows
+  // The previous filter swept in PAY-/DEPRET- prefixes plus any JE with
+  // 'payment' in the description, which leaked late-fee bank-import
+  // rows ('Late Fee — LATE FEE PAYMENT') onto this page.
   let query = supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
     .eq("company_id", companyId).eq("status", "posted")
-    .or("reference.like.PAY-%,reference.like.STRIPE-%,reference.like.DEPRET-%,description.ilike.%payment%");
+    .like("reference", "STRIPE-%");
   if (payDateFrom) query = query.gte("date", payDateFrom);
   if (payDateTo) query = query.lte("date", payDateTo);
   if (paySearch) query = query.or(`description.ilike.%${escapeFilterValue(paySearch)}%,property.ilike.%${escapeFilterValue(paySearch)}%`);
@@ -78,19 +86,22 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   return (
   <div>
-  <div className="flex items-center justify-between mb-5">
-  <PageHeader title="Payments" />
+  <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+  <PageHeader title="Stripe Payments" subtitle="Online rent received via Stripe. Non-Stripe payments live in Accounting." />
   <div className="flex gap-2">
   <Btn variant="secondary" onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" },
   { label: "Property", key: "property" }, { label: "Amount", key: "amount" },
   { label: "Type", key: "type" }, { label: "Method", key: "method" },
   { label: "Reference", key: "reference" },
-  ], "payments-export", showToast)}>
+  ], "stripe-payments-export", showToast)}>
   <span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export
   </Btn>
+  {/* Stripe payments can't be manually recorded — they flow through
+      the Stripe API. The escape hatch routes to the Accounting JE
+      editor for any non-Stripe receipt the admin needs to log. */}
   <Btn variant="success-fill" onClick={() => setPage("accounting", "newJE")}>
-  <span className="material-icons-outlined text-sm">add_circle</span>Record Payment
+  <span className="material-icons-outlined text-sm">add_circle</span>Record Manual Payment
   </Btn>
   </div>
   </div>
