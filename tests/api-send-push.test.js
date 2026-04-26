@@ -9,13 +9,18 @@ const fs = require('fs');
 const path = require('path');
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 
-const ENDPOINT = 'https://rental-manager-one.vercel.app/api/send-push';
+// Endpoint moved 2026-04-26 — send-push consolidated into the
+// notifications dispatcher to free a Vercel function slot for Stripe.
+// Same handler, same contract, just behind ?action=push.
+const ENDPOINT = 'https://rental-manager-one.vercel.app/api/notifications?action=push';
 const SMITH = 'dce4974d-afa9-4e65-afdf-1189b815195d';
 
 let pass = 0, fail = 0;
 function assert(ok, name, detail) { if (ok) { console.log('  ✅ ' + name); pass++; } else { console.log('  ❌ ' + name + (detail ? ' — ' + detail : '')); fail++; } }
 
-const sendPushJs = fs.readFileSync(path.join(__dirname, '../api/send-push.js'), 'utf8');
+// Source file moved to api/_send-push-impl.js (underscore-prefixed
+// non-routed module imported by the notifications dispatcher).
+const sendPushJs = fs.readFileSync(path.join(__dirname, '../api/_send-push-impl.js'), 'utf8');
 
 (async () => {
 console.log('\n/api/send-push');

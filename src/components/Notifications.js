@@ -95,7 +95,7 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
       const { data: session } = await supabase.auth.getSession();
       const jwt = session?.session?.access_token;
       if (!jwt) { showToast("Not signed in — can't test", "error"); return; }
-      const res = await fetch("/api/send-push", {
+      const res = await fetch("/api/notifications?action=push", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
         body: JSON.stringify({ company_id: companyId, user_email: userProfile.email, title: "Housify test", body: "Push is working on this device.", url: "/#notifications" }),

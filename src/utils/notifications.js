@@ -53,7 +53,7 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
       const { data: session } = await supabase.auth.getSession();
       const jwt = session?.session?.access_token;
       if (jwt) {
-        fetch("/api/notification-worker", {
+        fetch("/api/notifications?action=worker", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
           body: JSON.stringify({}),
@@ -63,7 +63,7 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
   }
   }
 
-  // Deliver push via the /api/send-push Vercel function. The function
+  // Deliver push via /api/notifications?action=push. The function
   // looks up every push_subscriptions row for this (company, email),
   // dispatches with the server-side VAPID private key, and prunes
   // dead endpoints. We pass the user's Supabase JWT so the function
@@ -80,7 +80,7 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
         // Fire and forget — don't block the queueNotification caller on
         // push delivery. Any failure goes to the error log silently;
         // the email/in-app queue rows still provide a delivery trail.
-        fetch("/api/send-push", {
+        fetch("/api/notifications?action=push", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
           body: JSON.stringify({ company_id: companyId, user_email: recipientEmail, title, body: message, url }),
