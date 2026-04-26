@@ -216,25 +216,41 @@ async function handleWebhook(req, res) {
     const reference = "STRIPE-" + intent.id;
     const description = "Rent payment — " + (md.tenant_name || "tenant") + " — " + (md.property || "");
 
-    // Use the highest existing JE number + 1 (matches autoPostJournalEntry)
-    const { data: lastJE } = await sb.from("acct_journal_entries")
-      .select("number").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
-    const jeNumber = "JE-" + String(lastNum + 1).padStart(4, "0");
-
-    const { data: je, error: jeErr } = await sb.from("acct_journal_entries").insert({
-      company_id: companyId,
-      number: jeNumber,
-      date: today,
-      description: description.slice(0, 500),
-      reference,
-      stripe_payment_intent_id: intent.id,
-      property: md.property || "",
-      status: "posted",
-    }).select("id").single();
-    if (jeErr) {
-      console.error("[stripe webhook] JE insert failed:", jeErr.message);
-      return res.status(500).json({ error: "JE insert failed: " + jeErr.message });
+    // Sequential JE number with retry-on-collision. order-by-created_at
+    // is non-deterministic when multiple JEs share a timestamp (e.g. a
+    // bulk recurring-engine post), so the first guess can collide with
+    // an existing higher number. Retry by bumping `attempt`. Mirrors the
+    // pattern in src/utils/accounting.js:autoPostJournalEntry.
+    let je = null, jeErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: lastJE } = await sb.from("acct_journal_entries")
+        .select("number").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
+      const jeNumber = "JE-" + String(lastNum + 1 + attempt).padStart(4, "0");
+      const ins = await sb.from("acct_journal_entries").insert({
+        company_id: companyId,
+        number: jeNumber,
+        date: today,
+        description: description.slice(0, 500),
+        reference,
+        stripe_payment_intent_id: intent.id,
+        property: md.property || "",
+        status: "posted",
+      }).select("id").maybeSingle();
+      je = ins.data; jeErr = ins.error;
+      if (!jeErr && je) break;
+      const msg = (jeErr?.message || "") + " " + (jeErr?.details || "");
+      const isReferenceCollision = /\b(reference)\b|idx_je_company_reference_unique/i.test(msg);
+      if (isReferenceCollision) {
+        // Dedup — same Stripe PI already posted. Idempotent success.
+        return res.status(200).json({ received: true, idempotent: true });
+      }
+      const isNumberCollision = /\b(number)\b|acct_journal_entries_number/i.test(msg);
+      if (!isNumberCollision) break; // unrelated failure — stop retrying
+    }
+    if (jeErr || !je) {
+      console.error("[stripe webhook] JE insert failed:", jeErr?.message);
+      return res.status(500).json({ error: "JE insert failed: " + (jeErr?.message || "unknown") });
     }
 
     const lines = [
