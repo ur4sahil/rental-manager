@@ -134,11 +134,8 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
   // browser-blocked and not-yet-prompted states. Earlier this early-
   // returned with text only, leaving denied users no actionable button.
 
-  // Subscribed — slim status row + a re-enable affordance for cases
-  // where the subscription has gone stale (browser dropped it, VAPID
-  // rotation, switched devices). handleEnable is idempotent: it
-  // re-runs the requestPermission + subscribe flow, replacing any
-  // existing sub.
+  // Subscribed — confirmation row + Send test / Turn off. No enable
+  // button here; the user has already opted in.
   if (state.subscribed) {
     return (
       <Card padding="p-4" className="mb-5 bg-positive-50/40 border-positive-200">
@@ -149,7 +146,6 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
           </div>
           <div className="flex gap-2 flex-wrap">
             <Btn onClick={handleTest} disabled={busy} variant="secondary" size="xs">Send test</Btn>
-            <Btn onClick={handleEnable} disabled={busy} variant="secondary" size="xs">{busy ? "Working…" : "Re-enable"}</Btn>
             <Btn onClick={handleDisable} disabled={busy} variant="secondary" size="xs">Turn off</Btn>
           </div>
         </div>

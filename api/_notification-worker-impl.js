@@ -366,15 +366,43 @@ module.exports = async (req, res) => {
 
   const resend = new Resend(RESEND_API_KEY);
 
-  // Pull pending rows oldest-first.
-  const { data: pending, error: pendErr } = await sb.from("notification_queue")
-    .select("id, company_id, type, recipient_email, data, status, created_at")
+  // queueNotification triggers the worker once per fan-out call, so a
+  // tenant messaging 5 staff fires 5 worker invocations in parallel.
+  // Without a claim step they all read the same pending rows, race on
+  // update, and rows can fall through cracks (only one of 5 lands as
+  // "sent", the rest stay pending forever). Atomically claim a batch
+  // by flipping status pending → processing with a unique worker_run_id;
+  // only this invocation owns those rows.
+  const workerRunId = "wrk_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  const claimedAt = new Date().toISOString();
+
+  // Step 1: pull candidate IDs (oldest-first). We do a separate UPDATE
+  // per row so the WHERE status='pending' guard makes the claim
+  // atomic — concurrent workers can't grab a row another already won.
+  const { data: candidates, error: pendErr } = await sb.from("notification_queue")
+    .select("id, company_id, type, recipient_email, data, created_at")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
   if (pendErr) { res.status(500).json({ error: "queue read failed: " + pendErr.message }); return; }
-  if (!pending || pending.length === 0) {
+  if (!candidates || candidates.length === 0) {
     res.status(200).json({ ok: true, attempted: 0, sent: 0, failed: 0 });
+    return;
+  }
+
+  // Step 2: claim each candidate. Update returns the rows that won —
+  // ones already grabbed by a concurrent worker fail the WHERE clause
+  // (status no longer 'pending') and return 0 rows.
+  const pending = [];
+  for (const c of candidates) {
+    const { data: claimed } = await sb.from("notification_queue")
+      .update({ status: "processing", error_message: workerRunId, processed_at: claimedAt })
+      .eq("id", c.id).eq("status", "pending")
+      .select("id").maybeSingle();
+    if (claimed) pending.push(c);
+  }
+  if (pending.length === 0) {
+    res.status(200).json({ ok: true, attempted: 0, sent: 0, failed: 0, note: "all rows claimed by other workers" });
     return;
   }
 
@@ -501,6 +529,14 @@ module.exports = async (req, res) => {
     processed_at: new Date().toISOString(),
     error_message: "expired before worker pickup (>24h pending)",
   }).eq("status", "pending").lt("created_at", cutoff);
+
+  // Recover rows stuck in 'processing' — a worker claimed them but
+  // crashed/timed out before completing. Anything older than 5 minutes
+  // gets bumped back to pending so the next worker tick retries.
+  const staleClaimCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  await sb.from("notification_queue").update({
+    status: "pending", processed_at: null, error_message: null,
+  }).eq("status", "processing").lt("processed_at", staleClaimCutoff);
 
   res.status(200).json({
     ok: true,
