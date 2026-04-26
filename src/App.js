@@ -297,10 +297,31 @@ function AppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedNav, setExpandedNav] = useState(() => {
     const initial = new Set();
-    // Auto-expand parents whose child is the current page
-    ALL_NAV.forEach(n => { if (n.children && n.children.some(c => c.id === page)) initial.add(n.id); });
+    // Auto-expand parents whose child is the current page OR when the
+    // current page IS the parent itself — landing on the Accounting /
+    // Properties dashboard should reveal their sub-pages in the sidebar
+    // without the user having to find the chevron.
+    ALL_NAV.forEach(n => {
+      if (!n.children) return;
+      if (n.id === page || n.children.some(c => c.id === page)) initial.add(n.id);
+    });
     return initial;
   });
+  // Keep parents auto-expanded as the user navigates between them.
+  // Without this, expandedNav is set only at first mount; clicking
+  // 'Accounting' from another module would render the parent active
+  // but its children stay hidden behind the chevron until you click it.
+  // The Set merge preserves any parent the user manually toggled open.
+  useEffect(() => {
+    setExpandedNav(prev => {
+      const next = new Set(prev);
+      ALL_NAV.forEach(n => {
+        if (!n.children) return;
+        if (n.id === page || n.children.some(c => c.id === page)) next.add(n.id);
+      });
+      return next;
+    });
+  }, [page]);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
