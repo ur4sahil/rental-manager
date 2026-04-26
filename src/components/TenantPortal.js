@@ -42,10 +42,13 @@ function computeFeeForMethod(rentDollars, method) {
 // PaymentIntent's client_secret + a callback for what to do after
 // successful confirmation. Stripe handles the actual card capture +
 // 3DS challenge inline.
-function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSuccess, onError, busy, setBusy }) {
+function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, payMethod, onSuccess, onError, busy, setBusy }) {
   const stripe = useStripe();
   const elements = useElements();
   const [localError, setLocalError] = useState("");
+
+  const isAch = payMethod === "us_bank_account";
+  const feeLabel = isAch ? "ACH fee (0.8%, max $5)" : "Processing fee (2.9% + $0.30)";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -58,12 +61,22 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSucce
       redirect: "if_required",
     });
     if (error) {
-      setLocalError(error.message || "Card declined.");
-      onError && onError(error.message || "Card declined");
+      setLocalError(error.message || "Payment declined.");
+      onError && onError(error.message || "Payment declined");
       setBusy(false);
       return;
     }
-    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
+    // Status flow varies by method:
+    //   Card:  succeeded (instant) — JE posts via webhook now
+    //   ACH/FC: processing (instant verification via Financial Connections)
+    //          → eventually succeeded when the ACH clears (1-3 days)
+    //   ACH/microdeposit: requires_action (tenant verifies $0.01 deposit
+    //          in 1-2 days, then status moves to processing → succeeded)
+    // All three are valid "we got it" states — the JE doesn't post until
+    // the webhook fires payment_intent.succeeded. Pass paymentIntent up
+    // so the parent can show method-appropriate copy.
+    const ok = ["succeeded", "processing", "requires_action"];
+    if (paymentIntent && ok.includes(paymentIntent.status)) {
       onSuccess && onSuccess(paymentIntent);
     } else {
       setLocalError("Unexpected payment status: " + (paymentIntent?.status || "unknown"));
@@ -79,7 +92,7 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSucce
           <span>Rent</span><span className="font-mono">${(rentCents / 100).toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-500 text-xs mt-1">
-          <span>Processing fee (2.9% + $0.30)</span><span className="font-mono">${(feeCents / 100).toFixed(2)}</span>
+          <span>{feeLabel}</span><span className="font-mono">${(feeCents / 100).toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-semibold text-neutral-800 mt-2 pt-2 border-t border-neutral-200">
           <span>Total charge</span><span className="font-mono">${(totalCents / 100).toFixed(2)}</span>
@@ -89,7 +102,7 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSucce
       <Btn type="submit" variant="primary" size="lg" className="w-full mt-4" disabled={!stripe || busy}>
         {busy ? "Processing…" : "Pay $" + (totalCents / 100).toFixed(2)}
       </Btn>
-      <div className="text-xs text-neutral-400 text-center mt-3">Secured by Stripe — your card details never touch our servers.</div>
+      <div className="text-xs text-neutral-400 text-center mt-3">{isAch ? "Bank account payments take 1-3 business days to clear." : "Secured by Stripe — your card details never touch our servers."}</div>
     </form>
   );
 }
@@ -170,6 +183,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  // Tracks the post-confirm status of the most recent PaymentIntent.
+  // Drives the success-banner copy: card/wallet → "recorded";
+  // ACH instant → "processing"; ACH microdeposit → "verification pending".
+  const [paymentPendingStatus, setPaymentPendingStatus] = useState(null);
   // When non-null: the Pay Rent tab swaps from the amount-input card
   // into a Stripe Elements card form. Cleared on success or when the
   // tenant cancels.
@@ -390,9 +407,22 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     setPaymentAmount("");
     setStripeIntent(null);
     const amt = (paymentIntent?.amount || 0) / 100;
-    addNotification("💳", "Payment of $" + amt.toFixed(2) + " confirmed.");
-    // Allow the webhook a moment to post the JE before we refetch
-    // the tenant balance — small UX polish, not load-bearing.
+    const status = paymentIntent?.status;
+    // Customize the toast + ledger refresh by status. Card / wallet
+    // payments confirm instantly; ACH lands as `processing` (instant
+    // verification) or `requires_action` (microdeposit verification
+    // pending). The JE only posts once the webhook fires `succeeded`.
+    if (status === "requires_action") {
+      addNotification("🏦", "Bank verification pending. Check your email in 1-2 business days.");
+    } else if (status === "processing") {
+      addNotification("🏦", "Payment of $" + amt.toFixed(2) + " is processing. We'll email you when it clears.");
+    } else {
+      addNotification("💳", "Payment of $" + amt.toFixed(2) + " confirmed.");
+    }
+    setPaymentPendingStatus(status);
+    // Refetch the tenant balance shortly after — only meaningful for
+    // the synchronous "succeeded" path. ACH balance updates when the
+    // webhook fires a few days later.
     setTimeout(async () => {
       const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
       if (refreshed) setTenantData(refreshed);
@@ -684,11 +714,25 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {activeTab === "pay" && (
   <div className="max-w-md mx-auto">
   {paymentSuccess && (
-  <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 mb-4 text-center">
-  <div className="text-2xl mb-1">✅</div>
-  <div className="text-positive-800 font-semibold">Payment Successful!</div>
-  <div className="text-positive-600 text-sm">Your payment has been recorded and your balance updated.</div>
-  </div>
+  paymentPendingStatus === "requires_action" ? (
+    <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="text-2xl mb-1">🏦</div>
+    <div className="text-info-800 font-semibold">Bank verification pending</div>
+    <div className="text-info-600 text-sm">You'll see a $0.01 deposit in 1-2 business days. Check your email for verification instructions to complete the payment.</div>
+    </div>
+  ) : paymentPendingStatus === "processing" ? (
+    <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="text-2xl mb-1">🏦</div>
+    <div className="text-info-800 font-semibold">Payment processing</div>
+    <div className="text-info-600 text-sm">ACH transfers take 1-3 business days to clear. You'll be notified when the payment posts.</div>
+    </div>
+  ) : (
+    <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="text-2xl mb-1">✅</div>
+    <div className="text-positive-800 font-semibold">Payment Successful!</div>
+    <div className="text-positive-600 text-sm">Your payment has been recorded and your balance updated.</div>
+    </div>
+  )
   )}
 
   {/* Two-step flow:
@@ -772,6 +816,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     totalCents={stripeIntent.total_cents}
     feeCents={stripeIntent.fee_cents}
     rentCents={stripeIntent.rent_cents}
+    payMethod={payMethod}
     busy={paymentProcessing}
     setBusy={setPaymentProcessing}
     onSuccess={onStripeSuccess}
