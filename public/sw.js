@@ -14,7 +14,7 @@
 //         never cached. Financial/auth data must stay fresh.
 //   • push + notificationclick: unchanged from v1.
 
-const CACHE_NAME = "housify-v1";
+const CACHE_NAME = "housify-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -81,10 +81,18 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
+  // Unique tag per notification so iOS doesn't collapse successive
+  // pushes into a single replaced banner. The server can still pass
+  // its own tag if it explicitly wants coalescing (e.g. typing
+  // indicators).
+  const tag = data.tag || ("housify-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6));
   const options = {
     body: data.message || "New notification from Housify",
     icon: "/logo192.png",
     badge: "/logo192.png",
+    tag,
+    // renotify=true so even tag-collapsed notifications still alert.
+    renotify: true,
     data: { url: data.url || "/" },
     actions: data.actions || [],
   };

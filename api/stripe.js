@@ -167,7 +167,10 @@ async function notifyPaymentEvent(sb, kind, ctx) {
       const subscription = row.subscription;
       if (!subscription?.endpoint) continue;
       try {
-        await webpush.sendNotification(subscription, payload, { TTL: 60 * 60 * 24 });
+        // urgency:'high' bypasses iOS Notification Summary so the
+        // banner lands live instead of getting rolled into the next
+        // scheduled summary digest. Same flag on _send-push-impl.js.
+        await webpush.sendNotification(subscription, payload, { TTL: 60 * 60 * 24, urgency: "high" });
       } catch (e) {
         if (e.statusCode === 410 || e.statusCode === 404) {
           await sb.from("push_subscriptions").delete().eq("id", row.id);

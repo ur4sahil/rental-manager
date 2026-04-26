@@ -139,7 +139,12 @@ module.exports = async (req, res) => {
     const sub = row.subscription;
     if (!sub || !sub.endpoint) return;
     try {
-      await webpush.sendNotification(sub, payload, { TTL: 60 * 60 * 24 });
+      // urgency:'high' tells the push service to deliver immediately
+      // and tells iOS to bypass Notification Summary (otherwise the
+      // banner gets bundled into the 8am/6pm summary digest instead
+      // of popping live). On Android this also wakes a sleeping
+      // device sooner than the default normal urgency.
+      await webpush.sendNotification(sub, payload, { TTL: 60 * 60 * 24, urgency: "high" });
       delivered += 1;
     } catch (e) {
       const status = e && (e.statusCode || e.status);
