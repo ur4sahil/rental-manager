@@ -129,44 +129,62 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
     }
   }
 
-  // Permission denied at the browser level — show the help text only.
-  if (state.permission === "denied") {
+  // Permission denied falls through to the hero card below, which
+  // shows a "Try again" button + contextual instructions for both
+  // browser-blocked and not-yet-prompted states. Earlier this early-
+  // returned with text only, leaving denied users no actionable button.
+
+  // Subscribed — slim status row + a re-enable affordance for cases
+  // where the subscription has gone stale (browser dropped it, VAPID
+  // rotation, switched devices). handleEnable is idempotent: it
+  // re-runs the requestPermission + subscribe flow, replacing any
+  // existing sub.
+  if (state.subscribed) {
     return (
-      <Card padding="p-4" className="mb-5 border-warn-200 bg-warn-50/40">
-        <div className="text-sm font-semibold text-neutral-800 mb-1">Notifications are blocked in your browser</div>
-        <div className="text-xs text-neutral-500">
-          Open your browser's site settings for this page and allow notifications, then reload.
+      <Card padding="p-4" className="mb-5 bg-positive-50/40 border-positive-200">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-positive-800">
+            <span className="material-icons-outlined text-base">check_circle</span>
+            <span className="font-semibold">Notifications are on for this device</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Btn onClick={handleTest} disabled={busy} variant="secondary" size="xs">Send test</Btn>
+            <Btn onClick={handleEnable} disabled={busy} variant="secondary" size="xs">{busy ? "Working…" : "Re-enable"}</Btn>
+            <Btn onClick={handleDisable} disabled={busy} variant="secondary" size="xs">Turn off</Btn>
+          </div>
         </div>
       </Card>
     );
   }
 
-  // Subscribed — slim status row.
-  if (state.subscribed) {
-    return (
-      <div className="flex items-center justify-between text-xs text-neutral-500 mb-5 px-1">
-        <span>
-          <span className="text-success-600 mr-1">✓</span>
-          Notifications are on for this device
-        </span>
-        <div className="flex gap-3">
-          <button onClick={handleTest} disabled={busy} className="text-brand-600 hover:underline">Send a test</button>
-          <button onClick={handleDisable} disabled={busy} className="text-neutral-500 hover:text-danger-600 hover:underline">Turn off</button>
+  // Not subscribed — prominent hero card. Always shows the OS-level
+  // permission prompt button so users can tap it any time, including
+  // after they previously dismissed the auto-prompt at login.
+  return (
+    <Card padding="p-5" className="mb-5 border-brand-200 bg-brand-50/40">
+      <div className="flex items-start gap-3">
+        <span className="material-icons-outlined text-brand-600 text-2xl">notifications_active</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-base font-semibold text-neutral-800 mb-1">Turn on push notifications</div>
+          <div className="text-sm text-neutral-600 mb-3">
+            Get instant alerts on this device when a tenant pays, sends a message, or files a maintenance request.
+            {state.permission === "denied" && (
+              <span className="block mt-2 text-warn-700 text-xs">
+                Notifications are blocked at the browser level. Open your browser's site settings for this page → Notifications → Allow, then tap the button below to subscribe.
+              </span>
+            )}
+          </div>
+          <Btn onClick={handleEnable} disabled={busy} size="lg">
+            {busy ? "Requesting permission…" : (state.permission === "denied" ? "Try again" : "Allow notifications")}
+          </Btn>
+          {/iPhone|iPad|iPod/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "") && (
+            <div className="mt-3 text-xs text-neutral-500">
+              <strong>iPhone / iPad:</strong> notifications only work when Housify is added to your home screen.
+              In Safari, tap Share → "Add to Home Screen", open the app from there, then tap Allow notifications.
+            </div>
+          )}
         </div>
       </div>
-    );
-  }
-
-  // Not subscribed — friendly hero card.
-  return (
-    <Card padding="p-5" className="mb-5">
-      <div className="text-sm font-semibold text-neutral-800 mb-1">Get instant alerts on this device</div>
-      <div className="text-xs text-neutral-500 mb-3">
-        We'll ping you when rent comes in, a maintenance request opens, or a lease needs attention.
-      </div>
-      <Btn onClick={handleEnable} disabled={busy}>
-        {busy ? "Turning on…" : "Turn on notifications"}
-      </Btn>
       {state.log.length > 0 && (
         <details className="mt-3">
           <summary className="text-xs text-neutral-400 cursor-pointer hover:text-neutral-600">Show technical details</summary>
