@@ -73,6 +73,51 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSucce
   );
 }
 
+// Inner form for the Autopay tab. Uses Stripe's confirmSetup (not
+// confirmPayment) — saves the card without charging. On success the
+// parent calls /api/stripe?action=save-payment-method to persist the
+// autopay_schedules row.
+function SetupCardForm({ clientSecret, onSuccess, onError, busy, setBusy }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [localError, setLocalError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!stripe || !elements || busy) return;
+    setBusy(true);
+    setLocalError("");
+    const { error, setupIntent } = await stripe.confirmSetup({
+      elements,
+      confirmParams: { return_url: window.location.origin + "?autopay=saved" },
+      redirect: "if_required",
+    });
+    if (error) {
+      setLocalError(error.message || "Couldn't save card.");
+      onError && onError(error.message || "Couldn't save card");
+      setBusy(false);
+      return;
+    }
+    if (setupIntent?.status === "succeeded") {
+      onSuccess && onSuccess(setupIntent);
+    } else {
+      setLocalError("Unexpected status: " + (setupIntent?.status || "unknown"));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement options={{ layout: "tabs" }} />
+      {localError && <div className="mt-3 text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-3 py-2">{localError}</div>}
+      <Btn type="submit" variant="primary" size="lg" className="w-full mt-4" disabled={!stripe || busy}>
+        {busy ? "Saving…" : "Save card for autopay"}
+      </Btn>
+      <div className="text-xs text-neutral-400 text-center mt-3">No charge today. We'll auto-charge rent on the 1st of each month.</div>
+    </form>
+  );
+}
+
 function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotification }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
@@ -104,6 +149,21 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   // into a Stripe Elements card form. Cleared on success or when the
   // tenant cancels.
   const [stripeIntent, setStripeIntent] = useState(null);
+  // Stripe SetupIntent for the Autopay tab. When non-null the Autopay
+  // tab renders the card-capture form; on confirm we POST to
+  // save-payment-method which writes the autopay_schedules row.
+  const [setupIntent, setSetupIntent] = useState(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  // The active stripe-autopay row for this tenant (provider='stripe',
+  // archived_at IS NULL). Drives the Autopay tab UI: row present →
+  // show card + disable button; row null → show "Set up autopay" CTA.
+  const [stripeAutopay, setStripeAutopay] = useState(null);
+  // Tenant's AR account + lines, hydrated by fetchData. Drives the
+  // Ledger tab. account_id is the per-tenant AR sub-account if one
+  // exists, else the bare AR account. Lines come from
+  // acct_journal_lines joined to acct_journal_entries for the date +
+  // description.
+  const [ledgerLines, setLedgerLines] = useState([]);
   // Maintenance request form
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [maintForm, setMaintForm] = useState({ issue: "", priority: "normal", notes: "" });
@@ -170,13 +230,46 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       .is("read_at", null)
       .neq("sender_role", "tenant");
   }
-  // Check autopay status. A tenant can legitimately have more than one
-  // autopay row (different properties, different methods). maybeSingle
-  // would throw if it happened; read the set and flag enabled=true if
-  // any row is enabled.
-  if (tenant.name) {
-  const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null);
-  if ((ap || []).some(r => r.enabled)) setAutopayEnabled(true);
+  // Stripe-autopay row + ledger hydration. Both are read here so the
+  // Autopay and Ledger tabs render without an extra round-trip when
+  // the tenant clicks them.
+  if (tid) {
+    const [{ data: apRow }, { data: arAccts }] = await Promise.all([
+      supabase.from("autopay_schedules")
+        .select("id, amount, day_of_month, next_charge_date, card_brand, card_last4, last_error, last_error_at, enabled, stripe_payment_method_id")
+        .eq("company_id", companyId).eq("tenant_id", tid)
+        .eq("provider", "stripe").is("archived_at", null)
+        .maybeSingle(),
+      supabase.from("acct_accounts")
+        .select("id, code, name, tenant_id")
+        .eq("company_id", companyId)
+        .or(`tenant_id.eq.${tid},code.eq.1100,name.eq.Accounts Receivable`),
+    ]);
+    setStripeAutopay(apRow || null);
+    setAutopayEnabled(!!apRow?.enabled);
+
+    // Pick the per-tenant AR sub-account if one exists; fall back to
+    // the bare AR. Ledger reads lines for that account_id.
+    const arAcct = (arAccts || []).find(a => String(a.tenant_id) === String(tid))
+      || (arAccts || []).find(a => a.code === "1100" || a.name === "Accounts Receivable");
+    if (arAcct) {
+      const { data: lines } = await supabase.from("acct_journal_lines")
+        .select("id, debit, credit, memo, journal_entry_id, acct_journal_entries(date, description, reference, status)")
+        .eq("company_id", companyId).eq("account_id", arAcct.id)
+        .order("id", { ascending: false }).limit(200);
+      const filtered = (lines || []).filter(r => r.acct_journal_entries?.status === "posted");
+      // Sort by JE date desc, then id desc, so same-day entries keep
+      // insertion order.
+      filtered.sort((a, b) => {
+        const da = a.acct_journal_entries?.date || "";
+        const db = b.acct_journal_entries?.date || "";
+        if (da !== db) return da < db ? 1 : -1;
+        return b.id - a.id;
+      });
+      setLedgerLines(filtered);
+    } else {
+      setLedgerLines([]);
+    }
   }
   setLoading(false);
   }
@@ -273,6 +366,90 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
       if (refreshed) setTenantData(refreshed);
     }, 1500);
+  }
+
+  // ---- STRIPE AUTOPAY (Phase 2) ----
+  // The "Set up autopay" CTA POSTs to create-setup-intent, which
+  // returns a SetupIntent client_secret. Setting setupIntent here
+  // mounts <Elements> + <SetupCardForm> on the Autopay tab, where the
+  // tenant enters the card. On confirmSetup success, onSetupSuccess
+  // POSTs to save-payment-method which writes the autopay row.
+  async function handleSetupAutopay() {
+    if (!guardSubmit("setupAutopay")) return;
+    try {
+      if (!stripePromise) { showToast("Stripe is not configured.", "error"); return; }
+      setSetupBusy(true);
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      if (!jwt) { showToast("Session expired. Please sign in again.", "error"); return; }
+      const res = await fetch("/api/stripe?action=create-setup-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+        body: JSON.stringify({ tenant_id: tenantData.id, company_id: companyId, payment_method_types: ["card"] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("Autopay setup failed: " + (data.error || res.status), "error"); return; }
+      setSetupIntent({ client_secret: data.client_secret, customer_id: data.customer_id });
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "stripe create-setup-intent", silent: false });
+      showToast("Autopay setup failed: " + e.message, "error");
+    } finally {
+      setSetupBusy(false);
+      guardRelease("setupAutopay");
+    }
+  }
+
+  async function onSetupSuccess(confirmedSetupIntent) {
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      const res = await fetch("/api/stripe?action=save-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+        body: JSON.stringify({
+          setup_intent_id: confirmedSetupIntent.id,
+          tenant_id: tenantData.id,
+          company_id: companyId,
+          day_of_month: 1,
+          amount: safeNum(tenantData.rent),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("Couldn't save autopay: " + (data.error || res.status), "error"); return; }
+      setSetupIntent(null);
+      // Re-fetch the autopay row so the UI swaps to the saved-card view.
+      const { data: apRow } = await supabase.from("autopay_schedules")
+        .select("id, amount, day_of_month, next_charge_date, card_brand, card_last4, last_error, last_error_at, enabled, stripe_payment_method_id")
+        .eq("company_id", companyId).eq("tenant_id", tenantData.id)
+        .eq("provider", "stripe").is("archived_at", null)
+        .maybeSingle();
+      setStripeAutopay(apRow || null);
+      setAutopayEnabled(!!apRow?.enabled);
+      addNotification("🔄", "Autopay set up — " + (data.card_brand || "card") + " ending " + (data.card_last4 || "••••"));
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "stripe save-payment-method", silent: false });
+      showToast("Couldn't save autopay: " + e.message, "error");
+    }
+  }
+
+  async function handleDisableStripeAutopay() {
+    if (!await showConfirm({ message: "Disable autopay? Your saved card will be removed and rent will not be auto-charged next month." })) return;
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      const res = await fetch("/api/stripe?action=disable-autopay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+        body: JSON.stringify({ tenant_id: tenantData.id, company_id: companyId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("Couldn't disable autopay: " + (data.error || res.status), "error"); return; }
+      setStripeAutopay(null);
+      setAutopayEnabled(false);
+      addNotification("🔄", "Autopay disabled");
+    } catch (e) {
+      showToast("Couldn't disable autopay: " + e.message, "error");
+    }
   }
 
   // ---- MAINTENANCE REQUEST ----
@@ -564,48 +741,63 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* ---- AUTOPAY TAB ---- */}
   {activeTab === "autopay" && tenantData && (
   <div className="max-w-md mx-auto">
-  <h3 className="font-manrope font-bold text-neutral-800 mb-4">Recurring Payments</h3>
+  <h3 className="font-manrope font-bold text-neutral-800 mb-4">Autopay</h3>
   <div className="bg-white rounded-3xl border border-brand-50 shadow-card p-6">
-  <div className="flex items-center justify-between mb-4">
-  <div>
-  <div className="text-sm font-semibold text-neutral-700">Monthly Autopay</div>
-  <div className="text-xs text-neutral-400">Automatically pay rent on the 1st</div>
-  </div>
-  <button onClick={async () => {
-  setAutopayLoading(true);
-  try {
-  if (autopayEnabled) {
-  await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", tenantData.name);
-  setAutopayEnabled(false);
-  addNotification("🔄", "Autopay disabled");
-  } else {
-  const { data: existing } = await supabase.from("autopay_schedules").select("id").eq("company_id", companyId).eq("tenant", tenantData.name).maybeSingle();
-  if (existing) {
-  await supabase.from("autopay_schedules").update({ enabled: true, amount: safeNum(tenantData.rent), method: "stripe" }).eq("id", existing.id);
-  } else {
-  await supabase.from("autopay_schedules").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, amount: safeNum(tenantData.rent), method: "stripe", day_of_month: 1, enabled: true }]);
-  }
-  setAutopayEnabled(true);
-  addNotification("🔄", "Autopay enabled — $" + safeNum(tenantData.rent) + "/month");
-  }
-  } catch (e) { pmError("PM-6001", { raw: e, context: "enable autopay" }); }
-  setAutopayLoading(false);
-  }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-success-500" : "bg-neutral-300"}`}>
-  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "tranneutral-x-6" : "tranneutral-x-0.5"}`} />
-  </button>
-  </div>
-  {autopayEnabled && (
-  <div className="bg-success-50 rounded-2xl p-4 space-y-2">
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-success-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Payment Day</span><span className="font-medium text-neutral-700">1st of each month</span></div>
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Method</span><span className="font-medium text-neutral-700">Stripe</span></div>
-  </div>
-  )}
-  {!autopayEnabled && (
-  <div className="bg-brand-50/30 rounded-2xl p-4 text-center">
-  <span className="material-icons-outlined text-neutral-300 text-3xl mb-2">autorenew</span>
-  <p className="text-sm text-neutral-400">Enable autopay to schedule your rent payment on the 1st of each month via Stripe.</p>
-  </div>
+  {/* Three states:
+        1. setupIntent != null → tenant is mid-setup, show card form
+        2. stripeAutopay != null → saved card, show details + disable
+        3. neither → show "Set up autopay" CTA */}
+  {setupIntent ? (
+    <div>
+    <div className="mb-4">
+    <h4 className="font-semibold text-neutral-700">Save card for autopay</h4>
+    <p className="text-xs text-neutral-400">No charge today. We'll auto-charge your monthly rent on the 1st.</p>
+    </div>
+    <Elements stripe={stripePromise} options={{ clientSecret: setupIntent.client_secret, appearance: { theme: "stripe" } }}>
+      <SetupCardForm
+        clientSecret={setupIntent.client_secret}
+        onSuccess={onSetupSuccess}
+        onError={(msg) => showToast(msg, "error")}
+        busy={setupBusy}
+        setBusy={setSetupBusy}
+      />
+    </Elements>
+    <button onClick={() => setSetupIntent(null)} className="text-xs text-neutral-400 hover:text-neutral-600 underline mt-3 mx-auto block">Cancel</button>
+    </div>
+  ) : stripeAutopay ? (
+    <div>
+    <div className="flex items-center justify-between mb-4">
+    <div>
+    <div className="text-sm font-semibold text-neutral-700">Autopay is on</div>
+    <div className="text-xs text-neutral-400">Rent auto-charges to your saved card</div>
+    </div>
+    <span className="bg-positive-100 text-positive-700 text-xs font-bold rounded-full px-2 py-1">Active</span>
+    </div>
+    <div className="bg-brand-50/40 rounded-2xl p-4 space-y-2">
+    <div className="flex justify-between text-sm"><span className="text-neutral-400">Card</span><span className="font-mono text-neutral-700 capitalize">{stripeAutopay.card_brand || "card"} •••• {stripeAutopay.card_last4 || "????"}</span></div>
+    <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-neutral-700">${safeNum(stripeAutopay.amount).toLocaleString()}/month</span></div>
+    <div className="flex justify-between text-sm"><span className="text-neutral-400">Next Charge</span><span className="font-medium text-neutral-700">{stripeAutopay.next_charge_date || "—"}</span></div>
+    </div>
+    {stripeAutopay.last_error && (
+      <div className="mt-3 bg-danger-50 border border-danger-100 rounded-2xl p-3">
+        <div className="text-sm font-semibold text-danger-800">Last charge failed</div>
+        <div className="text-xs text-danger-600 mt-1">{stripeAutopay.last_error}</div>
+        <div className="text-xs text-danger-500 mt-2">Update your card to keep autopay running.</div>
+      </div>
+    )}
+    <Btn variant="danger" size="sm" className="w-full mt-4" onClick={handleDisableStripeAutopay}>Disable autopay</Btn>
+    <Btn variant="secondary" size="sm" className="w-full mt-2" onClick={handleSetupAutopay} disabled={setupBusy}>{setupBusy ? "Loading…" : "Replace card"}</Btn>
+    </div>
+  ) : (
+    <div className="text-center">
+    <span className="material-icons-outlined text-neutral-300 text-4xl mb-2 block">autorenew</span>
+    <h4 className="font-semibold text-neutral-700">Set up autopay</h4>
+    <p className="text-sm text-neutral-400 mt-1 mb-4">Save a card and we'll auto-charge ${safeNum(tenantData.rent).toLocaleString()} on the 1st of each month.</p>
+    <Btn variant="primary" size="lg" className="w-full" onClick={handleSetupAutopay} disabled={setupBusy || !stripePromise}>
+      {setupBusy ? "Loading…" : "Set up autopay"}
+    </Btn>
+    {!stripePromise && <p className="text-xs text-danger-500 mt-2">Stripe isn't configured for this site.</p>}
+    </div>
   )}
   </div>
   </div>
