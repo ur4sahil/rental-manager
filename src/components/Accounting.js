@@ -3640,42 +3640,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const bsData = getBalanceSheetData(acctAccounts, journalEntries, ytdEnd);
   const pendingCount = journalEntries.filter(j => j.status === "draft").length;
 
-  const acctSidebarItems = [
-  { section: "OVERVIEW", items: [{ id: "overview", label: "Dashboard", icon: "dashboard" }] },
-  { section: "SETUP", items: [
-    { id: "opening", label: "Opening Balances", icon: "restart_alt" },
-  ]},
-  { section: "TRANSACTIONS", items: [
-    { id: "coa", label: "Chart of Accounts", icon: "account_balance" },
-    { id: "journal", label: "Journal Entries", icon: "receipt_long", badge: pendingCount },
-    { id: "recurring", label: "Recurring Entries", icon: "autorenew" },
-  ]},
-  { section: "BANKING", items: [
-    { id: "bankimport", label: "Bank Transactions", icon: "account_balance" },
-    { id: "reconcile", label: "Reconcile", icon: "account_balance_wallet" },
-  ]},
-  { section: "ANALYSIS", items: [
-    { id: "classes", label: "Class Tracking", icon: "category" },
-    { id: "reports", label: "Reports", icon: "assessment" },
-  ]},
-  ];
+  // (acctSidebarItems removed — was the source for the in-page tab
+  // bar that's now gone. Sidebar children live in App.js ALL_NAV.)
 
   return (
   <div className="flex flex-col gap-0">
-  {/* Mobile horizontal tab bar — kept on mobile since the global
-      sidebar is collapsed there and the in-page tabs let the user
-      switch sub-pages without opening the slide-out menu. Desktop
-      navigates via the Accounting children expanded in the global
-      sidebar (App.js ALL_NAV) — same pattern as Properties. */}
-  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
-  {acctSidebarItems.flatMap(g => g.items).map(item => (
-    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-brand-50 text-brand-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
-      <span className="material-icons-outlined text-base w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>
-      <span className="whitespace-nowrap">{item.label}</span>
-      {item.badge > 0 && <span className="ml-1 bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full shrink-0">{item.badge}</span>}
-    </button>
-  ))}
-  </div>
+  {/* In-page sub-tabs were removed 2026-04-26 — Accounting now navigates
+      exclusively via the global sidebar (App.js ALL_NAV.accounting.children),
+      matching Properties' behavior on every viewport. On mobile, the
+      hamburger opens the sidebar; the sidebar's Accounting expander then
+      shows the same 8 children that used to live in this in-page strip. */}
 
   {/* Content Area */}
   <div className="min-w-0 py-2">
