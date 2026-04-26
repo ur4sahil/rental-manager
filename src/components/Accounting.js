@@ -1583,12 +1583,35 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   // --- Phase B Computation Functions ---
 
   function getOpenInvoices(asOfDate) {
-    const arIds = new Set(accounts.filter(a => a.name?.includes("Accounts Receivable") || (a.code||"").startsWith("1100")).map(a => a.id));
+    // Mirror the per-tenant AR sub-account handling from
+    // getBalanceSheetData. Without this, every per-tenant AR account
+    // (15 of 16 at Smith) routes through the description-parser
+    // fallback which misattributes everything to a single "Unknown"
+    // bucket.
+    const arAccountsList = accounts.filter(a =>
+      a.name === "Accounts Receivable" ||
+      a.name?.startsWith("AR - ") ||
+      (a.code || "").startsWith("1100")
+    );
+    const arIds = new Set(arAccountsList.map(a => a.id));
+    const acctIdToTenant = new Map();
+    for (const a of arAccountsList) {
+      if (a.name?.startsWith("AR - ")) {
+        const m = a.name.match(/^AR - (.+?)(?:\s*\(|$)/);
+        if (m) acctIdToTenant.set(a.id, m[1].trim());
+      }
+    }
     const tenantCharges = {};
     journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate).sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
       (je.lines||[]).filter(l => arIds.has(l.account_id)).forEach(l => {
-        const desc = je.description || ""; const parts = desc.split(" — ");
-        const tenant = parts.length >= 2 ? parts[1].trim() : l.memo?.split(" ")[0] || "Unknown";
+        const desc = je.description || "";
+        // 1st: account_id → tenant (per-tenant sub-account). 2nd: parse
+        // "Verb — Tenant — Property". 3rd: first word of memo.
+        let tenant = acctIdToTenant.get(l.account_id);
+        if (!tenant) {
+          const m = desc.match(/—\s*([A-Z][^—]*?)(?:\s*—|$)/);
+          tenant = m ? m[1].trim() : (l.memo?.split(" ")[0] || "Unknown");
+        }
         if (!tenantCharges[tenant]) tenantCharges[tenant] = [];
         if (safeNum(l.debit) > 0) tenantCharges[tenant].push({ date: je.date, description: desc, amount: safeNum(l.debit), paid: 0 });
         if (safeNum(l.credit) > 0) { const unpaid = tenantCharges[tenant].filter(c => c.amount - c.paid > 0.01); let rem = safeNum(l.credit); for (const c of unpaid) { const apply = Math.min(rem, c.amount - c.paid); c.paid += apply; rem -= apply; if (rem <= 0) break; } }
@@ -2644,9 +2667,74 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* AR Aging Summary */}
     {reportId === "ar_aging_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">AR Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
-      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className="px-4 py-2 text-right font-mono">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
+      {/* 7-column table — wrap in horizontal scroll so it doesn't wrap-stack on mobile (where each cell collapses onto multiple lines and the layout breaks visually). */}
+      <div className="overflow-x-auto -mx-4 md:mx-0">
+      <table className="w-full text-sm min-w-[680px]"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600 whitespace-nowrap">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600 whitespace-nowrap">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600 whitespace-nowrap">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600 whitespace-nowrap">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800 whitespace-nowrap">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700 whitespace-nowrap">Total</th></tr></thead>
+      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 whitespace-nowrap">{t.tenant}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold whitespace-nowrap">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2 whitespace-nowrap">TOTALS</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
+      </div>
+    </div>)}
+
+    {/* AR Aging Detail — per-charge breakdown so you can see exactly which invoices make up each bucket */}
+    {reportId === "ar_aging_detail" && (<div>
+      <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">AR Aging Detail</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => {
+        const rows = getOpenInvoices(asOfDate);
+        if (!rows.length) return <p className="text-center py-8 text-neutral-400">No open AR balances</p>;
+        // Group by tenant and tag each charge with its bucket
+        const bucketLabel = (days) => days < 30 ? "Current" : days < 60 ? "1-30" : days < 90 ? "31-60" : days < 120 ? "61-90" : "91+";
+        const byTenant = rows.reduce((m, r) => { (m[r.tenant] = m[r.tenant] || []).push(r); return m; }, {});
+        const tenants = Object.keys(byTenant).sort();
+        return (
+          <div className="overflow-x-auto -mx-4 md:mx-0">
+          <table className="w-full text-sm min-w-[720px]">
+            <thead className="bg-neutral-50 border-b border-neutral-200">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Tenant / Charge</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Date</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Original</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Paid</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Due</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Days</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Bucket</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tenants.map(tenant => {
+                const charges = byTenant[tenant];
+                const tTotal = charges.reduce((s, c) => s + c.amountDue, 0);
+                return (
+                  <React.Fragment key={tenant}>
+                    <tr className="bg-brand-50/40 border-t border-neutral-200">
+                      <td colSpan={6} className="px-3 py-2 font-semibold text-neutral-800 whitespace-nowrap">{tenant}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">{acctFmt(tTotal)}</td>
+                    </tr>
+                    {charges.map((c, i) => (
+                      <tr key={i} className="border-t border-neutral-100">
+                        <td className="px-3 py-1.5 text-xs text-neutral-500 pl-6 whitespace-nowrap">{(c.description || "").slice(0, 50)}</td>
+                        <td className="px-3 py-1.5 text-xs text-neutral-400 whitespace-nowrap">{c.date}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap">{acctFmt(c.originalAmount)}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-xs text-neutral-400 whitespace-nowrap">{c.amountPaid > 0 ? acctFmt(c.amountPaid) : ""}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold whitespace-nowrap">{acctFmt(c.amountDue)}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap">{c.daysOutstanding}</td>
+                        <td className="px-3 py-1.5 text-xs whitespace-nowrap">{bucketLabel(c.daysOutstanding)}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-neutral-800 font-bold">
+                <td className="px-3 py-2 whitespace-nowrap" colSpan={4}>TOTAL OUTSTANDING</td>
+                <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{acctFmt(rows.reduce((s, r) => s + r.amountDue, 0))}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+          </div>
+        );
+      })()}
     </div>)}
 
     {/* Tenant Balance Summary */}
