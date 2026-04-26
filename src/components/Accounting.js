@@ -2572,14 +2572,20 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
   return (
   <div>
-    {/* Viewer Header */}
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <TextLink tone="neutral" size="sm" underline={false} onClick={() => setActiveView("catalog")} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</TextLink>
-        <h3 className="text-lg font-semibold text-neutral-900">{currentReport?.title}</h3>
+    {/* Viewer Header — title row stays on its own line; back link +
+        action buttons share a second row on mobile so neither gets
+        pinched. md+ keeps the original single-row inline layout. */}
+    <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <TextLink tone="neutral" size="sm" underline={false} onClick={() => setActiveView("catalog")} className="flex items-center gap-1 shrink-0">
+          <span className="material-icons-outlined text-sm">arrow_back</span>
+          <span className="hidden sm:inline">Back to Reports</span>
+          <span className="sm:hidden">Back</span>
+        </TextLink>
+        <h3 className="text-base md:text-lg font-semibold text-neutral-900 truncate">{currentReport?.title}</h3>
       </div>
-      <div className="flex gap-2">
-        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
+      <div className="flex gap-2 flex-wrap md:flex-nowrap shrink-0">
+        <button onClick={() => toggleFavorite(reportId)} className={"shrink-0 " + (favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400")}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
         <Btn variant="slate" size="sm" icon="download" onClick={exportExcel}>Export</Btn>
         <Btn variant="slate" size="sm" icon="picture_as_pdf" onClick={exportPDF}>PDF</Btn>
         <Btn variant="slate" size="sm" icon="print" onClick={printReport}>Print</Btn>
