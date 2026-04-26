@@ -22,7 +22,38 @@
 // ════════════════════════════════════════════════════════════════════
 const sendPushImpl = require("./_send-push-impl");
 const notificationWorkerImpl = require("./_notification-worker-impl");
+const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+
+// Diagnostic beacon. The service worker POSTs here when it receives
+// a push event so we can correlate "push delivered to APNS"
+// (push_attempts row, server-side) with "push received by SW"
+// (sibling row, this endpoint). Anonymous on purpose — the SW has
+// no Supabase auth context and the worst-case spam writes some
+// extra debug rows. payload_tag is server-generated random so a
+// spammer can't forge a meaningful correlation.
+async function pushBeacon(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
+  const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!SUPABASE_URL || !SUPABASE_SVC) return res.status(500).json({ error: "supabase env missing" });
+  const sb = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
+  let body = req.body;
+  if (typeof body === "string") { try { body = JSON.parse(body); } catch (_) { body = {}; } }
+  const { payload_tag, status, error_message, title, body: text, recipient_email, company_id } = body || {};
+  await sb.from("push_attempts").insert({
+    company_id: company_id || "?",
+    recipient_email: recipient_email || "?",
+    title: title || null,
+    body: text || null,
+    status: status || "sw_received",
+    delivered_count: 0,
+    pruned_count: 0,
+    error_message: error_message ? String(error_message).slice(0, 1000) : null,
+    payload_tag: payload_tag || null,
+  });
+  return res.status(200).json({ ok: true });
+}
 
 module.exports = async (req, res) => {
   setCors(req, res);
@@ -31,7 +62,8 @@ module.exports = async (req, res) => {
   const action = (req.query?.action || "").toString();
   if (action === "push") return sendPushImpl(req, res);
   if (action === "worker") return notificationWorkerImpl(req, res);
+  if (action === "beacon") return pushBeacon(req, res);
   return res.status(404).json({
-    error: "unknown action — try ?action=push or ?action=worker",
+    error: "unknown action — try ?action=push, ?action=worker, or ?action=beacon",
   });
 };

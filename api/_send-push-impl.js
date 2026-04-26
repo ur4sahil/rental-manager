@@ -129,8 +129,14 @@ module.exports = async (req, res) => {
   // 5. Fan out. Gather stale IDs for post-hoc cleanup — 410/404 means
   //    the push service rejected the endpoint, usually because the
   //    browser uninstalled the app or the user revoked permission.
+  // payload_tag is a server-generated random correlation id. We embed
+  // it in the push body and the SW echoes it back via /api/notifications
+  // ?action=beacon so we can join APNS-acknowledged with SW-received.
+  const payloadTag = "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   const payload = JSON.stringify({
     title, message: text || "", url: url || "/", tag: tag || "housify",
+    payload_tag: payloadTag,
+    company_id, recipient_email: recipient,
   });
   const stale = [];
   const errorMessages = [];
@@ -164,6 +170,7 @@ module.exports = async (req, res) => {
     status: delivered > 0 ? "delivered" : "attempted",
     delivered_count: delivered, pruned_count: stale.length,
     error_message: errorMessages.length > 0 ? errorMessages.join(" | ").slice(0, 1000) : null,
+    payload_tag: payloadTag,
   });
-  res.status(200).json({ delivered, pruned: stale.length });
+  res.status(200).json({ delivered, pruned: stale.length, payload_tag: payloadTag });
 };

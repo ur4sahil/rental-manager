@@ -14,7 +14,7 @@
 //         never cached. Financial/auth data must stay fresh.
 //   • push + notificationclick: unchanged from v1.
 
-const CACHE_NAME = "housify-v2";
+const CACHE_NAME = "housify-v3";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -80,25 +80,54 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  const data = event.data ? event.data.json() : {};
-  // Unique tag per notification so iOS doesn't collapse successive
-  // pushes into a single replaced banner. The server can still pass
-  // its own tag if it explicitly wants coalescing (e.g. typing
-  // indicators).
-  const tag = data.tag || ("housify-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6));
-  const options = {
-    body: data.message || "New notification from Housify",
-    icon: "/logo192.png",
-    badge: "/logo192.png",
-    tag,
-    // renotify=true so even tag-collapsed notifications still alert.
-    renotify: true,
-    data: { url: data.url || "/" },
-    actions: data.actions || [],
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title || "Housify", options)
-  );
+  // Diagnostic-instrumented push handler. Beacons every step back to
+  // /api/notifications?action=beacon so we can see SW-side delivery
+  // and showNotification outcomes in push_attempts. iOS PWA push is
+  // notoriously hard to debug otherwise.
+  async function beacon(payload_tag, status, error_message, meta) {
+    try {
+      await fetch("/api/notifications?action=beacon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload_tag, status, error_message, ...(meta || {}) }),
+      });
+    } catch (_e) { /* network failed — no recovery, just continue */ }
+  }
+
+  async function handle() {
+    let data = {};
+    let payloadTag = null;
+    try {
+      data = event.data ? event.data.json() : {};
+      payloadTag = data.payload_tag || null;
+    } catch (e) {
+      await beacon(null, "sw_parse_error", String(e?.message || e));
+      return;
+    }
+    await beacon(payloadTag, "sw_received", null, {
+      title: data.title || null,
+      body: data.message || null,
+      recipient_email: data.recipient_email || null,
+      company_id: data.company_id || null,
+    });
+    const tag = data.tag || ("housify-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6));
+    const options = {
+      body: data.message || "New notification from Housify",
+      icon: "/logo192.png",
+      badge: "/logo192.png",
+      tag,
+      renotify: true,
+      data: { url: data.url || "/" },
+      actions: data.actions || [],
+    };
+    try {
+      await self.registration.showNotification(data.title || "Housify", options);
+      await beacon(payloadTag, "sw_displayed", null);
+    } catch (e) {
+      await beacon(payloadTag, "sw_show_error", String(e?.message || e));
+    }
+  }
+  event.waitUntil(handle());
 });
 
 self.addEventListener("notificationclick", (event) => {
