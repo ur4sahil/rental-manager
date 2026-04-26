@@ -75,13 +75,16 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const { data: taxData, error: taxErr } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
   if (taxErr) pmError("PM-8006", { raw: taxErr, context: "dashboard tax bills fetch", silent: true });
   setTaxBillsDue(taxData || []);
-  // Pull financials from accounting module (journal entries are the GL source of truth,
-  // but dashboard stats also reference payments/tenants tables for quick metrics)
+  // Pull financials from accounting module. Scope to year-to-date so
+  // the Revenue / Expenses / Net Income cards match the "This Year"
+  // figures shown on the Accounting page (Accounting.js:3638). Without
+  // the year filter this card showed all-time totals while Accounting
+  // showed YTD — same labels, very different numbers, confused users.
   try {
-  // Dashboard stats only need recent activity. Unbounded fetch would grow
-  // with the JE table — at 10k entries/month this page would slow to a
-  // crawl. Cap to the most recent 2000 posted entries by date.
-  const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted").order("date", { ascending: false }).limit(2000);
+  const yearStart = new Date().getFullYear() + "-01-01";
+  // Cap at 2000 posted entries this year — at 10k entries/year this
+  // page would slow to a crawl on first paint without the limit.
+  const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted").gte("date", yearStart).order("date", { ascending: false }).limit(2000);
   const jeIds = (jeHeaders || []).map(j => j.id);
   const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").eq("company_id", companyId).in("journal_entry_id", jeIds) : { data: [] };
   const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId);
@@ -121,9 +124,9 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
 
   <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
   <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-positive-600" />
-  <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-info-600" />
-  <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-danger-500" />
-  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={formatCurrency(acctRevenue - acctExpenses)} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-success-600" : "text-danger-600"} />
+  <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="year to date" color="text-info-600" />
+  <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="year to date" color="text-danger-500" />
+  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={formatCurrency(acctRevenue - acctExpenses)} sub="year to date" color={acctRevenue - acctExpenses >= 0 ? "text-success-600" : "text-danger-600"} />
   </div>
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
   <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-brand-600" />
