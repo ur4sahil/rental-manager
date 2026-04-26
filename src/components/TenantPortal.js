@@ -73,7 +73,7 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSucce
   );
 }
 
-function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
+function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotification }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -221,6 +221,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
     if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
       showToast("Please enter a valid payment amount.", "error"); return;
     }
+    setPaymentSuccess(false);
     if (Number(paymentAmount) > safeNum(tenantData.balance)) {
       if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") exceeds your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). The overpayment will be applied as a credit. Continue?" })) return;
     }
