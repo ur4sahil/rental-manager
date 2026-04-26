@@ -750,6 +750,24 @@ async function handleWebhook(req, res) {
       stripe_session_id: intent.id,
     }).then(() => {}).catch((e) => console.warn("[stripe webhook] payments table insert (non-fatal):", e.message));
 
+    // Resync tenants.balance from the AR sub-account's posted lines.
+    // The dashboard "Balance Due" tile reads this column directly (a
+    // denormalized cache); the Ledger tab computes from JE lines and
+    // is always correct. If we don't update the cache here, the
+    // tenant sees a stale balance after a Stripe payment until the
+    // next manual edit on the staff side.
+    try {
+      const { data: arLines } = await sb.from("acct_journal_lines")
+        .select("debit, credit, acct_journal_entries(status)")
+        .eq("company_id", companyId).eq("account_id", tenantAR.id);
+      const newBalance = (arLines || [])
+        .filter(l => l.acct_journal_entries?.status === "posted")
+        .reduce((acc, l) => acc + (Number(l.debit) || 0) - (Number(l.credit) || 0), 0);
+      await sb.from("tenants").update({ balance: newBalance }).eq("id", tenantId);
+    } catch (e) {
+      console.warn("[stripe webhook] balance recompute failed (non-fatal):", e.message);
+    }
+
     // If this charge was triggered by the autopay cron, clear the
     // last_error stamp on the autopay row (the previous failure has
     // now been recovered). last_charge_at was already bumped at
