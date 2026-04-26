@@ -258,6 +258,16 @@ async function handleCreateIntent(req, res) {
   const { totalCents, feeCents, rentCents } = fees;
 
   try {
+    // Always attach the PaymentIntent to a Stripe Customer for this
+    // tenant. Without this, manually-entered ACH bank accounts float
+    // on the PI alone — they don't appear under the Customer's
+    // payment methods, which means the dashboard "Verify
+    // microdeposits" button has nowhere to live and the saved-card
+    // path can't reuse them. ensureStripeCustomer is idempotent:
+    // returns the cached id from tenants.stripe_customer_id if set,
+    // creates a new Customer otherwise.
+    const customerId = await ensureStripeCustomer(sb, tenant);
+
     // Lock the PaymentIntent to the method the tenant chose in our UI
     // so the fee math holds. Card intents include Apple/Google Pay
     // automatically since both wallet-wrap a card payment under the
@@ -269,6 +279,7 @@ async function handleCreateIntent(req, res) {
     const intentParams = {
       amount: totalCents,
       currency: "usd",
+      customer: customerId,
       payment_method_types: methodTypes,
       description: `Rent — ${tenant.name} — ${tenant.property || ""}`.slice(0, 250),
       metadata: {
