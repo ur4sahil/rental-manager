@@ -40,7 +40,24 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
 
+  // Audit log every dispatch so we can answer "what happened to that
+  // push" without digging through Vercel function logs. Lazy-init the
+  // service client; it's also used by the auth + lookup paths below.
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
+  const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY;
+  const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let svc = null;
+  if (SUPABASE_URL && SUPABASE_SVC) {
+    svc = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
+  }
+  async function logAttempt(row) {
+    if (!svc) return;
+    try { await svc.from("push_attempts").insert(row); }
+    catch (_e) { /* non-fatal — log table is best-effort */ }
+  }
+
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    await logAttempt({ company_id: "?", recipient_email: "?", status: "auth_failed", error_message: "VAPID keys not configured" });
     res.status(500).json({ error: "VAPID keys not configured on server" });
     return;
   }
@@ -48,11 +65,11 @@ module.exports = async (req, res) => {
   // 1. Verify the caller's Supabase JWT.
   const authHeader = req.headers.authorization || "";
   const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!jwt) { res.status(401).json({ error: "missing bearer token" }); return; }
+  if (!jwt) {
+    await logAttempt({ company_id: "?", recipient_email: "?", status: "auth_failed", error_message: "missing bearer token" });
+    res.status(401).json({ error: "missing bearer token" }); return;
+  }
 
-  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY;
-  const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!SUPABASE_URL || !SUPABASE_ANON || !SUPABASE_SVC) {
     res.status(500).json({ error: "Supabase env not configured" });
     return;
@@ -63,7 +80,10 @@ module.exports = async (req, res) => {
     auth: { autoRefreshToken: false, persistSession: false }
   });
   const { data: authRes, error: authErr } = await userClient.auth.getUser(jwt);
-  if (authErr || !authRes?.user) { res.status(401).json({ error: "invalid bearer token" }); return; }
+  if (authErr || !authRes?.user) {
+    await logAttempt({ company_id: "?", recipient_email: "?", status: "auth_failed", error_message: "invalid bearer token" });
+    res.status(401).json({ error: "invalid bearer token" }); return;
+  }
   const callerEmail = (authRes.user.email || "").toLowerCase();
 
   // 2. Read + validate body.
@@ -80,14 +100,16 @@ module.exports = async (req, res) => {
   //    is a compatibility shim that returns null here). user_email is
   //    compared case-insensitively because the table stores whatever
   //    case the invite flow recorded.
-  const svc = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
   const { data: member } = await svc.from("company_members")
     .select("role, status")
     .eq("company_id", company_id)
     .ilike("user_email", callerEmail)
     .eq("status", "active")
     .maybeSingle();
-  if (!member) { res.status(403).json({ error: "caller is not an active member of this company" }); return; }
+  if (!member) {
+    await logAttempt({ company_id, caller_email: callerEmail, recipient_email: user_email, title, body: text, status: "auth_failed", error_message: "caller is not an active member of this company" });
+    res.status(403).json({ error: "caller is not an active member of this company" }); return;
+  }
 
   // 4. Look up every registered subscription for the target recipient.
   const recipient = user_email.toLowerCase();
@@ -95,8 +117,14 @@ module.exports = async (req, res) => {
     .select("id, subscription")
     .eq("company_id", company_id)
     .ilike("user_email", recipient);
-  if (subErr) { res.status(500).json({ error: "subscription lookup failed: " + subErr.message }); return; }
-  if (!subs || subs.length === 0) { res.status(200).json({ delivered: 0, pruned: 0, note: "no subscriptions" }); return; }
+  if (subErr) {
+    await logAttempt({ company_id, caller_email: callerEmail, recipient_email: recipient, title, body: text, status: "error", error_message: "subscription lookup failed: " + subErr.message });
+    res.status(500).json({ error: "subscription lookup failed: " + subErr.message }); return;
+  }
+  if (!subs || subs.length === 0) {
+    await logAttempt({ company_id, caller_email: callerEmail, recipient_email: recipient, title, body: text, status: "no_subs" });
+    res.status(200).json({ delivered: 0, pruned: 0, note: "no subscriptions" }); return;
+  }
 
   // 5. Fan out. Gather stale IDs for post-hoc cleanup — 410/404 means
   //    the push service rejected the endpoint, usually because the
@@ -105,6 +133,7 @@ module.exports = async (req, res) => {
     title, message: text || "", url: url || "/", tag: tag || "housify",
   });
   const stale = [];
+  const errorMessages = [];
   let delivered = 0;
   await Promise.all(subs.map(async (row) => {
     const sub = row.subscription;
@@ -114,7 +143,9 @@ module.exports = async (req, res) => {
       delivered += 1;
     } catch (e) {
       const status = e && (e.statusCode || e.status);
+      const msg = (e && (e.message || e.body)) || String(e);
       if (status === 404 || status === 410) stale.push(row.id);
+      errorMessages.push("[" + (status || "?") + "] " + String(msg).slice(0, 200));
       // Other errors (network, 5xx) surface via the aggregate log; don't
       // delete the row in case the failure is transient.
     }
@@ -122,5 +153,12 @@ module.exports = async (req, res) => {
   if (stale.length > 0) {
     await svc.from("push_subscriptions").delete().in("id", stale);
   }
+  await logAttempt({
+    company_id, caller_email: callerEmail, recipient_email: recipient,
+    title, body: text,
+    status: delivered > 0 ? "delivered" : "attempted",
+    delivered_count: delivered, pruned_count: stale.length,
+    error_message: errorMessages.length > 0 ? errorMessages.join(" | ").slice(0, 1000) : null,
+  });
   res.status(200).json({ delivered, pruned: stale.length });
 };
