@@ -585,7 +585,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   ["overview", "\ud83c\udfe0 Overview"],
   ["pay", "\ud83d\udcb3 Pay Rent"],
   ["autopay", "🔄 Autopay"],
-  ["history", "📋 History"],
+  ["history", "📋 Ledger"],
   ["maintenance", "🔧 Maintenance"],
   ["documents", "\ud83d\udcc1 Documents"],
   ["messages", "\ud83d\udcac Messages"],
@@ -803,52 +803,91 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   )}
 
-  {/* ---- PAYMENT HISTORY TAB ---- */}
-  {activeTab === "history" && (
-  <div>
-  <div className="flex justify-between items-center mb-3">
-  <h3 className="font-semibold text-neutral-700">Payment History</h3>
-  <Btn variant="secondary" size="xs" onClick={() => exportToCSV(payments, [
-  { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
-  { label: "Method", key: "method" }, { label: "Status", key: "status" },
-  ], "my-payments", showToast)}><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</Btn>
-  </div>
-  <div className="space-y-2">
-  {payments.map(p => (
-  <div key={p.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
-  <div>
-  <div className="text-sm font-medium text-neutral-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
-  <div className="text-xs text-neutral-400">{p.date} · {p.method}</div>
-  </div>
-  <div className="flex items-center gap-3">
-  {p.status === "paid" && <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>}
-  <div className="text-right">
-  <div className="text-sm font-bold text-positive-600">${safeNum(p.amount).toLocaleString()}</div>
-  <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{p.status}</span>
-  </div>
-  </div>
-  </div>
-  ))}
-  {payments.length === 0 && <div className="text-center py-8 text-neutral-400">No payments recorded yet</div>}
-  </div>
-  {/* Ledger / Account Balance */}
-  <h3 className="font-semibold text-neutral-700 mt-6 mb-3">Account Ledger</h3>
-  <div className="space-y-2">
-  {ledger.map(e => (
-  <div key={e.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
-  <div className="flex justify-between">
-  <div><div className="text-sm font-medium text-neutral-800">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
-  <div className="text-right">
-  <div className={"text-sm font-bold " + (e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500")}>{e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}</div>
-  <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
-  </div>
-  </div>
-  </div>
-  ))}
-  {ledger.length === 0 && <div className="text-center py-8 text-neutral-400">No ledger entries yet</div>}
-  </div>
-  </div>
-  )}
+  {/* ---- LEDGER TAB ---- */}
+  {/* Reads from acct_journal_lines for the tenant's per-tenant AR
+      sub-account. Each line is one side of a posted JE — debits
+      increase what's owed (rent charges, late fees), credits decrease
+      it (payments, credits applied). Running balance is computed
+      forward from the oldest line, then displayed newest-first. */}
+  {activeTab === "history" && (() => {
+    // Compute running balance forward (oldest → newest) so we can
+    // display each row's balance-after-this-entry. ledgerLines comes
+    // pre-sorted newest-first; reverse to walk forward.
+    const forward = [...ledgerLines].reverse();
+    let bal = 0;
+    const withBal = forward.map(l => {
+      const d = safeNum(l.debit) || 0;
+      const c = safeNum(l.credit) || 0;
+      bal += d - c;
+      return { ...l, _balance: bal };
+    });
+    const rows = withBal.reverse(); // back to newest-first for render
+    return (
+    <div>
+    <div className="flex justify-between items-center mb-3">
+    <div>
+      <h3 className="font-semibold text-neutral-700">Account Ledger</h3>
+      <p className="text-xs text-neutral-400">All charges and payments on your account.</p>
+    </div>
+    <Btn variant="secondary" size="xs" onClick={() => exportToCSV(rows.map(r => ({
+      date: r.acct_journal_entries?.date || "",
+      description: r.acct_journal_entries?.description || r.memo || "",
+      charge: r.debit > 0 ? r.debit : "",
+      payment: r.credit > 0 ? r.credit : "",
+      balance: r._balance.toFixed(2),
+    })), [
+      { label: "Date", key: "date" }, { label: "Description", key: "description" },
+      { label: "Charge", key: "charge" }, { label: "Payment", key: "payment" },
+      { label: "Balance", key: "balance" },
+    ], "my-ledger", showToast)}>
+      <span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export
+    </Btn>
+    </div>
+    <div className="bg-white border border-brand-50 rounded-2xl overflow-hidden">
+    <div className="hidden md:grid grid-cols-[1fr_2fr_auto_auto_auto] gap-4 px-4 py-2 text-xs font-semibold text-neutral-400 bg-neutral-50/50 border-b border-brand-50">
+    <div>Date</div><div>Description</div>
+    <div className="text-right">Charge</div>
+    <div className="text-right">Payment</div>
+    <div className="text-right">Balance</div>
+    </div>
+    {rows.map(l => {
+      const je = l.acct_journal_entries || {};
+      const isCharge = safeNum(l.debit) > 0;
+      const isPayment = safeNum(l.credit) > 0;
+      return (
+      <div key={l.id} className="md:grid md:grid-cols-[1fr_2fr_auto_auto_auto] md:gap-4 flex flex-col px-4 py-3 border-b border-brand-50/50 last:border-0 text-sm">
+      <div className="text-neutral-500 text-xs md:text-sm">{je.date || "—"}</div>
+      <div className="text-neutral-800 font-medium">{je.description || l.memo || "—"}</div>
+      <div className="md:text-right text-danger-600 font-semibold">{isCharge ? formatCurrency(safeNum(l.debit)) : <span className="text-neutral-200">—</span>}</div>
+      <div className="md:text-right text-positive-600 font-semibold">{isPayment ? formatCurrency(safeNum(l.credit)) : <span className="text-neutral-200">—</span>}</div>
+      <div className="md:text-right font-mono font-bold text-neutral-800">{formatCurrency(l._balance)}</div>
+      </div>
+      );
+    })}
+    {rows.length === 0 && <div className="text-center py-8 text-neutral-400">No ledger entries yet</div>}
+    </div>
+    {payments.filter(p => p.status === "paid").length > 0 && (
+      <>
+      <h3 className="font-semibold text-neutral-700 mt-6 mb-3">Receipts</h3>
+      <div className="space-y-2">
+      {payments.filter(p => p.status === "paid").map(p => (
+        <div key={p.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
+        <div>
+          <div className="text-sm font-medium text-neutral-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
+          <div className="text-xs text-neutral-400">{p.date} · {p.method}</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>
+          <div className="text-sm font-bold text-positive-600">${safeNum(p.amount).toLocaleString()}</div>
+        </div>
+        </div>
+      ))}
+      </div>
+      </>
+    )}
+    </div>
+    );
+  })()}
 
   {/* ---- MAINTENANCE TAB ---- */}
   {activeTab === "maintenance" && (
