@@ -8,6 +8,70 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { Spinner, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+
+// Lazy-init Stripe so the bundle doesn't load Stripe.js on portal mount.
+// Promise is memoized at module scope per Stripe's docs to avoid
+// re-loading on every render.
+const stripePublishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "";
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
+
+// Inner card form — must live inside <Elements>. Receives the
+// PaymentIntent's client_secret + a callback for what to do after
+// successful confirmation. Stripe handles the actual card capture +
+// 3DS challenge inline.
+function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, onSuccess, onError, busy, setBusy }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [localError, setLocalError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!stripe || !elements || busy) return;
+    setBusy(true);
+    setLocalError("");
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: window.location.origin + "?payment=success" },
+      redirect: "if_required",
+    });
+    if (error) {
+      setLocalError(error.message || "Card declined.");
+      onError && onError(error.message || "Card declined");
+      setBusy(false);
+      return;
+    }
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
+      onSuccess && onSuccess(paymentIntent);
+    } else {
+      setLocalError("Unexpected payment status: " + (paymentIntent?.status || "unknown"));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement options={{ layout: "tabs" }} />
+      <div className="mt-4 p-3 bg-neutral-50 rounded-lg text-sm">
+        <div className="flex justify-between text-neutral-600">
+          <span>Rent</span><span className="font-mono">${(rentCents / 100).toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-neutral-500 text-xs mt-1">
+          <span>Processing fee (2.9% + $0.30)</span><span className="font-mono">${(feeCents / 100).toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between font-semibold text-neutral-800 mt-2 pt-2 border-t border-neutral-200">
+          <span>Total charge</span><span className="font-mono">${(totalCents / 100).toFixed(2)}</span>
+        </div>
+      </div>
+      {localError && <div className="mt-3 text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-3 py-2">{localError}</div>}
+      <Btn type="submit" variant="primary" size="lg" className="w-full mt-4" disabled={!stripe || busy}>
+        {busy ? "Processing…" : "Pay $" + (totalCents / 100).toFixed(2)}
+      </Btn>
+      <div className="text-xs text-neutral-400 text-center mt-3">Secured by Stripe — your card details never touch our servers.</div>
+    </form>
+  );
+}
 
 function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [tenantData, setTenantData] = useState(null);
@@ -36,6 +100,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  // When non-null: the Pay Rent tab swaps from the amount-input card
+  // into a Stripe Elements card form. Cleared on success or when the
+  // tenant cancels.
+  const [stripeIntent, setStripeIntent] = useState(null);
   // Maintenance request form
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [maintForm, setMaintForm] = useState({ issue: "", priority: "normal", notes: "" });
@@ -142,56 +210,68 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
 
   // ---- STRIPE PAYMENT ----
+  // Initiate a Stripe payment: validate amount, request a PaymentIntent
+  // from /api/stripe?action=create-intent, and stash the client_secret +
+  // fee breakdown so the StripeCardForm renders in the Pay Rent tab.
+  // The user then types their card and confirms; Stripe webhook posts
+  // the JE on success.
   async function handleStripePayment() {
   if (!guardSubmit("handleStripePayment")) return;
   try {
-  if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-  showToast("Please enter a valid payment amount.", "error"); return;
-  }
-  if (Number(paymentAmount) > safeNum(tenantData.balance)) {
-  if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") exceeds your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). The overpayment will be applied as a credit. Continue?" })) return;
-  }
-  setPaymentProcessing(true);
-  try {
-  const amt = Number(paymentAmount);
-  // Try Stripe Checkout via Supabase Edge Function
-  try {
-  const { data, error } = await supabase.functions.invoke("create-checkout-session", {
-  body: {
-  amount: amt, // Send dollars — edge function converts to cents once
-  tenantId: tenantData.id,
-  tenantName: tenantData.name,
-  property: tenantData.property,
-  companyId: companyId,
-  successUrl: window.location.origin + "?payment=success",
-  cancelUrl: window.location.origin + "?payment=cancelled",
-  }
-  });
-  if (!error && data?.url) {
-  // Validate Stripe URL before redirect (prevents open redirect if API compromised)
-  if (!data.url || !data.url.startsWith("https://checkout.stripe.com/")) { showToast("Invalid payment URL. Please try again.", "error"); return; }
-  window.location.href = data.url;
-  return;
-  }
-  } catch (stripeErr) { pmError("PM-8006", { raw: stripeErr, context: "Stripe edge function, using fallback", silent: true }); }
-  // Fallback: record payment as pending_approval (no Stripe integration yet)
-  const today = formatLocalDate(new Date());
-  const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
-  tenant: tenantData.name, property: tenantData.property, amount: amt,
-  type: "rent", method: "stripe", status: "pending_approval", date: today,
-  }]);
-  if (payErr) throw new Error("Failed to record payment: " + payErr.message);
-  setPaymentSuccess(true);
-  setPaymentAmount("");
-  addNotification("💳", "Payment of $" + amt.toFixed(2) + " submitted for approval");
-  queueNotification("payment_received", currentUser?.email, { tenant: tenantData.name, amount: amt, date: today, status: "pending_approval" }, companyId);
-  const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
-  if (refreshed) setTenantData(refreshed);
-  } catch (e) {
-  showToast("Payment failed: " + e.message, "error");
-  }
-  setPaymentProcessing(false);
+    if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
+      showToast("Please enter a valid payment amount.", "error"); return;
+    }
+    if (Number(paymentAmount) > safeNum(tenantData.balance)) {
+      if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") exceeds your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). The overpayment will be applied as a credit. Continue?" })) return;
+    }
+    if (!stripePromise) {
+      showToast("Stripe is not configured for this site. Contact your admin.", "error");
+      return;
+    }
+    setPaymentProcessing(true);
+    const amt = Number(paymentAmount);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      if (!jwt) { showToast("Session expired. Please sign in again.", "error"); return; }
+      const res = await fetch("/api/stripe?action=create-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+        body: JSON.stringify({ amount: amt, tenant_id: tenantData.id, company_id: companyId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("Payment setup failed: " + (data.error || res.status), "error"); return; }
+      setStripeIntent({
+        client_secret: data.client_secret,
+        total_cents: data.total_cents,
+        fee_cents: data.fee_cents,
+        rent_cents: data.rent_cents,
+      });
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "stripe create-intent", silent: false });
+      showToast("Payment setup failed: " + e.message, "error");
+    } finally {
+      setPaymentProcessing(false);
+    }
   } finally { guardRelease("handleStripePayment"); }
+  }
+
+  // Called from inside StripeCardForm after Stripe confirms the
+  // PaymentIntent. The JE post happens server-side via webhook —
+  // here we just give the tenant immediate feedback + refresh local
+  // state so the balance updates without a round-trip.
+  async function onStripeSuccess(paymentIntent) {
+    setPaymentSuccess(true);
+    setPaymentAmount("");
+    setStripeIntent(null);
+    const amt = (paymentIntent?.amount || 0) / 100;
+    addNotification("💳", "Payment of $" + amt.toFixed(2) + " confirmed.");
+    // Allow the webhook a moment to post the JE before we refetch
+    // the tenant balance — small UX polish, not load-bearing.
+    setTimeout(async () => {
+      const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
+      if (refreshed) setTenantData(refreshed);
+    }, 1500);
   }
 
   // ---- MAINTENANCE REQUEST ----
@@ -416,6 +496,15 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-positive-600 text-sm">Your payment has been recorded and your balance updated.</div>
   </div>
   )}
+
+  {/* Two-step flow:
+      1. Tenant enters an amount → click Pay → server creates a
+         PaymentIntent and returns a client_secret.
+      2. We swap into <Elements> + StripeCardForm so the tenant
+         enters card details. On confirm, Stripe webhook posts the
+         JE server-side and we toast success here.
+      stripeIntent === null → step 1, otherwise step 2. */}
+  {!stripeIntent ? (
   <div className="bg-white rounded-3xl border border-brand-50 p-6">
   <h3 className="font-semibold text-neutral-800 text-lg mb-1">Make a Payment</h3>
   <p className="text-sm text-neutral-400 mb-5">Pay securely with Stripe</p>
@@ -439,15 +528,35 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
   <div className="flex items-center gap-2 mb-2">
   <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-highlight-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
-  <span className="text-sm text-neutral-500">Powered by Stripe</span>
+  <span className="text-sm text-neutral-500">Powered by Stripe · 2.9% + $0.30 processing fee added</span>
   </div>
   <div className="text-xs text-neutral-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
   </div>
   <Btn variant="primary" size="lg" className="w-full" onClick={handleStripePayment} disabled={paymentProcessing}>
-  {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
+  {paymentProcessing ? "Loading…" : "Continue to Pay $" + (paymentAmount || "0")}
   </Btn>
   <div className="text-xs text-neutral-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
   </div>
+  ) : (
+  <div className="bg-white rounded-3xl border border-brand-50 p-6">
+  <div className="flex items-center justify-between mb-4">
+  <h3 className="font-semibold text-neutral-800 text-lg">Card details</h3>
+  <button onClick={() => setStripeIntent(null)} className="text-xs text-neutral-400 hover:text-neutral-600 underline">Change amount</button>
+  </div>
+  <Elements stripe={stripePromise} options={{ clientSecret: stripeIntent.client_secret, appearance: { theme: "stripe" } }}>
+  <StripeCardForm
+    clientSecret={stripeIntent.client_secret}
+    totalCents={stripeIntent.total_cents}
+    feeCents={stripeIntent.fee_cents}
+    rentCents={stripeIntent.rent_cents}
+    busy={paymentProcessing}
+    setBusy={setPaymentProcessing}
+    onSuccess={onStripeSuccess}
+    onError={(msg) => showToast(msg, "error")}
+  />
+  </Elements>
+  </div>
+  )}
   </div>
   )}
 
