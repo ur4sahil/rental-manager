@@ -41,6 +41,7 @@
 const Stripe = require("stripe");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const webpush = require("web-push");
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -58,6 +59,106 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2025-09-30.clover" }) : null;
+
+// Configure web-push once at module load. Env vars must match what
+// _send-push-impl.js uses so subscriptions registered there are
+// deliverable from the webhook here.
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@housify.app";
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  try { webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE); }
+  catch (e) { console.warn("[stripe] VAPID setup failed:", e.message); }
+}
+
+// ── Notification helper ──────────────────────────────────────────
+// Called from the webhook on payment_intent.succeeded / payment_failed.
+// Queues the email row in notification_queue (worker drains on its
+// next tick, or fire-and-forget triggers it) AND fans out push
+// notifications to all the recipients' registered devices.
+//
+// Recipients = the tenant (owner of the AR) + every active staff
+// member of the company. Pulls staff via company_members (NOT app_users
+// — that table returns null and silently breaks delivery, see
+// project memory).
+async function notifyPaymentEvent(sb, kind, ctx) {
+  const { companyId, tenantName, tenantEmail, property, amount, date } = ctx;
+  // 1. Resolve recipient set: tenant email + every active staff.
+  const { data: staff } = await sb.from("company_members")
+    .select("user_email").eq("company_id", companyId)
+    .eq("status", "active").neq("role", "tenant");
+  const recipients = new Set();
+  if (tenantEmail) recipients.add(tenantEmail.toLowerCase());
+  for (const s of (staff || [])) {
+    if (s.user_email) recipients.add(s.user_email.toLowerCase());
+  }
+  if (recipients.size === 0) return;
+
+  // 2. Queue email rows. The worker template "payment_received"
+  //    interpolates {{tenant}}, {{amount}}, {{date}}, {{property}}.
+  const dataPayload = {
+    tenant: tenantName, property,
+    amount: typeof amount === "number" ? "$" + amount.toFixed(2) : String(amount || ""),
+    date,
+  };
+  if (kind === "failed") {
+    dataPayload.error = ctx.error || "Card declined";
+  }
+  const emailType = kind === "succeeded" ? "payment_received" : "payment_failed";
+  const queueRows = Array.from(recipients).map(email => ({
+    company_id: companyId, type: emailType,
+    recipient_email: email,
+    data: JSON.stringify(dataPayload),
+    status: "pending",
+  }));
+  const { error: qErr } = await sb.from("notification_queue").insert(queueRows);
+  if (qErr) console.warn("[stripe notify] notification_queue insert:", qErr.message);
+
+  // Fire-and-forget: trigger the worker so the email goes out within
+  // seconds instead of waiting for the next cron tick. CRON_SECRET
+  // is the bearer the worker accepts for this path. The worker is
+  // idempotent — the email send loop drains all pending rows then
+  // returns, so concurrent triggers don't double-send.
+  if (CRON_SECRET) {
+    const host = (process.env.VERCEL_URL || "rental-manager-one.vercel.app").replace(/^https?:\/\//, "");
+    fetch("https://" + host + "/api/notifications?action=worker", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + CRON_SECRET },
+      body: "{}",
+    }).catch(e => console.warn("[stripe notify] worker trigger failed (non-fatal):", e.message));
+  }
+
+  // 3. Push fan-out. setVapidDetails is at module load; if it failed
+  //    (no env var) skip push and rely on email only.
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
+  const title = kind === "succeeded"
+    ? "Payment received · " + (tenantName || "")
+    : "Autopay failed · " + (tenantName || "");
+  const body = kind === "succeeded"
+    ? "$" + Number(amount || 0).toFixed(2) + (property ? " · " + String(property).split(",")[0].trim() : "")
+    : (ctx.error || "Card was declined") + (property ? " · " + String(property).split(",")[0].trim() : "");
+  const url = kind === "succeeded" ? "/#tenant_ledger" : "/#tenant_autopay";
+  const payload = JSON.stringify({ title, body, url });
+
+  for (const email of recipients) {
+    const { data: subs } = await sb.from("push_subscriptions")
+      .select("id, endpoint, p256dh, auth")
+      .eq("company_id", companyId).eq("user_email", email);
+    for (const sub of (subs || [])) {
+      const subscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+      try {
+        await webpush.sendNotification(subscription, payload, { TTL: 60 * 60 * 24 });
+      } catch (e) {
+        // 410/404 = subscription is dead, prune it so we don't keep retrying.
+        if (e.statusCode === 410 || e.statusCode === 404) {
+          await sb.from("push_subscriptions").delete().eq("id", sub.id);
+        } else {
+          console.warn("[stripe notify] push failed for", email, e.statusCode || e.message);
+        }
+      }
+    }
+  }
+}
 
 // ── Fee math ──────────────────────────────────────────────────────
 // Pass-through gross-up so the company nets `rent` after Stripe takes
@@ -649,6 +750,24 @@ async function handleWebhook(req, res) {
       }).eq("id", autopayId);
     }
 
+    // Email + push notifications. The worker drains notification_queue
+    // on its cron tick (every few minutes); if you need instant email
+    // delivery, the cron schedule controls latency. Push is dispatched
+    // here directly via web-push so it lands the moment the JE posts.
+    try {
+      // Look up the tenant's email — metadata only carries name.
+      const { data: tenantRow } = await sb.from("tenants")
+        .select("email").eq("id", tenantId).maybeSingle();
+      await notifyPaymentEvent(sb, "succeeded", {
+        companyId, tenantName: md.tenant_name || "",
+        tenantEmail: tenantRow?.email || null,
+        property: md.property || "",
+        amount: rentDollars, date: today,
+      });
+    } catch (e) {
+      console.warn("[stripe webhook] notify failed (non-fatal):", e.message);
+    }
+
     return res.status(200).json({ received: true, posted_je: je.id });
   }
 
@@ -656,16 +775,35 @@ async function handleWebhook(req, res) {
     // Off-session failures (autopay cron). Stamp the autopay row so
     // the tenant + admin see "Visa ending 4242 was declined — please
     // update your card". On-session failures (tenant typing card)
-    // are surfaced to the browser via Stripe Elements directly.
+    // are surfaced to the browser via Stripe Elements directly so we
+    // skip the email/push for those (would be redundant).
     const intent = event.data.object;
     const md = intent.metadata || {};
     const autopayId = md.autopay_id;
+    const lastError = intent.last_payment_error?.message || intent.last_payment_error?.code || "Card declined";
     if (autopayId) {
-      const lastError = intent.last_payment_error?.message || intent.last_payment_error?.code || "Card declined";
       await sb.from("autopay_schedules").update({
         last_error: String(lastError).slice(0, 500),
         last_error_at: new Date().toISOString(),
       }).eq("id", autopayId);
+
+      // Notify tenant + staff: card on file declined. Tenant needs to
+      // update or autopay will keep failing on the next cron tick.
+      try {
+        const { data: tenantRow } = await sb.from("tenants")
+          .select("email").eq("id", md.tenant_id).maybeSingle();
+        const rentCents = parseInt(md.rent_cents || "0", 10);
+        await notifyPaymentEvent(sb, "failed", {
+          companyId: md.company_id, tenantName: md.tenant_name || "",
+          tenantEmail: tenantRow?.email || null,
+          property: md.property || "",
+          amount: rentCents / 100,
+          date: new Date().toISOString().slice(0, 10),
+          error: lastError,
+        });
+      } catch (e) {
+        console.warn("[stripe webhook] failure notify failed (non-fatal):", e.message);
+      }
     }
     return res.status(200).json({ received: true, type: event.type, action: autopayId ? "autopay_failed" : "noop" });
   }

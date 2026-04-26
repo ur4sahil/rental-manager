@@ -79,6 +79,22 @@ We received your payment of {{amount}} on {{date}}. Thank you.
 
 — {{company_name}}`,
   },
+  // Off-session autopay decline. Triggered from the Stripe webhook on
+  // payment_intent.payment_failed when metadata.autopay_id is set.
+  // On-session declines surface in Stripe Elements directly and don't
+  // queue an email (would be redundant for the tenant who's looking
+  // at the failure on screen).
+  payment_failed: {
+    subject: "Autopay payment failed — {{property}}",
+    body:
+`Hi {{tenant}},
+
+Your scheduled rent payment of {{amount}} on {{date}} could not be processed: {{error}}.
+
+Please update your card on file in your tenant portal so the next charge can run successfully: {{app_url}}/#tenant_autopay
+
+— {{company_name}}`,
+  },
   late_fee_applied: {
     subject: "Late fee applied — {{property}}",
     body:
