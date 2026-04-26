@@ -133,7 +133,11 @@ const ROLES = {
   office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting",...ACCT_SUB_PAGES,"payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
-  tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
+  // Tenant sees the portal split into per-tab sidebar items, mirroring
+  // the staff sidebar UX. Each tenant_* page routes to the same
+  // TenantPortal component with a different initialTab so the nav
+  // feels like a real app instead of an in-page tab strip.
+  tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal", "tenant_overview", "tenant_pay", "tenant_autopay", "tenant_ledger", "tenant_maintenance", "tenant_documents", "tenant_messages"] },
   owner: { label: "Owner", color: "bg-highlight-600", pages: ["owner_portal","loans"] },
 };
 
@@ -167,6 +171,22 @@ const ALL_NAV = [
   { id: "messages", label: "Messages", icon: "forum" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
 ];
+
+// Tenant-specific sidebar nav. Each item drives the same TenantPortal
+// component but with a different initialTab — same pattern Accounting
+// uses for its sub-pages. Order matches what tenants reach for most:
+// see balance/lease (Overview), pay rent, manage autopay, audit the
+// ledger, request maintenance, view docs, message the landlord.
+const TENANT_NAV = [
+  { id: "tenant_overview", label: "Overview", icon: "home" },
+  { id: "tenant_pay", label: "Pay Rent", icon: "credit_card" },
+  { id: "tenant_autopay", label: "Autopay", icon: "autorenew" },
+  { id: "tenant_ledger", label: "Ledger", icon: "receipt_long" },
+  { id: "tenant_maintenance", label: "Maintenance", icon: "build" },
+  { id: "tenant_documents", label: "Documents", icon: "folder" },
+  { id: "tenant_messages", label: "Messages", icon: "forum" },
+];
+
 // Flat list of all nav IDs including children (for settings UI and allowedPages)
 const ALL_NAV_FLAT = ALL_NAV.flatMap(n => n.children ? [n, ...n.children] : [n]);
 // Child page IDs that live under a parent in sidebar
@@ -216,6 +236,17 @@ const pageComponents = {
   evictions: EvictionWorkflow,
   doc_builder: DocumentBuilder,
   tenant_portal: TenantPortal,
+  // Tenant sidebar pages all route to TenantPortal with a baked
+  // initialTab. activeTab inside TenantPortal syncs from the prop on
+  // mount + on prop changes (useEffect), so clicking a sidebar item
+  // swaps the tab without unmounting the whole component.
+  tenant_overview:    (p) => <TenantPortal {...p} initialTab="overview" />,
+  tenant_pay:         (p) => <TenantPortal {...p} initialTab="pay" />,
+  tenant_autopay:     (p) => <TenantPortal {...p} initialTab="autopay" />,
+  tenant_ledger:      (p) => <TenantPortal {...p} initialTab="history" />,
+  tenant_maintenance: (p) => <TenantPortal {...p} initialTab="maintenance" />,
+  tenant_documents:   (p) => <TenantPortal {...p} initialTab="documents" />,
+  tenant_messages:    (p) => <TenantPortal {...p} initialTab="messages" />,
   owner_portal: OwnerPortal,
 };
 
@@ -950,16 +981,26 @@ function AppInner() {
   );
   }
 
-  // Build nav based on confirmed role (roleLoaded is true at this point)
+  // Build nav based on confirmed role (roleLoaded is true at this point).
+  // Tenants get a dedicated TENANT_NAV (Overview / Pay Rent / Autopay /
+  // Ledger / Maintenance / Documents / Messages) instead of the staff
+  // sidebar — same pattern, different list.
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
-  const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => n.children ? { ...n, children: n.children.filter(c => allowedPages.includes(c.id)) } : n);
-  const adminNav = navItems;
+  const adminNav = userRole === "tenant"
+    ? TENANT_NAV
+    : ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => n.children ? { ...n, children: n.children.filter(c => allowedPages.includes(c.id)) } : n);
 
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
   const effectiveRole = userRole || companyRole || "office_assistant";
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
-  const effectivePage = effectiveRole === "tenant" ? "tenant_portal" : (effectiveRole === "owner" && companyRole !== "admin") ? "owner_portal" : safePage;
+  // Tenants land on tenant_overview by default (sidebar nav drives the
+  // rest). Legacy "tenant_portal" page hash still resolves to the
+  // overview tab. Owners (non-admin in this company) still go to
+  // owner_portal as a single page for now.
+  const effectivePage = effectiveRole === "tenant"
+    ? (page && page.startsWith("tenant_") && page !== "tenant_portal" ? page : "tenant_overview")
+    : (effectiveRole === "owner" && companyRole !== "admin") ? "owner_portal" : safePage;
   const Page = pageComponents[effectivePage] || Dashboard;
 
   return (

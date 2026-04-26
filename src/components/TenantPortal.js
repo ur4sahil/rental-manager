@@ -139,7 +139,7 @@ function SetupCardForm({ clientSecret, onSuccess, onError, busy, setBusy }) {
   );
 }
 
-function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotification }) {
+function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotification, initialTab, setPage }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -161,7 +161,11 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   // their landlord is "the company" not whichever team member happens
   // to be on duty that day.
   const [companyName, setCompanyName] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
+  // Sidebar nav drives tab via initialTab prop. Sync on prop change so
+  // clicks on the sidebar swap the tab instead of unmounting the
+  // whole TenantPortal (which would re-fetch ledger/messages/etc.).
+  useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
   const [loading, setLoading] = useState(true);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -608,19 +612,11 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   );
 
-  const tabs = [
-  ["overview", "\ud83c\udfe0 Overview"],
-  ["pay", "\ud83d\udcb3 Pay Rent"],
-  ["autopay", "🔄 Autopay"],
-  ["history", "📋 Ledger"],
-  ["maintenance", "🔧 Maintenance"],
-  ["documents", "\ud83d\udcc1 Documents"],
-  ["messages", "\ud83d\udcac Messages"],
-  ];
-
   return (
   <div>
-  {/* Tenant Header */}
+  {/* Tenant Header — kept above the tab content as a persistent
+      summary (balance/rent/lease end). The tab strip itself moved to
+      the left sidebar; navigation is driven by initialTab prop now. */}
   <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-3xl p-5 mb-5 text-white">
   <div className="flex justify-between items-start">
   <div>
@@ -647,13 +643,6 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   </div>
 
-  {/* Tab Navigation */}
-  <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-brand-50">
-  {tabs.map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
-  ))}
-  </div>
-
   {/* ---- OVERVIEW TAB ---- */}
   {activeTab === "overview" && (
   <div className="space-y-4">
@@ -669,7 +658,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <div className="text-sm font-semibold text-danger-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
   <div className="text-xs text-danger-600">Please make a payment to avoid late fees.</div>
   </div>
-  <Btn variant="danger-fill" size="xs" onClick={() => setActiveTab("pay")}>Pay Now</Btn>
+  <Btn variant="danger-fill" size="xs" onClick={() => setPage ? setPage("tenant_pay") : setActiveTab("pay")}>Pay Now</Btn>
   </div>
   )}
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
