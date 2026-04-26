@@ -70,12 +70,27 @@ Please pay as soon as possible to avoid late fees: {{app_url}}/#tenant_portal
 
 — {{company_name}}`,
   },
+  // Sent to the TENANT after their payment lands. "Thank you" framing.
   payment_received: {
     subject: "Payment received — {{amount}}",
     body:
 `Hi {{tenant}},
 
 We received your payment of {{amount}} on {{date}}. Thank you.
+
+— {{company_name}}`,
+  },
+  // Sent to STAFF (admins, managers, accountants) when a tenant pays.
+  // Same trigger as payment_received but different copy — admins want
+  // the tenant + property + amount as a heads-up, not a thank-you note
+  // addressed to them. Without this split, "Hi Anish Gupta…" lands in
+  // every staff inbox.
+  payment_received_admin: {
+    subject: "Payment received — {{amount}} from {{tenant}}",
+    body:
+`{{tenant}} paid {{amount}} on {{date}} for {{property}}.
+
+View in Housify: {{app_url}}/#payments
 
 — {{company_name}}`,
   },
@@ -92,6 +107,18 @@ We received your payment of {{amount}} on {{date}}. Thank you.
 Your scheduled rent payment of {{amount}} on {{date}} could not be processed: {{error}}.
 
 Please update your card on file in your tenant portal so the next charge can run successfully: {{app_url}}/#tenant_autopay
+
+— {{company_name}}`,
+  },
+  payment_failed_admin: {
+    subject: "Autopay failed — {{tenant}}",
+    body:
+`Autopay charge for {{tenant}} failed on {{date}}: {{error}}.
+
+Amount attempted: {{amount}}
+Property: {{property}}
+
+The tenant has been emailed to update their card. View in Housify: {{app_url}}/#payments
 
 — {{company_name}}`,
   },

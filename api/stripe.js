@@ -83,19 +83,27 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 // project memory).
 async function notifyPaymentEvent(sb, kind, ctx) {
   const { companyId, tenantName, tenantEmail, property, amount, date } = ctx;
-  // 1. Resolve recipient set: tenant email + every active staff.
+  // 1. Resolve recipient set: tenant + every active staff. Track
+  //    each address with its role so we can route tenant vs staff
+  //    to different email templates (tenants get a "thank you"
+  //    letter; staff get a payment-received heads-up).
+  const tenantLower = (tenantEmail || "").toLowerCase();
   const { data: staff } = await sb.from("company_members")
     .select("user_email").eq("company_id", companyId)
     .eq("status", "active").neq("role", "tenant");
-  const recipients = new Set();
-  if (tenantEmail) recipients.add(tenantEmail.toLowerCase());
+  const byRole = new Map(); // email -> "tenant" | "staff"
+  if (tenantLower) byRole.set(tenantLower, "tenant");
   for (const s of (staff || [])) {
-    if (s.user_email) recipients.add(s.user_email.toLowerCase());
+    const e = (s.user_email || "").toLowerCase();
+    if (!e) continue;
+    if (!byRole.has(e)) byRole.set(e, "staff");
   }
-  if (recipients.size === 0) return;
+  if (byRole.size === 0) return;
 
-  // 2. Queue email rows. The worker template "payment_received"
-  //    interpolates {{tenant}}, {{amount}}, {{date}}, {{property}}.
+  // 2. Queue email rows with role-appropriate templates. Two distinct
+  //    types so the worker renders the right copy:
+  //    payment_received       → "Hi {tenant}, we received your payment"
+  //    payment_received_admin → "{tenant} paid {amount} for {property}"
   const dataPayload = {
     tenant: tenantName, property,
     amount: typeof amount === "number" ? "$" + amount.toFixed(2) : String(amount || ""),
@@ -104,13 +112,21 @@ async function notifyPaymentEvent(sb, kind, ctx) {
   if (kind === "failed") {
     dataPayload.error = ctx.error || "Card declined";
   }
-  const emailType = kind === "succeeded" ? "payment_received" : "payment_failed";
-  const queueRows = Array.from(recipients).map(email => ({
-    company_id: companyId, type: emailType,
-    recipient_email: email,
-    data: JSON.stringify(dataPayload),
-    status: "pending",
-  }));
+  const queueRows = [];
+  for (const [email, role] of byRole.entries()) {
+    let type;
+    if (kind === "succeeded") {
+      type = role === "tenant" ? "payment_received" : "payment_received_admin";
+    } else {
+      type = role === "tenant" ? "payment_failed" : "payment_failed_admin";
+    }
+    queueRows.push({
+      company_id: companyId, type,
+      recipient_email: email,
+      data: JSON.stringify(dataPayload),
+      status: "pending",
+    });
+  }
   const { error: qErr } = await sb.from("notification_queue").insert(queueRows);
   if (qErr) console.warn("[stripe notify] notification_queue insert:", qErr.message);
 
@@ -140,18 +156,21 @@ async function notifyPaymentEvent(sb, kind, ctx) {
   const url = kind === "succeeded" ? "/#tenant_ledger" : "/#tenant_autopay";
   const payload = JSON.stringify({ title, body, url });
 
-  for (const email of recipients) {
+  for (const email of byRole.keys()) {
+    // The schema stores the whole PushSubscription as a JSONB blob in
+    // a single `subscription` column ({ endpoint, keys: { p256dh, auth } }).
+    // _send-push-impl.js reads it the same way — keep them in sync.
     const { data: subs } = await sb.from("push_subscriptions")
-      .select("id, endpoint, p256dh, auth")
+      .select("id, subscription")
       .eq("company_id", companyId).eq("user_email", email);
-    for (const sub of (subs || [])) {
-      const subscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+    for (const row of (subs || [])) {
+      const subscription = row.subscription;
+      if (!subscription?.endpoint) continue;
       try {
         await webpush.sendNotification(subscription, payload, { TTL: 60 * 60 * 24 });
       } catch (e) {
-        // 410/404 = subscription is dead, prune it so we don't keep retrying.
         if (e.statusCode === 410 || e.statusCode === 404) {
-          await sb.from("push_subscriptions").delete().eq("id", sub.id);
+          await sb.from("push_subscriptions").delete().eq("id", row.id);
         } else {
           console.warn("[stripe notify] push failed for", email, e.statusCode || e.message);
         }
