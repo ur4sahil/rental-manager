@@ -409,6 +409,21 @@ module.exports = async (req, res) => {
   let sent = 0, failed = 0, skipped = 0;
   const errors = [];
 
+  // Resend's free tier caps outbound at 5 requests/sec. When a tenant
+  // messages all 5 staff (or a payment fans out to 6 recipients), the
+  // worker fires them in tight succession and Resend rejects most with
+  // "Too many requests". Stagger with a small gap so we stay under
+  // 5/sec — 220ms gives ~4.5/sec, comfortable buffer. We also retry
+  // a 429 once after a 1.2s backoff (cheap insurance against bursts).
+  const MIN_GAP_MS = 220;
+  let lastSendAt = 0;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function paceForResend() {
+    const since = Date.now() - lastSendAt;
+    if (since < MIN_GAP_MS) await sleep(MIN_GAP_MS - since);
+    lastSendAt = Date.now();
+  }
+
   for (const row of pending) {
     const data = (() => {
       if (typeof row.data === "string") { try { return JSON.parse(row.data); } catch (_e) { return {}; } }
@@ -439,14 +454,24 @@ module.exports = async (req, res) => {
     const body = render(tmpl.body, renderData);
 
     try {
-      const result = await resend.emails.send({
+      await paceForResend();
+      let result = await resend.emails.send({
         from: EMAIL_FROM,
         to: row.recipient_email,
         subject,
         text: body,
       });
-      // Resend SDK v3+: success → { data: { id }, error: null }
-      const providerErr = result?.error;
+      // Resend SDK v3+: success → { data: { id }, error: null }.
+      // Rate-limit error message contains "Too many requests"; back
+      // off and retry once before giving up.
+      let providerErr = result?.error;
+      const isRateLimit = providerErr && /too many requests|429/i.test(providerErr.message || JSON.stringify(providerErr));
+      if (isRateLimit) {
+        await sleep(1200);
+        lastSendAt = Date.now();
+        result = await resend.emails.send({ from: EMAIL_FROM, to: row.recipient_email, subject, text: body });
+        providerErr = result?.error;
+      }
       const messageId = result?.data?.id;
       if (providerErr) throw new Error(providerErr.message || JSON.stringify(providerErr));
       await sb.from("notification_queue").update({
