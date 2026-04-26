@@ -157,10 +157,18 @@ async function handleCreateIntent(req, res) {
   const { totalCents, feeCents, rentCents } = fees;
 
   try {
+    // Lock the PaymentIntent to the method the tenant chose in our UI
+    // so the fee math holds. Card intents include Apple/Google Pay
+    // automatically since both wallet-wrap a card payment under the
+    // hood — Stripe surfaces them as wallet buttons inside the
+    // PaymentElement when the device + browser support them.
+    const methodTypes = payment_method === "us_bank_account"
+      ? ["us_bank_account"]
+      : ["card"];
     const intentParams = {
       amount: totalCents,
       currency: "usd",
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: methodTypes,
       description: `Rent — ${tenant.name} — ${tenant.property || ""}`.slice(0, 250),
       metadata: {
         company_id: String(company_id),
@@ -463,10 +471,16 @@ async function handleWebhook(req, res) {
   const sb = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
 
   // Idempotency: every PI succeeded webhook reuses the PI id as the JE
-  // reference. If we've already posted, return 200 + idempotent.
+  // reference. If we've already POSTED a non-voided JE for this PI,
+  // return 200 + idempotent. A voided JE means an admin reversed a
+  // prior post and a Stripe resend should be allowed to write a fresh
+  // one — filter status != 'voided' so the check matches only live
+  // entries. The unique index on (company_id, reference) is partial
+  // on the same predicate (see migration).
   if (event.type === "payment_intent.succeeded") {
     const { data: existing } = await sb.from("acct_journal_entries")
-      .select("id").eq("reference", "STRIPE-" + event.data.object.id).maybeSingle();
+      .select("id, status").eq("reference", "STRIPE-" + event.data.object.id)
+      .neq("status", "voided").maybeSingle();
     if (existing) return res.status(200).json({ received: true, idempotent: true });
   }
 

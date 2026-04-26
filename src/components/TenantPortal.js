@@ -17,6 +17,27 @@ import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-
 const stripePublishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || "";
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
+// Pass-through fee math, mirrored from api/stripe.js so the Pay Rent
+// UI can preview "Card: $X · Bank: $Y" before the tenant commits to a
+// method. The webhook on the server side recomputes from the same
+// formulas using the metadata we set at intent creation.
+//   Card:  total = ceil((rent + 30) / 0.971) — 2.9% + $0.30
+//   ACH:   total = ceil(rent / 0.992) capped so fee ≤ $5.00
+function computeFeeForMethod(rentDollars, method) {
+  const rentCents = Math.round(safeNum(rentDollars) * 100);
+  if (method === "us_bank_account") {
+    const totalUncapped = Math.ceil(rentCents / 0.992);
+    const feeUncapped = totalUncapped - rentCents;
+    if (feeUncapped >= 500) {
+      return { totalCents: rentCents + 500, feeCents: 500, rentCents };
+    }
+    return { totalCents: totalUncapped, feeCents: feeUncapped, rentCents };
+  }
+  // Default = card (Apple/Google Pay wallet-wrap a card → same fee)
+  const totalCents = Math.ceil((rentCents + 30) / 0.971);
+  return { totalCents, feeCents: totalCents - rentCents, rentCents };
+}
+
 // Inner card form — must live inside <Elements>. Receives the
 // PaymentIntent's client_secret + a callback for what to do after
 // successful confirmation. Stripe handles the actual card capture +
@@ -149,6 +170,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   // into a Stripe Elements card form. Cleared on success or when the
   // tenant cancels.
   const [stripeIntent, setStripeIntent] = useState(null);
+  // Pay-method picker: "card" (incl. Apple/Google Pay since they
+  // wallet-wrap a card) or "us_bank_account" (ACH). Drives the
+  // pass-through fee math and the payment_method_types passed to
+  // create-intent. Card is the default since most tenants pay by
+  // card and Apple/Google Pay piggyback on it.
+  const [payMethod, setPayMethod] = useState("card");
   // Stripe SetupIntent for the Autopay tab. When non-null the Autopay
   // tab renders the card-capture form; on confirm we POST to
   // save-payment-method which writes the autopay_schedules row.
@@ -331,7 +358,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       const res = await fetch("/api/stripe?action=create-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
-        body: JSON.stringify({ amount: amt, tenant_id: tenantData.id, company_id: companyId }),
+        body: JSON.stringify({ amount: amt, tenant_id: tenantData.id, company_id: companyId, payment_method: payMethod }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { showToast("Payment setup failed: " + (data.error || res.status), "error"); return; }
@@ -703,22 +730,51 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {safeNum(tenantData.balance) > 0 && <Btn variant="danger" size="xs" onClick={() => setPaymentAmount(String(tenantData.balance))}>Full Balance (${safeNum(tenantData.balance)})</Btn>}
   </div>
   </div>
-  <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
-  <div className="flex items-center gap-2 mb-2">
-  <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-highlight-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
-  <span className="text-sm text-neutral-500">Powered by Stripe · 2.9% + $0.30 processing fee added</span>
-  </div>
-  <div className="text-xs text-neutral-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
-  </div>
-  <Btn variant="primary" size="lg" className="w-full" onClick={handleStripePayment} disabled={paymentProcessing}>
-  {paymentProcessing ? "Loading…" : "Continue to Pay $" + (paymentAmount || "0")}
+  {/* Pay-method picker. Card and Bank get separate fee math; both
+      previews are shown so the tenant sees what they'll actually
+      pay before committing. Apple Pay / Google Pay piggyback on the
+      card option (PaymentElement surfaces them as wallet buttons
+      when the device supports them). */}
+  {(() => {
+    const cardMath = computeFeeForMethod(paymentAmount, "card");
+    const achMath = computeFeeForMethod(paymentAmount, "us_bank_account");
+    const opts = [
+      { id: "card", label: "Card", sub: "Visa, Mastercard, Apple Pay, Google Pay", math: cardMath, feeLabel: "2.9% + $0.30" },
+      { id: "us_bank_account", label: "Bank Account (ACH)", sub: "Connect your bank — slower (1-2 days)", math: achMath, feeLabel: "0.8% (max $5)" },
+    ];
+    return (
+    <div className="mb-4">
+    <label className="text-xs text-neutral-400 mb-2 block">Payment Method</label>
+    <div className="grid grid-cols-1 gap-2">
+    {opts.map(o => (
+      <button key={o.id} type="button" onClick={() => setPayMethod(o.id)}
+        className={"text-left rounded-2xl border p-3 transition-colors " + (payMethod === o.id ? "border-brand-600 bg-brand-50/40" : "border-brand-100 bg-white hover:border-brand-300")}>
+      <div className="flex items-start justify-between">
+        <div>
+        <div className="text-sm font-semibold text-neutral-800">{o.label}</div>
+        <div className="text-xs text-neutral-400">{o.sub}</div>
+        </div>
+        <div className="text-right">
+        <div className="text-sm font-mono font-bold text-neutral-800">${(o.math.totalCents / 100).toFixed(2)}</div>
+        <div className="text-xs text-neutral-400">+ ${(o.math.feeCents / 100).toFixed(2)} fee ({o.feeLabel})</div>
+        </div>
+      </div>
+      </button>
+    ))}
+    </div>
+    <div className="text-xs text-neutral-400 mt-2">Powered by Stripe · Secure payment processing. Your details never touch our servers.</div>
+    </div>
+    );
+  })()}
+  <Btn variant="primary" size="lg" className="w-full" onClick={handleStripePayment} disabled={paymentProcessing || !paymentAmount || Number(paymentAmount) <= 0}>
+  {paymentProcessing ? "Loading…" : "Continue to Pay $" + (paymentAmount ? (computeFeeForMethod(paymentAmount, payMethod).totalCents / 100).toFixed(2) : "0.00")}
   </Btn>
   <div className="text-xs text-neutral-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
   </div>
   ) : (
   <div className="bg-white rounded-3xl border border-brand-50 p-6">
   <div className="flex items-center justify-between mb-4">
-  <h3 className="font-semibold text-neutral-800 text-lg">Card details</h3>
+  <h3 className="font-semibold text-neutral-800 text-lg">{payMethod === "us_bank_account" ? "Bank details" : "Card details"}</h3>
   <button onClick={() => setStripeIntent(null)} className="text-xs text-neutral-400 hover:text-neutral-600 underline">Change amount</button>
   </div>
   <Elements stripe={stripePromise} options={{ clientSecret: stripeIntent.client_secret, appearance: { theme: "stripe" } }}>
