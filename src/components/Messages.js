@@ -479,9 +479,9 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
         <PageHeader title="Messages" subtitle="Chat with your tenants." />
       </div>
       <div
-        // Mobile: pin to the viewport via position:fixed. The previous
-        // attempt used h-[calc(100dvh-N)] which is brittle on iOS PWA
-        // because Apple's reported 100dvh + safe-area-inset values
+        // Mobile: pin to the viewport via position:fixed. The prior
+        // attempt sized via a calc on 100dvh which is brittle on iOS
+        // PWA — Apple's reported viewport + safe-area-inset values
         // don't reliably account for the app top bar + main's p-4.
         // Fixed positioning ignores parent layout entirely — top
         // anchored just below the app top bar, bottom anchored at

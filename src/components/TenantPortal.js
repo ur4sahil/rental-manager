@@ -1063,7 +1063,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       breathing room rather than fitting exactly to the viewport
       edge. */}
   {activeTab === "messages" && (
-  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col h-[calc(100svh-360px-env(safe-area-inset-bottom,0px))] md:h-[calc(100dvh-320px)]" style={{ minHeight: "320px" }}>
+  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col h-[calc(100dvh-360px)] md:h-[calc(100dvh-320px)]" style={{ minHeight: "320px", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
   <MessageThread
     messages={messages}
     viewerRole="tenant"
