@@ -12,7 +12,7 @@ import { Spinner } from "./shared";
 // on login; this panel is for the manual re-enable / test / disable
 // flow when something went wrong silently.
 function DevicePushPanel({ companyId, userProfile, showToast }) {
-  const [state, setState] = useState({ permission: "unknown", subscribed: false, endpoint: null, log: [] });
+  const [state, setState] = useState({ permission: "unknown", subscribed: false, endpoint: null, log: [], health: null });
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -26,8 +26,20 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
         if (sub) { subscribed = true; endpoint = sub.endpoint; }
       }
     } catch (_e) { /* not supported */ }
-    setState(s => ({ ...s, permission, subscribed, endpoint }));
-  }, []);
+    // Pull health from server: when did the SW last beacon back?
+    // null/old means Apple silently revoked; user should re-enable.
+    let health = null;
+    try {
+      if (companyId && userProfile?.email) {
+        const { data } = await supabase.from("push_subscriptions")
+          .select("last_sw_received_at, last_dispatch_at, dead_marked_at, created_at")
+          .eq("company_id", companyId).eq("user_email", userProfile.email)
+          .maybeSingle();
+        health = data || null;
+      }
+    } catch (_e) { /* best effort */ }
+    setState(s => ({ ...s, permission, subscribed, endpoint, health }));
+  }, [companyId, userProfile?.email]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -134,18 +146,52 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
   // browser-blocked and not-yet-prompted states. Earlier this early-
   // returned with text only, leaving denied users no actionable button.
 
-  // Subscribed — confirmation row + Send test / Turn off. No enable
-  // button here; the user has already opted in.
+  // Subscribed — confirmation row + health detail.
+  // Apple silently revokes web push permissions when the SW fails to
+  // call showNotification (the "silent push" trap). When that
+  // happens, browser-side getSubscription() still returns a sub, the
+  // server still gets 201 from APNS, and the user has no idea their
+  // pushes are dead. We track health server-side via the SW beacon
+  // (last_sw_received_at). Show the user the truth.
   if (state.subscribed) {
+    const h = state.health;
+    const lastRecv = h?.last_sw_received_at ? new Date(h.last_sw_received_at).getTime() : 0;
+    const lastDispatch = h?.last_dispatch_at ? new Date(h.last_dispatch_at).getTime() : 0;
+    const subAge = h?.created_at ? Date.now() - new Date(h.created_at).getTime() : 0;
+    const daysSinceRecv = lastRecv ? Math.floor((Date.now() - lastRecv) / 86400000) : null;
+    // Suspect = we've been dispatching to this sub for >7d but the
+    // SW has never beaconed, OR the last beacon is >7 days old.
+    const SEVEN_DAYS = 7 * 86400000;
+    const neverAcked = !lastRecv && lastDispatch > 0 && subAge > SEVEN_DAYS;
+    const stale = lastRecv > 0 && (Date.now() - lastRecv) > SEVEN_DAYS;
+    const suspect = neverAcked || stale;
+    const tone = suspect ? "warn" : "positive";
+    const palette = suspect
+      ? { bg: "bg-warn-50/40", border: "border-warn-200", text: "text-warn-800", icon: "warning" }
+      : { bg: "bg-positive-50/40", border: "border-positive-200", text: "text-positive-800", icon: "check_circle" };
+    const lastRecvLabel = !lastRecv
+      ? (lastDispatch > 0 ? "Never received — your device may have stopped accepting them." : "No pushes sent yet — wait for the next event.")
+      : daysSinceRecv === 0 ? "Last received: today"
+      : daysSinceRecv === 1 ? "Last received: yesterday"
+      : "Last received: " + daysSinceRecv + " days ago";
     return (
-      <Card padding="p-4" className="mb-5 bg-positive-50/40 border-positive-200">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-sm text-positive-800">
-            <span className="material-icons-outlined text-base">check_circle</span>
-            <span className="font-semibold">Notifications are on for this device</span>
+      <Card padding="p-4" className={"mb-5 " + palette.bg + " " + palette.border}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className={"flex items-center gap-2 text-sm " + palette.text}>
+              <span className="material-icons-outlined text-base">{palette.icon}</span>
+              <span className="font-semibold">{suspect ? "Push notifications appear broken" : "Notifications are on for this device"}</span>
+            </div>
+            <div className={"text-xs mt-1 " + palette.text + " opacity-80"}>{lastRecvLabel}</div>
+            {suspect && (
+              <div className="text-xs text-neutral-600 mt-2">
+                Apple silently disables push notifications for installed PWAs after certain failure conditions. Tap <strong>Re-enable</strong> to register a fresh subscription.
+              </div>
+            )}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap shrink-0">
             <Btn onClick={handleTest} disabled={busy} variant="secondary" size="xs">Send test</Btn>
+            {suspect && <Btn onClick={handleEnable} disabled={busy} variant="primary" size="xs">{busy ? "Working…" : "Re-enable"}</Btn>}
             <Btn onClick={handleDisable} disabled={busy} variant="secondary" size="xs">Turn off</Btn>
           </div>
         </div>

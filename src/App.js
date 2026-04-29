@@ -707,23 +707,34 @@ function AppInner() {
   }
 
 
-  // Push Notification Registration
+  // Push Notification Registration. Strategy refined per Apple's
+  // documented quirks (see WebKit Bugzilla 273063 + Apple's web push
+  // docs):
+  //   1. Don't auto-prompt for permission on every launch — that's
+  //      what the Notifications page button is for. If the user
+  //      previously granted, we respect existing state.
+  //   2. On every launch, RECONCILE the browser's subscription with
+  //      our DB. Three cases:
+  //         (a) browser has a sub, DB matches → no-op
+  //         (b) browser has a sub, DB has stale/different endpoint
+  //             → upsert new endpoint to DB
+  //         (c) browser has no sub but permission is granted → Apple
+  //             quietly revoked it; resubscribe and update DB
+  //   3. NEVER fire a silent self-test push — that's exactly what
+  //      gets us revoked in the first place.
   async function registerPushNotifications() {
   try {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-  pmError("PM-8006", { raw: { message: "Push notifications not supported" }, context: "push registration", silent: true });
-  return;
-  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   const registration = await navigator.serviceWorker.register("/sw.js");
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") { pmError("PM-8006", { raw: { message: "Push permission denied" }, context: "push registration", silent: true }); return; }
-
-  // Get VAPID public key from Supabase (or use a hardcoded one for now)
-  // For production, generate VAPID keys and store the public key here
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    // Permission was never granted (or was denied) — don't auto-
+    // prompt. The Notifications page hero card has the explicit
+    // "Allow notifications" button users tap on first run.
+    return;
+  }
   const VAPID_PUBLIC_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
   if (!VAPID_PUBLIC_KEY) { pmError("PM-8006", { raw: { message: "VAPID key not configured" }, context: "push registration", silent: true }); return; }
 
-  // Convert base64url to Uint8Array for applicationServerKey
   function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -731,29 +742,61 @@ function AppInner() {
     return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
   }
 
-  // If a prior subscription exists with a different VAPID key the
-  // browser rejects subscribe() with "a subscription with a different
-  // applicationServerKey already exists". Unsubscribe first so the
-  // new key takes effect cleanly. This happens after a VAPID rotation
-  // or if the user was previously subscribed under the default
-  // applicationServerKey (no VAPID configured).
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) { try { await existing.unsubscribe(); } catch (_e) { /* browser refused; subscribe() below will surface */ } }
-  const subscription = await registration.pushManager.subscribe({
-  userVisibleOnly: true,
-  applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-  });
+  let subscription = await registration.pushManager.getSubscription();
 
-  // Save subscription to DB
+  // Reconcile against server. Three states drive different actions:
+  //   (a) browser has sub + DB has matching sub → no-op
+  //   (b) browser has sub + DB row missing → server-side admin
+  //       deleted the row to force a refresh; the browser-cached
+  //       endpoint may be the silently-revoked one. Unsubscribe
+  //       and resubscribe to get a fresh APNS endpoint.
+  //   (c) browser has sub + DB has different endpoint → just upsert
+  //       (browser already rotated for some reason).
+  //   (d) browser has no sub + permission granted → Apple revoked
+  //       client-side; resubscribe.
   if (activeCompany?.id && currentUser?.email) {
-  await supabase.from("push_subscriptions").upsert([{
-  company_id: activeCompany.id,
-  user_email: currentUser.email,
-  subscription: JSON.parse(JSON.stringify(subscription)),
-  }], { onConflict: "company_id,user_email" }).then(({ error }) => {
-  if (error) pmError("PM-8006", { raw: error, context: "push subscription save", silent: true });
-  // Push notifications enabled
-  });
+    const { data: existingRow } = await supabase.from("push_subscriptions")
+      .select("subscription, dead_marked_at").eq("company_id", activeCompany.id)
+      .eq("user_email", currentUser.email).maybeSingle();
+    const existingEndpoint = existingRow?.subscription?.endpoint;
+    const dbHasRow = !!existingRow;
+    const subAlreadyMarkedDead = !!existingRow?.dead_marked_at;
+
+    const needFreshSubscribe = !subscription
+      || (subscription && !dbHasRow)
+      || subAlreadyMarkedDead;
+
+    if (needFreshSubscribe) {
+      // Force-rotate to a fresh APNS endpoint. unsubscribe() tells the
+      // push service to forget the old endpoint; subscribe() then
+      // mints a new one. Apple silent-revocation lives on the OLD
+      // endpoint; the new one starts with a clean slate.
+      if (subscription) {
+        try { await subscription.unsubscribe(); } catch (_e) { /* harmless */ }
+      }
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+
+    if (subscription) {
+      const subJson = JSON.parse(JSON.stringify(subscription));
+      if (existingEndpoint !== subJson.endpoint || subAlreadyMarkedDead) {
+        await supabase.from("push_subscriptions").upsert([{
+          company_id: activeCompany.id,
+          user_email: currentUser.email,
+          subscription: subJson,
+        }], { onConflict: "company_id,user_email" }).then(({ error }) => {
+          if (error) pmError("PM-8006", { raw: error, context: "push subscription save", silent: true });
+        });
+        // Clear stale health flags so the new sub starts clean.
+        await supabase.from("push_subscriptions")
+          .update({ last_sw_received_at: null, last_dispatch_at: null, dead_marked_at: null })
+          .eq("company_id", activeCompany.id)
+          .eq("user_email", currentUser.email);
+      }
+    }
   }
   } catch (e) { pmError("PM-8006", { raw: e, context: "push registration", silent: true }); }
   }

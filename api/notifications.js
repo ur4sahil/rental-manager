@@ -52,6 +52,27 @@ async function pushBeacon(req, res) {
     error_message: error_message ? String(error_message).slice(0, 1000) : null,
     payload_tag: payload_tag || null,
   });
+
+  // Stamp the subscription's last_sw_received_at when the SW reports
+  // it received a push. This is the ONLY reliable per-subscription
+  // health signal we have — APNS 201s for dead subs forever, so we
+  // can't infer health from server-side delivery alone.
+  // Beacons can come from any of the SW's status flags (sw_received,
+  // sw_displayed_*, sw_show_error_*); any of them mean the device
+  // woke up at least far enough to run our SW handler.
+  const aliveStatuses = new Set([
+    "sw_received", "sw_displayed_main", "sw_displayed_fallback_main",
+    "sw_displayed_parse_error", "sw_displayed_fallback_parse_error",
+    "sw_show_error_main", "sw_show_error_parse_error",
+    "sw_subscription_change",
+  ]);
+  if (recipient_email && company_id && aliveStatuses.has(status)) {
+    await sb.from("push_subscriptions")
+      .update({ last_sw_received_at: new Date().toISOString(), dead_marked_at: null })
+      .eq("company_id", company_id)
+      .ilike("user_email", recipient_email);
+  }
+
   return res.status(200).json({ ok: true });
 }
 

@@ -112,9 +112,13 @@ module.exports = async (req, res) => {
   }
 
   // 4. Look up every registered subscription for the target recipient.
+  //    Filter out subs that have been dispatch-spammed for >7 days
+  //    without a single SW beacon. Apple keeps 201ing those forever
+  //    even though the device will never display anything; sending
+  //    to them is pure waste and inflates our delivered_count noise.
   const recipient = user_email.toLowerCase();
   const { data: subs, error: subErr } = await svc.from("push_subscriptions")
-    .select("id, subscription")
+    .select("id, subscription, last_sw_received_at, last_dispatch_at, dead_marked_at, created_at")
     .eq("company_id", company_id)
     .ilike("user_email", recipient);
   if (subErr) {
@@ -124,6 +128,38 @@ module.exports = async (req, res) => {
   if (!subs || subs.length === 0) {
     await logAttempt({ company_id, caller_email: callerEmail, recipient_email: recipient, title, body: text, status: "no_subs" });
     res.status(200).json({ delivered: 0, pruned: 0, note: "no subscriptions" }); return;
+  }
+  // Health filter: a sub is "dead" if we've been dispatching to it
+  // for at least 7 days but the SW has never beaconed back.
+  // last_sw_received_at IS NULL is fine for new subs (we just
+  // registered them); only suspect once we've actually tried to
+  // push to them for a while.
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const liveSubs = [];
+  const deadIds = [];
+  for (const s of subs) {
+    const lastRecv = s.last_sw_received_at ? new Date(s.last_sw_received_at).getTime() : 0;
+    const firstDispatch = s.last_dispatch_at ? new Date(s.last_dispatch_at).getTime() : 0;
+    const subAge = s.created_at ? now - new Date(s.created_at).getTime() : 0;
+    // Mark dead if: been around >7d AND never received a beacon AND we've dispatched at least once.
+    const neverAcked = !lastRecv;
+    const stale = lastRecv > 0 && (now - lastRecv) > SEVEN_DAYS_MS;
+    const oldEnoughToTrust = subAge > SEVEN_DAYS_MS && firstDispatch > 0;
+    if ((neverAcked && oldEnoughToTrust) || stale) {
+      deadIds.push(s.id);
+    } else {
+      liveSubs.push(s);
+    }
+  }
+  if (deadIds.length > 0) {
+    await svc.from("push_subscriptions")
+      .update({ dead_marked_at: new Date().toISOString() })
+      .in("id", deadIds);
+  }
+  if (liveSubs.length === 0) {
+    await logAttempt({ company_id, caller_email: callerEmail, recipient_email: recipient, title, body: text, status: "all_subs_dead", error_message: "all " + subs.length + " sub(s) marked dead — no SW beacons in 7d" });
+    return res.status(200).json({ delivered: 0, pruned: 0, note: "all subs dead — user needs to re-enable" });
   }
 
   // 5. Fan out. Gather stale IDs for post-hoc cleanup — 410/404 means
@@ -141,7 +177,7 @@ module.exports = async (req, res) => {
   const stale = [];
   const errorMessages = [];
   let delivered = 0;
-  await Promise.all(subs.map(async (row) => {
+  await Promise.all(liveSubs.map(async (row) => {
     const sub = row.subscription;
     if (!sub || !sub.endpoint) return;
     try {
@@ -163,6 +199,14 @@ module.exports = async (req, res) => {
   }));
   if (stale.length > 0) {
     await svc.from("push_subscriptions").delete().in("id", stale);
+  }
+  // Stamp last_dispatch_at on every sub we attempted, so the
+  // health-filter clock starts ticking from the first real send.
+  const dispatchedIds = liveSubs.map(s => s.id).filter(id => !stale.includes(id));
+  if (dispatchedIds.length > 0) {
+    await svc.from("push_subscriptions")
+      .update({ last_dispatch_at: new Date().toISOString() })
+      .in("id", dispatchedIds);
   }
   await logAttempt({
     company_id, caller_email: callerEmail, recipient_email: recipient,

@@ -14,7 +14,7 @@
 //         never cached. Financial/auth data must stay fresh.
 //   • push + notificationclick: unchanged from v1.
 
-const CACHE_NAME = "housify-v3";
+const CACHE_NAME = "housify-v4";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -80,10 +80,18 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  // Diagnostic-instrumented push handler. Beacons every step back to
-  // /api/notifications?action=beacon so we can see SW-side delivery
-  // and showNotification outcomes in push_attempts. iOS PWA push is
-  // notoriously hard to debug otherwise.
+  // CRITICAL iOS contract: every push event MUST call showNotification
+  // before this handler completes, on EVERY code path. Apple's docs:
+  // "Safari doesn't support invisible push notifications. … If you
+  // don't, Safari revokes the push notification permission for your
+  // site." Community-reported threshold: 3 silent pushes → permission
+  // revoked → APNS keeps returning 201 forever but no banner appears.
+  // This is the root cause of "works for one day, then breaks." Every
+  // try/catch here ends in showNotification, even if all we have is
+  // a generic fallback.
+  //
+  // Beacons stay (diagnostics) but are best-effort and never gate
+  // showNotification.
   async function beacon(payload_tag, status, error_message, meta) {
     try {
       await fetch("/api/notifications?action=beacon", {
@@ -91,20 +99,43 @@ self.addEventListener("push", (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payload_tag, status, error_message, ...(meta || {}) }),
       });
-    } catch (_e) { /* network failed — no recovery, just continue */ }
+    } catch (_e) { /* swallow */ }
+  }
+
+  async function showSafely(title, opts, payloadTag, label) {
+    try {
+      await self.registration.showNotification(title, opts);
+      beacon(payloadTag, "sw_displayed_" + label, null);
+    } catch (e) {
+      // Last-resort fallback: bare-bones notification with no options.
+      // If even this throws, we've done our best — at least we tried.
+      try {
+        await self.registration.showNotification("Housify", { body: "New activity" });
+        beacon(payloadTag, "sw_displayed_fallback_" + label, null);
+      } catch (e2) {
+        beacon(payloadTag, "sw_show_error_" + label, String(e?.message || e) + " | fallback: " + String(e2?.message || e2));
+      }
+    }
   }
 
   async function handle() {
     let data = {};
     let payloadTag = null;
+    let parseErrorMsg = null;
     try {
       data = event.data ? event.data.json() : {};
       payloadTag = data.payload_tag || null;
     } catch (e) {
-      await beacon(null, "sw_parse_error", String(e?.message || e));
+      parseErrorMsg = String(e?.message || e);
+    }
+    if (parseErrorMsg) {
+      // Even on parse error, show SOMETHING so iOS doesn't count this
+      // as a silent push and revoke our permission.
+      beacon(null, "sw_parse_error", parseErrorMsg);
+      await showSafely("Housify", { body: "New activity", icon: "/logo192.png", badge: "/logo192.png" }, null, "parse_error");
       return;
     }
-    await beacon(payloadTag, "sw_received", null, {
+    beacon(payloadTag, "sw_received", null, {
       title: data.title || null,
       body: data.message || null,
       recipient_email: data.recipient_email || null,
@@ -112,7 +143,7 @@ self.addEventListener("push", (event) => {
     });
     const tag = data.tag || ("housify-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6));
     const options = {
-      body: data.message || "New notification from Housify",
+      body: data.message || "New activity",
       icon: "/logo192.png",
       badge: "/logo192.png",
       tag,
@@ -120,14 +151,25 @@ self.addEventListener("push", (event) => {
       data: { url: data.url || "/" },
       actions: data.actions || [],
     };
-    try {
-      await self.registration.showNotification(data.title || "Housify", options);
-      await beacon(payloadTag, "sw_displayed", null);
-    } catch (e) {
-      await beacon(payloadTag, "sw_show_error", String(e?.message || e));
-    }
+    await showSafely(data.title || "Housify", options, payloadTag, "main");
   }
   event.waitUntil(handle());
+});
+
+// pushsubscriptionchange — IDL exists on iOS but does not currently
+// fire (confirmed by WebKit engineer Ben Nham, Bugzilla 273063, May
+// 2024). Listen anyway: harmless on iOS today, automatic recovery on
+// other browsers, and future-proof for when Apple wires it up.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil((async () => {
+    try {
+      await fetch("/api/notifications?action=beacon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "sw_subscription_change", error_message: null }),
+      });
+    } catch (_e) { /* swallow */ }
+  })());
 });
 
 self.addEventListener("notificationclick", (event) => {
