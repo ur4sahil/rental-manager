@@ -37,7 +37,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
   }, [messages.length]);
 
   if (!messages || messages.length === 0) {
-    return <div className="flex-1 flex items-center justify-center text-neutral-400 text-sm p-6">{emptyLabel || "No messages yet."}</div>;
+    return <div className="flex-1 min-h-0 flex items-center justify-center text-neutral-400 text-sm p-6">{emptyLabel || "No messages yet."}</div>;
   }
 
   // Group by local day for date dividers. The plan keeps it simple:
@@ -62,7 +62,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
 
   const viewerIsStaff = viewerRole !== "tenant";
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-neutral-50/50">
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 bg-neutral-50/50">
       {bubbles.map(b => b.type === "divider" ? (
         <div key={b.key} className="flex items-center gap-2 my-3 text-[11px] text-neutral-400 uppercase tracking-wide">
           <div className="flex-1 h-px bg-neutral-200" /><span>{b.label}</span><div className="flex-1 h-px bg-neutral-200" />
@@ -213,7 +213,7 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
   }
   const canSend = !disabled && !sending && (value.trim() || attachment);
   return (
-    <div className="border-t border-neutral-200 bg-white p-3 relative safe-bottom">
+    <div className="border-t border-neutral-200 bg-white p-3 relative safe-bottom flex-shrink-0">
       {attachment && (
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs">
           <span className="material-icons-outlined text-sm">attach_file</span>
