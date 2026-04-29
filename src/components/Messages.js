@@ -472,23 +472,27 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
   const showThreadOnMobile = !!selectedTenant;
 
   return (
-    <div>
+    // flex-col flex-1 min-h-0 propagates <main>'s flex height into the
+    // messages container below. Without this, the wrapper <div> has
+    // auto height and the messages container's flex-1 has nothing to
+    // size against.
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Desktop-only page header — on mobile the thread/list has its own
           compact header so we can fit the composer in-viewport. */}
       <div className="hidden md:block">
         <PageHeader title="Messages" subtitle="Chat with your tenants." />
       </div>
       <div
-        // Mobile: pin to the viewport via position:fixed. The prior
-        // attempt sized via a calc on 100dvh which is brittle on iOS
-        // PWA — Apple's reported viewport + safe-area-inset values
-        // don't reliably account for the app top bar + main's p-4.
-        // Fixed positioning ignores parent layout entirely — top
-        // anchored just below the app top bar, bottom anchored at
-        // the safe-area edge. Composer is guaranteed to land within
-        // the visible viewport.
-        // Desktop (md:) reverts to the original page-flow layout.
-        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row fixed inset-x-0 top-14 bottom-0 z-30 md:static md:inset-auto md:z-auto md:h-[calc(100dvh-180px)]"
+        // Mobile: flex-1 min-h-0 fills the parent's available height
+        // through a flex chain. App.js sets <main> to flex-col +
+        // overflow-hidden when on a messages page, so this container
+        // gets a properly bounded height from the chain. The thread
+        // inside can then satisfy scrollHeight > clientHeight which
+        // (a) makes it actually scrollable and (b) makes
+        // PullToRefresh's isInsideNestedScroll detect it and bail,
+        // so swiping in the thread no longer triggers a page reload.
+        // Desktop (md:) reverts to the original h-[calc(100dvh-180px)].
+        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-180px)]"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         {/* LEFT PANE — conversation list. Full-width on mobile when no

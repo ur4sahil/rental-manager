@@ -1192,7 +1192,25 @@ function AppInner() {
     onRefresh={() => { window.location.reload(); }}
     className="flex-1 flex flex-col min-h-0"
   >
-  <main ref={mainScrollRef} className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6">
+  {/*
+    Messages-style pages need a flex-fill chain (no main-level scroll,
+    no main-level padding) so the thread inside can have a properly
+    bounded height. Without this, the messages container has nowhere
+    to size against, the thread is unbounded, the composer falls off
+    the bottom, and PullToRefresh intercepts thread scroll because
+    isInsideNestedScroll requires scrollHeight > clientHeight (which
+    a thread of unbounded height never satisfies).
+    Mobile-only: on desktop the original scroll-with-padding layout
+    still works correctly because the desktop messages container has
+    a literal h-[calc(100dvh-180px)].
+  */}
+  {(() => {
+    const isMessagesLikePage = effectivePage === "messages" || effectivePage === "tenant_messages";
+    const mainCls = isMessagesLikePage
+      ? "flex-1 flex flex-col min-h-0 overflow-hidden md:overflow-y-auto md:overscroll-contain md:p-6"
+      : "flex-1 overflow-y-auto overscroll-contain p-4 md:p-6";
+    return (
+  <main ref={mainScrollRef} className={mainCls}>
   {missingRPCs.length > 0 && userRole === "admin" && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl px-4 py-3 mb-4">
   <div className="text-sm font-semibold text-warn-800">{"\u26A0\uFE0F"} Missing Database Functions</div>
@@ -1220,6 +1238,8 @@ function AppInner() {
   />
   </ErrorBoundary>
   </main>
+    );
+  })()}
   </PullToRefresh>
   </div>
 

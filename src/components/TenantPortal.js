@@ -642,8 +642,15 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   );
 
+  // On the messages tab, App.js makes <main> a flex-col container so
+  // the chat layout can fill the viewport. Mirror that on this
+  // wrapper so the persistent header keeps its natural height and
+  // the active tab content (the messages container below) gets a
+  // flex-1 height to size against. Other tabs are scroll-flow content
+  // and unaffected by the flex layout.
+  const useFlexLayout = activeTab === "messages";
   return (
-  <div>
+  <div className={useFlexLayout ? "flex flex-col flex-1 min-h-0" : ""}>
   {/* Tenant Header — kept above the tab content as a persistent
       summary (balance/rent/lease end). The tab strip itself moved to
       the left sidebar; navigation is driven by initialTab prop now. */}
@@ -1056,14 +1063,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   )}
 
   {/* ---- MESSAGES TAB ---- */}
-  {/* Mobile: use 100svh (smallest viewport height — guaranteed to
-      fit even with chrome shown) and subtract the persistent purple
-      tenant header (~270px) + the app top bar (~56px) + iOS safe
-      areas. Bumped constant to 360px to give the composer
-      breathing room rather than fitting exactly to the viewport
-      edge. */}
+  {/* Mobile: flex-1 min-h-0 fills <main>'s available height through
+      the flex chain set up above (App.js → TenantPortal wrapper →
+      this div). No more viewport-unit math — the chain handles it.
+      Desktop reverts to a fixed calc since the flex chain breaks
+      desktop's normal page-flow scroll layout. */}
   {activeTab === "messages" && (
-  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col h-[calc(100dvh-360px)] md:h-[calc(100dvh-320px)]" style={{ minHeight: "320px", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-320px)]" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
   <MessageThread
     messages={messages}
     viewerRole="tenant"
