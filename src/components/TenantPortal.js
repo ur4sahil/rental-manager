@@ -1056,8 +1056,16 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   )}
 
   {/* ---- MESSAGES TAB ---- */}
+  {/* The tenant portal has a persistent ~280px purple header above
+      the tab content (name/balance/rent/lease end), so the Messages
+      container has to account for that AND the app top bar. The old
+      version used minHeight 500px which forced the container taller
+      than the viewport on small phones, pushing the composer off the
+      bottom and breaking thread scroll. Drop minHeight, size to the
+      actual remaining viewport. Negate <main>'s p-4 on mobile to
+      reclaim 32px and round up the chrome estimate (~340px). */}
   {activeTab === "messages" && (
-  <div className="bg-white rounded-3xl border border-brand-50 overflow-hidden flex flex-col" style={{ minHeight: "500px", maxHeight: "calc(100dvh - 320px)" }}>
+  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col -mx-4 -my-4 md:m-0 h-[calc(100dvh-340px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] md:h-[calc(100dvh-320px)]" style={{ minHeight: "320px" }}>
   <MessageThread
     messages={messages}
     viewerRole="tenant"
