@@ -1033,7 +1033,23 @@ function AppInner() {
   // Tenants get a dedicated TENANT_NAV (Overview / Pay Rent / Autopay /
   // Ledger / Maintenance / Documents / Messages) instead of the staff
   // sidebar — same pattern, different list.
-  const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
+  const baseAllowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
+  // Parent → children implicit access. If the user has the parent
+  // ("accounting"), they implicitly have all child page IDs
+  // (acct_opening, acct_coa, …) too. Without this, clicking a child
+  // in the sidebar sets page to e.g. "acct_coa" but safePage filters
+  // it out (falling back to the first allowed page) because the
+  // child id isn't in the allowedPages list. Mirrors the sidebar
+  // filter logic so what's shown matches what's reachable.
+  const allowedPages = (() => {
+    const set = new Set(baseAllowedPages);
+    for (const n of ALL_NAV) {
+      if (n.children && set.has(n.id)) {
+        for (const c of n.children) set.add(c.id);
+      }
+    }
+    return Array.from(set);
+  })();
   const adminNav = userRole === "tenant"
     ? TENANT_NAV
     : ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => {
