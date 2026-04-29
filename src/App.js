@@ -829,8 +829,13 @@ function AppInner() {
   if (tenant?.email) {
   // Check duplicate
   const monthKey = nextDue.getFullYear() + "-" + String(nextDue.getMonth()+1).padStart(2,"0");
+  // notification_queue.data is JSONB — `ilike` doesn't work on it
+  // (Postgres errors silently with "operator does not exist:
+  // jsonb ~~* unknown"). Match against the JSON properties directly.
   const { data: already } = await supabase.from("notification_queue").select("id")
-  .eq("company_id", cid).eq("type", "rent_due").ilike("data", "%" + escapeFilterValue(lease.tenant_name) + "%" + escapeFilterValue(monthKey) + "%").limit(1);
+  .eq("company_id", cid).eq("type", "rent_due")
+  .eq("data->>tenant", lease.tenant_name)
+  .eq("data->>month", monthKey).limit(1);
   if (!already?.length) {
   await queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: nextDue.toLocaleDateString(), property: lease.property, month: monthKey }, cid);
   queued++;
@@ -1031,7 +1036,17 @@ function AppInner() {
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
   const adminNav = userRole === "tenant"
     ? TENANT_NAV
-    : ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => n.children ? { ...n, children: n.children.filter(c => allowedPages.includes(c.id)) } : n);
+    : ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => {
+        if (!n.children) return n;
+        // If the user has access to the parent (e.g. "accounting"),
+        // grant access to all sub-pages by default. Some custom_pages
+        // rows were saved before the sub-page list existed, so they
+        // include only the parent — and without this fallback the
+        // sidebar dropdown renders empty for those users.
+        const parentAllowed = allowedPages.includes(n.id);
+        const filteredChildren = n.children.filter(c => parentAllowed || allowedPages.includes(c.id));
+        return { ...n, children: filteredChildren };
+      });
 
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
