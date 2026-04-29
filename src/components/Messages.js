@@ -479,17 +479,17 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
         <PageHeader title="Messages" subtitle="Chat with your tenants." />
       </div>
       <div
-        // Mobile: negate <main>'s p-4 (16px each side) so we reclaim
-        // the 32px the main wrapper is otherwise reserving for page
-        // padding, then size the container to the actual visible
-        // viewport (100dvh minus the app top bar + iOS safe areas).
-        // Without this the container ran 30-50px taller than the
-        // viewport so the composer fell off the bottom and the
-        // thread's overflow-y-auto fought with <main>'s scroll
-        // instead of scrolling inside its own bounds. Desktop
-        // unchanged — md: classes restore the page-level layout.
-        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row -mx-4 -my-4 md:m-0 h-[calc(100dvh-88px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] md:h-[calc(100dvh-180px)]"
-        style={{ minHeight: "320px" }}
+        // Mobile: pin to the viewport via position:fixed. The previous
+        // attempt used h-[calc(100dvh-N)] which is brittle on iOS PWA
+        // because Apple's reported 100dvh + safe-area-inset values
+        // don't reliably account for the app top bar + main's p-4.
+        // Fixed positioning ignores parent layout entirely — top
+        // anchored just below the app top bar, bottom anchored at
+        // the safe-area edge. Composer is guaranteed to land within
+        // the visible viewport.
+        // Desktop (md:) reverts to the original page-flow layout.
+        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row fixed inset-x-0 top-14 bottom-0 z-30 md:static md:inset-auto md:z-auto md:h-[calc(100dvh-180px)]"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         {/* LEFT PANE — conversation list. Full-width on mobile when no
             thread is active; hidden once a thread is open. Fixed 320px
