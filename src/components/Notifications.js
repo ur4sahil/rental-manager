@@ -159,17 +159,26 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
     const lastDispatch = h?.last_dispatch_at ? new Date(h.last_dispatch_at).getTime() : 0;
     const subAge = h?.created_at ? Date.now() - new Date(h.created_at).getTime() : 0;
     const daysSinceRecv = lastRecv ? Math.floor((Date.now() - lastRecv) / 86400000) : null;
-    // Suspect = we've been dispatching to this sub for >7d but the
-    // SW has never beaconed, OR the last beacon is >7 days old.
+    // Suspect cases — any of the following:
+    //   1. Browser has a sub locally but server has no row → the
+    //      DB row was wiped (admin reset, expired sweep) and the
+    //      App.js auto-resubscribe didn't kick in for some reason.
+    //   2. Server marked the sub dead (>7d without SW beacon).
+    //   3. Sub has been receiving dispatches >7d with zero beacons.
+    //   4. Last beacon was >7d ago.
     const SEVEN_DAYS = 7 * 86400000;
+    const dbRowMissing = !h;
+    const dbDeadFlag = !!h?.dead_marked_at;
     const neverAcked = !lastRecv && lastDispatch > 0 && subAge > SEVEN_DAYS;
     const stale = lastRecv > 0 && (Date.now() - lastRecv) > SEVEN_DAYS;
-    const suspect = neverAcked || stale;
+    const suspect = dbRowMissing || dbDeadFlag || neverAcked || stale;
     const tone = suspect ? "warn" : "positive";
     const palette = suspect
       ? { bg: "bg-warn-50/40", border: "border-warn-200", text: "text-warn-800", icon: "warning" }
       : { bg: "bg-positive-50/40", border: "border-positive-200", text: "text-positive-800", icon: "check_circle" };
-    const lastRecvLabel = !lastRecv
+    const lastRecvLabel = dbRowMissing
+      ? "This device's subscription is missing on the server — tap Re-enable."
+      : !lastRecv
       ? (lastDispatch > 0 ? "Never received — your device may have stopped accepting them." : "No pushes sent yet — wait for the next event.")
       : daysSinceRecv === 0 ? "Last received: today"
       : daysSinceRecv === 1 ? "Last received: yesterday"
