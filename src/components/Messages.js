@@ -532,12 +532,12 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
         {/* RIGHT PANE — thread + composer. On mobile, takes over the full
             viewport width when a tenant is selected; otherwise hidden. On
             desktop, always visible on the right. */}
-        <div className={`${showThreadOnMobile ? "flex" : "hidden"} md:flex flex-1 flex-col min-w-0`}>
+        <div className={`${showThreadOnMobile ? "flex" : "hidden"} md:flex flex-1 flex-col min-w-0 min-h-0`}>
           {!selectedTenant ? (
             <div className="flex-1 items-center justify-center text-neutral-400 text-sm hidden md:flex">Pick a tenant on the left to see the conversation.</div>
           ) : (
             <>
-              <div className="px-4 py-3 border-b border-neutral-200 bg-white flex items-center gap-3">
+              <div className="px-4 py-3 border-b border-neutral-200 bg-white flex items-center gap-3 flex-shrink-0">
                 {/* Back button — mobile-only. Clears selection so the
                     list view comes back. */}
                 <button
