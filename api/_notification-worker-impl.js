@@ -364,6 +364,22 @@ module.exports = async (req, res) => {
   }
   if (!isCronAuth && !isUserAuth) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+  // GLOBAL EMAIL KILL-SWITCH. Hardcoded to true 2026-04-29 at Sahil's
+  // request after the rent_due-on-every-login flood. Queue rows still
+  // accumulate (queueNotification still inserts them) so when we
+  // unpause we have full history; the worker just refuses to deliver.
+  // To resume: flip PAUSED to false below, OR set
+  // NOTIFICATIONS_PAUSED=false in Vercel env (env var wins if set).
+  const PAUSED_DEFAULT = true;
+  const pausedEnv = (process.env.NOTIFICATIONS_PAUSED || "").toLowerCase().trim();
+  const pausedFromEnv = pausedEnv === "true" || pausedEnv === "1" || pausedEnv === "yes";
+  const explicitlyResumed = pausedEnv === "false" || pausedEnv === "0" || pausedEnv === "no";
+  const isPaused = explicitlyResumed ? false : (pausedFromEnv || PAUSED_DEFAULT);
+  if (isPaused) {
+    res.status(200).json({ ok: true, paused: true, note: "Email notifications globally paused" });
+    return;
+  }
+
   const resend = new Resend(RESEND_API_KEY);
 
   // queueNotification triggers the worker once per fan-out call, so a
