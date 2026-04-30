@@ -200,6 +200,17 @@ export function pmError(code, { raw = null, context = "", silent = false, meta =
     // channel was leaking through it).
     return null;
   }
+  // PM-8005 (insufficient_privilege / RLS rejection) fired without a
+  // logged-in user is the *expected* outcome of background calls (push
+  // re-registration, queueNotification, health beacons) running after
+  // a session expired. Don't persist those as errors — they flooded
+  // error_log with 500+ identical "anonymous" rows over the last week
+  // for one company. Still console.warn so a developer running the app
+  // sees them; just don't pollute the audit + Sentry channels.
+  if (resolvedCode === "PM-8005" && !_currentUserEmail) {
+    try { console.warn(`[${resolvedCode}] anon-state RLS rejection (suppressed)`, { context, raw: rawMessage.slice(0, 200) }); } catch (_) {}
+    return null;
+  }
   const enrichedMeta = rawStack ? { ...meta, stack: String(rawStack).slice(0, 2000) } : meta;
   const errorRecord = {
     code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity,

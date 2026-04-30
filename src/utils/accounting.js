@@ -180,8 +180,10 @@ export async function autoPostJournalEntry({ date, description, reference, prope
   const isReferenceCollision = /\b(reference)\b|idx_je_company_reference_unique/i.test(msg);
   if (isReferenceCollision) {
     // Dedup fired — the caller's deterministic ref already exists. Not
-    // retryable. Treat as the idempotent no-op it represents.
-    pmError("PM-4002", { raw: jeErr, context: "JE reference already posted (dedup) — reference=" + (reference || "(none)"), silent: true, meta: { reference, dedup: true } });
+    // retryable. Treat as the idempotent no-op it represents. We don't
+    // pmError() here: every login + wizard + manual run of the recurring
+    // engine fires this benignly (it's the success path of an
+    // idempotent post), and logging it produced 119/week of pure noise.
     return null;
   }
   if (!isNumberCollision) break; // some other failure — don't loop
@@ -195,7 +197,8 @@ export async function autoPostJournalEntry({ date, description, reference, prope
     // a PM-9005 toast on every dashboard load that auto-posts an
     // already-posted JE.
     if (jeErr?.code === "23505") {
-      pmError("PM-4002", { raw: jeErr, context: "JE unique-violation fallthrough (treated as dedup) — reference=" + (reference || "(none)"), silent: true, meta: { reference, dedup: true } });
+      // 23505 unique-violation fallthrough: same idempotent dedup story
+      // as the explicit isReferenceCollision branch above. Suppress.
       return null;
     }
     pmError("PM-4002", { raw: jeErr, context: "journal entry insert" });

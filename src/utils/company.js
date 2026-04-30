@@ -139,26 +139,46 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
       }
     }
 
-    // PM-9006: Tenant balance vs ledger mismatch (deep only).
-    // Historical rows exist with tenant (name) populated but tenant_id
-    // still null — those would be excluded by an id-only scan, which
-    // then reported false positives for every tenant whose balance
-    // still tracks name-keyed history. Union id-scoped and name-scoped
-    // rows (without double-counting rows that have both) so the check
-    // compares like-for-like.
+    // PM-9006: Tenant balance vs general-ledger mismatch (deep only).
+    //
+    // The cache (tenants.balance) is kept in sync with the GL by the
+    // sync_tenant_balance_lines trigger (20260426000003), which sums
+    // posted acct_journal_lines on the per-tenant AR account. The
+    // sweep used to compare against ledger_entries (a separate
+    // denormalized "tenant payment history" view); when the two
+    // views diverged — which they do whenever a JE bypasses the
+    // ledger_entries insert path — every drifted row produced a
+    // false-positive PM-9006 even though the GL was correct. Compare
+    // against the same source the trigger writes against so detection
+    // matches truth.
     if (deep) {
       const { data: tenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null).limit(INTEGRITY_MAX_TENANTS);
       for (const t of (tenants || [])) {
-        const [{ data: byId }, { data: byNameOnly }] = await Promise.all([
-          supabase.from("ledger_entries").select("id, amount").eq("company_id", companyId).eq("tenant_id", t.id).limit(INTEGRITY_MAX_LEDGER_PER_TENANT),
-          supabase.from("ledger_entries").select("id, amount").eq("company_id", companyId).eq("tenant", t.name).is("tenant_id", null).limit(INTEGRITY_MAX_LEDGER_PER_TENANT),
-        ]);
-        const seen = new Set((byId || []).map(e => e.id));
-        const idTotal = (byId || []).reduce((s, e) => s + safeNum(e.amount), 0);
-        const nameOnlyTotal = (byNameOnly || []).filter(e => !seen.has(e.id)).reduce((s, e) => s + safeNum(e.amount), 0);
-        const ledgerTotal = idTotal + nameOnlyTotal;
-        if (Math.abs(safeNum(t.balance) - ledgerTotal) > 0.01) {
-          violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match ledger ($${ledgerTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, ledgerTotal, idTotal, nameOnlyTotal } });
+        const { data: accts } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("tenant_id", t.id);
+        const accountIds = (accts || []).map(a => a.id);
+        if (accountIds.length === 0) continue; // tenant has no per-AR account → nothing to check
+        const { data: lines } = await supabase.from("acct_journal_lines")
+          .select("debit, credit, journal_entry_id")
+          .eq("company_id", companyId)
+          .in("account_id", accountIds)
+          .limit(INTEGRITY_MAX_LEDGER_PER_TENANT);
+        if (!lines || lines.length === 0) {
+          if (Math.abs(safeNum(t.balance)) > 0.01) {
+            violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match GL ($0.00)`, meta: { tenantId: t.id, storedBalance: t.balance, glTotal: 0 } });
+          }
+          continue;
+        }
+        // Filter to posted JEs.
+        const jeIds = [...new Set(lines.map(l => l.journal_entry_id))];
+        const { data: jes } = await supabase.from("acct_journal_entries").select("id, status").in("id", jeIds);
+        const postedSet = new Set((jes || []).filter(j => j.status === "posted").map(j => j.id));
+        let glTotal = 0;
+        for (const l of lines) {
+          if (!postedSet.has(l.journal_entry_id)) continue;
+          glTotal += safeNum(l.debit) - safeNum(l.credit);
+        }
+        if (Math.abs(safeNum(t.balance) - glTotal) > 0.01) {
+          violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match GL ($${glTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, glTotal } });
         }
       }
     }
