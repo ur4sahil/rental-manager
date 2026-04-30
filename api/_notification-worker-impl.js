@@ -395,9 +395,13 @@ module.exports = async (req, res) => {
   // Step 1: pull candidate IDs (oldest-first). We do a separate UPDATE
   // per row so the WHERE status='pending' guard makes the claim
   // atomic — concurrent workers can't grab a row another already won.
+  // Filter out rows whose scheduled_for is in the future (quiet hours
+  // deferral). NULL scheduled_for = ready immediately.
+  const nowIso = new Date().toISOString();
   const { data: candidates, error: pendErr } = await sb.from("notification_queue")
-    .select("id, company_id, type, recipient_email, data, created_at")
+    .select("id, company_id, type, recipient_email, data, cc, bcc, created_at, scheduled_for")
     .eq("status", "pending")
+    .or("scheduled_for.is.null,scheduled_for.lte." + nowIso)
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
   if (pendErr) { res.status(500).json({ error: "queue read failed: " + pendErr.message }); return; }
@@ -432,18 +436,21 @@ module.exports = async (req, res) => {
     return name;
   }
   // Per-(company,type) template cache for company-specific overrides.
+  // Reads both subject_template and template (body). Either column
+  // overrides the corresponding DEFAULTS field independently — admins
+  // can customize the subject without rewriting the body or vice versa.
   const templateCache = new Map();
   async function templateFor(companyId, type) {
     const key = companyId + "::" + type;
     if (templateCache.has(key)) return templateCache.get(key);
     const { data } = await sb.from("notification_settings")
-      .select("template, enabled")
+      .select("template, subject_template, enabled")
       .eq("company_id", companyId).eq("event_type", type).maybeSingle();
-    let tmpl = DEFAULTS[type] || { subject: type, body: "{{json}}" };
-    // Custom template stored as plain text — used as the BODY only;
-    // we keep the default subject. (notification_settings has no
-    // separate subject column today.)
-    if (data?.template) tmpl = { subject: tmpl.subject, body: data.template };
+    const def = DEFAULTS[type] || { subject: type, body: "{{json}}" };
+    const tmpl = {
+      subject: data?.subject_template || def.subject,
+      body: data?.template || def.body,
+    };
     const enabled = data ? data.enabled !== false : true;
     const result = { ...tmpl, enabled };
     templateCache.set(key, result);
@@ -497,14 +504,18 @@ module.exports = async (req, res) => {
     const subject = render(tmpl.subject, renderData) || `[${row.type}]`;
     const body = render(tmpl.body, renderData);
 
+    // cc/bcc were stamped on the row at queue-insert time (a settings
+    // change shouldn't retroactively rewrite addressing on already-
+    // queued rows). Treat empty arrays as "don't pass" to Resend.
+    const ccArr = Array.isArray(row.cc) ? row.cc.filter(Boolean) : [];
+    const bccArr = Array.isArray(row.bcc) ? row.bcc.filter(Boolean) : [];
+    const sendOpts = { from: EMAIL_FROM, to: row.recipient_email, subject, text: body };
+    if (ccArr.length) sendOpts.cc = ccArr;
+    if (bccArr.length) sendOpts.bcc = bccArr;
+
     try {
       await paceForResend();
-      let result = await resend.emails.send({
-        from: EMAIL_FROM,
-        to: row.recipient_email,
-        subject,
-        text: body,
-      });
+      let result = await resend.emails.send(sendOpts);
       // Resend SDK v3+: success → { data: { id }, error: null }.
       // Rate-limit error message contains "Too many requests"; back
       // off and retry once before giving up.
@@ -513,7 +524,7 @@ module.exports = async (req, res) => {
       if (isRateLimit) {
         await sleep(1200);
         lastSendAt = Date.now();
-        result = await resend.emails.send({ from: EMAIL_FROM, to: row.recipient_email, subject, text: body });
+        result = await resend.emails.send(sendOpts);
         providerErr = result?.error;
       }
       const messageId = result?.data?.id;
@@ -536,15 +547,24 @@ module.exports = async (req, res) => {
     }
   }
 
-  // TTL sweep — anything stuck pending >24h likely had a non-recoverable
-  // error from before the worker existed. Mark them as expired so the
-  // queue dashboard isn't permanently red.
+  // TTL sweep — anything stuck pending >24h past its eligible-to-send
+  // time gets marked failed. For deferred rows (quiet hours), eligibility
+  // starts at scheduled_for; for immediate rows, at created_at. Without
+  // the coalesce, a row scheduled 23h in the future would be auto-failed
+  // before its window even opened.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Supabase JS doesn't expose coalesce directly; do two updates —
+  // one for rows with scheduled_for, one without. Cheap, exclusive.
   await sb.from("notification_queue").update({
     status: "failed",
     processed_at: new Date().toISOString(),
     error_message: "expired before worker pickup (>24h pending)",
-  }).eq("status", "pending").lt("created_at", cutoff);
+  }).eq("status", "pending").is("scheduled_for", null).lt("created_at", cutoff);
+  await sb.from("notification_queue").update({
+    status: "failed",
+    processed_at: new Date().toISOString(),
+    error_message: "expired before worker pickup (>24h past scheduled_for)",
+  }).eq("status", "pending").not("scheduled_for", "is", null).lt("scheduled_for", cutoff);
 
   // Recover rows stuck in 'processing' — a worker claimed them but
   // crashed/timed out before completing. Anything older than 5 minutes
