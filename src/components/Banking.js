@@ -214,6 +214,41 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     return idx;
   }, [journalEntries]);
 
+  // True unfiltered pending-net + count per feed. The `transactions`
+  // state is filtered by the date-range cutoff (default 90 days),
+  // which makes pending look smaller than it actually is — and the
+  // reconciliation math then doesn't tie out (Bank/Books are totals,
+  // Pending was a 90-day slice). Fetch a real per-feed roll-up
+  // separately and refresh whenever the date window or the feeds
+  // list changes (post-sync).
+  const [feedPending, setFeedPending] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPending() {
+      if (!feeds.length) { setFeedPending({}); return; }
+      const out = {};
+      for (const feed of feeds) {
+        const rows = [];
+        let from = 0;
+        while (true) {
+          const { data: page } = await supabase.from("bank_feed_transaction")
+            .select("id, amount, direction")
+            .eq("bank_account_feed_id", feed.id)
+            .eq("status", "for_review")
+            .range(from, from + 999);
+          if (!page?.length) break;
+          rows.push(...page);
+          if (page.length < 1000) break;
+          from += 1000;
+        }
+        out[feed.id] = rows;
+      }
+      if (!cancelled) setFeedPending(out);
+    }
+    loadPending();
+    return () => { cancelled = true; };
+  }, [feeds, transactions.length]);
+
   // Live reconciliation: per-feed Bank vs Books vs Pending Under Review.
   // Returns null bankBal when neither Teller-synced nor a CSV with
   // running balance is available — the panel renders a hint in that
@@ -229,9 +264,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // accounts (checking/savings): inflow adds, outflow subtracts.
     // For credit-card liabilities (credit-normal): outflow charge
     // increases the balance owed; inflow payment decreases it.
-    const pendingTxns = transactions.filter(
-      t => t.bank_account_feed_id === feed.id && t.status === "for_review"
-    );
+    // Source = feedPending[feed.id], the true unfiltered for_review
+    // list (the one in `transactions` state is date-windowed and
+    // would silently understate pending, breaking the math).
+    const pendingTxns = feedPending[feed.id] || [];
     const pendingNet = pendingTxns.reduce((s, t) => {
       const abs = Math.abs(safeNum(t.amount));
       if (isDebitNormal) return s + (t.direction === "inflow" ? abs : -abs);
