@@ -3497,18 +3497,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const arImpact = jeLines.filter(l => arAccountIds.has(l.account_id))
   .reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
 
-  if (Math.abs(arImpact) > 0.01) {
-  try {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
-  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  } catch (e) { pmError("PM-6002", { raw: e, context: "void balance RPC", silent: true }); }
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: tenantName.trim(), tenant_id: tenantRow.id, property: je.property || "",
-  date: formatLocalDate(new Date()),
-  description: "Voided: " + (je.description || "").slice(0, 60),
-  amount: -arImpact, type: "void", balance: 0,
-  });
-  }
+  // JE void: tenants.balance is recomputed by sync_tenant_balance_status
+  // trigger when the JE.status flips to 'voided' (since the AR-line
+  // contribution drops out of the GL sum). The view ledger_entries
+  // is GL-derived and excludes voided JEs automatically. No explicit
+  // ledger reversal or balance update needed.
   }
   }
   }
@@ -3588,16 +3581,12 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
         if (tenantRow) { tenantId = tenantRow.id; tenantName = tenantRow.name; }
       }
     }
-    if (tenantId) {
-      const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: -arImpact });
-      if (balErr) pmError("PM-6002", { raw: balErr, context: "reversal balance update", silent: true });
-      await safeLedgerInsert({
-        company_id: companyId, tenant: tenantName, tenant_id: tenantId,
-        property: je.property || "", date: today,
-        description: "Reversal: " + (je.description || "").slice(0, 60),
-        amount: -arImpact, type: "reversal", balance: 0,
-      });
-    }
+    // JE reversal posts a new mirror JE (DR/CR swapped) above. The
+    // sync_tenant_balance_lines trigger fires on those new lines and
+    // recomputes tenants.balance from the GL — no explicit balance
+    // update or safeLedgerInsert needed. The reversal will appear in
+    // the ledger_entries view automatically as a new row sourced from
+    // the new JE.
   }
   logAudit("reverse", "accounting", `Reversed JE ${je.number} → ${newNumber}`, jeRow.id, userProfile?.email, "", companyId);
   showToast(`Reversal posted as ${newNumber}.`, "success");

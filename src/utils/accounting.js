@@ -4,46 +4,17 @@ import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 
-// Safely insert a ledger entry. The running balance is computed
-// server-side inside the same DB transaction as the insert via
-// insert_ledger_entry_with_balance — this replaces the previous
-// client-side read-then-insert pattern that (a) raced under concurrent
-// writes and (b) silently set balance=0 on every fallback row because
-// the lookup query filtered on ledger_entries.archived_at (a column
-// that doesn't exist in this schema — the query always errored and the
-// catch block swallowed it). An explicit non-zero balance passed by
-// the caller is honored as before; otherwise the RPC computes it.
-export async function safeLedgerInsert(entry) {
-  const useRpc = !(entry.balance && entry.balance !== 0);
-  if (useRpc) {
-    const { data, error } = await supabase.rpc("insert_ledger_entry_with_balance", {
-      p_company_id: entry.company_id,
-      p_tenant: entry.tenant || null,
-      p_tenant_id: entry.tenant_id || null,
-      p_property: entry.property || null,
-      p_date: entry.date || null,
-      p_description: entry.description || null,
-      p_amount: safeNum(entry.amount),
-      p_type: entry.type || null,
-    });
-    if (error) {
-      // If the RPC isn't deployed yet, fall through to the direct insert
-      // with balance=0 so we don't drop the audit row. Otherwise surface.
-      const notDeployed = error.message?.includes("insert_ledger_entry_with_balance") && error.message?.includes("Could not find the function");
-      if (!notDeployed) {
-        pmError("PM-6005", { raw: error, context: "ledger entry insert via RPC", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
-        return false;
-      }
-      pmError("PM-6005", { raw: error, context: "ledger RPC missing — direct insert with balance=0", silent: true });
-    } else {
-      return !!data;
-    }
-  }
-  const { error } = await supabase.from("ledger_entries").insert([{ ...entry, balance: safeNum(entry.balance) }]);
-  if (error) {
-    pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
-  }
-  return !error;
+// Phase 4: ledger_entries is now a Postgres view derived from the GL
+// (acct_journal_lines + acct_journal_entries). There is nothing to
+// insert into — every row is computed live from the journal lines
+// posted to per-tenant AR accounts.
+//
+// The function is kept as a no-op shim so any leftover legacy caller
+// doesn't crash. Returns true to mirror the previous "success" code
+// path. New code should use atomicPostJEAndLedger which posts the
+// canonical JE; the view will reflect the row automatically.
+export async function safeLedgerInsert(_entry) {
+  return true;
 }
 
 // Atomic JE + ledger + balance in a single DB transaction via RPC

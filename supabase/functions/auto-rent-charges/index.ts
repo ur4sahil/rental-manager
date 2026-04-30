@@ -83,35 +83,43 @@ serve(async (req) => {
         const rent = lease.rent_amount || 0;
         if (rent <= 0) continue;
 
-        // Post journal entry: DR AR, CR Rental Income (direct insert — no RPC)
-        // Resolve account UUIDs by code column
-        const { data: arAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+        // Resolve per-tenant AR (1100-{tenantId}). Falls back to
+        // generic 1100 for legacy tenants without a per-tenant AR.
+        let arId = null;
+        if (lease.tenant_id) {
+          const { data: arRow } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("tenant_id", lease.tenant_id).maybeSingle();
+          arId = arRow?.id || null;
+        }
+        if (!arId) {
+          const { data: genericAR } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+          arId = genericAR?.id || null;
+        }
         const { data: revAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "4000").maybeSingle();
-        const arId = arAcct?.id || null;
         const revId = revAcct?.id || null;
 
-        const { data: jeRow } = await supabase.from("acct_journal_entries").insert([{
-          company_id: companyId, date: today,
-          description: `Rent charge — ${lease.tenant_name} — ${lease.property}`,
-          reference: ref, property: lease.property || "", status: "posted",
-        }]).select("id").maybeSingle();
-
-        if (jeRow?.id) {
-          await supabase.from("acct_journal_lines").insert([
-            { journal_entry_id: jeRow.id, company_id: companyId, account_id: arId, account_name: "Accounts Receivable", debit: rent, credit: 0, memo: lease.tenant_name },
-            { journal_entry_id: jeRow.id, company_id: companyId, account_id: revId, account_name: "Rental Income", debit: 0, credit: rent, memo: `${lease.tenant_name} — ${lease.property}` },
-          ]);
-        }
-
-        // Create ledger entry — linked to the JE for the unique-index
-        // dedup against the mirror trigger, and the Phase 4 view-from-GL
-        // join key. tenants.balance is now updated by the
-        // sync_tenant_balance_lines trigger off the GL line above.
-        await supabase.from("ledger_entries").insert({
-          company_id: companyId, tenant: lease.tenant_name, property: lease.property,
-          date: today, description: `Rent charge — ${currentMonth}`,
-          amount: rent, type: "charge", balance: 0,
-          journal_entry_id: jeRow?.id || null,
+        // Post via post_je_and_ledger RPC so the JE + ledger row are
+        // atomic. The view (Phase 4) reads ledger_entries from the
+        // GL on-demand, so the explicit ledger_entries insert is
+        // redundant — the RPC's Step 3 still does it for now to keep
+        // the legacy table consistent during the transition.
+        await supabase.rpc("post_je_and_ledger", {
+          p_company_id: companyId,
+          p_date: today,
+          p_description: `Rent charge — ${lease.tenant_name} — ${lease.property}`,
+          p_reference: ref,
+          p_property: lease.property || "",
+          p_status: "posted",
+          p_lines: [
+            { account_id: arId, account_name: `AR - ${lease.tenant_name}`, debit: rent, credit: 0, memo: lease.tenant_name },
+            { account_id: revId, account_name: "Rental Income", debit: 0, credit: rent, memo: `${lease.tenant_name} — ${lease.property}` },
+          ],
+          p_ledger_tenant: lease.tenant_name,
+          p_ledger_tenant_id: lease.tenant_id || null,
+          p_ledger_property: lease.property || null,
+          p_ledger_amount: rent,
+          p_ledger_type: "charge",
+          p_ledger_description: `Rent charge — ${currentMonth}`,
+          p_balance_change: 0,
         });
 
         totalRentCharged++;

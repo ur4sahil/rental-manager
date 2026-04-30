@@ -240,8 +240,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ]
   });
   if (!_jeOk) { pmError("PM-4006", { raw: new Error("JE post failed"), context: "posting utility payment accounting entry" }); }
-  // #15: Create ledger entry for utility payment
-  await safeLedgerInsert({ company_id: companyId, tenant: "", property: u.property, date: formatLocalDate(new Date()), description: `Utility: ${u.provider}`, amount: amt, type: "expense", balance: 0 });
+  // Utility payments are an expense, not tenant AR — they don't
+  // belong in the tenant ledger view. Removed the safeLedgerInsert
+  // that mistakenly stored them as type="expense" with empty
+  // tenant. The JE above is the canonical record.
   }
   // #14: Add audit trail logging for utility payment
   logAudit("update", "utilities", `Utility paid: ${u.provider} ${formatCurrency(u.amount)} for ${u.property}`, u.id, userProfile?.email, userRole, companyId);

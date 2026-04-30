@@ -109,36 +109,43 @@ serve(async (req) => {
             p_company_id: companyId,
           });
 
-          // Post journal entry: DR Checking, CR AR (direct insert — no RPC)
+          // Post via the canonical post_je_and_ledger RPC so the JE
+          // posts on the per-tenant AR sub-account (1100-{tenantId}),
+          // which is what the GL-derived ledger view reads from. The
+          // RPC also handles the ledger_entries row (Phase 4: view).
           const { data: chkAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1000").maybeSingle();
-          const { data: arAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
-          const payDate = new Date().toISOString().slice(0, 10);
-          const { data: stripeJE } = await supabase.from("acct_journal_entries").insert([{
-            company_id: companyId, date: payDate,
-            description: `Stripe payment — ${session.metadata?.tenantName} — ${property}`,
-            reference: `STRIPE-${session.id.slice(-12)}`, property: property || "", status: "posted",
-          }]).select("id").maybeSingle();
-          if (stripeJE?.id) {
-            await supabase.from("acct_journal_lines").insert([
-              { journal_entry_id: stripeJE.id, company_id: companyId, account_id: chkAcct?.id || null, account_name: "Checking Account", debit: amount, credit: 0, memo: `Stripe ${session.id.slice(-8)}` },
-              { journal_entry_id: stripeJE.id, company_id: companyId, account_id: arAcct?.id || null, account_name: "Accounts Receivable", debit: 0, credit: amount, memo: session.metadata?.tenantName || "" },
-            ]);
+          // Look up tenant + their per-tenant AR account (created by the
+          // app on tenant creation). Falls back to generic 1100 if not
+          // found — at least keeps the JE balanced.
+          const { data: tenantRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", session.metadata?.tenantName || "").is("archived_at", null).maybeSingle();
+          let arAcctId = null;
+          if (tenantRow?.id) {
+            const { data: arRow } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("tenant_id", tenantRow.id).maybeSingle();
+            arAcctId = arRow?.id || null;
           }
-
-          // Create ledger entry — linked to the JE we just posted so
-          // the unique (journal_entry_id, tenant_id) index dedupes
-          // against any future trigger-based mirror, and Phase 4's
-          // view-from-GL has a join key.
-          await supabase.from("ledger_entries").insert({
-            company_id: companyId,
-            tenant: session.metadata?.tenantName,
-            property,
-            date: new Date().toISOString().slice(0, 10),
-            description: "Stripe payment received",
-            amount: -amount,
-            type: "payment",
-            balance: 0,
-            journal_entry_id: stripeJE?.id || null,
+          if (!arAcctId) {
+            const { data: genericAR } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+            arAcctId = genericAR?.id || null;
+          }
+          const payDate = new Date().toISOString().slice(0, 10);
+          await supabase.rpc("post_je_and_ledger", {
+            p_company_id: companyId,
+            p_date: payDate,
+            p_description: `Stripe payment — ${session.metadata?.tenantName} — ${property}`,
+            p_reference: `STRIPE-${session.id.slice(-12)}`,
+            p_property: property || "",
+            p_status: "posted",
+            p_lines: [
+              { account_id: chkAcct?.id || null, account_name: "Checking Account", debit: amount, credit: 0, memo: `Stripe ${session.id.slice(-8)}` },
+              { account_id: arAcctId, account_name: `AR - ${session.metadata?.tenantName || ""}`, debit: 0, credit: amount, memo: session.metadata?.tenantName || "" },
+            ],
+            p_ledger_tenant: session.metadata?.tenantName || null,
+            p_ledger_tenant_id: tenantRow?.id || null,
+            p_ledger_property: property || null,
+            p_ledger_amount: amount,
+            p_ledger_type: "payment",
+            p_ledger_description: "Stripe payment received",
+            p_balance_change: 0,
           });
 
           // Log audit

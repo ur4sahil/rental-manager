@@ -221,11 +221,11 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // Update property status back to vacant
   const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: "" }).eq("company_id", companyId).eq("address", lease.property);
   if (_err4670) { showToast("Error updating properties: " + _err4670.message, "error"); return; }
-  // Create termination ledger entry
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property, date: formatLocalDate(new Date()),
-  description: "Lease terminated", amount: 0, type: "adjustment", balance: 0,
-  });
+  // Lease termination is audit-only — recorded via logAudit below.
+  // Removed the zero-amount safeLedgerInsert that used to live here:
+  // ledger_entries is GL-derived now (Phase 4) and only carries
+  // financial events backed by a journal entry. Termination state
+  // changes belong in audit_trail, not the tenant ledger.
   }
   logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
   fetchData();
