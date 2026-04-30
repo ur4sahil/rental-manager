@@ -107,8 +107,13 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   // vendor_name + assigned so all three columns reflect the same
   // entity. Free-text "Other" assignments leave vendor_id null.
   const pickedVendor = form.vendor_id ? vendors.find(v => String(v.id) === String(form.vendor_id)) : null;
+  // Coerce blank cost to null. Postgres rejects "" for numeric columns
+  // with PM-7001 ("invalid input syntax for type numeric: \"\"") — the
+  // form leaves the field blank when the user hasn't entered a cost.
+  const costClean = (form.cost === "" || form.cost == null) ? null : (Number(form.cost) || 0);
   const payload = {
     ...form,
+    cost: costClean,
     vendor_id: pickedVendor ? pickedVendor.id : null,
     vendor_name: pickedVendor ? pickedVendor.name : "",
     assigned: pickedVendor ? pickedVendor.name : (form.assigned || ""),

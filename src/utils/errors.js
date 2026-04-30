@@ -211,6 +211,21 @@ export function pmError(code, { raw = null, context = "", silent = false, meta =
     try { console.warn(`[${resolvedCode}] anon-state RLS rejection (suppressed)`, { context, raw: rawMessage.slice(0, 200) }); } catch (_) {}
     return null;
   }
+  // Mobile network drops in the foreground are expected user-experience
+  // events, not bugs. Safari iOS reports an aborted fetch as
+  // "Load failed", Chrome as "Failed to fetch" / "NetworkError". When
+  // these fire from a Messages thread fetch or a push registration the
+  // user is just on flaky cellular — they'll retry, and we don't want
+  // 40+/week of identical noise in error_log. Suppress these when:
+  //   (a) navigator is offline, OR
+  //   (b) the message clearly indicates a network abort.
+  // Authenticated users still get the toast (silent:false) so they
+  // know the action didn't go through; just don't persist the row.
+  const isNetworkAbort = /load failed|failed to fetch|networkerror|the network connection was lost|aborted/i.test(rawMessage);
+  if ((resolvedCode === "PM-8006" || resolvedCode === "PM-8001") && isNetworkAbort) {
+    try { console.warn(`[${resolvedCode}] network abort (suppressed)`, { context, raw: rawMessage.slice(0, 200) }); } catch (_) {}
+    return null;
+  }
   const enrichedMeta = rawStack ? { ...meta, stack: String(rawStack).slice(0, 2000) } : meta;
   const errorRecord = {
     code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity,
