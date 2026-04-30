@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink} from "../ui";
-import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -194,6 +194,65 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [matchCandidates, setMatchCandidates] = useState([]);
   const [matchLoading, setMatchLoading] = useState(false);
 
+  // Per-account debit/credit totals from posted journal lines. Used by
+  // the live reconciliation panel below to compute Books balance for
+  // each linked GL account in O(N) once per render. Inlined rather
+  // than imported from Accounting.js because Accounting imports this
+  // file (line 13 there) — a back-import would create a circular
+  // module reference.
+  const balanceIndex = useMemo(() => {
+    const idx = {};
+    for (const je of journalEntries || []) {
+      if (je.status !== "posted") continue;
+      for (const l of (je.lines || [])) {
+        if (!l.account_id) continue;
+        if (!idx[l.account_id]) idx[l.account_id] = { debit: 0, credit: 0 };
+        idx[l.account_id].debit += safeNum(l.debit);
+        idx[l.account_id].credit += safeNum(l.credit);
+      }
+    }
+    return idx;
+  }, [journalEntries]);
+
+  // Live reconciliation: per-feed Bank vs Books vs Pending Under Review.
+  // Returns null bankBal when neither Teller-synced nor a CSV with
+  // running balance is available — the panel renders a hint in that
+  // case instead of a misleading $0.
+  const DEBIT_NORMAL_TYPES = ["Asset", "Cost of Goods Sold", "Expense", "Other Expense"];
+  function computeFeedRecon(feed) {
+    const acct = accounts.find(a => a.id === feed.gl_account_id);
+    const isDebitNormal = !!(acct && DEBIT_NORMAL_TYPES.includes(acct.type));
+    const entry = balanceIndex[feed.gl_account_id] || { debit: 0, credit: 0 };
+    const bookBal = isDebitNormal ? entry.debit - entry.credit : entry.credit - entry.debit;
+
+    // Pending net is signed to the bank's perspective. For asset
+    // accounts (checking/savings): inflow adds, outflow subtracts.
+    // For credit-card liabilities (credit-normal): outflow charge
+    // increases the balance owed; inflow payment decreases it.
+    const pendingTxns = transactions.filter(
+      t => t.bank_account_feed_id === feed.id && t.status === "for_review"
+    );
+    const pendingNet = pendingTxns.reduce((s, t) => {
+      const abs = Math.abs(safeNum(t.amount));
+      if (isDebitNormal) return s + (t.direction === "inflow" ? abs : -abs);
+      return s + (t.direction === "outflow" ? abs : -abs);
+    }, 0);
+
+    let bankBal = feed.bank_balance_current;
+    if (bankBal == null) {
+      // CSV-only feed: fall back to the most recent imported row's
+      // running balance if the importer captured it.
+      const latest = transactions
+        .filter(t => t.bank_account_feed_id === feed.id && t.balance_after != null)
+        .sort((a, b) => (b.posted_date || "").localeCompare(a.posted_date || ""))[0];
+      bankBal = latest ? safeNum(latest.balance_after) : null;
+    }
+
+    const diff = bankBal == null ? null : Math.round((bankBal - bookBal - pendingNet) * 100) / 100;
+    const isReconciled = diff != null && Math.abs(diff) < 0.01;
+    return { bankBal, bookBal, pendingNet, pendingCount: pendingTxns.length, diff, isReconciled };
+  }
+
   // Fetch on mount + whenever date-range window changes (re-fetches txns)
   useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, [companyId]);
   useEffect(() => {
@@ -215,6 +274,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const f = feeds.find(x => x.id === selectedFeed);
     if (f && (f.status === "inactive" || !f.gl_account_id)) setSelectedFeed("all");
   }, [feeds, selectedFeed, showHiddenFeeds]);
+
+  // First-time mismatch alert per feed per session. Re-firing every
+  // render would spam — the ref tracks which feeds we've already
+  // warned about. Cleared on a hard reload (component remount).
+  const warnedFeedIds = useRef(new Set());
+  useEffect(() => {
+    if (loading) return;
+    for (const feed of feeds) {
+      if (feed.status === "inactive" || !feed.gl_account_id) continue;
+      const r = computeFeedRecon(feed);
+      if (r.bankBal == null || r.isReconciled) continue;
+      if (warnedFeedIds.current.has(feed.id)) continue;
+      warnedFeedIds.current.add(feed.id);
+      showToast(`Reconciliation mismatch on ${feed.account_name}: ${formatCurrency(r.diff)}. Check for missing or duplicate transactions.`, "error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feeds, transactions, balanceIndex, loading]);
 
   // Minimum bank_feed_transaction column set. The full row has 33 columns;
   // only these are consumed by the UI (sort/filter/display/action). Dropped:
@@ -1634,6 +1710,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
+          {(() => {
+            // Tiny reconciliation indicator — green ✓ when bank+books
+            // align (after pending), red ⚠ when they don't. Hidden for
+            // feeds with no bank balance to compare against.
+            const r = computeFeedRecon(feed);
+            if (r.bankBal == null) return null;
+            return r.isReconciled
+              ? <span className="text-xs text-positive-600" title="Reconciled">✓</span>
+              : <span className="text-xs text-danger-600 font-bold" title={`Mismatch: ${formatCurrency(r.diff)} (Bank − Books − Pending)`}>⚠</span>;
+          })()}
         </div>
       </button>
       {isMenuOpen && <>
@@ -1682,6 +1768,63 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <Btn variant="primary" onClick={() => setShowNewAccount(true)}>+ Add Bank Account</Btn>
   </div>
   )}
+
+  {/* Live reconciliation panel — QBO-style Bank vs Books vs Pending */}
+  {feeds.length > 0 && (() => {
+    const isFeedHidden = (f) => f.status === "inactive" || !f.gl_account_id;
+    const visibleFeeds = showHiddenFeeds ? feeds : feeds.filter(f => !isFeedHidden(f));
+    const target = selectedFeed === "all" ? null : feeds.find(f => f.id === selectedFeed);
+    const recons = (target ? [target] : visibleFeeds).map(f => ({ feed: f, ...computeFeedRecon(f) }));
+    if (recons.length === 0) return null;
+    const summable = recons.filter(r => r.bankBal != null);
+    const agg = {
+      bankBal: summable.length ? summable.reduce((s, r) => s + r.bankBal, 0) : null,
+      bookBal: recons.reduce((s, r) => s + r.bookBal, 0),
+      pendingNet: recons.reduce((s, r) => s + r.pendingNet, 0),
+      pendingCount: recons.reduce((s, r) => s + r.pendingCount, 0),
+    };
+    agg.diff = agg.bankBal == null ? null : Math.round((agg.bankBal - agg.bookBal - agg.pendingNet) * 100) / 100;
+    agg.isReconciled = agg.diff != null && Math.abs(agg.diff) < 0.01;
+    const noBankBal = agg.bankBal == null;
+    const wrapCls = noBankBal
+      ? "border-neutral-200 bg-white"
+      : agg.isReconciled
+        ? "border-positive-200 bg-positive-50/40"
+        : "border-danger-300 bg-danger-50/50";
+    const lastSync = target?.last_synced_at ? ` · synced ${new Date(target.last_synced_at).toLocaleDateString()}` : "";
+    return (
+      <div className={`rounded-xl border-2 ${wrapCls} p-3 flex flex-wrap gap-4 items-center mb-3`}>
+        <div className="flex-1 min-w-32">
+          <div className="text-xs text-neutral-400">Bank Balance{lastSync}</div>
+          <div className="text-lg font-bold text-neutral-800">{noBankBal ? "—" : formatCurrency(agg.bankBal)}</div>
+        </div>
+        <div className="flex-1 min-w-32">
+          <div className="text-xs text-neutral-400">In Books</div>
+          <div className="text-lg font-bold text-neutral-800">{formatCurrency(agg.bookBal)}</div>
+        </div>
+        <div className="flex-1 min-w-32">
+          <div className="text-xs text-neutral-400">Pending Under Review</div>
+          <div className="text-lg font-bold text-neutral-800">
+            {formatCurrency(agg.pendingNet)}
+            <span className="text-xs text-neutral-400 ml-1">({agg.pendingCount} txn{agg.pendingCount === 1 ? "" : "s"})</span>
+          </div>
+        </div>
+        <div className="flex-1 min-w-40 text-right">
+          {noBankBal ? (
+            <span className="text-xs text-neutral-500">Connect bank or import a CSV with running balance</span>
+          ) : agg.isReconciled ? (
+            <span className="text-xs px-2 py-1 rounded-full bg-positive-100 text-positive-700 font-semibold">✓ Reconciled</span>
+          ) : (
+            <>
+              <span className="text-xs px-2 py-1 rounded-full bg-danger-100 text-danger-700 font-bold">⚠ Mismatch</span>
+              <div className="text-sm font-bold text-danger-700 mt-1">{formatCurrency(agg.diff)}</div>
+              <div className="text-[11px] text-danger-500">Bank − (Books + Pending)</div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  })()}
 
   {/* Tabs */}
   {feeds.length > 0 && (<>
