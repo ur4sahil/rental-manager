@@ -9,6 +9,7 @@ import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
 import { queueNotification } from "../utils/notifications";
 import { COMPANY_DEFAULTS } from "../config";
 import { Spinner } from "./shared";
+import AdminNotificationRules from "./AdminNotificationRules";
 
 // ============ ROLE DEFINITIONS ============
 // Mirror of ROLES in App.js. The two must stay in sync — App.js is
@@ -1356,13 +1357,14 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   </TextLink>
   </div>
   )}
-  <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["settings", "Settings"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
-  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
+  <div className="flex gap-1 mb-4 border-b border-brand-50 overflow-x-auto">
+  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["notifications", "Notifications"], ["settings", "Settings"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
+  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
   {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  {adminTab === "notifications" && isAdmin && <AdminNotificationRules companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {adminTab === "settings" && isAdmin && <CompanySettingsPanel companyId={companyId} showToast={showToast} userProfile={userProfile} companySettings={companySettings} setCompanySettings={setCompanySettings} />}
   {adminTab === "errors" && isAdmin && <ErrorLogDashboard companyId={companyId} showToast={showToast} />}
   </div>

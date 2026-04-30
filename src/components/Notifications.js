@@ -246,6 +246,50 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
   );
 }
 
+// Master event registry — single source of truth for the human label,
+// icon, and description shown on the Notifications page AND the Admin
+// → Notifications rule editor. Add new types here as they're wired
+// into queueNotification call sites.
+//
+// `category` groups rules into sections in the admin editor.
+// `vars` lists the {{tokens}} the worker substitutes when rendering;
+// shown to admins below the body editor so they know what they can
+// reference.
+export const eventLabels = {
+  // Tenant lifecycle
+  move_in:             { label: "Move-in welcome",         icon: "🏠", desc: "When a tenant is added to a property",        category: "Tenant lifecycle", vars: ["tenant","property","moveInDate","company_name","app_url"] },
+  move_out:            { label: "Move-out completed",      icon: "🚪", desc: "When move-out wizard runs",                    category: "Tenant lifecycle", vars: ["tenant","property","moveOutDate","company_name","app_url"] },
+  lease_created:       { label: "Lease created",           icon: "📝", desc: "When a new lease is saved",                    category: "Tenant lifecycle", vars: ["tenant","property","startDate","endDate","rent","company_name","app_url"] },
+  lease_expiring:      { label: "Lease expiring",          icon: "⏰", desc: "Cron — N days before lease end",               category: "Tenant lifecycle", vars: ["tenant","property","date","daysLeft","company_name","app_url"] },
+  lease_expiry:        { label: "Lease expiry alert",      icon: "⏰", desc: "Cron — 60 days before lease end",              category: "Tenant lifecycle", vars: ["tenant","property","date","daysLeft","company_name","app_url"] },
+  // Money
+  rent_due:            { label: "Rent due reminder",       icon: "💰", desc: "Cron — N days before rent is due",             category: "Money",            vars: ["tenant","property","amount","date","month","company_name","app_url"] },
+  rent_overdue:        { label: "Rent past due",           icon: "🔴", desc: "When a payment goes past its grace period",    category: "Money",            vars: ["tenant","property","balance","company_name","app_url"] },
+  payment_received:    { label: "Payment received (tenant)", icon: "✅", desc: "Tenant-facing thank-you — Stripe + manual",  category: "Money",            vars: ["tenant","amount","date","property","company_name","app_url"] },
+  payment_received_admin: { label: "Payment received (staff)", icon: "✅", desc: "Staff heads-up after a tenant pays",       category: "Money",            vars: ["tenant","amount","date","property","company_name","app_url"] },
+  payment_failed:      { label: "Autopay failed (tenant)", icon: "❌", desc: "Off-session autopay decline — to tenant",     category: "Money",            vars: ["tenant","amount","date","property","error","company_name","app_url"] },
+  payment_failed_admin:{ label: "Autopay failed (staff)",  icon: "❌", desc: "Off-session autopay decline — to staff",      category: "Money",            vars: ["tenant","amount","date","property","error","company_name","app_url"] },
+  late_fee_applied:    { label: "Late fee applied",        icon: "💸", desc: "When admin applies a late fee",                category: "Money",            vars: ["tenant","property","amount","daysLate","balance","company_name","app_url"] },
+  // Maintenance
+  work_order_created:  { label: "Maintenance request created", icon: "🔧", desc: "When admin creates a work order",          category: "Maintenance",      vars: ["tenant","property","issue","priority","company_name","app_url"] },
+  work_order_completed:{ label: "Maintenance completed",   icon: "🛠️", desc: "When a work order is closed",                  category: "Maintenance",      vars: ["tenant","property","issue","company_name","app_url"] },
+  work_order_update:   { label: "Maintenance update",      icon: "🔧", desc: "Status change on an open work order",          category: "Maintenance",      vars: ["tenant","property","issue","status","company_name","app_url"] },
+  inspection_due:      { label: "Inspection reminder",     icon: "🔍", desc: "Before a scheduled inspection",                category: "Maintenance",      vars: ["property","date","company_name","app_url"] },
+  insurance_expiring:  { label: "Vendor insurance expiring", icon: "🛡️", desc: "Vendor coverage about to lapse",            category: "Maintenance",      vars: ["vendor","date","company_name","app_url"] },
+  // Communication
+  message_received:    { label: "New message",             icon: "💬", desc: "Tenant↔staff thread",                          category: "Communication",    vars: ["sender","tenant","property","preview","company_name","app_url"] },
+  // Operations
+  deposit_returned:    { label: "Deposit settlement",      icon: "🪙", desc: "After move-out deposit accounting",            category: "Operations",       vars: ["tenant","property","returned","deducted","company_name","app_url"] },
+  approval_pending:    { label: "Approval needed",         icon: "🔔", desc: "Action requires a manager/admin review",       category: "Operations",       vars: ["summary","requester","company_name","app_url"] },
+  approval_request:    { label: "Approval request",        icon: "🔔", desc: "Synonym used by some flows",                   category: "Operations",       vars: ["summary","requester","company_name","app_url"] },
+  owner_statement:     { label: "Owner statement",         icon: "📊", desc: "Monthly statement available for owner",        category: "Operations",       vars: ["owner","period","net","company_name","app_url"] },
+  signed_doc_copy:     { label: "Signed document copy",    icon: "📄", desc: "After eSignature completes",                   category: "Operations",       vars: ["doc_name","signer_name","company_name","app_url"] },
+  document_uploaded:   { label: "Document uploaded",       icon: "📎", desc: "When a doc is added to a tenant/property",     category: "Operations",       vars: ["tenant","doc_name","property","company_name","app_url"] },
+  invoice_approved:    { label: "Invoice approved",        icon: "✔️", desc: "Vendor invoice approved",                       category: "Operations",       vars: ["vendor","amount","company_name","app_url"] },
+  invoice_rejected:    { label: "Invoice rejected",        icon: "✖️", desc: "Vendor invoice rejected",                       category: "Operations",       vars: ["vendor","amount","reason","company_name","app_url"] },
+  error_reported:      { label: "Account error",           icon: "🚨", desc: "Critical PM-XXXX error",                       category: "Operations",       vars: ["code","context","company_name","app_url"] },
+};
+
 // Day bucket for grouping Activity / History rows. Returns "Today",
 // "Yesterday", or "Earlier" — matches macOS Mail / iOS conventions
 // rather than absolute dates, which read more friendly for a feed.
@@ -291,19 +335,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
 
   const channels = ["in_app", "email", "push"];
   const channelLabels = { in_app: "In-app", email: "Email", push: "Push" };
-
-  const eventLabels = {
-    rent_due:           { label: "Rent due reminder",        icon: "💰", desc: "Sent before rent is due" },
-    rent_overdue:       { label: "Rent overdue notice",      icon: "⚠️", desc: "Sent when rent is past due" },
-    lease_expiring:     { label: "Lease expiration alert",   icon: "📝", desc: "Sent before a lease expires" },
-    work_order_update:  { label: "Work order update",        icon: "🔧", desc: "When maintenance status changes" },
-    payment_received:   { label: "Payment confirmation",     icon: "✅", desc: "When a payment is recorded" },
-    lease_created:      { label: "New lease created",        icon: "🏠", desc: "When a new lease is signed" },
-    insurance_expiring: { label: "Vendor insurance alert",   icon: "🛡️", desc: "When vendor insurance is expiring" },
-    inspection_due:     { label: "Inspection reminder",      icon: "🔍", desc: "Before a scheduled inspection" },
-    message_received:   { label: "New message",              icon: "💬", desc: "When a tenant or landlord sends a message" },
-    approval_pending:   { label: "Approval needed",          icon: "🔔", desc: "When a change or document exception is requested" },
-  };
+  // eventLabels is now module-level and exported (see top of file)
+  // so Admin.js can reuse the same map.
 
   const fetchData = useCallback(async () => {
     setLoading(true);
