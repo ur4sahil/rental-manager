@@ -29,6 +29,7 @@ const { Resend } = require("resend");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
+const { TEMPLATES: SHARED_TEMPLATES } = require("../src/utils/notificationTemplates");
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const EMAIL_FROM = process.env.EMAIL_FROM || "";
@@ -40,13 +41,12 @@ const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BATCH_SIZE = 50;
 const MAX_ERROR_MSG_LEN = 500;
 
-// Default templates per notification type. Subject + plain-text body
-// (Resend will auto-generate the HTML representation). Variables in
-// {{double-curlies}} are substituted from the row's `data` JSON,
-// plus a few injected from the company / app context.
-//
-// To override per company, set notification_settings.template for
-// that (company_id, event_type) row — that takes precedence.
+// Default templates per notification type live in src/utils/
+// notificationTemplates.js — single source of truth shared with the
+// admin editor so the two never drift. SHARED_TEMPLATES is required
+// at the top of this file. The literal map below is kept as a final
+// safety net for legacy types that haven't been migrated to the
+// shared file yet — SHARED_TEMPLATES wins on the lookup path.
 const DEFAULTS = {
   rent_due: {
     subject: "Rent due reminder — {{property}}",
@@ -446,7 +446,10 @@ module.exports = async (req, res) => {
     const { data } = await sb.from("notification_settings")
       .select("template, subject_template, enabled")
       .eq("company_id", companyId).eq("event_type", type).maybeSingle();
-    const def = DEFAULTS[type] || { subject: type, body: "{{json}}" };
+    // Prefer the shared template (matches what the admin editor shows);
+    // fall back to the legacy in-file DEFAULTS for any type the shared
+    // file hasn't picked up; finally a last-resort echo of the type.
+    const def = SHARED_TEMPLATES[type] || DEFAULTS[type] || { subject: type, body: "{{json}}" };
     const tmpl = {
       subject: data?.subject_template || def.subject,
       body: data?.template || def.body,

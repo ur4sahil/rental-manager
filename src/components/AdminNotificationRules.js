@@ -5,6 +5,7 @@ import { pmError } from "../utils/errors";
 import { Spinner, Modal } from "./shared";
 import { eventLabels } from "./Notifications";
 import { defaultRecipientsFor } from "../utils/notificationRecipients";
+import { defaultTemplateFor } from "../utils/notificationTemplates";
 
 // Per-LLC notification rule editor. Lives behind Admin → Notifications.
 // Lets admins decide for every event type:
@@ -307,6 +308,7 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
         subject_template: draft.subject_template || null,
         template: draft.template || null,
         days_before: draft.days_before == null ? null : Number(draft.days_before),
+        extra_vars: draft.extra_vars || [],
       };
       let data, error;
       if (setting.id) {
@@ -468,25 +470,22 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
         </Section>
 
         {/* Templates */}
-        <Section title="Email content" hint="Use {{tokens}} below to insert dynamic values. Leave subject or body blank to use the default template.">
+        <Section title="Email content" hint="Prefilled with the default subject + body for this event. Edit freely; saving persists your version. Clearing a field reverts to the default at delivery time.">
           <div className="mb-3">
             <label className="text-xs text-neutral-500 mb-1 block">Subject</label>
-            <Input value={draft.subject_template || ""} onChange={e => patch({ subject_template: e.target.value })} placeholder="Default: " />
+            <Input value={draft.subject_template || ""} onChange={e => patch({ subject_template: e.target.value })} placeholder="Subject line" />
           </div>
           <div className="mb-3">
             <label className="text-xs text-neutral-500 mb-1 block">Body</label>
-            <Textarea rows={6} value={draft.template || ""} onChange={e => patch({ template: e.target.value })} placeholder="Default body — leave blank to use." />
+            <Textarea rows={10} value={draft.template || ""} onChange={e => patch({ template: e.target.value })} placeholder="Email body" />
           </div>
-          <div className="text-xs text-neutral-500 mb-2">
-            Available variables:
-            <div className="flex flex-wrap gap-1 mt-1">
-              {(eventMeta?.vars || []).map(v => (
-                <code key={v} className="text-[11px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded cursor-pointer hover:bg-neutral-200"
-                  onClick={() => navigator.clipboard?.writeText("{{" + v + "}}")}
-                  title="Click to copy">{"{{" + v + "}}"}</code>
-              ))}
-            </div>
-          </div>
+          <VariableChips
+            eventVars={eventMeta?.vars || []}
+            extraVars={draft.extra_vars || []}
+            onAddExtra={(name) => patch({ extra_vars: [...(draft.extra_vars || []), name] })}
+            onRemoveExtra={(name) => patch({ extra_vars: (draft.extra_vars || []).filter(v => v !== name) })}
+            onInsert={(token) => patch({ template: (draft.template || "") + token })}
+          />
           {(draft.subject_template || draft.template) && (
             <Card padding="p-3" className="bg-neutral-50/50 border-neutral-200">
               <div className="text-[11px] font-semibold text-neutral-500 uppercase mb-1">Preview (sample data)</div>
@@ -527,6 +526,12 @@ function normalizeDraft(setting, eventType) {
   // toggles it off via the master switch, not by clearing the list.
   const stored = parseJsonField(setting.custom_recipients) || [];
   const custom_recipients = stored.length > 0 ? stored : defaultRecipientsFor(eventType);
+  // Same logic for subject + body: prefill from the shared default so
+  // admins can see (and edit) the actual email instead of staring at a
+  // blank textarea. Saving persists the value verbatim; clearing it
+  // falls back to the default at delivery time (the worker reads the
+  // same map).
+  const tmpl = defaultTemplateFor(eventType);
   return {
     enabled: setting.enabled !== false,
     channels,
@@ -538,9 +543,10 @@ function normalizeDraft(setting, eventType) {
     quiet_hours_end: setting.quiet_hours_end || null,
     quiet_hours_tz: setting.quiet_hours_tz || "America/New_York",
     severity: setting.severity || "normal",
-    subject_template: setting.subject_template || "",
-    template: setting.template || "",
+    subject_template: setting.subject_template || tmpl.subject || "",
+    template: setting.template || tmpl.body || "",
     days_before: setting.days_before == null ? "" : setting.days_before,
+    extra_vars: parseJsonField(setting.extra_vars) || [],
   };
 }
 
@@ -548,6 +554,54 @@ function parseJsonField(v) {
   if (Array.isArray(v)) return v;
   if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
   return null;
+}
+
+// Variable chip palette. Shows the event's standard variables plus any
+// custom ones the admin has added. Clicking a chip appends `{{var}}` to
+// the body so admins don't have to remember the syntax. Custom vars are
+// for fields the admin expects in the data payload (or wants to use as
+// a placeholder reminder) — adding one here doesn't make data appear at
+// delivery time; it just gives the admin a typed handle in the chip
+// palette. Unknown tokens render as `{{name}}` in the email if no value
+// resolves.
+function VariableChips({ eventVars, extraVars, onAddExtra, onRemoveExtra, onInsert }) {
+  const [name, setName] = useState("");
+  function tryAdd() {
+    const v = name.trim().replace(/[^a-zA-Z0-9_]/g, "");
+    if (!v) return;
+    if (eventVars.includes(v) || (extraVars || []).includes(v)) { setName(""); return; }
+    onAddExtra(v);
+    setName("");
+  }
+  return (
+    <div className="text-xs text-neutral-500 mb-2">
+      <div className="mb-1">Click a variable to insert it into the body.</div>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {eventVars.map(v => (
+          <button key={v} type="button"
+            onClick={() => onInsert("{{" + v + "}}")}
+            className="text-[11px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded hover:bg-brand-100 hover:text-brand-700"
+            title="Click to insert">{"{{" + v + "}}"}</button>
+        ))}
+        {(extraVars || []).map(v => (
+          <span key={v} className="inline-flex items-center gap-1 text-[11px] font-mono bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">
+            <button type="button" onClick={() => onInsert("{{" + v + "}}")} className="hover:underline" title="Click to insert">{"{{" + v + "}}"}</button>
+            <button type="button" onClick={() => onRemoveExtra(v)} className="text-brand-400 hover:text-danger-600" title="Remove">×</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Input size="sm" placeholder="custom_field_name" value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); tryAdd(); } }}
+          className="w-48" />
+        <Btn variant="secondary" size="xs" onClick={tryAdd}>+ Add variable</Btn>
+      </div>
+      <div className="text-[11px] text-neutral-400 mt-1">
+        Custom variables only render if the call site actually carries that data field. Use them as reminders or for vars you've wired up downstream.
+      </div>
+    </div>
+  );
 }
 
 function Section({ title, hint, children }) {
