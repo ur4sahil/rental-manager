@@ -178,14 +178,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Security deposit + rent charges in parallel
   if (_secDep > 0 && tenantId) {
   const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), getOrCreateTenantAR(companyId, _name, tenantId)]);
-  const _depOk = await autoPostJournalEntry({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
+  const _depResult = await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
   lines: [
   { account_id: tenantArId, account_name: "AR - " + _name, debit: _secDep, credit: 0, class_id: classId, memo: "Security deposit from " + _name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
-  ]
+  ],
+  ledgerEntry: { tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit" }
   });
-  if (_depOk) await safeLedgerInsert({ company_id: companyId, tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit", balance: 0 });
-  if (!_depOk) showToast("Security deposit accounting entry failed.", "error");
+  if (!_depResult?.jeId) showToast("Security deposit accounting entry failed.", "error");
   }
   // Rent charges — fire and forget (don't block the popup)
   autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charge posting", silent: true }));

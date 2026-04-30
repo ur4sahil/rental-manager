@@ -7,7 +7,7 @@ import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -117,22 +117,14 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (!error && Number(form.security_deposit) > 0) {
   const classId = await getPropertyClassId(form.property, companyId);
   const dep = Number(form.security_deposit);
-  const _jeOk = await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
   lines: [
   { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
-  ]
+  ],
+  ledgerEntry: tenant?.id ? { tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date, description: "Security deposit collected", amount: dep, type: "deposit" } : null
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  // Create ledger entry for deposit collection
-  if (tenant?.id) {
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date,
-  description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  }
+  if (!_depResult?.jeId) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
   }
   }
   if (error) { pmError("PM-3004", { raw: error, context: "save lease" }); return; }
@@ -276,40 +268,32 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   let returnJeOk = true;
   let deductJeOk = true;
   if (returned > 0) {
-  returnJeOk = !!(await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
+  const _retResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
-  ]
-  }));
+  ],
+  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Security deposit returned", amount: returned, type: "deposit_return" } : null
+  });
+  returnJeOk = !!_retResult?.jeId;
   if (!returnJeOk) showToast("Deposit return accounting entry failed. Please check the accounting module.", "error");
+  if (returnJeOk && lease.tenant_id) runningBalance -= returned;
   }
   if (deducted > 0) {
-  deductJeOk = !!(await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
+  const _dedResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
   { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
-  ]
-  }));
+  ],
+  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction" } : null
+  });
+  deductJeOk = !!_dedResult?.jeId;
   if (!deductJeOk) showToast("Deposit deduction accounting entry failed. Please check the accounting module.", "error");
+  if (deductJeOk && lease.tenant_id) runningBalance += deducted;
   }
-  // Create ledger entries and update balance for deposit return
-  if (returned > 0 && lease.tenant_id) {
-  runningBalance -= returned;
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date,
-  description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: runningBalance,
-  });
-  const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
-  if (depBalErr) showToast("Deposit return balance update failed: " + depBalErr.message + ". Please verify the tenant balance.", "error");
-  }
-  if (deducted > 0 && lease.tenant_id) {
-  runningBalance += deducted;
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date,
-  description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction", balance: runningBalance,
-  });
-  }
+  // tenants.balance now updated by sync_tenant_balance_lines trigger
+  // for the AR-touching deduction JE; the deposit return JE doesn't
+  // touch a per-tenant AR account so it has no effect on balance.
   logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
   // Queue deposit return notification
   const { data: depTenant } = await supabase.from("tenants").select("email").eq("name", lease.tenant_name).eq("company_id", companyId).maybeSingle();

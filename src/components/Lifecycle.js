@@ -234,19 +234,18 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   if (creditBack > 0) {
   const tenantArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
   const revenueId = await resolveAccountId("4000", cid);
-  await autoPostJournalEntry({ companyId: cid, date: moveOutDate,
+  await atomicPostJEAndLedger({ companyId: cid, date: moveOutDate,
   description: `Prorated rent adjustment — ${tName} — ${moveOutDay}/${daysInMoveOutMonth} days`,
   reference: `RENT-PRORATE-${selectedLease.id}-${moveOutMonth}`, property: selectedLease.property,
   lines: [
   { account_id: revenueId, account_name: "Rental Income", debit: creditBack, credit: 0, class_id: classId, memo: `Proration credit ${moveOutMonth}` },
   { account_id: tenantArId, account_name: "AR - " + tName, debit: 0, credit: creditBack, class_id: classId, memo: `${moveOutDay}/${daysInMoveOutMonth} days — move-out` },
-  ]
+  ],
+  ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: creditBack, type: "credit" }
   });
-  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: -creditBack, type: "adjustment", balance: 0 });
-  if (selectedTenant.id) {
-  const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack });
-  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance update on move-out credit", silent: true });
-  }
+  // tenants.balance now updated by sync_tenant_balance_lines trigger
+  // (the JE line above on the per-tenant AR account fires it). No
+  // explicit update_tenant_balance RPC needed.
   }
   }
   }

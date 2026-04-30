@@ -103,16 +103,15 @@ serve(async (req) => {
           ]);
         }
 
-        // Create ledger entry
+        // Create ledger entry — linked to the JE for the unique-index
+        // dedup against the mirror trigger, and the Phase 4 view-from-GL
+        // join key. tenants.balance is now updated by the
+        // sync_tenant_balance_lines trigger off the GL line above.
         await supabase.from("ledger_entries").insert({
           company_id: companyId, tenant: lease.tenant_name, property: lease.property,
           date: today, description: `Rent charge — ${currentMonth}`,
           amount: rent, type: "charge", balance: 0,
-        });
-
-        // Update tenant balance
-        await supabase.rpc("update_tenant_balance", {
-          p_tenant_name: lease.tenant_name, p_company_id: companyId,
+          journal_entry_id: jeRow?.id || null,
         });
 
         totalRentCharged++;

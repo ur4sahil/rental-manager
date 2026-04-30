@@ -125,7 +125,10 @@ serve(async (req) => {
             ]);
           }
 
-          // Create ledger entry
+          // Create ledger entry — linked to the JE we just posted so
+          // the unique (journal_entry_id, tenant_id) index dedupes
+          // against any future trigger-based mirror, and Phase 4's
+          // view-from-GL has a join key.
           await supabase.from("ledger_entries").insert({
             company_id: companyId,
             tenant: session.metadata?.tenantName,
@@ -135,6 +138,7 @@ serve(async (req) => {
             amount: -amount,
             type: "payment",
             balance: 0,
+            journal_entry_id: stripeJE?.id || null,
           });
 
           // Log audit

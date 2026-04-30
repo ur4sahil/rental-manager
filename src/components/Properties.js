@@ -821,7 +821,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const dep = Number(tenantForm.security_deposit) || 0;
         if (!isLeaseMigration && dep > 0 && !postedRefs.has(depRef)) {
           const tenantArId = await getOrCreateTenantAR(companyId, tName, resTenantId);
-          const depOk = await autoPostJournalEntry({
+          await atomicPostJEAndLedger({
             companyId, date: tenantForm.lease_start,
             description: 'Security deposit received — ' + tName + ' — ' + compositeAddress,
             reference: depRef, property: compositeAddress,
@@ -829,8 +829,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               { account_id: tenantArId, account_name: 'AR - ' + tName, debit: dep, credit: 0, class_id: classId, memo: 'Security deposit from ' + tName },
               { account_id: '2100', account_name: 'Security Deposits Held', debit: 0, credit: dep, class_id: classId, memo: tName + ' — ' + compositeAddress },
             ],
+            ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Security deposit collected', amount: dep, type: 'deposit' },
           });
-          if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Security deposit collected', amount: dep, type: 'deposit', balance: 0 });
         }
         const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
         const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
@@ -843,7 +843,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           if (startDay > 1) {
             const remainingDays = daysInMonth - startDay + 1;
             const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
-            const proOk = await autoPostJournalEntry({
+            await atomicPostJEAndLedger({
               companyId, date: tenantForm.lease_start,
               description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days) — ' + tName + ' — ' + compositeAddress.split(',')[0],
               reference: prorentRef, property: compositeAddress,
@@ -851,20 +851,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 { account_id: tenantArId2, account_name: 'AR - ' + tName, debit: proratedAmount, credit: 0, class_id: classId, memo: 'Prorated first month rent' },
                 { account_id: revenueId2, account_name: 'Rental Income', debit: 0, credit: proratedAmount, class_id: classId, memo: remainingDays + '/' + daysInMonth + ' days @ $' + monthlyRent + '/mo' },
               ],
+              ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days)', amount: proratedAmount, type: 'charge' },
             });
-            if (proOk) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days)', amount: proratedAmount, type: 'charge', balance: 0 });
-              await supabase.rpc('update_tenant_balance', { p_tenant_id: resTenantId, p_amount_change: proratedAmount });
-              // Anchoring now lives in the RPC (next_post_date set to
-              // lease_start + freq). Writing last_posted_date here used
-              // to race with a concurrent autoPostRecurringEntries fired
-              // from App.js:563 — the premature call would advance
-              // last_posted_date to the current month, then this write
-              // reverted it, leaving next_post_date stranded and
-              // blocking catch-up for Feb/Mar on a past-dated lease.
-            }
+            // tenants.balance now updated by sync_tenant_balance_lines trigger.
           } else {
-            const fullOk = await autoPostJournalEntry({
+            await atomicPostJEAndLedger({
               companyId, date: tenantForm.lease_start,
               description: 'First month rent — ' + tName + ' — ' + compositeAddress.split(',')[0],
               reference: rentRef, property: compositeAddress,
@@ -872,13 +863,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 { account_id: tenantArId2, account_name: 'AR - ' + tName, debit: monthlyRent, credit: 0, class_id: classId, memo: 'First month rent' },
                 { account_id: revenueId2, account_name: 'Rental Income', debit: 0, credit: monthlyRent, class_id: classId, memo: 'Full month rent' },
               ],
+              ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'First month rent', amount: monthlyRent, type: 'charge' },
             });
-            if (fullOk) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'First month rent', amount: monthlyRent, type: 'charge', balance: 0 });
-              await supabase.rpc('update_tenant_balance', { p_tenant_id: resTenantId, p_amount_change: monthlyRent });
-              // See comment above in the prorated branch — last_posted_date
-              // is now owned entirely by autoPostRecurringEntries.
-            }
           }
         }
       } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit first-month rent JE', silent: true }); phaseCFailures.push('first-month rent / deposit journal entry'); }
@@ -2318,16 +2304,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (dep > 0) {
   const classId = await getPropertyClassId(compositeAddress, companyId);
   const tenantArId = await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
-  const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: "DEP-" + shortId(), property: compositeAddress,
+  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: "DEP-" + shortId(), property: compositeAddress,
   lines: [
   { account_id: tenantArId, account_name: "AR - " + form.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },
-  ]
+  ],
+  ledgerEntry: tenantId ? { tenant: form.tenant.trim(), tenant_id: tenantId, property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit" } : null
   });
-  if (_depOk && tenantId) {
-  await safeLedgerInsert({ company_id: companyId, tenant: form.tenant.trim(), tenant_id: tenantId, property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
-  }
-  if (!_depOk) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
+  if (!_depResult?.jeId) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
   }
   // Post rent charges for this lease (awaited so errors surface)
   try {
