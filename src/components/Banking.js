@@ -250,8 +250,17 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     setTxnTruncated((count || 0) > (data?.length || 0));
   }
 
-  async function fetchAll() {
-    setLoading(true);
+  // Quiet refresh — re-pulls data without flipping the global
+  // `loading` flag (which would unmount the whole transactions UI,
+  // including the search input). Use after accept/exclude/post
+  // actions where the user is mid-flow and shouldn't see the
+  // Spinner take over their screen.
+  async function refreshData() {
+    return fetchAll({ silent: true });
+  }
+
+  async function fetchAll(opts = {}) {
+    if (!opts.silent) setLoading(true);
     const cutoff = dateRangeCutoff();
     let txnQ = supabase.from("bank_feed_transaction")
       .select(TXN_COLS, { count: "exact" })
@@ -283,7 +292,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       setRules(fetchedRules);
     }
     setConnections(connRes.data || []);
-    setLoading(false);
+    if (!opts.silent) setLoading(false);
   }
 
   // --- Create New Bank Account Feed ---
@@ -619,7 +628,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     setWizResult({ imported, skipped, duplicates, total: validRows.length, ruleApplied });
     setWizStep(6);
-    fetchAll();
+    refreshData();
   }
 
   // --- Transaction Actions ---
@@ -630,7 +639,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     // Verify transaction is still for_review (prevents double-post from concurrent tabs/clicks)
     const { data: freshTxn } = await supabase.from("bank_feed_transaction").select("status").eq("id", txn.id).eq("company_id", companyId).maybeSingle();
-    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); fetchAll(); return; }
+    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); refreshData(); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
@@ -731,7 +740,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     showToast("Transaction categorized and posted.", "success");
     setExpandedTxn(null);
     setAddForm({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
-    fetchAll();
+    refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankAccept", txn.id); }
   }
@@ -754,7 +763,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     logAudit("update", "banking", `Excluded bank txn: ${txn.bank_description_clean} (${reason})`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction excluded.", "success");
-    fetchAll();
+    refreshData();
     } finally { guardRelease("bankExclude", txn.id); }
   }
 
@@ -823,7 +832,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     logAudit("update", "banking", `Matched bank txn to ${targetJE.number}: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
     showToast(`Matched to ${targetJE.number}.`, "success");
     setExpandedTxn(null); setMatchCandidates([]);
-    fetchAll();
+    refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankMatch", txn.id); }
   }
@@ -883,7 +892,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transfer posted.", "success");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
-    fetchAll();
+    refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankTransfer", txn.id); }
   }
@@ -970,7 +979,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     logAudit("create", "banking", `Split: ${txn.bank_description_clean} → ${validLines.length} lines`, txn.id, userProfile?.email, "", companyId);
     showToast(`Split into ${validLines.length} lines and posted.`, "success");
     setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
-    fetchAll();
+    refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankSplit", txn.id); }
   }
@@ -1002,7 +1011,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     logAudit("update", "banking", `Undid bank txn: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction returned to For Review.", "success");
-    fetchAll();
+    refreshData();
     } finally { guardRelease("bankUndo", txn.id); }
   }
 
@@ -1081,8 +1090,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     return null;
   }
 
-  async function applyRulesToTransactions(txnIds) {
-    const enabledRules = rules.filter(r => r.enabled);
+  // rulesOverride lets callers (e.g., saveRule) pass a fresher rules
+  // list than the React state, since state updates are async and a
+  // newly-created rule won't be in `rules` immediately after the
+  // insert returns.
+  async function applyRulesToTransactions(txnIds, rulesOverride) {
+    const sourceRules = rulesOverride || rules;
+    const enabledRules = sourceRules.filter(r => r.enabled);
     if (enabledRules.length === 0) return 0;
     const { data: txns } = await supabase.from("bank_feed_transaction").select("*").in("id", txnIds).eq("status", "for_review");
     if (!txns || txns.length === 0) return 0;
@@ -1234,6 +1248,26 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
     resetRuleForm();
     setShowRuleDrawer(false);
+
+    // Run the saved rule against existing For-Review transactions so
+    // backdated matches get the suggestion (or auto-accept) without
+    // the user having to click "Re-apply all rules" manually. Without
+    // this, a brand-new "Stanley" rule won't touch last year's
+    // Stanley Zelle deposits — exact bug Sahil hit on 2026-04-30.
+    // Pull a fresh rule list from the DB because React state doesn't
+    // reflect the just-saved row inside the same function.
+    try {
+      const { data: freshRules } = await supabase.from("bank_transaction_rule")
+        .select("*").eq("company_id", companyId).order("priority");
+      const { data: forReviewIds } = await supabase.from("bank_feed_transaction")
+        .select("id").eq("company_id", companyId).eq("status", "for_review");
+      const ids = (forReviewIds || []).map(r => r.id);
+      if (ids.length > 0) {
+        const matched = await applyRulesToTransactions(ids, freshRules || []);
+        if (matched > 0) showToast(`Rule applied to ${matched} existing transaction${matched === 1 ? "" : "s"}.`, "success");
+      }
+    } catch (e) { pmError("PM-5008", { raw: e, context: "auto-apply rule to existing for_review", silent: true }); }
+
     fetchAll();
   }
 
