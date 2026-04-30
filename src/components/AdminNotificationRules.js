@@ -111,18 +111,19 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
         .select("*").eq("company_id", companyId);
       const byType = new Map((data || []).map(r => [r.event_type, r]));
 
-      // Seed any missing rows so the editor always has something to
-      // act on. One upsert per known event_type.
-      const missing = [];
-      for (const type of Object.keys(eventLabels)) {
-        if (!byType.has(type)) {
-          missing.push({ company_id: companyId, event_type: type, ...defaultsForType(type) });
-        }
-      }
-      if (missing.length > 0) {
+      // Seed missing rows one at a time. A batched upsert is
+      // transactional in PostgREST — if any single row violates a
+      // CHECK or other constraint, the entire batch returns 409 and
+      // we lose everything. Per-row inserts let partial failures
+      // happen quietly while still seeding everything that's valid.
+      // Anything that still fails to seed gets a default in-memory
+      // setting on open (see editorSettingFor).
+      const missing = Object.keys(eventLabels).filter(t => !byType.has(t));
+      for (const type of missing) {
+        const row = { company_id: companyId, event_type: type, ...defaultsForType(type) };
         const { data: inserted } = await supabase.from("notification_settings")
-          .upsert(missing, { onConflict: "company_id,event_type" }).select();
-        for (const r of (inserted || [])) byType.set(r.event_type, r);
+          .insert(row).select().maybeSingle();
+        if (inserted) byType.set(type, inserted);
       }
       setSettings(Array.from(byType.values()));
     } catch (e) {
@@ -131,22 +132,50 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
     setLoading(false);
   }, [companyId]);
 
+  // Build a settings shape for the editor even when the DB row is
+  // missing (CHECK constraints, RLS, etc. might have blocked seeding).
+  // The editor always opens; on save we upsert so the row materializes
+  // the first time the admin actually changes anything.
+  const editorSettingFor = useCallback((type) => {
+    const existing = settings.find(s => s.event_type === type);
+    if (existing) return existing;
+    return { id: null, company_id: companyId, event_type: type, ...defaultsForType(type) };
+  }, [settings, companyId]);
+
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
   // Quick toggle from the master list — flips `enabled` on a single row
   // without opening the editor. Optimistically updates local state, then
-  // persists. Reverts and toasts on failure.
+  // persists. If the DB row doesn't exist yet (seeding earlier failed
+  // with 409), insert a fresh one with this `enabled` value baked in.
   const quickToggleEnabled = useCallback(async (type, nextEnabled) => {
-    const row = settings.find(s => s.event_type === type);
-    if (!row?.id) return;
-    setSettings(prev => prev.map(s => s.event_type === type ? { ...s, enabled: nextEnabled } : s));
-    const { error } = await supabase.from("notification_settings")
-      .update({ enabled: nextEnabled }).eq("id", row.id);
+    const prevRow = settings.find(s => s.event_type === type);
+    const wasEnabled = prevRow ? prevRow.enabled !== false : true;
+
+    if (prevRow) {
+      setSettings(prev => prev.map(s => s.event_type === type ? { ...s, enabled: nextEnabled } : s));
+    } else {
+      setSettings(prev => [...prev, { id: null, company_id: companyId, event_type: type, ...defaultsForType(type), enabled: nextEnabled }]);
+    }
+
+    let error;
+    if (prevRow?.id) {
+      const r = await supabase.from("notification_settings").update({ enabled: nextEnabled }).eq("id", prevRow.id);
+      error = r.error;
+    } else {
+      const seed = { company_id: companyId, event_type: type, ...defaultsForType(type), enabled: nextEnabled };
+      const r = await supabase.from("notification_settings").insert(seed).select().maybeSingle();
+      error = r.error;
+      if (r.data) setSettings(prev => prev.map(s => s.event_type === type ? r.data : s));
+    }
+
     if (error) {
-      setSettings(prev => prev.map(s => s.event_type === type ? { ...s, enabled: !nextEnabled } : s));
+      setSettings(prev => prevRow
+        ? prev.map(s => s.event_type === type ? { ...s, enabled: wasEnabled } : s)
+        : prev.filter(s => s.event_type !== type));
       showToast("Couldn't update: " + (error.message || "unknown"), "error");
     }
-  }, [settings, showToast]);
+  }, [settings, companyId, showToast]);
 
   const settingByType = useMemo(() => {
     const m = new Map();
@@ -163,7 +192,7 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
     )]).filter(([_c, items]) => items.length > 0);
   }, [search]);
 
-  const activeSetting = activeType ? settingByType.get(activeType) : null;
+  const activeSetting = activeType ? editorSettingFor(activeType) : null;
   const activeMeta = activeType ? eventLabels[activeType] : null;
 
   if (loading) return <div className="py-12 flex justify-center"><Spinner /></div>;
@@ -232,7 +261,12 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
           setting={activeSetting}
           onClose={() => setActiveType(null)}
           onSaved={(updated) => {
-            setSettings(prev => prev.map(s => s.event_type === updated.event_type ? updated : s));
+            setSettings(prev => {
+              const exists = prev.some(s => s.event_type === updated.event_type);
+              return exists
+                ? prev.map(s => s.event_type === updated.event_type ? updated : s)
+                : [...prev, updated];
+            });
             setActiveType(null);
           }}
         />
@@ -270,8 +304,19 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
         template: draft.template || null,
         days_before: draft.days_before == null ? null : Number(draft.days_before),
       };
-      const { data, error } = await supabase.from("notification_settings")
-        .update(payload).eq("id", setting.id).select().maybeSingle();
+      let data, error;
+      if (setting.id) {
+        const r = await supabase.from("notification_settings")
+          .update(payload).eq("id", setting.id).select().maybeSingle();
+        data = r.data; error = r.error;
+      } else {
+        // Row didn't exist (seeding earlier failed). Create it now
+        // with the admin's chosen values baked in.
+        const r = await supabase.from("notification_settings")
+          .insert({ company_id: setting.company_id, event_type: setting.event_type, ...payload })
+          .select().maybeSingle();
+        data = r.data; error = r.error;
+      }
       if (error) throw error;
       showToast("Rule saved.", "success");
       onSaved(data || { ...setting, ...payload });
