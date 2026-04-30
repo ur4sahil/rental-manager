@@ -133,6 +133,21 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
 
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
+  // Quick toggle from the master list — flips `enabled` on a single row
+  // without opening the editor. Optimistically updates local state, then
+  // persists. Reverts and toasts on failure.
+  const quickToggleEnabled = useCallback(async (type, nextEnabled) => {
+    const row = settings.find(s => s.event_type === type);
+    if (!row?.id) return;
+    setSettings(prev => prev.map(s => s.event_type === type ? { ...s, enabled: nextEnabled } : s));
+    const { error } = await supabase.from("notification_settings")
+      .update({ enabled: nextEnabled }).eq("id", row.id);
+    if (error) {
+      setSettings(prev => prev.map(s => s.event_type === type ? { ...s, enabled: !nextEnabled } : s));
+      showToast("Couldn't update: " + (error.message || "unknown"), "error");
+    }
+  }, [settings, showToast]);
+
   const settingByType = useMemo(() => {
     const m = new Map();
     for (const s of settings) m.set(s.event_type, s);
@@ -175,15 +190,16 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
                 const hasCustomSubject = !!s?.subject_template;
                 const hasCustomBody = !!s?.template;
                 return (
-                  <button key={type}
+                  <div key={type}
+                    role="button" tabIndex={0}
                     onClick={() => setActiveType(type)}
-                    className={"text-left rounded-2xl border bg-white px-4 py-3 transition-colors hover:border-brand-300 " + (enabled ? "border-brand-100" : "border-neutral-200 opacity-60")}>
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveType(type); } }}
+                    className={"cursor-pointer rounded-2xl border bg-white px-4 py-3 transition-colors hover:border-brand-300 " + (enabled ? "border-brand-100" : "border-neutral-200 opacity-60")}>
                     <div className="flex items-start gap-3">
                       <div className="text-2xl shrink-0">{icon}</div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <div className="text-sm font-semibold text-neutral-800 truncate">{label}</div>
-                          {!enabled && <FilterPill tone="neutral">Off</FilterPill>}
                         </div>
                         <div className="text-xs text-neutral-500 mt-0.5 truncate">{desc}</div>
                         <div className="flex flex-wrap gap-1 mt-2">
@@ -193,8 +209,11 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
                           {hasCustomBody && <FilterPill tone="info">Custom body</FilterPill>}
                         </div>
                       </div>
+                      <div className="shrink-0" onClick={e => e.stopPropagation()}>
+                        <ToggleSwitch on={enabled} onChange={v => quickToggleEnabled(type, v)} />
+                      </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
