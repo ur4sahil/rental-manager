@@ -331,19 +331,33 @@ module.exports = async function handler(req, res) {
           // re-insert on the next sync — exactly what happened after
           // commit 605ddb2 removed the \d{5,}→# rule: every txn showed
           // up twice.
-          let fpQuery = supabase
-            .from("bank_feed_transaction")
-            .select("fingerprint_hash, provider_transaction_id")
-            .eq("bank_account_feed_id", feed.id)
-            .eq("company_id", conn.company_id);
-          if (minDate) fpQuery = fpQuery.gte("posted_date", minDate);
-          if (maxDate) fpQuery = fpQuery.lte("posted_date", maxDate);
-          const { data: existingRows } = await fpQuery;
+          // Paginate the dedup pull. Supabase's default limit is 1000
+          // rows; once a feed accumulated >1000 transactions in the
+          // dedup window (~90 days), older rows fell off the result
+          // set and any Teller txn matching one of those older rows
+          // would re-insert as a duplicate. Sigma 6027 hit this on
+          // 2026-04-25/27 — 141 dupes generated in two re-syncs.
+          // Pull in 1000-row pages until empty so existingPtid +
+          // existingFp cover every row in the window.
           const existingFp = new Set();
           const existingPtid = new Set();
-          for (const r of existingRows || []) {
-            if (r.fingerprint_hash) existingFp.add(r.fingerprint_hash);
-            if (r.provider_transaction_id) existingPtid.add(r.provider_transaction_id);
+          let dedupFrom = 0;
+          while (true) {
+            let fpQuery = supabase
+              .from("bank_feed_transaction")
+              .select("fingerprint_hash, provider_transaction_id")
+              .eq("bank_account_feed_id", feed.id)
+              .eq("company_id", conn.company_id);
+            if (minDate) fpQuery = fpQuery.gte("posted_date", minDate);
+            if (maxDate) fpQuery = fpQuery.lte("posted_date", maxDate);
+            const { data: page } = await fpQuery.range(dedupFrom, dedupFrom + 999);
+            if (!page?.length) break;
+            for (const r of page) {
+              if (r.fingerprint_hash) existingFp.add(r.fingerprint_hash);
+              if (r.provider_transaction_id) existingPtid.add(r.provider_transaction_id);
+            }
+            if (page.length < 1000) break;
+            dedupFrom += 1000;
           }
 
           const inserts = [];
