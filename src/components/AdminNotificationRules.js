@@ -4,6 +4,7 @@ import { Btn, Card, Input, Textarea, Select, FilterPill, PageHeader } from "../u
 import { pmError } from "../utils/errors";
 import { Spinner, Modal } from "./shared";
 import { eventLabels } from "./Notifications";
+import { defaultRecipientsFor } from "../utils/notificationRecipients";
 
 // Per-LLC notification rule editor. Lives behind Admin → Notifications.
 // Lets admins decide for every event type:
@@ -214,7 +215,10 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
               {items.map(({ type, label, icon, desc }) => {
                 const s = settingByType.get(type);
                 const enabled = s ? s.enabled !== false : true;
-                const recipientsCount = (s?.custom_recipients || []).length;
+                const stored = (s?.custom_recipients || []);
+                const effectiveRecipients = stored.length > 0 ? stored : defaultRecipientsFor(type);
+                const recipientsCount = effectiveRecipients.length;
+                const usingDefaults = stored.length === 0 && effectiveRecipients.length > 0;
                 const hasQuiet = !!(s?.quiet_hours_start && s?.quiet_hours_end);
                 const hasCustomSubject = !!s?.subject_template;
                 const hasCustomBody = !!s?.template;
@@ -232,7 +236,7 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
                         </div>
                         <div className="text-xs text-neutral-500 mt-0.5 truncate">{desc}</div>
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {recipientsCount > 0 && <FilterPill tone="brand">{recipientsCount} recipient{recipientsCount === 1 ? "" : "s"}</FilterPill>}
+                          {recipientsCount > 0 && <FilterPill tone={usingDefaults ? "neutral" : "brand"}>{usingDefaults ? "Default · " : ""}{recipientsCount} recipient{recipientsCount === 1 ? "" : "s"}</FilterPill>}
                           {hasQuiet && <FilterPill tone="warn">Quiet hours</FilterPill>}
                           {hasCustomSubject && <FilterPill tone="info">Custom subject</FilterPill>}
                           {hasCustomBody && <FilterPill tone="info">Custom body</FilterPill>}
@@ -276,7 +280,7 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
 }
 
 function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType, eventMeta, setting, onClose, onSaved }) {
-  const [draft, setDraft] = useState(() => normalizeDraft(setting));
+  const [draft, setDraft] = useState(() => normalizeDraft(setting, eventType));
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -417,7 +421,7 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
         </Section>
 
         {/* Recipients */}
-        <Section title="Recipients" hint="At least one is required for the rule to deliver. Mix and match roles, contextual stand-ins, and literal addresses.">
+        <Section title="Recipients" hint="Prefilled with the sensible default for this event. Edit to deviate; to silence the rule entirely, toggle it off above. Cleared lists fall back to these defaults.">
           <RecipientList
             label="Primary recipients (To:)"
             entries={draft.custom_recipients || []}
@@ -511,17 +515,23 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
   );
 }
 
-function normalizeDraft(setting) {
+function normalizeDraft(setting, eventType) {
   if (!setting) return defaultsForType("");
   const channelsRaw = setting.channels;
   let channels;
   if (typeof channelsRaw === "string") { try { channels = JSON.parse(channelsRaw); } catch { channels = { in_app: true, email: true, push: true }; } }
   else channels = channelsRaw || { in_app: true, email: true, push: true };
+  // If the row has no overrides yet, prefill from the per-event default
+  // so the admin sees the actual audience instead of "None". On save,
+  // these get persisted explicitly. To silence the rule, the admin
+  // toggles it off via the master switch, not by clearing the list.
+  const stored = parseJsonField(setting.custom_recipients) || [];
+  const custom_recipients = stored.length > 0 ? stored : defaultRecipientsFor(eventType);
   return {
     enabled: setting.enabled !== false,
     channels,
     recipients: setting.recipients || "all",
-    custom_recipients: parseJsonField(setting.custom_recipients) || [],
+    custom_recipients,
     cc: parseJsonField(setting.cc) || [],
     bcc: parseJsonField(setting.bcc) || [],
     quiet_hours_start: setting.quiet_hours_start || null,
