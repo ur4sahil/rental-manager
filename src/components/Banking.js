@@ -1722,7 +1722,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     return (
   <div className="flex gap-3 overflow-x-auto pb-1 items-stretch">
     {visibleFeeds.map(feed => {
-      const reviewCount = transactions.filter(t => t.bank_account_feed_id === feed.id && t.status === "for_review").length;
+      // Pull the unfiltered for_review count from feedPending (the
+      // same source the recon math uses). Previously this read from
+      // the date-windowed `transactions` state which produced a count
+      // that didn't match the panel's "(N txns)" — confusing UX.
+      const reviewCount = (feedPending[feed.id] || []).length;
       const isSelected = selectedFeed === feed.id;
       const isMenuOpen = feedMenuOpen === feed.id;
       const isUnmapped = !feed.gl_account_id;
@@ -1742,21 +1746,51 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
         {isInactive && <div className="text-xs text-neutral-500 mt-1 font-medium">Disconnected · won't sync</div>}
         {!isInactive && isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
-        <div className="flex justify-between mt-2">
+        <div className="flex justify-between items-center mt-2">
           <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
-          {(() => {
-            // Tiny reconciliation indicator — green ✓ when bank+books
-            // align (after pending), red ⚠ when they don't. Hidden for
-            // feeds with no bank balance to compare against.
-            const r = computeFeedRecon(feed);
-            if (r.bankBal == null) return null;
-            return r.isReconciled
-              ? <span className="text-xs text-positive-600" title="Reconciled">✓</span>
-              : <span className="text-xs text-danger-600 font-bold" title={`Mismatch: ${formatCurrency(r.diff)} (Bank − Books − Pending)`}>⚠</span>;
-          })()}
         </div>
+        {/* Per-card live reconciliation block. Replaces the page-level
+            banner so all feeds show their reco status on the same
+            screen. Compact 3-line layout: Bank/Books/Pending row, then
+            either a green ✓ Reconciled chip or a red Mismatch row with
+            the exact diff and formula. */}
+        {(() => {
+          const r = computeFeedRecon(feed);
+          if (r.bankBal == null && r.bookBal === 0 && r.pendingNet === 0) return null; // empty feed
+          const wrapCls = r.bankBal == null
+            ? "border-neutral-200"
+            : r.isReconciled ? "border-positive-200 bg-positive-50/30" : "border-danger-200 bg-danger-50/30";
+          return (
+            <div className={`mt-2 pt-2 border-t ${wrapCls} text-[11px] space-y-0.5`}>
+              <div className="flex justify-between text-neutral-500">
+                <span>Bank</span>
+                <span className="font-mono text-neutral-800">{r.bankBal == null ? "—" : formatCurrency(r.bankBal)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-500">
+                <span>Books</span>
+                <span className="font-mono text-neutral-800">{formatCurrency(r.bookBal)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-500">
+                <span>Pending ({r.pendingCount})</span>
+                <span className="font-mono text-neutral-800">{formatCurrency(r.pendingNet)}</span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-dashed border-neutral-200">
+                {r.bankBal == null ? (
+                  <span className="text-[10px] text-neutral-400 italic">Connect bank for reco</span>
+                ) : r.isReconciled ? (
+                  <span className="text-positive-700 font-semibold">✓ Reconciled</span>
+                ) : (
+                  <>
+                    <span className="text-danger-700 font-semibold">⚠ Mismatch</span>
+                    <span className="font-mono font-bold text-danger-700">{formatCurrency(r.diff)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </button>
       {isMenuOpen && <>
         <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
@@ -1805,62 +1839,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   </div>
   )}
 
-  {/* Live reconciliation panel — QBO-style Bank vs Books vs Pending */}
-  {feeds.length > 0 && (() => {
-    const isFeedHidden = (f) => f.status === "inactive" || !f.gl_account_id;
-    const visibleFeeds = showHiddenFeeds ? feeds : feeds.filter(f => !isFeedHidden(f));
-    const target = selectedFeed === "all" ? null : feeds.find(f => f.id === selectedFeed);
-    const recons = (target ? [target] : visibleFeeds).map(f => ({ feed: f, ...computeFeedRecon(f) }));
-    if (recons.length === 0) return null;
-    const summable = recons.filter(r => r.bankBal != null);
-    const agg = {
-      bankBal: summable.length ? summable.reduce((s, r) => s + r.bankBal, 0) : null,
-      bookBal: recons.reduce((s, r) => s + r.bookBal, 0),
-      pendingNet: recons.reduce((s, r) => s + r.pendingNet, 0),
-      pendingCount: recons.reduce((s, r) => s + r.pendingCount, 0),
-    };
-    agg.diff = agg.bankBal == null ? null : Math.round((agg.bankBal - agg.bookBal - agg.pendingNet) * 100) / 100;
-    agg.isReconciled = agg.diff != null && Math.abs(agg.diff) < 0.01;
-    const noBankBal = agg.bankBal == null;
-    const wrapCls = noBankBal
-      ? "border-neutral-200 bg-white"
-      : agg.isReconciled
-        ? "border-positive-200 bg-positive-50/40"
-        : "border-danger-300 bg-danger-50/50";
-    const lastSync = target?.last_synced_at ? ` · synced ${new Date(target.last_synced_at).toLocaleDateString()}` : "";
-    return (
-      <div className={`rounded-xl border-2 ${wrapCls} p-3 flex flex-wrap gap-4 items-center mb-3`}>
-        <div className="flex-1 min-w-32">
-          <div className="text-xs text-neutral-400">Bank Balance{lastSync}</div>
-          <div className="text-lg font-bold text-neutral-800">{noBankBal ? "—" : formatCurrency(agg.bankBal)}</div>
-        </div>
-        <div className="flex-1 min-w-32">
-          <div className="text-xs text-neutral-400">In Books</div>
-          <div className="text-lg font-bold text-neutral-800">{formatCurrency(agg.bookBal)}</div>
-        </div>
-        <div className="flex-1 min-w-32">
-          <div className="text-xs text-neutral-400">Pending Under Review</div>
-          <div className="text-lg font-bold text-neutral-800">
-            {formatCurrency(agg.pendingNet)}
-            <span className="text-xs text-neutral-400 ml-1">({agg.pendingCount} txn{agg.pendingCount === 1 ? "" : "s"})</span>
-          </div>
-        </div>
-        <div className="flex-1 min-w-40 text-right">
-          {noBankBal ? (
-            <span className="text-xs text-neutral-500">Connect bank or import a CSV with running balance</span>
-          ) : agg.isReconciled ? (
-            <span className="text-xs px-2 py-1 rounded-full bg-positive-100 text-positive-700 font-semibold">✓ Reconciled</span>
-          ) : (
-            <>
-              <span className="text-xs px-2 py-1 rounded-full bg-danger-100 text-danger-700 font-bold">⚠ Mismatch</span>
-              <div className="text-sm font-bold text-danger-700 mt-1">{formatCurrency(agg.diff)}</div>
-              <div className="text-[11px] text-danger-500">Bank − (Books + Pending)</div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  })()}
+  {/* Live reconciliation moved inline to each account card above —
+      every feed shows its Bank/Books/Pending/Diff in one screen. */}
 
   {/* Tabs */}
   {feeds.length > 0 && (<>
