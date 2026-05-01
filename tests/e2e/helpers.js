@@ -49,6 +49,27 @@ async function login(page, arg = 'sandbox-llc') {
   // The form submit button — the last "Sign In" on page, not the header.
   await page.locator('button:has-text("Sign In")').last().click();
 
+  // Supabase auth rate-limits any flood of logins (~30/min/IP). When a
+  // full E2E run hits the limit we just see "Request rate limit
+  // reached" on the login form and the dashboard never appears.
+  // Detect, back off, and retry up to 3 times so the suite can recover
+  // without rerunning the whole batch from scratch.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await successMarker.isVisible({ timeout: 8000 }).catch(() => false)) return;
+    const rateLimit = page.locator('text=/rate limit reached/i').first();
+    if (await rateLimit.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const wait = 8000 + attempt * 7000;
+      // eslint-disable-next-line no-console
+      console.log(`[login] rate-limited, waiting ${wait}ms before retry ${attempt + 1}/3`);
+      await page.waitForTimeout(wait);
+      await page.fill('input[type="email"]', email);
+      await page.fill('input[type="password"]', password);
+      await page.locator('button:has-text("Sign In")').last().click();
+    } else {
+      break;
+    }
+  }
+
   // Auto-select via ?company= kicks in once auth resolves. If that
   // path silently doesn't match (e.g. stale membership cache), fall
   // back to clicking the company row in the selector.

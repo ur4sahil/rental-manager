@@ -15,15 +15,21 @@ test.describe('Accounting Module', () => {
 
   // ── Sidebar children visibility ──
   test('all accounting tabs are visible', async ({ page }) => {
-    // Land on Accounting and explicitly expand the chevron so the
-    // child links are rendered. App.js auto-expands only when the
-    // current page IS a child; for the parent itself we toggle.
+    // App.js auto-expands the parent whose page the user is on, so
+    // landing on "accounting" should already reveal its children.
+    // Only click the chevron if the first child isn't already visible
+    // — clicking when expanded collapses it (toggle), which is what
+    // used to break this test pre-2026-05-01.
     await navigateTo(page, 'Accounting');
-    const parentRow = page.locator('button:has-text("Accounting")').first();
-    const chevron = parentRow.locator('xpath=following-sibling::button').first();
-    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await chevron.click();
-      await page.waitForTimeout(400);
+    const firstChild = page.locator('button:has-text("Opening Balances")').first();
+    const alreadyExpanded = await firstChild.isVisible({ timeout: 1500 }).catch(() => false);
+    if (!alreadyExpanded) {
+      const parentRow = page.locator('button:has-text("Accounting")').first();
+      const chevron = parentRow.locator('xpath=following-sibling::button').first();
+      if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(400);
+      }
     }
     const children = ['Opening Balances', 'Chart of Accounts', 'Journal Entries',
       'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
