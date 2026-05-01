@@ -70,32 +70,35 @@ test.describe('Notifications — click coverage', () => {
     expect(found, `at least one of ${tabs.join('/')} tabs is rendered`).toBeGreaterThan(0);
   });
 
-  test('Settings tab is reachable and renders content', async ({ page }) => {
-    const settingsTab = page.locator('button:has-text("Settings")').first();
-    if (!await settingsTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-      test.skip(true, 'no Settings tab in current layout');
+  test('Preferences tab renders content', async ({ page }) => {
+    // Notifications redesigned 2026-04-29: old admin "Settings" /
+    // "Templates" / "Log" tabs moved to Admin → Notifications. The
+    // user-facing inbox now exposes Activity / Preferences / History.
+    // This test exercises Preferences (replaces the old Settings test).
+    const tab = page.locator('button:has-text("Preferences")').first();
+    if (!await tab.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'no Preferences tab in current layout');
       return;
     }
-    await settingsTab.click();
+    await tab.click();
     await page.waitForTimeout(1000);
     const crashed = await page.locator('text=Something went wrong').first().isVisible({ timeout: 1500 }).catch(() => false);
-    expect(crashed, 'Settings tab should not crash').toBeFalsy();
-    // Settings tab should render some content (event types, channels,
-    // toggles, or at minimum a heading). Loose check — the exact event
-    // names vary by implementation.
+    expect(crashed, 'Preferences tab should not crash').toBeFalsy();
     const body = await page.locator('main').innerText();
-    expect(body.length, 'Settings tab body has content').toBeGreaterThan(20);
+    expect(body.length, 'Preferences tab body has content').toBeGreaterThan(20);
   });
 
-  test('Log tab shows recent queue activity (no crash)', async ({ page }) => {
-    const logTab = page.locator('button:has-text("Log")').first();
-    if (!await logTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-      test.skip(true, 'no Log tab in current layout');
+  test('History tab shows recent activity (no crash)', async ({ page }) => {
+    // Replaces the old "Log" test. History is the user's archived
+    // notifications (read + acted on).
+    const tab = page.locator('button:has-text("History")').first();
+    if (!await tab.isVisible({ timeout: 2000 }).catch(() => false)) {
+      test.skip(true, 'no History tab in current layout');
       return;
     }
-    await logTab.click();
+    await tab.click();
     await page.waitForTimeout(1000);
     const crashed = await page.locator('text=Something went wrong').first().isVisible({ timeout: 1500 }).catch(() => false);
-    expect(crashed, 'Log tab should not crash').toBeFalsy();
+    expect(crashed, 'History tab should not crash').toBeFalsy();
   });
 });

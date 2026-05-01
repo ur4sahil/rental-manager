@@ -142,8 +142,12 @@ test.describe('Public e-sign page (/sign/:token)', () => {
 
       // Success screen — wording shifted from "Audit hash" to
       // "Signature hash" + "Document hash at send" in commit 69f3ffa.
-      await expect(page.locator('text=/signature recorded|thanks/i')).toBeVisible({ timeout: 15000 });
-      await expect(page.locator('text=/Signature hash|Audit hash|Document hash/i')).toBeVisible();
+      await expect(page.locator('text=/signature recorded|thanks/i').first()).toBeVisible({ timeout: 15000 });
+      // The success page renders BOTH "Document hash at send" and
+      // "Signature hash" — the regex matches two elements which trips
+      // Playwright's strict-mode default. Pin to the first match;
+      // either one being visible proves the success state rendered.
+      await expect(page.locator('text=/Signature hash|Audit hash|Document hash/i').first()).toBeVisible();
 
       // DB: signed row populated, envelope flipped to completed
       const { data: afterSign } = await svc.from('doc_signatures').select('*').eq('id', sigs[0].id).single();

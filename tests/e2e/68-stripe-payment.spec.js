@@ -85,7 +85,21 @@ test.describe('Stripe Payment — end-to-end', () => {
     await stripeFrame.getByRole('textbox', { name: /Card number/i }).fill('4242 4242 4242 4242');
     await stripeFrame.getByRole('textbox', { name: /Expir|MM\s*\/\s*YY/i }).fill('12 / 34');
     await stripeFrame.getByRole('textbox', { name: /Security code|^CVC$/i }).fill('123');
-    // ZIP appears for US cards
+    // Stripe's PaymentElement now requires a Country selection in
+    // most regions (rolled out late 2025). The dropdown defaults to
+    // a "Select" placeholder; submitting without picking one returns
+    // 400 from Stripe's confirm endpoint and the success toast
+    // never fires. Pick United States explicitly. Wrapped in
+    // try/catch so older Stripe versions without the field don't
+    // break the test.
+    try {
+      const countrySel = stripeFrame.getByRole('combobox', { name: /Country/i });
+      if (await countrySel.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await countrySel.selectOption({ label: 'United States' });
+      }
+    } catch (_) { /* country field absent — older Stripe layout */ }
+    // ZIP appears for US cards (after Country is set, if it was
+    // present, or by default on a US-region account).
     const zipField = stripeFrame.getByRole('textbox', { name: /ZIP|Postal code/i });
     if (await zipField.isVisible({ timeout: 2000 }).catch(() => false)) {
       await zipField.fill('12345');

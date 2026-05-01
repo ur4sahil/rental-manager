@@ -66,21 +66,22 @@ test.describe('Cross-module — click coverage', () => {
   test('Accounting expand chevron shows nested accounting children', async ({ page }) => {
     await navigateTo(page, 'Accounting');
     await page.waitForTimeout(800);
-    const parentRow = page.locator('button:has-text("Accounting")').first();
-    const chevron = parentRow.locator('xpath=following-sibling::button').first();
-    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await chevron.click();
-      await page.waitForTimeout(800);
-    }
-    // Scope to nav specifically (Accounting overview tile buttons share
-    // these labels) and use a longer wait — Smith's heavier nav takes
-    // longer to render the children list.
+    // App.js auto-expands the parent whose page the user is on, so
+    // landing on Accounting already reveals its children. Only
+    // toggle the chevron if a child isn't already visible —
+    // clicking it when already expanded would collapse the dropdown
+    // (the original cause of the "known race" skip pre-2026-05-01).
     const child = page.locator('nav button').filter({ hasText: /Chart of Accounts|Journal Entries|Reports/ }).first();
-    if (!await child.isVisible({ timeout: 5000 }).catch(() => false)) {
-      test.skip(true, 'Accounting children did not render after chevron click — known race');
-      return;
+    const alreadyVisible = await child.isVisible({ timeout: 1500 }).catch(() => false);
+    if (!alreadyVisible) {
+      const parentRow = page.locator('button:has-text("Accounting")').first();
+      const chevron = parentRow.locator('xpath=following-sibling::button').first();
+      if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(800);
+      }
     }
-    await expect(child).toBeVisible();
+    await expect(child).toBeVisible({ timeout: 5000 });
   });
 
   test('Dashboard has no horizontal overflow on production data', async ({ page }) => {
