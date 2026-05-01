@@ -222,6 +222,14 @@ module.exports = async function handler(req, res) {
         .select("id")
         .single();
 
+      // Effective date floor: explicit body.from_date wins (manual
+      // sync UI), otherwise fall back to the connection's persisted
+      // sync_from_date. Without this fallback, the daily cron POSTs
+      // with no body.from_date and Teller returns its full ~18-month
+      // window, importing months of history the user already chose
+      // to skip on the initial enrollment.
+      const effectiveFromDate = body.from_date || conn.sync_from_date || "";
+
       try {
         const accessToken = decrypt(conn.access_token_encrypted, conn.encryption_iv, conn.company_id, conn.encryption_salt);
         if (!accessToken) throw new Error("Failed to decrypt access token");
@@ -276,9 +284,9 @@ module.exports = async function handler(req, res) {
             pagesFetched++;
 
             // Early stop: if the oldest txn on this page is already
-            // before the requested from_date, no need to page further.
+            // before the effective from_date, no need to page further.
             const oldestOnPage = page.reduce((m, t) => (t.date && (!m || t.date < m) ? t.date : m), "");
-            if (body.from_date && oldestOnPage && oldestOnPage < body.from_date) break;
+            if (effectiveFromDate && oldestOnPage && oldestOnPage < effectiveFromDate) break;
 
             // Teller pagination: next page is everything older than
             // the oldest id on this page.
@@ -306,7 +314,7 @@ module.exports = async function handler(req, res) {
           };
 
           // Filter by date range if provided
-          if (body.from_date) tellerTxns = tellerTxns.filter((t) => t.date >= body.from_date);
+          if (effectiveFromDate) tellerTxns = tellerTxns.filter((t) => t.date >= effectiveFromDate);
           if (body.to_date) tellerTxns = tellerTxns.filter((t) => t.date <= body.to_date);
           feedStat.after_filter_count = tellerTxns.length;
           feedStats.push(feedStat);

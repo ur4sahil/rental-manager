@@ -118,8 +118,30 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // dataset small enough for client-side tab counts + search to be snappy.
   // Toggle "all" is available for audit / history workflows — capped at
   // TXN_FETCH_CAP and warned on truncation so users don't silently miss rows.
+  // Note: Supabase has a 1000-row hard ceiling on a single response —
+  // .limit(5000) does NOT override it. Use paginated `.range()` calls
+  // (see paginateTxns below) to actually pull beyond 1000.
   const [dateRangeMode, setDateRangeMode] = useState("90d");
-  const TXN_FETCH_CAP = 5000;
+  const TXN_FETCH_CAP = 20000;
+  // Paginate around Supabase's 1000-row response ceiling. Returns
+  // { rows, totalCount, truncated } so callers can both render and
+  // surface a "showing N of M" warning when the company exceeds
+  // TXN_FETCH_CAP. company_id, date cutoff, ordering applied at the
+  // call site.
+  async function paginateTxns(buildQuery) {
+    const rows = [];
+    let totalCount = 0;
+    for (let from = 0; from < TXN_FETCH_CAP; from += 1000) {
+      const q = buildQuery({ count: from === 0 ? "exact" : null });
+      const { data: page, count, error } = await q.range(from, from + 999);
+      if (error) throw error;
+      if (from === 0 && typeof count === "number") totalCount = count;
+      if (!page?.length) break;
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    return { rows, totalCount, truncated: totalCount > rows.length };
+  }
   const [txnTruncated, setTxnTruncated] = useState(false);
   const [totalTxnCount, setTotalTxnCount] = useState(0);
   const [selectedTxns, setSelectedTxns] = useState(new Set());
@@ -344,22 +366,21 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
   async function fetchTransactions() {
     const cutoff = dateRangeCutoff();
-    // `count: exact` gives us the true total so the UI can warn on truncation.
-    let q = supabase.from("bank_feed_transaction")
-      .select(TXN_COLS, { count: "exact" })
-      .eq("company_id", companyId)
-      .order("posted_date", { ascending: false })
-      .limit(TXN_FETCH_CAP);
-    if (cutoff) q = q.gte("posted_date", cutoff);
-    const { data, count, error } = await q;
-    if (error) {
-      pmError("PM-5001", { raw: error, context: "fetch bank transactions", silent: true });
+    try {
+      const { rows, totalCount, truncated } = await paginateTxns((opts) => {
+        let q = supabase.from("bank_feed_transaction")
+          .select(TXN_COLS, opts.count ? { count: opts.count } : undefined)
+          .eq("company_id", companyId)
+          .order("posted_date", { ascending: false });
+        if (cutoff) q = q.gte("posted_date", cutoff);
+        return q;
+      });
+      setTransactions(rows);
+      setTotalTxnCount(totalCount);
+      setTxnTruncated(truncated);
+    } catch (e) {
+      pmError("PM-5001", { raw: e, context: "fetch bank transactions", silent: true });
     }
-    setTransactions(data || []);
-    setTotalTxnCount(count || 0);
-    // If the underlying match count exceeds the fetch cap, warn — prior code
-    // silently capped at 500 and hid the rest.
-    setTxnTruncated((count || 0) > (data?.length || 0));
   }
 
   // Quiet refresh — re-pulls data without flipping the global
@@ -374,26 +395,27 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   async function fetchAll(opts = {}) {
     if (!opts.silent) setLoading(true);
     const cutoff = dateRangeCutoff();
-    let txnQ = supabase.from("bank_feed_transaction")
-      .select(TXN_COLS, { count: "exact" })
-      .eq("company_id", companyId)
-      .order("posted_date", { ascending: false })
-      .limit(TXN_FETCH_CAP);
-    if (cutoff) txnQ = txnQ.gte("posted_date", cutoff);
-    const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
+    const [feedsRes, txnPaged, rulesRes, connRes] = await Promise.all([
       // Show all feeds (active + inactive). Disconnected accounts
       // stay visible with a Reactivate affordance instead of vanishing.
       // bank_account_feed has no soft-delete column — status='inactive'
       // is the full deactivation state.
       supabase.from("bank_account_feed").select("*").eq("company_id", companyId).order("created_at"),
-      txnQ,
+      paginateTxns((o) => {
+        let q = supabase.from("bank_feed_transaction")
+          .select(TXN_COLS, o.count ? { count: o.count } : undefined)
+          .eq("company_id", companyId)
+          .order("posted_date", { ascending: false });
+        if (cutoff) q = q.gte("posted_date", cutoff);
+        return q;
+      }).catch((e) => { pmError("PM-5001", { raw: e, context: "fetchAll txn pagination", silent: true }); return { rows: [], totalCount: 0, truncated: false }; }),
       supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
     ]);
     setFeeds(feedsRes.data || []);
-    setTransactions(txnRes.data || []);
-    setTotalTxnCount(txnRes.count || 0);
-    setTxnTruncated((txnRes.count || 0) > (txnRes.data?.length || 0));
+    setTransactions(txnPaged.rows);
+    setTotalTxnCount(txnPaged.totalCount);
+    setTxnTruncated(txnPaged.truncated);
     const fetchedRules = rulesRes.data || [];
     // Auto-migrate V1 rules to V2 format on first load
     if (fetchedRules.some(r => r.condition_json && !r.condition_json.conditions)) {
