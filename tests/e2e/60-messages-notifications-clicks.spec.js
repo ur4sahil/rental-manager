@@ -57,8 +57,11 @@ test.describe('Notifications — click coverage', () => {
     await assertButtonsClickable(page);
   });
 
-  test('tab strip (Settings/Templates/Log) is reachable', async ({ page }) => {
-    const tabs = ['Settings', 'Templates', 'Log'];
+  test('tab strip (Activity/Preferences/History) is reachable', async ({ page }) => {
+    // Notifications module redesigned 2026-04-29: old admin tabs
+    // (Settings/Templates/Log) moved to Admin → Notifications. The
+    // user-facing inbox now shows Activity / Preferences / History.
+    const tabs = ['Activity', 'Preferences', 'History'];
     let found = 0;
     for (const t of tabs) {
       const btn = page.locator(`button:has-text("${t}")`).first();

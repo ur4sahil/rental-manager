@@ -10,19 +10,21 @@ test.describe('Accounting sidebar children', () => {
   test.beforeEach(async ({ page }) => { await login(page); });
 
   test('expanding Accounting reveals 8 child sub-pages', async ({ page }) => {
-    // navigateTo goes through the Accounting parent. The helper now
-    // expands the parent group automatically when a child label is
-    // requested — for the parent itself, click + chevron toggle.
+    // App.js auto-expands the parent whose page the user is on, so
+    // landing on Accounting already reveals its children. Only
+    // click the chevron if the first child isn't already visible —
+    // clicking when already expanded toggles it CLOSED, which used
+    // to break this test pre-2026-05-01.
     await navigateTo(page, 'Accounting');
-
-    // The chevron is a separate button after the parent. App.js auto-
-    // expands when the page IS a child; navigating to the parent
-    // itself doesn't auto-expand, so click the chevron explicitly.
-    const parentRow = page.locator('button:has-text("Accounting")').first();
-    const chevron = parentRow.locator('xpath=following-sibling::button').first();
-    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await chevron.click();
-      await page.waitForTimeout(400);
+    const firstChild = page.locator('button:has-text("Opening Balances")').first();
+    const alreadyExpanded = await firstChild.isVisible({ timeout: 1500 }).catch(() => false);
+    if (!alreadyExpanded) {
+      const parentRow = page.locator('button:has-text("Accounting")').first();
+      const chevron = parentRow.locator('xpath=following-sibling::button').first();
+      if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(400);
+      }
     }
 
     const expectedChildren = [
