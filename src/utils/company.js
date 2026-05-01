@@ -170,7 +170,7 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
         }
         // Filter to posted JEs.
         const jeIds = [...new Set(lines.map(l => l.journal_entry_id))];
-        const { data: jes } = await supabase.from("acct_journal_entries").select("id, status").in("id", jeIds);
+        const { data: jes } = await supabase.from("acct_journal_entries").select("id, status").eq("company_id", companyId).in("id", jeIds);
         const postedSet = new Set((jes || []).filter(j => j.status === "posted").map(j => j.id));
         let glTotal = 0;
         for (const l of lines) {

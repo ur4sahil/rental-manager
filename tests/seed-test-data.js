@@ -159,12 +159,11 @@ async function seedTestData() {
   }
 
   // ─── 12. Ledger Entries ───
-  const { error: ledErr } = await supabase.from('ledger_entries').insert([
-    { tenant: 'Alice Johnson', property: '100 Oak Street, Unit A', date: today, description: 'Rent charge', amount: 1800, type: 'charge', balance: 1800, company_id: COMPANY_ID },
-    { tenant: 'Alice Johnson', property: '100 Oak Street, Unit A', date: today, description: 'Rent payment', amount: -1800, type: 'payment', balance: 0, company_id: COMPANY_ID },
-  ]);
-  if (ledErr) console.error('❌ Ledger entries:', ledErr.message);
-  else console.log('✅ Ledger entries created');
+  // Phase 4: ledger_entries is a VIEW derived from acct_journal_lines
+  // on per-tenant AR accounts. No direct seed needed — the JE above
+  // (when posted to a per-tenant AR) automatically surfaces in the
+  // view. Skipping the direct insert.
+  console.log('ℹ️  Ledger entries skipped (view-derived in Phase 4)');
 
   // ─── 13. Messages ───
   const { error: msgErr } = await supabase.from('messages').insert([

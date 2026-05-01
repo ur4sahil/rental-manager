@@ -85,7 +85,12 @@ function testPmErrorAdoption() {
   // Count remaining raw console.warn/error (should be minimal)
   const consoleWarns = (APP_CODE.match(/console\.warn\(/g) || []).length;
   const consoleErrors = (APP_CODE.match(/console\.error\(/g) || []).length;
-  assert(consoleWarns + consoleErrors <= 5, `Only ${consoleWarns + consoleErrors} raw console.warn/error calls remain (max 5 intentional)`);
+  // Threshold is 8: the original 5 intentional + 2 added in 2026-04-30
+  // for anon-state PM-8005 and network-abort PM-8006/8001 suppression
+  // (developer-facing dev-console visibility when an error is dropped
+  // before it lands in error_log) + 1 for the dedup-fallthrough debug
+  // log. All 8 are deliberate.
+  assert(consoleWarns + consoleErrors <= 8, `Only ${consoleWarns + consoleErrors} raw console.warn/error calls remain (max 8 intentional)`);
 
   // No raw showToast("Error: " + error.message) patterns
   const rawToasts = (APP_CODE.match(/showToast\("Error:.*error\.message/g) || []).length;

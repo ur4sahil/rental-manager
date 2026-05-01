@@ -74,19 +74,27 @@ export default function PublicSignPage({ token }) {
       // Build the printable HTML — body + a signature certificate
       // section. Server-side will recompute SHA-256 over the
       // resulting PDF bytes and store it as signed_pdf_hash.
+      // payload.signer_name / signer_email come from the invitee's
+      // form input (tenant-controlled) and used to land directly in
+      // innerHTML — XSS sink flagged by security-adversarial.test.js
+      // on 2026-05-01. Sanitize the entire assembled HTML through
+      // DOMPurify before assignment so the certificate block can't
+      // smuggle scripts/event-handlers from the signer fields.
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = `
-        <h1 style="font-family:Georgia,serif;font-size:18px;margin:0 0 12px;">${(payload.doc_name || "").replace(/[<>]/g, "")}</h1>
-        ${sanitizeDoc(payload.doc_body)}
-        <hr style="margin:24px 0;" />
-        <h2 style="font-family:Georgia,serif;font-size:14px;">Certificate of Completion</h2>
-        <p style="font-family:Georgia,serif;font-size:11px;line-height:1.5;">
-          Document hash at send: <code>${(payload.doc_hash_at_send || "").slice(0, 64)}</code><br/>
-          Signature hash: <code>${(integrityHash || "").slice(0, 64)}</code><br/>
-          Signed by: ${payload.signer_name || payload.signer_email}<br/>
-          Signed at: ${new Date().toISOString()}<br/>
-          Disclosure version: ${ESIGN_CONSENT_VERSION}
-        </p>`;
+      const safeBody = sanitizeDoc(payload.doc_body);
+      const rawCert =
+        `<h1 style="font-family:Georgia,serif;font-size:18px;margin:0 0 12px;">${(payload.doc_name || "").slice(0, 200)}</h1>` +
+        safeBody +
+        `<hr style="margin:24px 0;" />` +
+        `<h2 style="font-family:Georgia,serif;font-size:14px;">Certificate of Completion</h2>` +
+        `<p style="font-family:Georgia,serif;font-size:11px;line-height:1.5;">` +
+        `Document hash at send: <code>${(payload.doc_hash_at_send || "").slice(0, 64)}</code><br/>` +
+        `Signature hash: <code>${(integrityHash || "").slice(0, 64)}</code><br/>` +
+        `Signed by: ${payload.signer_name || payload.signer_email || ""}<br/>` +
+        `Signed at: ${new Date().toISOString()}<br/>` +
+        `Disclosure version: ${ESIGN_CONSENT_VERSION}` +
+        `</p>`;
+      wrapper.innerHTML = DOMPurify.sanitize(rawCert);
       const pdfBlob = await html2pdf().set({
         margin: 12,
         filename: `${(payload.doc_name || "signed").replace(/[^a-z0-9]/gi, "-")}.pdf`,

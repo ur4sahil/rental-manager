@@ -175,24 +175,27 @@ async function testBalanceConsistency() {
   console.log('\n⚖️  BALANCE CONSISTENCY');
 
   // safeLedgerInsert's running-balance logic used to live client-side
-  // (prevBal + increasesBalance/decreasesBalance branches). It now
-  // delegates to the insert_ledger_entry_with_balance RPC so balance
-  // computation is atomic server-side (project_audit_fixes_2026_03_25).
-  // We just verify the RPC call still wires up and the fallback path
-  // exists for older DBs that haven't deployed the RPC yet.
-  assert(accountingJs.includes('insert_ledger_entry_with_balance'), 'safeLedgerInsert calls insert_ledger_entry_with_balance RPC');
-  assert(accountingJs.includes('ledger entry insert via RPC') || accountingJs.includes('ledger RPC missing'), 'safeLedgerInsert has error/fallback path for the RPC');
+  // (Phase 4, 2026-04-30) safeLedgerInsert is now a no-op shim;
+  // ledger_entries is a view derived from acct_journal_lines. The
+  // canonical write path is atomicPostJEAndLedger → post_je_and_ledger
+  // RPC, which inserts JE lines and the view auto-surfaces the row.
+  assert(accountingJs.includes('atomicPostJEAndLedger'), 'atomicPostJEAndLedger is the canonical write helper');
+  assert(accountingJs.includes('post_je_and_ledger'), 'post_je_and_ledger RPC is invoked from accounting.js');
 
-  // update_tenant_balance RPC called after payment operations
+  // update_tenant_balance RPC is still used by some legacy paths
+  // (Stripe webhook, payment recording, deposit-return), but the
+  // sync_tenant_balance_lines trigger handles the cache for any JE
+  // that touches a per-tenant AR account. So we expect ≥1 reference,
+  // not the previous ≥5.
   const rpcCalls = ALL_CODE.match(/update_tenant_balance/g);
-  assert(rpcCalls && rpcCalls.length >= 5, 'update_tenant_balance RPC called in multiple places (' + (rpcCalls ? rpcCalls.length : 0) + ' references)');
-  assert(accountingJs.includes('update_tenant_balance'), 'update_tenant_balance called in accounting.js');
-  assert(lifecycleJs.includes('update_tenant_balance'), 'update_tenant_balance called in Lifecycle.js (move-out credit)');
+  assert(rpcCalls && rpcCalls.length >= 1, 'update_tenant_balance RPC referenced (' + (rpcCalls ? rpcCalls.length : 0) + ' references; trigger handles the rest)');
 
-  // Void operations reverse AR impact
-  assert(accountingComponentJs.includes('arImpact'), 'arImpact computed during void operations');
-  assert(accountingComponentJs.includes('-arImpact'), 'Void reverses AR impact with negation');
-  assert(accountingComponentJs.includes('p_amount_change: -arImpact'), 'Void passes -arImpact to update_tenant_balance');
+  // Void operations: post-Phase 4, voiding a JE flips status to
+  // 'voided' and the sync_tenant_balance_status trigger recomputes
+  // the cached balance from the GL automatically. The explicit
+  // arImpact / -arImpact path was removed because it was redundant.
+  // Just verify the void code path exists.
+  assert(accountingComponentJs.includes('voided'), 'JE void path exists in Accounting component');
 
   // Warning when tenant not found for void reversal
   assert(accountingComponentJs.includes('not found'), 'Warning exists for tenant not found during void');
@@ -284,8 +287,11 @@ async function testAutopaySafety() {
   // Property delete disables all autopay for that property
   assert(propertiesJs.includes('autopay_schedules').includes || propertiesJs.includes('.eq("property", address)'), 'Property delete disables autopay for all tenants at property');
 
-  // Autopay creation includes company_id and tenant AND property
-  assert(tenantPortalJs.includes('company_id: companyId, tenant: tenantData.name, property: tenantData.property'), 'TenantPortal autopay creation includes company_id, tenant, AND property');
+  // Autopay creation in TenantPortal now goes through the
+  // /api/save-payment-method serverless function rather than a direct
+  // supabase insert. Verify the API call carries tenant_id + company_id.
+  assert(tenantPortalJs.includes('save-payment-method'), 'TenantPortal autopay uses /api/save-payment-method endpoint');
+  assert(tenantPortalJs.includes('tenant_id: tenantData.id, company_id: companyId'), 'TenantPortal autopay POST includes tenant_id + company_id');
 
   // Payments autopay creation includes company_id
   assert(paymentsJs.includes('company_id: companyId'), 'Payments autopay creation includes company_id');

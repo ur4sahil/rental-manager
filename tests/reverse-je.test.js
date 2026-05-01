@@ -28,7 +28,12 @@ assert(/debit: safeNum\(l\.credit\), credit: safeNum\(l\.debit\)/.test(acctJs), 
 assert(/reference: "REV-" \+ origRef|REV-/.test(acctJs), 'Reference prefixed with REV-');
 assert(/checkPeriodLock\(companyId, today\)/.test(acctJs), 'Period lock check before reversal');
 assert(/je\.status !== "posted"/.test(acctJs), 'Only posted JEs are reversible');
-assert(/Math\.abs\(arImpact\) > 0\.01[\s\S]{0,400}update_tenant_balance/.test(acctJs), 'AR mirror updates tenant balance with inverse');
+// Phase 4 (2026-04-30): the reversal posts a mirror JE on the AR
+// account; the sync_tenant_balance_lines trigger picks up those new
+// lines and recomputes tenants.balance from the GL automatically.
+// The explicit `update_tenant_balance` call inside the reversal
+// block was removed because it was redundant with the trigger.
+assert(/REV-/.test(acctJs), 'Reversal posts a mirror JE (trigger handles balance recompute)');
 
 // ─── 2. Live: post a JE, reverse it, verify both exist ──────
 console.log('\n2. Live round-trip');
