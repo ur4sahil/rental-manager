@@ -33,7 +33,13 @@ async function login(page, arg = 'sandbox-llc') {
   // generic `main` locator that matches once auth has resolved past
   // the loading screen.
   const dashboardMarker = page.locator('button:visible:has-text("Dashboard"), h2:visible:has-text("Dashboard")').first();
-  const portalMarker = page.locator('main:visible button, main:visible [role="tab"]').first();
+  // Tenant/owner portals: the <main> panel renders <generic> divs
+  // (not buttons) until backend queries finish. Sidebar nav buttons
+  // (Overview / Pay Rent / etc) appear immediately after auth, so
+  // pivot the success marker onto those — fast and unambiguous.
+  const portalMarker = page.locator(
+    'nav button:has-text("Overview"), nav button:has-text("Pay Rent"), nav button:has-text("Statements"), nav button:has-text("Distributions")'
+  ).first();
   const successMarker = expectsPortal ? portalMarker : dashboardMarker;
   if (await successMarker.isVisible({ timeout: 3000 }).catch(() => false)) return;
 
