@@ -333,24 +333,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (f && (f.status === "inactive" || !f.gl_account_id)) setSelectedFeed("all");
   }, [feeds, selectedFeed, showHiddenFeeds]);
 
-  // First-time mismatch alert per feed per session. Re-firing every
-  // render would spam — the ref tracks which feeds we've already
-  // warned about. Cleared on a hard reload (component remount).
-  const warnedFeedIds = useRef(new Set());
-  useEffect(() => {
-    if (loading) return;
-    for (const feed of feeds) {
-      if (feed.status === "inactive" || !feed.gl_account_id) continue;
-      const r = computeFeedRecon(feed);
-      if (r.bankBal == null || r.isReconciled) continue;
-      if (warnedFeedIds.current.has(feed.id)) continue;
-      warnedFeedIds.current.add(feed.id);
-      showToast(`Reconciliation mismatch on ${feed.account_name}: ${formatCurrency(r.diff)}. Check for missing or duplicate transactions.`, "error");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feeds, transactions, balanceIndex, loading]);
-
-  // Minimum bank_feed_transaction column set. The full row has 33 columns;
+// Minimum bank_feed_transaction column set. The full row has 33 columns;
   // only these are consumed by the UI (sort/filter/display/action). Dropped:
   // bank_import_batch_id, provider_transaction_id, balance_after,
   // fingerprint_hash, duplicate_group_key, excluded_at/by, accepted_at/by,
