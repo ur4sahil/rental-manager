@@ -32,12 +32,12 @@ test.describe('Tenant Portal — click coverage', () => {
   });
 
   // Tenant portal tabs (TenantPortal.js): Overview, Pay Rent, Autopay,
-  // History, Maintenance, Documents, Messages.
+  // Ledger (renamed from History), Maintenance, Documents, Messages.
   const tabs = [
     { label: 'Overview',    marker: /Balance|Lease|Property|Rent/i                    },
     { label: 'Pay Rent',    marker: /Pay|Amount|Method|Card/i                          },
     { label: 'Autopay',     marker: /Autopay|Schedule|Day|Enable/i                     },
-    { label: 'History',     marker: /History|Date|Amount|Receipt|Transaction/i         },
+    { label: 'Ledger',      marker: /Ledger|Date|Amount|Balance|Charge|Payment/i       },
     { label: 'Maintenance', marker: /Maintenance|Issue|Submit|Photo|Request/i          },
     { label: 'Documents',   marker: /Document|Upload|View|Lease|PDF/i                  },
     { label: 'Messages',    marker: /Message|Send|Compose|Manager|Conversation/i       },
@@ -60,6 +60,11 @@ test.describe('Tenant Portal — click coverage', () => {
   }
 
   test('header shows tenant name / property', async ({ page }) => {
+    // Wait for the portal data fetch to settle. On cold-start Vercel
+    // the initial render is empty until the tenants/leases queries
+    // come back; the 1.5s wait in beforeEach isn't always enough.
+    await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(1500);
     const body = await page.locator('body').innerText();
     // Either the tenant's name "CT Portal Tenant" or the property
     // address "Click Test Way" should appear somewhere.

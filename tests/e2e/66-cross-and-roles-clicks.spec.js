@@ -47,14 +47,19 @@ test.describe('Cross-module — click coverage', () => {
   test('Properties expand chevron shows nested children', async ({ page }) => {
     await navigateTo(page, 'Properties');
     await page.waitForTimeout(800);
-    const parentRow = page.locator('button:has-text("Properties")').first();
-    const chevron = parentRow.locator('xpath=following-sibling::button').first();
-    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await chevron.click();
-      await page.waitForTimeout(500);
-    }
-    // At least one of the expected nested children should now be visible
+    // App.js auto-expands the parent whose page the user is on.
+    // Only toggle the chevron if a child isn't already visible —
+    // clicking it when already expanded would collapse the dropdown.
     const child = page.locator('nav button').filter({ hasText: /Maintenance|Utilities|HOA|Insurance|Tax Bills/ }).first();
+    const alreadyVisible = await child.isVisible({ timeout: 1500 }).catch(() => false);
+    if (!alreadyVisible) {
+      const parentRow = page.locator('button:has-text("Properties")').first();
+      const chevron = parentRow.locator('xpath=following-sibling::button').first();
+      if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await chevron.click();
+        await page.waitForTimeout(500);
+      }
+    }
     await expect(child).toBeVisible({ timeout: 3000 });
   });
 
