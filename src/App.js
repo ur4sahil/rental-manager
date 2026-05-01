@@ -303,10 +303,25 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
 
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
-  const [page, setPageRaw] = useState(() => {
-    const hash = window.location.hash.replace("#", "");
-    return hash || "dashboard";
-  });
+  // Capture the very first hash the user landed on. Push notification
+  // clicks open URLs like /#messages or /#payments to deep-link into
+  // a module. The app's normal flow then transitions through
+  // setScreen("login") / "companySelect", and EACH of those calls
+  // `history.pushState(... "#" + screen)` which clobbers the
+  // deep-link hash. By the time setScreen("app") fires post-login,
+  // the URL hash is "#login" and the deep-link is gone — that's why
+  // a /#messages push click was landing on Dashboard. Stash the
+  // original hash on first mount and replay it post-auth.
+  const initialDeepLink = (() => {
+    const h = window.location.hash.replace("#", "");
+    if (!h) return null;
+    // Filter out values that are screen names, not pages, so we don't
+    // bounce a user who reloaded mid-login back to the login screen.
+    if (h === "login" || h === "companySelect" || h === "loading" || h === "app") return null;
+    return h;
+  })();
+  const deepLinkRef = useRef(initialDeepLink);
+  const [page, setPageRaw] = useState(() => initialDeepLink || "dashboard");
 
   const [pageAction, setPageAction] = useState(null);
   function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
@@ -652,9 +667,20 @@ function AppInner() {
   setUserProfile({ name: userForProfile?.email?.split("@")[0] || "User", email: userForProfile?.email, role: role });
   fetchUserRoleForCompany(userForProfile, company.id); // async — role + real name update via setState after fetch
   setScreen("app");
+  // Prefer the deep-link captured on first mount (push-click hash)
+  // over the current location.hash, which has been clobbered by
+  // every setScreen() transition since landing. Falls back to the
+  // current hash for in-session navigation, then dashboard.
+  const deepLink = deepLinkRef.current;
   const hashPage = window.location.hash.replace("#", "");
-  if (hashPage && hashPage !== "app") setPageRaw(hashPage);
-  else setPage("dashboard");
+  if (deepLink) {
+    setPage(deepLink);
+    deepLinkRef.current = null; // one-shot — don't replay on re-auth
+  } else if (hashPage && hashPage !== "app" && hashPage !== "login" && hashPage !== "companySelect" && hashPage !== "loading") {
+    setPageRaw(hashPage);
+  } else {
+    setPage("dashboard");
+  }
   }
 
   async function fetchUserRoleForCompany(user, companyId) {
