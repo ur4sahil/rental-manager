@@ -347,7 +347,17 @@ module.exports = async function handler(req, res) {
           // 2026-04-25/27 — 141 dupes generated in two re-syncs.
           // Pull in 1000-row pages until empty so existingPtid +
           // existingFp cover every row in the window.
-          const existingFp = new Set();
+          // existingFpCsv holds fingerprints from rows that have NO
+          // provider_transaction_id (i.e., CSV imports) — those are
+          // the ONLY rows we want to dedup Teller pulls against by
+          // fingerprint. If we used the broader set, three legitimate
+          // bank events with the same date/amount/direction/description
+          // (e.g., three identical "RETURN OF POSTED CHECK / ITEM"
+          // returns on 01/15) get silently collapsed to one, because
+          // their fingerprints all match the first one we ingested.
+          // Sigma's 0822 lost 2 of 3 $398.17 returns this way on
+          // 2026-04-23, producing the $776.34 reconciliation gap.
+          const existingFpCsv = new Set();
           const existingPtid = new Set();
           let dedupFrom = 0;
           while (true) {
@@ -361,8 +371,8 @@ module.exports = async function handler(req, res) {
             const { data: page } = await fpQuery.range(dedupFrom, dedupFrom + 999);
             if (!page?.length) break;
             for (const r of page) {
-              if (r.fingerprint_hash) existingFp.add(r.fingerprint_hash);
               if (r.provider_transaction_id) existingPtid.add(r.provider_transaction_id);
+              else if (r.fingerprint_hash) existingFpCsv.add(r.fingerprint_hash);
             }
             if (page.length < 1000) break;
             dedupFrom += 1000;
@@ -385,10 +395,15 @@ module.exports = async function handler(req, res) {
             const desc = txn.description || "";
             const fp = buildFingerprint(feed.id, date, direction, amount, desc);
 
-            // Primary: provider_transaction_id match (cheap, stable).
-            // Fallback: fingerprint match (CSV-Teller crosswalk).
+            // Primary: provider_transaction_id match — Teller's own
+            // unique id is the source of truth for "have we seen
+            // this exact bank event before?".
+            // Fallback: fingerprint match against CSV-only rows
+            // (existingFpCsv excludes Teller-imported rows). This
+            // preserves the cross-source crosswalk without dropping
+            // legitimate same-fingerprint Teller events.
             if (txn.id && existingPtid.has(txn.id)) continue;
-            if (existingFp.has(fp)) continue;
+            if (existingFpCsv.has(fp)) continue;
 
             // Persist a minimal whitelist of fields rather than the full
             // Teller payload. The upstream txn object can include ACH
