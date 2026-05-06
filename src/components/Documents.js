@@ -441,9 +441,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return pdf;
   }
 
-  async function renderPdfPages(pdf, scale, container) {
-  if (!container) return;
-  container.innerHTML = "";
+  async function renderPdfPages(pdf, scale) {
+  // Render each page to an off-DOM canvas; React's JSX block (driven
+  // off pdfPages state) mounts the in-DOM canvas and the per-canvas
+  // ref callback copies the bitmap. We deliberately don't append into
+  // the container ref — the previous version did, gated on
+  // pdfContainerRef.current being non-null, but at the moment this
+  // runs the container hasn't mounted yet (templateForm.pdf_storage_path
+  // is still empty), so the early-return left pdfPages empty and the
+  // PDF was invisible despite a successful upload + field detection.
   const pages = [];
   for (let i = 1; i <= pdf.numPages; i++) {
   const page = await pdf.getPage(i);
@@ -514,7 +520,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   const bytes = await file.arrayBuffer();
   const pdf = await loadPdfFromBytes(new Uint8Array(bytes));
-  const pages = await renderPdfPages(pdf, pdfScale, pdfContainerRef.current);
+  const pages = await renderPdfPages(pdf, pdfScale);
 
   // Auto-detect fields
   const detected = await autoDetectFields(pdf);
@@ -690,7 +696,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (template.template_type === "pdf_overlay" && template.pdf_storage_path) {
   setPdfPages([]);
   const pdf = await loadPdfForPreview(template.pdf_storage_path);
-  if (pdf && pdfContainerRef.current) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current);
+  if (pdf) await renderPdfPages(pdf, pdfScale);
   }
   // Seed signer email/name defaults from the new template's roles
   if (template.signing_mode && template.signing_mode !== "none") {
@@ -2064,7 +2070,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div className="flex gap-1 mt-auto">
   <Btn variant="success-fill" size="xs" className="flex-1" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
-  <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [], signing_mode: t.signing_mode || "none", signer_roles: t.signer_roles || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
+  <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [], signing_mode: t.signing_mode || "none", signer_roles: t.signer_roles || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale); }, 100); } }}>Edit</Btn>
   <Btn variant="danger" size="xs" onClick={() => deleteTemplate(t)}>✕</Btn>
   </div>
   </div>
