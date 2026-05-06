@@ -291,6 +291,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
   const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
   const [importingDocx, setImportingDocx] = useState(false);  // disable the "Import .docx" button while mammoth runs
+  // Landing-screen UX: a fresh template starts on a 3-choice splash
+  // (Import .docx → HTML mode, Upload .pdf → PDF Overlay mode, Start
+  // blank → empty HTML editor). Replaces the old "HTML / PDF Overlay"
+  // tab toggle, which forced the user to pick a mode before they knew
+  // what either mode was. Landing hides as soon as content is in
+  // (body or pdf_storage_path becomes truthy) or the user picks
+  // "Start blank" explicitly.
+  const [templateLandingSkipped, setTemplateLandingSkipped] = useState(false);
 
   const previewRef = useRef();
 
@@ -1299,16 +1307,47 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-neutral-300 shrink-0">›</span>
   <span className="font-semibold text-neutral-800 truncate">{editingTemplate ? (templateForm.name || "Edit Template") : (templateForm.name || "New Template")}</span>
   </div>
-  <div className="flex bg-neutral-100 rounded-xl p-0.5">
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>HTML</button>
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>PDF Overlay</button>
-  </div>
   <Btn onClick={saveTemplate}>{editingTemplate ? "Save" : "Create"}</Btn>
   <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
   </div>
 
+  {(() => {
+    const showLanding = !editingTemplate
+      && !templateForm.body
+      && !templateForm.pdf_storage_path
+      && !templateLandingSkipped;
+    if (!showLanding) return null;
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50/50 overflow-y-auto">
+        <div className="w-full max-w-3xl">
+          <h2 className="text-lg font-semibold text-neutral-800 text-center">How would you like to start?</h2>
+          <p className="text-sm text-neutral-500 text-center mt-1 mb-8">Pick a starting point — you can edit fields and signing settings either way.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <label className={"relative flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6 " + (importingDocx ? "opacity-60 pointer-events-none" : "")}>
+              <span className="material-icons-outlined text-4xl text-brand-500 mb-3">description</span>
+              <span className="text-sm font-semibold text-neutral-800">{importingDocx ? "Importing…" : "Import from Word"}</span>
+              <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Upload a .docx — we'll convert it to an editable rich-text template that reflows with your data.</span>
+              <FileInput accept=".docx" className="hidden" onChange={e => { setTemplateForm(prev => ({ ...prev, template_type: "html" })); handleDocxImport(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <label className="relative flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
+              <span className="material-icons-outlined text-4xl text-brand-500 mb-3">picture_as_pdf</span>
+              <span className="text-sm font-semibold text-neutral-800">Upload a PDF</span>
+              <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Use a fixed-layout PDF (court forms, lease addenda). Place fields on top — original layout preserved.</span>
+              <FileInput accept=".pdf" className="hidden" onChange={e => { setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" })); handlePdfUpload(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <button type="button" onClick={() => { setTemplateForm(prev => ({ ...prev, template_type: "html" })); setTemplateLandingSkipped(true); }} className="flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
+              <span className="material-icons-outlined text-4xl text-brand-500 mb-3">edit_note</span>
+              <span className="text-sm font-semibold text-neutral-800">Start blank</span>
+              <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Open an empty rich-text editor and write your template from scratch.</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })()}
+
   {/* Sub-ribbon — TipTap formatting toolbar (HTML templates only) */}
-  {templateForm.template_type === "html" && htmlEditor && (
+  {!(!editingTemplate && !templateForm.body && !templateForm.pdf_storage_path && !templateLandingSkipped) && templateForm.template_type === "html" && htmlEditor && (
   <div className="px-5 py-1.5 border-b border-neutral-100 bg-white shrink-0 flex items-center gap-3">
   <RichTextToolbar editor={htmlEditor} />
   <span className="w-px h-5 bg-neutral-200" />
@@ -1321,6 +1360,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   )}
 
   {/* 3-column layout: left fields rail | center canvas | right inspector rail */}
+  {!(!editingTemplate && !templateForm.body && !templateForm.pdf_storage_path && !templateLandingSkipped) && (
   <div className="flex-1 flex overflow-hidden">
   {/* LEFT RAIL — Form Fields palette */}
   <div className="w-[260px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white">
@@ -1667,6 +1707,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   )}
   </div>
   </div>
+  )}
   </div>
   );
   }
