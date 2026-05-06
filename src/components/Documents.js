@@ -392,7 +392,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ---- PDF utilities ----
   async function loadPdfFromBytes(bytes) {
   const pdfjsLib = await import("pdfjs-dist");
-  try { pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString(); } catch { pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/" + pdfjsLib.version + "/pdf.worker.min.mjs"; }
+  // CRA's bundler can't resolve the new URL("pdfjs-dist/build/pdf.worker.min.mjs",
+  // import.meta.url) form — it emits a /static/media/ path that 404s in
+  // production. cdnjs is also stale (only ships up to 5.4.x while we're
+  // on 5.5.207). jsdelivr mirrors npm packages 1:1, so version-pin the
+  // worker against the package we actually installed.
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdn.jsdelivr.net/npm/pdfjs-dist@" + pdfjsLib.version + "/build/pdf.worker.min.mjs";
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   setPdfDoc(pdf);
   return pdf;
