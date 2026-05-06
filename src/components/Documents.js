@@ -407,7 +407,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // existing lease in Word, get it into the builder".
   async function handleDocxImport(file) {
     if (!file) return;
-    if (!htmlEditor) { showToast("Open the HTML editor first", "info"); return; }
     if (!/\.docx$/i.test(file.name)) {
       showToast(".docx only — older .doc files aren't supported", "error");
       return;
@@ -419,11 +418,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       const result = await mammoth.convertToHtml({ arrayBuffer });
       const html = (result && result.value) || "";
       if (!html.trim()) { showToast("No content found in the Word document", "error"); return; }
-      // Replace editor content. Mammoth output is already clean, but run
-      // it through the same paste cleaner so any stray attributes (lang,
-      // empty class) are normalized — keeps the output identical to what
-      // pasting the same content would produce.
-      htmlEditor.commands.setContent(html);
+      // When triggered from the landing splash, the TipTap editor hasn't
+      // mounted yet — htmlEditor is null. Seed templateForm.body so the
+      // editor takes the imported HTML as its initial content when it
+      // mounts. When triggered from inside the editor (the toolbar
+      // button), use commands.setContent for an immediate swap. Either
+      // path also flips template_type to html and dismisses the landing.
+      setTemplateForm(prev => ({ ...prev, template_type: "html", body: html }));
+      setTemplateLandingSkipped(true);
+      if (htmlEditor) htmlEditor.commands.setContent(html);
       const messages = (result && result.messages) || [];
       const warnCount = messages.filter(m => m.type === "warning").length;
       showToast("Imported" + (warnCount ? ` (${warnCount} formatting warning${warnCount > 1 ? "s" : ""})` : ""), "success");
