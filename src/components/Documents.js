@@ -415,9 +415,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     try {
       const mammoth = (await import("mammoth")).default || (await import("mammoth"));
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      const html = (result && result.value) || "";
+      // styleMap fills gaps in mammoth's default mapping:
+      //  - underlines (u/ins) — mammoth drops them by default; preserve as <u>
+      //  - lettered Word numbering (a., i., etc.) survives as text inside <p>s
+      // includeDefaultStyleMap is on so headings/bold/italic still work.
+      const result = await mammoth.convertToHtml(
+        { arrayBuffer },
+        { styleMap: ["u => u", "r[style-name='Strong'] => strong"] }
+      );
+      let html = (result && result.value) || "";
       if (!html.trim()) { showToast("No content found in the Word document", "error"); return; }
+      html = promoteHeadings(html);
       // When triggered from the landing splash, the TipTap editor hasn't
       // mounted yet — htmlEditor is null. Seed templateForm.body so the
       // editor takes the imported HTML as its initial content when it
@@ -475,6 +483,56 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   setPdfPages(pages);
   return pages;
+  }
+
+  // Real-world Word leases are often authored without applying Heading
+  // styles — section titles like "SECTION I - PROPERTY RENT" are just
+  // plain <p>s, sometimes wrapped in <strong>. Mammoth correctly emits
+  // what's there, but the result reads as one undifferentiated wall
+  // of text. This pass promotes obvious heading patterns to <h2>:
+  //   1. <p><strong>...</strong></p> where the strong covers the whole
+  //      paragraph and the text is ≤80 chars (titles, not emphasized
+  //      sentences).
+  //   2. <p> starting with SECTION/ARTICLE/PART followed by a roman
+  //      numeral or arabic number (very common in legal templates).
+  //   3. Short ALL-CAPS paragraphs (≤80 chars, mostly letters).
+  // Conservative thresholds — we'd rather miss a heading than promote
+  // a bolded sentence mid-paragraph by mistake.
+  function promoteHeadings(html) {
+    if (!html || typeof html !== "string") return html;
+    // Strip simple inline wrappers (<u>, <strong>, <em>, <b>, <i>, <span>)
+    // from a paragraph's inner HTML to get the plain text used for the
+    // heading-pattern checks. We deliberately don't try to preserve the
+    // wrappers in the resulting <h2> — a heading is a heading, the
+    // visual emphasis comes from the heading style itself.
+    const stripInline = (s) => String(s)
+      .replace(/<\/?(?:u|strong|em|b|i|span)\b[^>]*>/gi, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const isSentence = (t) => /[.?!](\s|$)/.test(t);
+    return html.replace(/<p>([\s\S]*?)<\/p>/g, (m, inner) => {
+      const t = stripInline(inner);
+      if (!t || t.length > 120) return m;
+      // (1) SECTION/ARTICLE/PART followed by a roman or arabic numeral.
+      if (/^(SECTION|ARTICLE|PART)\s+([IVXLCDM]+|\d+)\b/i.test(t) && !isSentence(t)) {
+        return `<h2>${t}</h2>`;
+      }
+      // (2) Whole-paragraph emphasis (<strong> or <u> wrapping the entire
+      // visible content) with short text and not sentence-shaped.
+      const wholeWrapped = /^<(strong|u)>([\s\S]*?)<\/\1>$/i.test(inner.trim());
+      if (wholeWrapped && t.length <= 80 && !isSentence(t) && /[A-Za-z]/.test(t)) {
+        return `<h2>${t}</h2>`;
+      }
+      // (3) Short ALL-CAPS title-shaped paragraph.
+      if (t.length >= 4 && t.length <= 80 && t === t.toUpperCase() && !isSentence(t)) {
+        const letters = (t.match(/[A-Z]/g) || []).length;
+        if (letters >= 4 && letters / t.length >= 0.5) {
+          return `<h2>${t}</h2>`;
+        }
+      }
+      return m;
+    });
   }
 
   // Slugify a label fragment ("Tenant Name:") into a stable field name.
