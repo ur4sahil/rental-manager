@@ -7,6 +7,50 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 // TipTap v3 consolidates the Table extensions into one package — use named imports.
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 
+// Conservative paste-cleaner for HTML that came out of Word, Outlook,
+// Google Docs, or Apple Pages. None of those produce HTML the rest of
+// the app wants in storage — Word ships mso-* style/class noise and
+// fixed pixel widths, Google Docs ships `id="docs-internal-guid-…"`
+// wrappers and inline color styles, etc. We don't try to convert
+// MsoListParagraph runs to <ul>/<ol> (too brittle); we just strip the
+// noise and let paragraphs survive as paragraphs.
+function cleanPastedHtml(html) {
+  if (!html || typeof html !== "string") return html;
+  let h = html;
+  // Word's clipboard wraps the actual fragment in StartFragment/EndFragment.
+  const startIdx = h.indexOf("<!--StartFragment-->");
+  const endIdx = h.indexOf("<!--EndFragment-->");
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    h = h.slice(startIdx + "<!--StartFragment-->".length, endIdx);
+  }
+  // Conditional comments (Word, Outlook).
+  h = h.replace(/<!--\[if[\s\S]*?<!\[endif\]-->/gi, "");
+  // <style>, <meta>, <link>, <xml>, <script> blocks have no place in pasted body.
+  h = h.replace(/<style[\s\S]*?<\/style>/gi, "");
+  h = h.replace(/<script[\s\S]*?<\/script>/gi, "");
+  h = h.replace(/<(meta|link|xml|o:p)[^>]*\/?>/gi, "");
+  // Office namespace tags (e.g. <o:p>, <w:WordDocument>).
+  h = h.replace(/<\/?[a-z]+:[a-z0-9]+[^>]*>/gi, "");
+  // Mso-* class names.
+  h = h.replace(/\sclass="[^"]*\bMso[A-Za-z0-9]*[^"]*"/gi, "");
+  // Inline styles + width/height/lang attributes.
+  h = h.replace(/\sstyle="[^"]*"/gi, "");
+  h = h.replace(/\s(?:width|height|cellpadding|cellspacing|border)="[^"]*"/gi, "");
+  h = h.replace(/\s(?:xml:lang|lang)="[^"]*"/gi, "");
+  // Empty class / id attributes left over.
+  h = h.replace(/\sclass=""/gi, "");
+  h = h.replace(/\sid="docs-internal-guid-[^"]*"/gi, "");
+  // <font> tags (Outlook still ships them).
+  h = h.replace(/<\/?font[^>]*>/gi, "");
+  // Strip <span> tags that no longer carry attributes after the cleanup
+  // above — they're pure noise once styles are gone.
+  h = h.replace(/<span\s*>/gi, "");
+  h = h.replace(/<\/span>/gi, "");
+  // &nbsp; runs collapse to a single regular space; keeps wrapping working.
+  h = h.replace(/(&nbsp;)+/g, " ");
+  return h;
+}
+
 // WYSIWYG editor for document/template bodies.
 // Output: HTML string compatible with the existing renderMergedBody +
 // sanitizeTemplateHtml pipeline. Merge tokens are inserted as literal
@@ -92,6 +136,14 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     ],
     content: value,
     onUpdate: ({ editor: ed }) => { if (onChange) onChange(ed.getHTML()); },
+    editorProps: {
+      // Pasting from Word/Google Docs/Outlook drops a giant HTML payload
+      // with mso-* styles, <o:p> namespace tags, <style> blocks, MsoNormal
+      // classes, fixed widths, and runs of &nbsp; that overflow the canvas
+      // and break paragraph structure. Strip all of it before TipTap parses
+      // the fragment so what lands in the editor is clean semantic HTML.
+      transformPastedHTML: cleanPastedHtml,
+    },
   });
 
   useEffect(() => () => { if (editor) editor.destroy(); }, [editor]);
@@ -187,7 +239,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
           onClick={() => editor.chain().focus().run()}
         >
           <div className={"bg-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.15)] border w-full max-w-[8.5in] min-h-[11in] px-16 py-14 transition-colors " + (dragOver ? "border-brand-400" : "border-neutral-200")} style={{ fontFamily: "Georgia, serif" }}>
-            <EditorContent editor={editor} className="prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px]" />
+            <EditorContent editor={editor} className="prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_table]:max-w-full [&_.ProseMirror_table]:!w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto [&_.ProseMirror_*]:!max-w-full" />
           </div>
         </div>
       </div>
@@ -236,7 +288,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <EditorContent editor={editor} className="prose prose-sm max-w-none p-4 outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px]" />
+        <EditorContent editor={editor} className="prose prose-sm max-w-none p-4 outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_table]:max-w-full [&_.ProseMirror_table]:!w-auto [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto [&_.ProseMirror_*]:!max-w-full" />
       </div>
     </div>
   );

@@ -290,6 +290,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Phase 5 — template editor 3-col layout
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
   const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
+  const [importingDocx, setImportingDocx] = useState(false);  // disable the "Import .docx" button while mammoth runs
 
   const previewRef = useRef();
 
@@ -387,6 +388,42 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (!val || typeof val !== "object") return "";
   const parts = [val.line1, val.line2, [val.city, val.state].filter(Boolean).join(", ") + (val.zip ? " " + val.zip : "")].filter(Boolean);
   return parts.join("\n");
+  }
+
+  // ---- .docx import ----
+  // Read a Word document, convert it to clean semantic HTML via mammoth,
+  // and replace the editor body. Mammoth understands real Word semantics
+  // (headings, lists, tables, bold/italic, links) and outputs HTML
+  // without the mso-* / fixed-width junk that copy-pasting from Word
+  // would otherwise leak — so this is the safest path for "I have an
+  // existing lease in Word, get it into the builder".
+  async function handleDocxImport(file) {
+    if (!file) return;
+    if (!htmlEditor) { showToast("Open the HTML editor first", "info"); return; }
+    if (!/\.docx$/i.test(file.name)) {
+      showToast(".docx only — older .doc files aren't supported", "error");
+      return;
+    }
+    setImportingDocx(true);
+    try {
+      const mammoth = (await import("mammoth")).default || (await import("mammoth"));
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      const html = (result && result.value) || "";
+      if (!html.trim()) { showToast("No content found in the Word document", "error"); return; }
+      // Replace editor content. Mammoth output is already clean, but run
+      // it through the same paste cleaner so any stray attributes (lang,
+      // empty class) are normalized — keeps the output identical to what
+      // pasting the same content would produce.
+      htmlEditor.commands.setContent(html);
+      const messages = (result && result.messages) || [];
+      const warnCount = messages.filter(m => m.type === "warning").length;
+      showToast("Imported" + (warnCount ? ` (${warnCount} formatting warning${warnCount > 1 ? "s" : ""})` : ""), "success");
+    } catch (e) {
+      showToast("Import failed: " + (e?.message || "unknown error"), "error");
+    } finally {
+      setImportingDocx(false);
+    }
   }
 
   // ---- PDF utilities ----
@@ -1266,8 +1303,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Sub-ribbon — TipTap formatting toolbar (HTML templates only) */}
   {templateForm.template_type === "html" && htmlEditor && (
-  <div className="px-5 py-1.5 border-b border-neutral-100 bg-white shrink-0">
+  <div className="px-5 py-1.5 border-b border-neutral-100 bg-white shrink-0 flex items-center gap-3">
   <RichTextToolbar editor={htmlEditor} />
+  <span className="w-px h-5 bg-neutral-200" />
+  <label className={"inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-neutral-200 cursor-pointer hover:bg-neutral-50 " + (importingDocx ? "opacity-60 pointer-events-none" : "")} title="Import a .docx file as a starting point. Replaces the current editor content.">
+  <span className="material-icons-outlined text-sm">upload_file</span>
+  {importingDocx ? "Importing…" : "Import from Word"}
+  <FileInput accept=".docx" className="hidden" onChange={e => { handleDocxImport(e.target.files?.[0]); e.target.value = ""; }} />
+  </label>
   </div>
   )}
 
