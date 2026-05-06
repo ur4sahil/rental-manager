@@ -474,12 +474,41 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return pages;
   }
 
+  // Slugify a label fragment ("Tenant Name:") into a stable field name.
+  function slugLabel(s) {
+    return String(s || "")
+      .replace(/[:—–\-]+\s*$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40);
+  }
+
   async function autoDetectFields(pdf) {
   const detected = [];
+  // Track placements per page by approximate (x, y) so we don't emit
+  // overlapping rectangles when both the underscore pass and the
+  // label-colon pass would point at the same blank area.
+  const seenRects = new Set();
+  const rectKey = (page, x, y) => page + "|" + Math.round(x) + "|" + Math.round(y);
+
   for (let i = 1; i <= pdf.numPages; i++) {
   const page = await pdf.getPage(i);
   const viewport = page.getViewport({ scale: 1 }); // use scale 1 for coordinate mapping
   const content = await page.getTextContent();
+
+  // Build a per-line view so the colon-label pass can compute the gap
+  // to the NEXT item on the same line (where the user would write).
+  // pdfjs returns items in reading order with PDF coords (origin
+  // bottom-left); ty groups items by line.
+  const linesByY = new Map();
+  for (const item of content.items) {
+    const ty = Math.round(item.transform[5]);
+    if (!linesByY.has(ty)) linesByY.set(ty, []);
+    linesByY.get(ty).push(item);
+  }
+  for (const arr of linesByY.values()) arr.sort((a, b) => a.transform[4] - b.transform[4]);
+
   for (const item of content.items) {
   const text = item.str || "";
   const tx = item.transform[4];
@@ -490,9 +519,29 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Check patterns
   let fieldName = null;
   let matchType = null;
+  let placementXPct = xPct;
+  let placementWPct = Math.min(30, (item.width || 100) / viewport.width * 100 + 5);
   const mergeMatch = text.match(/\{\{(\w+)\}\}/);
   const bracketMatch = text.match(/\[([A-Za-z][A-Za-z0-9_ ]+)\]/);
   const underscoreMatch = text.match(/_{4,}/);
+  // Trailing-colon labels: "Tenant Name:" / "Date: " / "Address —"
+  // The blank fillable area extends to the right of the colon, up to
+  // the next text item on the same line, or to the right margin if
+  // nothing follows.
+  const colonLabel = (() => {
+    const trimmed = text.replace(/\s+$/, "");
+    if (!/[:—]\s*$/.test(trimmed) && !/[:—]\s+\S*$/.test(text)) return null;
+    // Take everything up to (and excluding) the trailing colon/dash.
+    const m = trimmed.match(/^(.*?)[:—\-]\s*$/);
+    if (!m) return null;
+    const labelText = m[1].trim();
+    // Reject pseudo-labels (URLs, multi-sentence prose, single chars).
+    if (labelText.length < 2 || labelText.length > 50) return null;
+    if (/[.?!]/.test(labelText)) return null;
+    if (/^[a-z]/.test(labelText) && !/\s/.test(labelText)) return null; // e.g. "https"
+    if (!/[a-zA-Z]/.test(labelText)) return null;
+    return labelText;
+  })();
   if (mergeMatch) { fieldName = mergeMatch[1]; matchType = "merge"; }
   else if (bracketMatch) { fieldName = bracketMatch[1].toLowerCase().replace(/[^a-z0-9]+/g, "_"); matchType = "bracket"; }
   else if (underscoreMatch) {
@@ -501,13 +550,34 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   fieldName = before ? before.toLowerCase().replace(/[^a-z0-9]+/g, "_") : "field_" + detected.length;
   matchType = "underscore";
   }
+  else if (colonLabel) {
+    fieldName = slugLabel(colonLabel) || ("field_" + detected.length);
+    matchType = "label_colon";
+    // Blank rect starts where this text run ENDS (tx + width) and
+    // extends to the next item on the same line — or to the right
+    // margin if this is the last run on the line.
+    const lineItems = linesByY.get(Math.round(ty)) || [];
+    const myEndPdfX = tx + (item.width || 0);
+    const next = lineItems.find(it => it.transform[4] > myEndPdfX + 2);
+    const blankEndPdfX = next ? next.transform[4] - 4 : viewport.width - 18;
+    if (blankEndPdfX - myEndPdfX < 30) { fieldName = null; } // gap too narrow
+    else {
+      placementXPct = (myEndPdfX / viewport.width) * 100;
+      placementWPct = Math.max(8, ((blankEndPdfX - myEndPdfX) / viewport.width) * 100);
+    }
+  }
   if (fieldName) {
+  const x = Math.max(0, placementXPct);
+  const y = Math.max(0, yPct - 1.5);
+  const key = rectKey(i, x, y);
+  if (seenRects.has(key)) continue;
+  seenRects.add(key);
   detected.push({
   field_name: fieldName,
   page: i,
-  x: Math.max(0, xPct),
-  y: Math.max(0, yPct - 1.5),
-  width: Math.min(30, (item.width || 100) / viewport.width * 100 + 5),
+  x,
+  y,
+  width: Math.min(60, placementWPct),
   height: 2.5,
   font_size: 12,
   auto_detected: true,
