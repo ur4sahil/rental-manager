@@ -20,7 +20,7 @@
 //
 // Required env vars on Vercel:
 //   RESEND_API_KEY     — from resend.com (free tier: 3K/mo)
-//   EMAIL_FROM         — verified sender, e.g. "Housify <notifications@sigmahousingllc.com>"
+//   EMAIL_FROM         — verified sender, e.g. "Housify <notifications@housify365.com>"
 //   APP_URL            — used in template links (defaults to prod)
 //   CRON_SECRET        — same secret used by other cron routes
 //   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -33,7 +33,7 @@ const { TEMPLATES: SHARED_TEMPLATES } = require("../src/utils/notificationTempla
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const EMAIL_FROM = process.env.EMAIL_FROM || "";
-const APP_URL = process.env.APP_URL || "https://rental-manager-one.vercel.app";
+const APP_URL = process.env.APP_URL || "https://housify365.com";
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -12,7 +12,7 @@ const path = require('path');
 require('dotenv').config({ path: '/Users/aggar/rental-manager/tests/.env' });
 
 const SMITH = 'dce4974d-afa9-4e65-afdf-1189b815195d';
-const APP_URL = 'https://rental-manager-one.vercel.app';
+const APP_URL = 'https://housify365.com';
 const OUT_DIR = '/tmp/walkthrough-shots';
 const LOG_FILE = path.join(OUT_DIR, '_log.txt');
 

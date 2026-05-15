@@ -16,7 +16,12 @@
 //                               slug for branch/PR previews to work.
 //
 // The underscore prefix keeps Vercel from treating this as a route.
-const PROD_ORIGIN = "https://rental-manager-one.vercel.app";
+const PROD_ORIGINS = [
+  "https://housify365.com",
+  "https://www.housify365.com",
+  // Transition fallback while DNS settles; safe to remove later.
+  "https://rental-manager-one.vercel.app",
+];
 const PROJECT_PREFIX = "rental-manager-";
 
 function splitEnv(name) {
@@ -25,7 +30,7 @@ function splitEnv(name) {
 
 function isAllowedOrigin(origin) {
   if (!origin) return false;
-  if (origin === PROD_ORIGIN) return true;
+  if (PROD_ORIGINS.includes(origin)) return true;
   const extra = splitEnv("CORS_EXTRA_ORIGINS");
   if (extra.includes(origin)) return true;
   try {
@@ -47,11 +52,11 @@ function isAllowedOrigin(origin) {
 function setCors(req, res) {
   const origin = req.headers.origin || "";
   // Only set Allow-Origin when the origin is actually allowed. Previous
-  // code echoed back PROD_ORIGIN on disallowed requests, which wasted
-  // header bytes on every preflight and made it visually confusing in
-  // dev tools (looks like prod was whitelisted). Browsers will block
-  // disallowed cross-origin requests at the missing-header check
-  // anyway — the server just says nothing.
+  // code echoed back a fixed prod origin on disallowed requests, which
+  // wasted header bytes on every preflight and made it visually
+  // confusing in dev tools. Browsers will block disallowed cross-origin
+  // requests at the missing-header check anyway — the server just says
+  // nothing.
   if (isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }

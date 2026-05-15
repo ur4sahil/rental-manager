@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Multi-file React SPA** — `src/App.js` (~800 lines, thin router) + 8 utils in `src/utils/` + 23 components in `src/components/`, bootstrapped with create-react-app (via CRACO)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS + RPCs)
-- **Hosting:** Vercel (https://rental-manager-one.vercel.app)
+- **Hosting:** Vercel (https://housify365.com)
 - **Payments:** Stripe
 - **Banking:** Teller.io (mTLS) — Vercel API routes in `/api/`, NOT Supabase Edge Functions
 - **Styling:** Tailwind CSS v4 (via PostCSS)

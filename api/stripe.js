@@ -65,7 +65,7 @@ const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "
 // deliverable from the webhook here.
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@housify.app";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@housify365.com";
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   try { webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE); }
   catch (e) { console.warn("[stripe] VAPID setup failed:", e.message); }
@@ -136,7 +136,7 @@ async function notifyPaymentEvent(sb, kind, ctx) {
   // idempotent — the email send loop drains all pending rows then
   // returns, so concurrent triggers don't double-send.
   if (CRON_SECRET) {
-    const host = (process.env.VERCEL_URL || "rental-manager-one.vercel.app").replace(/^https?:\/\//, "");
+    const host = (process.env.VERCEL_URL || "housify365.com").replace(/^https?:\/\//, "");
     fetch("https://" + host + "/api/notifications?action=worker", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + CRON_SECRET },

@@ -35,7 +35,7 @@ const TEST_EMAIL = process.env.TEST_EMAIL;
 const TEST_PASSWORD = process.env.TEST_PASSWORD;
 // Default to production so the script works even without a dev server.
 // Override via APP_URL env to point at localhost:3000 if you want.
-const APP_URL = process.env.APP_URL || 'https://rental-manager-one.vercel.app';
+const APP_URL = process.env.APP_URL || 'https://housify365.com';
 
 // Map source-component file → page id where its top-level surfaces are
 // reachable. Sub-components (drawer panels, modal forms) aren't covered

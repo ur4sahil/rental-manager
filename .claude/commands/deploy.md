@@ -49,7 +49,7 @@ Tests:      X/Y passed (Z%)
 Migrations: N pending (pushed/skipped)
 Commit:     <hash> <message>
 Deploy:     Pushed to main — Vercel auto-deploying
-URL:        https://rental-manager-one.vercel.app
+URL:        https://housify365.com
 ```
 
 ## Abort Conditions

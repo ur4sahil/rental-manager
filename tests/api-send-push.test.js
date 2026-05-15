@@ -1,5 +1,5 @@
 // /api/send-push coverage. Hits the live endpoint at
-// rental-manager-one.vercel.app and asserts auth + happy path.
+// housify365.com and asserts auth + happy path.
 // Adversarial cases: missing JWT, invalid JWT, cross-company spoof.
 //
 // Run: cd tests && node api-send-push.test.js
@@ -12,7 +12,7 @@ const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_K
 // Endpoint moved 2026-04-26 — send-push consolidated into the
 // notifications dispatcher to free a Vercel function slot for Stripe.
 // Same handler, same contract, just behind ?action=push.
-const ENDPOINT = 'https://rental-manager-one.vercel.app/api/notifications?action=push';
+const ENDPOINT = 'https://housify365.com/api/notifications?action=push';
 const SMITH = 'dce4974d-afa9-4e65-afdf-1189b815195d';
 
 let pass = 0, fail = 0;

@@ -86,7 +86,7 @@ function renderTemplate(tmpl, data) {
 // Sample data used in the live preview. Best-effort representation of
 // what each event type's payload typically carries.
 function sampleDataFor(type) {
-  const base = { company_name: "Smith Properties LLC", app_url: "https://your-housify-domain.app" };
+  const base = { company_name: "Smith Properties LLC", app_url: "https://housify365.com" };
   const map = {
     rent_due: { ...base, tenant: "Jane Doe", property: "123 Main St", amount: "$1,500", date: "2026-05-01", month: "2026-05" },
     payment_received: { ...base, tenant: "Jane Doe", amount: "$1,500", date: "2026-04-29", property: "123 Main St" },
