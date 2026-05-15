@@ -1,4 +1,18 @@
 {
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "rental-manager-one.vercel.app" }],
+      "destination": "https://housify365.com/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.housify365.com" }],
+      "destination": "https://housify365.com/$1",
+      "permanent": true
+    }
+  ],
   "crons": [
     {
       "path": "/api/teller-sync-transactions",

@@ -19,8 +19,6 @@
 const PROD_ORIGINS = [
   "https://housify365.com",
   "https://www.housify365.com",
-  // Transition fallback while DNS settles; safe to remove later.
-  "https://rental-manager-one.vercel.app",
 ];
 const PROJECT_PREFIX = "rental-manager-";
 
