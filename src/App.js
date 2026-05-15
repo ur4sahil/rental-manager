@@ -56,6 +56,26 @@ Sentry.init({
         message: b.message?.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+/g, "[email]")
       }));
     }
+    // Drop errors whose entire stack is browser-extension or anonymous
+    // eval'd code. Grammarly / 1Password / LastPass / ad blockers / AI
+    // sidebars inject scripts into every page; our CSP correctly
+    // refuses their eval calls, and the resulting EvalError surfaces
+    // here even though nothing in our bundle is at fault. Keep the
+    // event only if at least one frame has a filename rooted in our
+    // own code.
+    const frames = event.exception?.values?.[0]?.stacktrace?.frames || [];
+    if (frames.length > 0) {
+      const isOurFrame = (f) => {
+        const file = f.filename || "";
+        if (!file || file === "<anonymous>") return false;
+        if (file.startsWith("chrome-extension://")) return false;
+        if (file.startsWith("moz-extension://")) return false;
+        if (file.startsWith("safari-extension://")) return false;
+        if (file.startsWith("safari-web-extension://")) return false;
+        return true;
+      };
+      if (!frames.some(isOurFrame)) return null;
+    }
     return event;
   },
   ignoreErrors: [
@@ -63,6 +83,9 @@ Sentry.init({
     "Non-Error promise rejection",
     "Load failed",
     "ChunkLoadError",
+    // CSP-blocked eval from extensions (see beforeSend); regex catches
+    // the variant where the stack arrives unparseable.
+    /Refused to evaluate a string as JavaScript/i,
   ],
 });
 window.Sentry = Sentry;
