@@ -603,6 +603,25 @@ function AppInner() {
   return () => { if (authSub) authSub.unsubscribe(); };
   }, []);
 
+  // Identify the reporter on every Sentry event. Without this, every
+  // production error shows up anonymous and we can't tell which user
+  // (or which company) triggered it — turning "who hit this?" from a
+  // grep into a guessing game. setUser(null) on logout so the next
+  // visitor doesn't inherit the previous session's identity.
+  useEffect(() => {
+    if (currentUser) {
+      Sentry.setUser({ id: currentUser.id, email: currentUser.email });
+      Sentry.setTag("role", userRole || "unknown");
+      Sentry.setTag("company_id", activeCompany?.id || "none");
+      Sentry.setTag("company_name", activeCompany?.name || "none");
+    } else {
+      Sentry.setUser(null);
+      Sentry.setTag("role", null);
+      Sentry.setTag("company_id", null);
+      Sentry.setTag("company_name", null);
+    }
+  }, [currentUser, userRole, activeCompany]);
+
   // Inactivity timeout — auto-logout after 30 minutes of no user interaction
   useEffect(() => {
     if (!currentUser) return;
