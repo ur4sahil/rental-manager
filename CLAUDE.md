@@ -16,10 +16,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Dev Commands
 
 ```bash
-npm start              # Dev server (localhost:3000)
-npm run build          # Production build
-vercel --prod          # Deploy to production
-npx supabase db push   # Push DB migrations
+npm start                # Dev server (localhost:3000)
+npm run build            # Production build
+git push origin main     # Deploy to production (Vercel auto-deploys; never use `vercel --prod`)
+npx supabase db push     # Push DB migrations
 ```
 
 ## Test Commands
@@ -127,6 +127,15 @@ bank_rules, bank_rule_conditions, plaid_sync_event
 ## CSP Notes (vercel.json)
 
 Teller Connect requires: `script-src cdn.teller.io`, `connect-src api.teller.io wss://teller.io wss://*.teller.io`, `frame-src cdn.teller.io teller.io *.teller.io`
+
+## Domain & Email
+
+- **Production domain:** `housify365.com` (DNS on Cloudflare, separate login from other Sigma domains)
+- **vercel.json** has 308 redirects: `rental-manager-one.vercel.app/*` and `www.housify365.com/*` → `https://housify365.com/*`
+- **CORS allowlist (`api/_cors.js`):** only `housify365.com` + `www.housify365.com` (preview origins still go via `CORS_EXTRA_ORIGINS` / `CORS_VERCEL_TEAM_SLUGS`)
+- **Email sender:** `Housify <notifications@housify365.com>` for BOTH worker emails (Resend, via `EMAIL_FROM`) AND Supabase Auth emails (Custom SMTP → Resend in Supabase dashboard)
+- **Resend free tier holds ONE domain** — `sigmahousingllc.com` was deleted to add `housify365.com`. To use a second domain, upgrade Resend
+- **APP_URL env var** (Vercel production) = `https://housify365.com` — drives template links from the notification worker
 
 ## Important Constraints
 
