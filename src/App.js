@@ -301,6 +301,43 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
   );
 }
 
+// Recovery flow: user clicked the password-reset link in their email.
+// Supabase exchanged the recovery token for a short-lived session before
+// we got here, so updateUser({ password }) will succeed. After it does,
+// we sign them out and return to the login screen — that way the new
+// password is verified by them signing in fresh, instead of silently
+// landing inside the app on the back of the recovery session.
+function ResetPasswordScreen({ currentUser, showToast }) {
+  const [pw, setPw] = React.useState("");
+  const [pw2, setPw2] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  async function handleReset() {
+    if (pw.length < 8) { showToast("Password must be at least 8 characters.", "error"); return; }
+    if (pw !== pw2) { showToast("Passwords do not match.", "error"); return; }
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    if (error) { setSaving(false); pmError("PM-1009", { raw: error, context: "password reset" }); return; }
+    // SIGNED_OUT event fires from signOut and routes back to "landing"
+    // via the existing onAuthStateChange handler.
+    await supabase.auth.signOut();
+    showToast("Password reset. Please sign in with your new password.", "success");
+  }
+  return (
+    <div className="min-h-dvh safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
+    <span className="material-icons-outlined text-4xl text-brand-500 mb-2">lock_reset</span>
+    <h2 className="text-xl font-bold text-neutral-800 mb-1">Reset Your Password</h2>
+    <p className="text-sm text-neutral-400 mb-6">Enter a new password for {currentUser?.email}.</p>
+    <div className="space-y-3 text-left">
+    <div><label className="text-xs font-medium text-neutral-600 mb-1 block">New Password</label><Input type="password" placeholder="Min 8 characters" value={pw} onChange={e => setPw(e.target.value)} /></div>
+    <div><label className="text-xs font-medium text-neutral-600 mb-1 block">Confirm Password</label><Input type="password" placeholder="Re-enter password" value={pw2} onChange={e => setPw2(e.target.value)} onKeyDown={e => e.key === "Enter" && handleReset()} /></div>
+    </div>
+    <Btn variant="primary" className="w-full mt-5" onClick={handleReset} disabled={saving}>{saving ? "Resetting..." : "Reset Password & Sign In"}</Btn>
+    </div>
+    </div>
+  );
+}
+
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
   // Capture the very first hash the user landed on. Push notification
@@ -318,6 +355,11 @@ function AppInner() {
     // Filter out values that are screen names, not pages, so we don't
     // bounce a user who reloaded mid-login back to the login screen.
     if (h === "login" || h === "companySelect" || h === "loading" || h === "app") return null;
+    // Supabase's recovery / magic-link hash lands here as
+    // "access_token=...&type=recovery&...". detectSessionInUrl usually
+    // clears it before this runs, but if a version bump ever changes
+    // that, don't let it be captured as a deep-link page id.
+    if (h.includes("access_token=") || h.includes("type=recovery")) return null;
     return h;
   })();
   const deepLinkRef = useRef(initialDeepLink);
@@ -485,11 +527,34 @@ function AppInner() {
     setScreen("company_select");
     autoSelectCompany(user);
   }
+  // Recovery flow: Supabase's detectSessionInUrl runs at client init,
+  // exchanges the recovery hash for a session, and clears the hash.
+  // We can't rely on the hash being present here, so we depend on the
+  // PASSWORD_RECOVERY event (below) — but as a defense-in-depth, also
+  // check the hash in case a future supabase-js version changes order.
+  const landedFromRecovery =
+    window.location.hash.includes("type=recovery") ||
+    window.location.hash.includes("access_token=");
   supabase.auth.getSession().then(({ data: { session } }) => {
+  if (landedFromRecovery && session) {
+    setCurrentUser(session.user);
+    setScreen("reset_password");
+    return;
+  }
   if (session) { routeSignedIn(session.user); }
   else { setScreen("landing"); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+  // PASSWORD_RECOVERY fires after the user clicks the email reset link
+  // and Supabase exchanges the token for a short-lived session. Catch
+  // it explicitly so the user lands on the reset screen instead of
+  // falling through to SIGNED_IN routing (which would drop them inside
+  // the app with no password-change prompt — the bug this fixes).
+  if (_event === "PASSWORD_RECOVERY" && session) {
+    setCurrentUser(session.user);
+    setScreen("reset_password");
+    return;
+  }
   if (session) {
     // Only route on fresh sign-in events; TOKEN_REFRESHED / USER_UPDATED
     // shouldn't reset the screen the user is currently on.
@@ -1042,6 +1107,7 @@ function AppInner() {
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "set_password") return <><SetPasswordScreen currentUser={currentUser} onComplete={() => { setScreen("company_select"); autoSelectCompany(currentUser); }} showToast={showToast} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "reset_password") return <><ResetPasswordScreen currentUser={currentUser} showToast={showToast} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "company_select") return <><CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
 
   if (!activeCompany?.id || !roleLoaded) {
