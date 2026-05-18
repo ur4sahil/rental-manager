@@ -136,6 +136,7 @@ Teller Connect requires: `script-src cdn.teller.io`, `connect-src api.teller.io 
 - **Email sender:** `Housify <notifications@housify365.com>` for BOTH worker emails (Resend, via `EMAIL_FROM`) AND Supabase Auth emails (Custom SMTP → Resend in Supabase dashboard)
 - **Resend free tier holds ONE domain** — `sigmahousingllc.com` was deleted to add `housify365.com`. To use a second domain, upgrade Resend
 - **APP_URL env var** (Vercel production) = `https://housify365.com` — drives template links from the notification worker
+- **Inbound mail:** Cloudflare Email Routing on root domain forwards `hello@`, `support@`, `info@`, `notifications@` → `housify365@gmail.com`. Catch-all is OFF. Resend outbound is isolated on `send.housify365.com` subdomain — root MX/SPF do not conflict. DMARC at `_dmarc.housify365.com` is `p=none` (monitor-only).
 
 ## Important Constraints
 
