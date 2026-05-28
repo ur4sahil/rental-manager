@@ -774,26 +774,29 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       : [{ account_id: accountId, account_name: accountName, debit: abs, credit: 0, class_id: classId || null, memo: lineMemo },
          { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: classId || null, memo: lineMemo }];
 
-    // Get next JE number
-    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
-    let nextNum = 1;
-    if (maxJE?.number) { const parsed = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(parsed)) nextNum = parsed + 1; }
-    const jeNumber = `JE-${String(nextNum).padStart(4,"0")}`;
-
     // Resolve property from class if selected
     const classProperty = classId ? (classes.find(c => c.id === classId)?.name || "") : "";
 
-    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-      company_id: companyId, number: jeNumber, date: txn.posted_date,
-      description: bankDesc,
-      // Per-txn reference. Was hard-coded "Bank Import" for every row,
-      // which silently worked for the first categorization in a
-      // company and then blocked every subsequent one via
-      // idx_je_company_reference_unique ("duplicate key value"). The
-      // XFER- and SPLIT- paths in this file already use the same
-      // BANK-<txn.id> shape.
-      reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
-    }]).select("id").maybeSingle();
+    // Get next JE number via RPC (MAX-based, ignores hash-format).
+    // Retry on 23505 in case of concurrent insert race.
+    let jeRow = null, jeErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+      if (numErr || !jeNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+        company_id: companyId, number: jeNumber, date: txn.posted_date,
+        description: bankDesc,
+        // Per-txn reference. Was hard-coded "Bank Import" for every row,
+        // which silently worked for the first categorization in a
+        // company and then blocked every subsequent one via
+        // idx_je_company_reference_unique ("duplicate key value"). The
+        // XFER- and SPLIT- paths in this file already use the same
+        // BANK-<txn.id> shape.
+        reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
+      }]).select("id").maybeSingle());
+      if (!jeErr && jeRow) break;
+      if (jeErr?.code !== "23505") break;
+    }
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
 
@@ -973,14 +976,19 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       : [{ account_id: toAccountId, account_name: toAccountName, debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
          { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }];
 
-    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
-    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
-
-    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
-      description: memo || `Transfer — ${txn.bank_description_clean}`,
-      reference: `XFER-${txn.id}`, property: "", status: "posted" // transfers don't have a class/property
-    }]).select("id").maybeSingle();
+    // Next JE number via RPC + retry on 23505 (see categorize path).
+    let jeRow = null, jeErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+      if (numErr || !jeNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+        company_id: companyId, number: jeNumber, date: txn.posted_date,
+        description: memo || `Transfer — ${txn.bank_description_clean}`,
+        reference: `XFER-${txn.id}`, property: "", status: "posted" // transfers don't have a class/property
+      }]).select("id").maybeSingle());
+      if (!jeErr && jeRow) break;
+      if (jeErr?.code !== "23505") break;
+    }
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
 
     const { error: xlErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
@@ -1031,18 +1039,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
     const isInflow = txn.direction === "inflow";
 
-    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
-    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
-
     // Resolve property from first split line's class if available
     const splitClassId = lines.find(l => l.classId)?.classId;
     const splitProperty = splitClassId ? (classes.find(c => c.id === splitClassId)?.name || "") : "";
 
-    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
-      description: `Split — ${txn.bank_description_clean}`,
-      reference: `SPLIT-${txn.id}`, property: splitProperty, status: "posted"
-    }]).select("id").maybeSingle();
+    // Next JE number via RPC + retry on 23505 (see categorize path).
+    let jeRow = null, jeErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+      if (numErr || !jeNumber) { pmError("PM-4002", { raw: numErr, context: "next_je_number for split" }); return; }
+      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+        company_id: companyId, number: jeNumber, date: txn.posted_date,
+        description: `Split — ${txn.bank_description_clean}`,
+        reference: `SPLIT-${txn.id}`, property: splitProperty, status: "posted"
+      }]).select("id").maybeSingle());
+      if (!jeErr && jeRow) break;
+      if (jeErr?.code !== "23505") break;
+    }
     if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
 
     // Build JE lines: bank side + each split line

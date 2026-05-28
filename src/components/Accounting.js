@@ -450,11 +450,6 @@ export const validateJE = (lines) => {
   return { isValid: Math.abs(td - tc) < 0.005, totalDebit: td, totalCredit: tc, difference: Math.abs(td - tc) };
 };
 
-export const nextJENumber = (journalEntries) => {
-  const nums = journalEntries.map(je => parseInt(je.number.replace("JE-",""),10)).filter(n => !isNaN(n));
-  return `JE-${String((nums.length > 0 ? Math.max(...nums) : 0) + 1).padStart(4,"0")}`;
-};
-
 export const nextAccountCode = (accounts, type) => {
   const ranges = { Asset:{s:1000,e:1999}, Liability:{s:2000,e:2999}, Equity:{s:3000,e:3999}, Revenue:{s:4000,e:4999}, "Cost of Goods Sold":{s:5000,e:5099}, Expense:{s:5000,e:6999}, "Other Income":{s:7000,e:7999}, "Other Expense":{s:8000,e:8999} };
   const r = ranges[type] || {s:9000,e:9999};
@@ -3387,12 +3382,21 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const v = validateJE(lines);
   if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
   }
-  const number = nextJENumber(journalEntries);
-  // Direct insert — no RPC
-  const { data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
-  company_id: companyId, number, date: header.date, description: header.description,
-  reference: header.reference || "", property: header.property || "", status: header.status || "draft"
-  }]).select("id").maybeSingle();
+  // Number via RPC + retry on 23505: in-memory journalEntries can
+  // lag the DB (recurring engine / autopay post JEs without a refresh),
+  // so a synchronous Math.max over the cache was producing collisions
+  // against unique_je_number_per_company.
+  let jeRow = null, headerErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: number, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+    if (numErr || !number) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+    ({ data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number, date: header.date, description: header.description,
+      reference: header.reference || "", property: header.property || "", status: header.status || "draft"
+    }]).select("id").maybeSingle());
+    if (!headerErr && jeRow) break;
+    if (headerErr?.code !== "23505") break;
+  }
   if (headerErr || !jeRow) { showToast("Error creating journal entry: " + (headerErr?.message || "No ID returned"), "error"); return; }
   if (lines?.length > 0) {
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
@@ -3532,14 +3536,21 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { data: origLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
   if (!origLines || origLines.length === 0) { showToast("Original entry has no lines to reverse.", "error"); return; }
   const origRef = je.reference || je.number || "";
-  const newNumber = nextJENumber(journalEntries);
   const newReference = "REV-" + origRef;
   const newDescription = "Reversal of " + (je.description || je.number || "");
-  const { data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
-    company_id: companyId, number: newNumber, date: today,
-    description: newDescription, reference: newReference,
-    property: je.property || "", status: "posted"
-  }]).select("id").maybeSingle();
+  // Retry on 23505 — see addJournalEntry above for rationale.
+  let jeRow = null, headerErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: newNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+    if (numErr || !newNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+    ({ data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: newNumber, date: today,
+      description: newDescription, reference: newReference,
+      property: je.property || "", status: "posted"
+    }]).select("id").maybeSingle());
+    if (!headerErr && jeRow) break;
+    if (headerErr?.code !== "23505") break;
+  }
   if (headerErr || !jeRow) { showToast("Error creating reversal: " + (headerErr?.message || "no id returned"), "error"); return; }
   // class_id / entity_id are uuid columns; legacy rows occasionally
   // carry non-UUID strings. Mirror the guard from updateJournalEntry
