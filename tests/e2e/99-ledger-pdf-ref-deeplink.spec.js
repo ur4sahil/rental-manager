@@ -46,11 +46,9 @@ test('ledger: anchor rows + normal-click modal + PDF/CSV buttons', async ({ page
   await link.click();
   await expect(page.locator('text=/\\d+ entries/').first()).toBeVisible({ timeout: 8000 });
   expect(page.url(), 'normal click preventDefault → same tab').toBe(urlBefore);
-
-  // 3. Both export buttons present in the ledger header (desktop variants;
-  //    a second mobile PDF/CSV link also exists but is CSS-hidden on desktop)
-  await expect(ledgerModal(page).locator('button:has-text("PDF"):visible').first()).toBeVisible();
-  await expect(ledgerModal(page).locator('button:has-text("Export CSV"):visible').first()).toBeVisible();
+  // (export-button presence is asserted in the next test against a POPULATED
+  //  ledger — the first COA account may be empty, in which case the new guard
+  //  intentionally hides the export buttons.)
 });
 
 test('ledger: deep-link auto-opens + friendly REF labels (Deposit / Rent Charge)', async ({ page }) => {
@@ -65,11 +63,15 @@ test('ledger: deep-link auto-opens + friendly REF labels (Deposit / Rent Charge)
   expect(refs.some(t => t.trim() === 'Deposit'), 'DEP- mapped to "Deposit"').toBeTruthy();
   expect(refs.some(t => /^DEP-/.test(t.trim())), 'no raw DEP- leak').toBeFalsy();
 
-  // 5b: deep-link to a RENT-AUTO- account → REF shows "Rent Charge"
+  // export buttons present on a POPULATED ledger (guard shows them)
+  await expect(ledgerModal(page).locator('button:has-text("PDF"):visible').first()).toBeVisible();
+  await expect(ledgerModal(page).locator('button:has-text("Export CSV"):visible').first()).toBeVisible();
+
+  // 5b: deep-link to a RENT-AUTO- account → REF shows the distinct "Auto Rent"
   await page.goto('/?ledger=' + RENT_ACCT + '#acct_coa');
   await expect(page.locator('text=/\\d+ entries/').first()).toBeVisible({ timeout: 12000 });
   refs = await refColumnTexts(page);
   console.log('RENT account REF cells =', refs);
-  expect(refs.some(t => t.trim() === 'Rent Charge'), 'RENT- mapped to "Rent Charge"').toBeTruthy();
+  expect(refs.some(t => t.trim() === 'Auto Rent'), 'RENT-AUTO- mapped to "Auto Rent"').toBeTruthy();
   expect(refs.some(t => /^RENT/.test(t.trim())), 'no raw RENT- leak').toBeFalsy();
 });

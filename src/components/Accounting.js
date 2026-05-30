@@ -24,6 +24,8 @@ import { BankTransactions } from "./Banking";
 const REF_LABELS = [
   ["OPENING-", "Opening Balance"],
   ["PRORENT-", "Prorated Rent"],
+  ["RENT-PRORATE-", "Prorated Rent"], // move-out proration (Lifecycle.js)
+  ["RENT-AUTO-", "Auto Rent"],        // move-out accrual (Lifecycle.js)
   ["RENT1-", "Rent Charge"],
   ["RENT-", "Rent Charge"],
   ["LATEFEE-", "Late Fee"],
@@ -44,6 +46,7 @@ const REF_LABELS = [
   ["RECUR-", "Recurring"],
   ["MOVEOUT-", "Move-Out"],
   ["ODIST-", "Owner Distribution"],
+  ["DIST-", "Owner Distribution"], // manual owner distribution (Owners.js)
   ["HOA-", "HOA"],
   ["UTIL-", "Utilities"],
   ["LOAN-", "Loan"],
@@ -84,6 +87,8 @@ export function LedgerLink({ ids, title, onOpenLedger, className = "", children 
     <a
       href={ledgerHref(arr)}
       className={className}
+      title={title}
+      aria-label={title ? `Open ledger for ${title}` : "Open ledger"}
       onClick={e => {
         // Modifier / non-left clicks → let the browser open a new tab.
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
@@ -594,14 +599,25 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const properties = [...new Set(journalEntries.filter(je => je.property).map(je => je.property))].sort();
 
   function exportCSV() {
-  const rows = [["Date", "JE #", "Description", "Reference", "Property", "Memo", "Debit", "Credit", "Balance"]];
-  allLines.forEach(l => rows.push([l.date, l.number, l.description, l.reference, l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
+  const multi = ids.length > 1;
+  const rows = [["Date", "JE #", "Description", "Reference", ...(multi ? ["Account"] : []), "Property", "Memo", "Debit", "Credit", "Balance"]];
+  allLines.forEach(l => rows.push([l.date, l.number, l.description, l.reference, ...(multi ? [l.accountName] : []), l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
   const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = `ledger_${acctCodes || "combined"}_${start}_${end}.csv`; a.click();
   URL.revokeObjectURL(url);
   }
+
+  // Track the print iframe + its deferred timers so we can tear them down if
+  // the modal unmounts mid-print (otherwise the deferred removeChild fires on
+  // a detached node, and the timers leak).
+  const printRef = useRef({ iframe: null, timers: [] });
+  useEffect(() => () => {
+    const p = printRef.current;
+    p.timers.forEach(clearTimeout);
+    if (p.iframe && p.iframe.parentElement) p.iframe.parentElement.removeChild(p.iframe);
+  }, []);
 
   // PDF export: build a clean printable table from allLines (the modal has
   // duplicated mobile/desktop markup, so we render fresh instead of cloning).
@@ -632,7 +648,14 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   doc.open();
   doc.write(`<!DOCTYPE html><html><head><title> </title><style>${css}\n@media print{body{margin:10px 20px}@page{size:landscape;margin:0.25in 0.4in}}</style></head><body>${DOMPurify.sanitize(html)}</body></html>`);
   doc.close();
-  setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 400);
+  const p = printRef.current;
+  p.iframe = iframe;
+  const t1 = setTimeout(() => {
+    try { iframe.contentWindow && iframe.contentWindow.print(); } catch { /* print blocked/headless — still clean up */ }
+    const t2 = setTimeout(() => { if (iframe.parentElement) iframe.parentElement.removeChild(iframe); if (p.iframe === iframe) p.iframe = null; }, 1000);
+    p.timers.push(t2);
+  }, 400);
+  p.timers.push(t1);
   }
 
   return (
@@ -645,8 +668,8 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {acctCodes && <p className="text-xs text-neutral-400">Account {acctCodes} · {allLines.length} entries</p>}
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
-  <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>
-  <Btn variant="slate" size="sm" icon="picture_as_pdf" className="hidden sm:block" onClick={exportPDF}>PDF</Btn>
+  {allLines.length > 0 && <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>}
+  {allLines.length > 0 && <Btn variant="slate" size="sm" icon="picture_as_pdf" className="hidden sm:block" onClick={exportPDF}>PDF</Btn>}
   <IconBtn icon="close" onClick={onClose} />
   </div>
   </div>
@@ -661,7 +684,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
   <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(running, true)}</strong></span>
-  <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>
+  {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
   {/* Mobile: Card view */}
   <div className="flex-1 overflow-auto sm:hidden">
@@ -3300,16 +3323,29 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const ledgerDeepLinkDone = useRef(false);
   useEffect(() => {
   if (ledgerDeepLinkDone.current || !acctAccounts || acctAccounts.length === 0) return;
-  const raw = new URLSearchParams(window.location.search).get("ledger");
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("ledger");
   if (!raw) return;
   ledgerDeepLinkDone.current = true;
-  const idsArr = decodeURIComponent(raw).split(",").filter(Boolean);
-  if (idsArr.length === 0) return;
+  // Strip ONLY the ledger key, preserving any other query params (e.g. ?company=).
+  const stripLedgerParam = () => {
+    params.delete("ledger");
+    const qs = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
+  };
+  // decodeURIComponent throws on malformed percent-encoding (e.g. ?ledger=%ZZ
+  // from a typo'd/shared URL) — don't let that crash the effect.
+  let decoded;
+  try { decoded = decodeURIComponent(raw); } catch { stripLedgerParam(); return; }
   const map = {}; acctAccounts.forEach(a => { map[a.id] = a; });
-  const first = map[idsArr[0]];
-  const title = first ? ((first.code ? first.code + " " : "") + first.name) : "Ledger";
+  // Keep only ids that resolve to a real account in this company (RLS already
+  // scopes acctAccounts) — garbage/foreign ids would otherwise open an empty
+  // modal titled "Ledger".
+  const idsArr = decoded.split(",").filter(Boolean).filter(id => map[id]);
+  if (idsArr.length === 0) { stripLedgerParam(); return; }
+  const title = idsArr.map(id => { const a = map[id]; return (a.code ? a.code + " " : "") + a.name; }).join(", ");
   setLedgerView({ accountIds: idsArr, title });
-  window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+  stripLedgerParam();
   }, [acctAccounts]);
 
   async function fetchAll() {
