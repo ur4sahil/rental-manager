@@ -86,6 +86,14 @@ Sentry.init({
     // CSP-blocked eval from extensions (see beforeSend); regex catches
     // the variant where the stack arrives unparseable.
     /Refused to evaluate a string as JavaScript/i,
+    // Benign Web Locks noise from @supabase/auth-js. When the auth
+    // token-refresh lock is held too long (a backgrounded/suspended tab,
+    // device sleep, or a second tab), auth-js intentionally steals the lock
+    // as a recovery mechanism (locks.js, { steal: true }). The previous
+    // holder's navigator.locks promise then rejects with this DOMException.
+    // Auth keeps working — the steal IS the recovery — so it's pure noise.
+    // Dot matches straight/curly quote variants.
+    /Lock broken by another request with the .steal. option/i,
   ],
 });
 window.Sentry = Sentry;
