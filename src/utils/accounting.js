@@ -605,36 +605,17 @@ export async function autoPostRecurringEntries(companyId) {
   // forget itself on the first post and let subsequent runs drift.
   const nextCursor = new Date(cursor.getFullYear(), cursor.getMonth() + freqMonths, 1);
   await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: formatLocalDate(nextCursor) }).eq("id", entry.id).eq("company_id", cid);
-  // Update tenant balance when the debit hits an AR account. Resolving by
-  // account_id + type is reliable; the old check used a fuzzy
-  // `.includes("ar")` on `debit_account_name`, which silently skipped
-  // balance updates whenever the name didn't literally contain "ar" (e.g.
-  // the column was blank, or named "Accounts Receivable - Tenant X").
-  //
-  // tenant_id is required at write time — see the CHECK constraint in
-  // migration 20260424000008 enforcing (tenant_name IS NULL) =
-  // (tenant_id IS NULL). If a tenant-rent recurring row reaches here
-  // without tenant_id, that's a bug in the writer and should surface
-  // loudly rather than be silently masked.
-  if (entry.tenant_id && entry.debit_account_id) {
-    const debitId = /^\d{4}$/.test(entry.debit_account_id)
-      ? await resolveAccountId(entry.debit_account_id, cid)
-      : entry.debit_account_id;
-    if (debitId) {
-      const { data: acct } = await supabase.from("acct_accounts").select("type, code").eq("company_id", cid).eq("id", debitId).maybeSingle();
-      const isAR = acct && (acct.code === "1100" || ((acct.type || "").toLowerCase() === "asset" && (acct.code || "").startsWith("11")));
-      if (isAR) {
-        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount });
-        if (balErr) pmError("PM-6002", { raw: balErr, context: "recurring balance update", silent: true });
-      }
-    }
-  } else if (entry.tenant_name && !entry.tenant_id) {
-    // Tenant-scoped recurring with no tenant_id — invariant violation.
-    // The CHECK constraint blocks new rows in this state; if we see
-    // one, it's pre-constraint legacy data that needs the backfill
-    // script run for that company.
-    pmError("PM-6002", { raw: { message: "recurring entry has tenant_name but no tenant_id — backfill needed", entryId: entry.id, tenant_name: entry.tenant_name }, context: "recurring balance update", silent: true });
-  }
+  // tenants.balance is NOT updated here. autoPostJournalEntry above
+  // inserts the AR debit line, which fires the AFTER INSERT trigger
+  // sync_tenant_balance_lines → recompute_tenant_balance(), recomputing
+  // balance from the posted GL. A manual update_tenant_balance(+postAmount)
+  // on top of that DOUBLE-COUNTS by exactly one rent period (the trigger
+  // already booked the line, then the delta re-adds it) — every month the
+  // new line-insert resets balance to GL and the redundant delta re-drifts
+  // it by one period. This mirrors the DB-side fix in migration
+  // 20260430000003_post_je_drop_manual_balance, which removed the same
+  // double-count from post_je_and_ledger() Step 4 but left this client
+  // path in place. The trigger is now the single source of truth.
   posted++;
   }
   cursor.setMonth(cursor.getMonth() + freqMonths);

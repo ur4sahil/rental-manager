@@ -21,13 +21,18 @@ const sharedJs  = fs.readFileSync(path.join(__dirname, '../src/components/shared
 console.log('\nRecurring → tenants.balance sync');
 console.log('================================');
 
-// ─── 1. autoPostRecurringEntries source-level shape ─────────
-console.log('\n1. autoPostRecurringEntries gate + invariant alarm');
-assert(/if \(entry\.tenant_id && entry\.debit_account_id\)/.test(acctUtils),
-  'Gated on tenant_id && debit_account_id (no stealthy bypass)');
-assert(/recurring entry has tenant_name but no tenant_id/.test(acctUtils),
-  'pmError fires on invariant violation (visible, not silent)');
-assert(/update_tenant_balance/.test(acctUtils), 'update_tenant_balance RPC called');
+// ─── 1. autoPostRecurringEntries does NOT manually update balance ───
+// The AR debit line it posts fires the AFTER INSERT trigger
+// sync_tenant_balance_lines → recompute_tenant_balance(), which sets
+// tenants.balance from the posted GL. A manual update_tenant_balance(
+// +postAmount) on top of that DOUBLE-COUNTS by exactly one rent period —
+// it was the source of the 8-tenant drift (Khalid/Michelle/SANA + Smith).
+// The DB-side twin was already removed in migration 20260430000003.
+console.log('\n1. autoPostRecurringEntries relies on trigger (no double-count)');
+assert(!/p_amount_change:\s*postAmount/.test(acctUtils),
+  'recurring path does NOT manually update balance (no double-count with trigger)');
+assert(/sync_tenant_balance_lines|recompute_tenant_balance|single source of truth/.test(acctUtils),
+  'recurring path documents reliance on the balance-sync trigger');
 
 // ─── 2. RecurringEntryModal writes tenant_id as bigint ──────
 console.log('\n2. RecurringEntryModal writer');
