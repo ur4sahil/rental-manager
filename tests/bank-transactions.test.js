@@ -154,9 +154,35 @@ function testDuplicatePrevention() {
 function testSourceLabels() {
   console.log('\n🏷️  JE SOURCE LABELS');
 
-  const labels = ['Bank Import', 'Bank Transfer', 'Bank Split', 'Payment', 'Stripe', 'Recurring', 'Deposit', 'Prorated Rent', 'Rent Charge', 'Late Fee', 'Vendor Invoice', 'Work Order', 'Deposit Return', 'Deposit Forfeiture', 'Move-Out'];
-  for (const label of labels) {
-    assert(APP_CODE.includes(`return "${label}"`), `JE source label: "${label}"`);
+  // Friendly REF labels are now data-driven via the REF_LABELS prefix→label
+  // table + refLabel() in Accounting.js (was a chain of `return "X"` literals).
+  // Assert the central mapper exists and each prefix→label pair is wired, so
+  // a renamed/removed mapping fails the test — same intent, real implementation.
+  assert(APP_CODE.includes('export function refLabel'), 'refLabel() central mapper exists');
+  assert(APP_CODE.includes('const REF_LABELS'), 'REF_LABELS prefix→label table exists');
+
+  // [prefix, expectedLabel] — the pair literal must appear in REF_LABELS.
+  const pairs = [
+    ['BANK-', 'Bank Import'],
+    ['XFER-', 'Bank Transfer'],
+    ['SPLIT-', 'Bank Split'],
+    ['PAY-', 'Payment'],
+    ['STRIPE-', 'Stripe'],
+    ['RECUR-', 'Recurring'],
+    ['DEP-', 'Deposit'],
+    ['PRORENT-', 'Prorated Rent'],
+    ['RENT-', 'Rent Charge'],
+    ['LATE-', 'Late Fee'],
+    ['VINV-', 'Vendor Invoice'],
+    ['WO-', 'Work Order'],
+    ['DEPRET-', 'Deposit Return'],
+    ['DEPFORF-', 'Deposit Forfeiture'],
+    ['MOVEOUT-', 'Move-Out'],
+  ];
+  // Whitespace-tolerant match for `["PREFIX-", "Label"]` (allows curly/extra spaces).
+  const norm = APP_CODE.replace(/\s+/g, ' ');
+  for (const [prefix, label] of pairs) {
+    assert(norm.includes(`["${prefix}", "${label}"]`), `REF label: "${prefix}" → "${label}"`);
   }
 }
 
@@ -291,8 +317,13 @@ function testJEDescriptionQuality() {
   // translator below (line 289 asserts that path).
   assert(APP_CODE.includes('reference: `BANK-${txn.id}`') || APP_CODE.includes('reference: "BANK-"'), 'JE reference is unique per bank txn (BANK-${txn.id})');
 
-  // Ledger overlay translates BANK- prefix
-  assert(APP_CODE.includes('r.startsWith("BANK-")') && APP_CODE.includes('return "Bank Import"'), 'Ledger overlay translates BANK- prefix to "Bank Import"');
+  // Ledger overlay translates BANK- prefix to a friendly label. This now runs
+  // through refLabel()/REF_LABELS (data-driven) instead of an inline
+  // `r.startsWith("BANK-") return "Bank Import"`. Assert the mapping pair is
+  // wired AND that the ledger/JE rows actually render via refLabel(l.reference).
+  const normCode = APP_CODE.replace(/\s+/g, ' ');
+  assert(normCode.includes('["BANK-", "Bank Import"]'), 'REF_LABELS maps BANK- → "Bank Import"');
+  assert(APP_CODE.includes('refLabel(l.reference)') || APP_CODE.includes('refLabel(je.reference)'), 'Ledger/JE rows render reference via refLabel()');
 }
 
 // ───────────────────────────────────────────

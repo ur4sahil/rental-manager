@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:financial && npm run test:refactor && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial && npm run test:adversarial:ext && npm run test:sendpush",
+    "test:unit": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:financial && npm run test:refactor && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -26,6 +26,7 @@
     "test:adversarial": "node security-adversarial.test.js",
     "test:adversarial:ext": "node adversarial-extended.test.js",
     "test:sendpush": "node api-send-push.test.js",
+    "test:rls": "node rls-enforcement.test.js",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:chromium": "npx playwright test --project=chromium-desktop",
