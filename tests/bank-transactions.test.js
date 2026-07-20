@@ -206,6 +206,15 @@ function testTellerIntegration() {
   assert(enrollCode.includes('is_existing'), 'Enrollment returns is_existing flag for reconnected feeds');
   assert(enrollCode.includes('suggested_gl_type'), 'Enrollment returns suggested GL type for new feeds');
 
+  // Last-4 fallback match: a fresh enrollment mints a new Teller acct id,
+  // so re-links must re-attach to the existing feed by account number
+  // (masked_number/last_four) and adopt the new id — no duplicate cards.
+  assert(enrollCode.includes('masked_number'), 'Enrollment has last-4 fallback match on masked_number');
+  assert(enrollCode.includes('acct.last_four'), 'Enrollment fallback keys on Teller last_four');
+  assert(enrollCode.includes('matchedByLastFour'), 'Enrollment tracks last-4 fallback match branch');
+  assert(/matchedByLastFour[\s\S]{0,200}plaid_account_id = acct\.id/.test(enrollCode), 'Last-4 re-link adopts new Teller account id on the existing feed');
+  assert(/matchedByLastFour[\s\S]{0,200}existingFeed\.status/.test(enrollCode), 'Last-4 re-link preserves prior feed status (does not un-hide inactive cards)');
+
   // Sync API: supports CRON auth
   const syncCode = fs.readFileSync(path.resolve(__dirname, '../api/teller-sync-transactions.js'), 'utf8');
   assert(syncCode.includes('CRON_SECRET'), 'Sync API supports CRON_SECRET auth');

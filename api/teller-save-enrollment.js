@@ -209,21 +209,60 @@ module.exports = async function handler(req, res) {
         }
       } catch {}
 
-      const { data: existingFeed } = await supabase
+      // Two-step feed match. Teller mints a NEW opaque account id
+      // (acc_...) on every fresh enrollment, so after a re-link the
+      // plaid_account_id no longer matches even though it's the same
+      // real-world account. Development-tier enrollments expire every
+      // few months, so this happens routinely for Sigma's BofA feeds.
+      //   1. plaid_account_id — true reconnect (update mode), id stable.
+      //   2. fallback: (institution + masked last-4 + type) — recognizes
+      //      the same account across a new enrollment and re-points the
+      //      feed's plaid_account_id to the new id, so all history, GL
+      //      mappings, and reconciliations stay on the existing card.
+      // Scoped to one company + institution + last-4 + type, so a
+      // collision across two distinct real accounts isn't realistic.
+      let matchedByLastFour = false;
+      let { data: existingFeed } = await supabase
         .from("bank_account_feed")
         .select("id, gl_account_id, status")
         .eq("company_id", company_id)
         .eq("plaid_account_id", acct.id)
         .maybeSingle();
 
+      if (!existingFeed && acct.last_four) {
+        const { data: byLastFour } = await supabase
+          .from("bank_account_feed")
+          .select("id, gl_account_id, status")
+          .eq("company_id", company_id)
+          .eq("institution_name", institution?.name || "")
+          .eq("masked_number", acct.last_four)
+          .eq("account_type", acctType)
+          .maybeSingle();
+        if (byLastFour) {
+          existingFeed = byLastFour;
+          matchedByLastFour = true;
+        }
+      }
+
       if (existingFeed) {
-        await supabase.from("bank_account_feed").update({
+        const feedUpdate = {
           bank_connection_id: connectionId,
-          status: "active",
           bank_balance_current: currentBalance,
           account_name: acct.name || "Bank Account",
           institution_name: institution?.name || "",
-        }).eq("id", existingFeed.id);
+        };
+        // On a last-4 re-link, adopt the new Teller account id so the
+        // sync engine (which calls Teller by plaid_account_id) targets
+        // the live enrollment. Preserve the prior status — an
+        // intentionally hidden/inactive card (e.g. Sigma's …6918) must
+        // not be silently reactivated by a re-link.
+        if (matchedByLastFour) {
+          feedUpdate.plaid_account_id = acct.id;
+          if (existingFeed.status) feedUpdate.status = existingFeed.status;
+        } else {
+          feedUpdate.status = "active";
+        }
+        await supabase.from("bank_account_feed").update(feedUpdate).eq("id", existingFeed.id);
       }
 
       resultAccounts.push({
