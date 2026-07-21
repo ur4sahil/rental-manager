@@ -187,50 +187,53 @@ function testSourceLabels() {
 }
 
 // ───────────────────────────────────────────
-// 9. TELLER INTEGRATION
+// 9. PLAID INTEGRATION
 // ───────────────────────────────────────────
-function testTellerIntegration() {
-  console.log('\n🔗 TELLER INTEGRATION');
+// Teller.io shut down its API (2026-07); PropManager migrated bank sync to
+// Plaid. These assert the Plaid adapter surface. Teller files remain until
+// cutover but are no longer wired up.
+function testPlaidIntegration() {
+  console.log('\n🔗 PLAID INTEGRATION');
 
-  // Enrollment API exists as Vercel API route (not Supabase edge function)
-  const enrollmentApi = fs.existsSync(path.resolve(__dirname, '../api/teller-save-enrollment.js'));
-  assert(enrollmentApi, 'api/teller-save-enrollment.js exists');
+  // Adapter files exist as Vercel API routes
+  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-create-link-token.js')), 'api/plaid-create-link-token.js exists');
+  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-exchange-token.js')), 'api/plaid-exchange-token.js exists');
+  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-sync-transactions.js')), 'api/plaid-sync-transactions.js exists');
+  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-webhook.js')), 'api/plaid-webhook.js exists');
+  assert(fs.existsSync(path.resolve(__dirname, '../api/_plaid.js')), 'api/_plaid.js shared helper exists');
 
-  const syncApi = fs.existsSync(path.resolve(__dirname, '../api/teller-sync-transactions.js'));
-  assert(syncApi, 'api/teller-sync-transactions.js exists');
+  const shared = fs.readFileSync(path.resolve(__dirname, '../api/_plaid.js'), 'utf8');
+  // CRITICAL: Plaid amount sign is OPPOSITE of Teller (+ = outflow).
+  assert(/amountNum > 0 \? "outflow" : "inflow"/.test(shared), 'Sign flip: Plaid +amount maps to outflow');
+  assert(shared.includes('pbkdf2Sync') && shared.includes('aes-256-gcm'), 'Reuses AES-256-GCM + PBKDF2 token encryption');
+  assert(shared.includes('source_type: "plaid"'), 'Transform stamps source_type plaid');
 
-  // Enrollment API: NO GL account auto-creation
-  const enrollCode = fs.readFileSync(path.resolve(__dirname, '../api/teller-save-enrollment.js'), 'utf8');
-  assert(!enrollCode.includes("acct_accounts").valueOf() || !enrollCode.includes('.insert({') || enrollCode.includes('gl_account_id: null'), 'Enrollment API does NOT auto-create GL accounts');
-  assert(enrollCode.includes('plaid_account_id'), 'Enrollment checks for existing feed by Teller account ID');
-  assert(enrollCode.includes('is_existing'), 'Enrollment returns is_existing flag for reconnected feeds');
-  assert(enrollCode.includes('suggested_gl_type'), 'Enrollment returns suggested GL type for new feeds');
+  const exch = fs.readFileSync(path.resolve(__dirname, '../api/plaid-exchange-token.js'), 'utf8');
+  assert(exch.includes('itemPublicTokenExchange'), 'Exchange swaps public_token for access_token');
+  assert(exch.includes('is_existing') && exch.includes('suggested_gl_type'), 'Exchange returns post-connect metadata');
+  // Last-4 fallback match (carried over from the Teller fix): a fresh Item
+  // mints new account ids, so re-links re-attach by masked_number + adopt id.
+  assert(exch.includes('masked_number') && exch.includes('acct.mask'), 'Exchange has last-4 fallback match');
+  assert(exch.includes('matchedByLastFour'), 'Exchange tracks last-4 fallback branch');
+  assert(/matchedByLastFour[\s\S]{0,200}plaid_account_id = acct\.account_id/.test(exch), 'Last-4 re-link adopts new Plaid account id');
+  assert(/matchedByLastFour[\s\S]{0,200}existingFeed\.status/.test(exch), 'Last-4 re-link preserves prior feed status');
 
-  // Last-4 fallback match: a fresh enrollment mints a new Teller acct id,
-  // so re-links must re-attach to the existing feed by account number
-  // (masked_number/last_four) and adopt the new id — no duplicate cards.
-  assert(enrollCode.includes('masked_number'), 'Enrollment has last-4 fallback match on masked_number');
-  assert(enrollCode.includes('acct.last_four'), 'Enrollment fallback keys on Teller last_four');
-  assert(enrollCode.includes('matchedByLastFour'), 'Enrollment tracks last-4 fallback match branch');
-  assert(/matchedByLastFour[\s\S]{0,200}plaid_account_id = acct\.id/.test(enrollCode), 'Last-4 re-link adopts new Teller account id on the existing feed');
-  assert(/matchedByLastFour[\s\S]{0,200}existingFeed\.status/.test(enrollCode), 'Last-4 re-link preserves prior feed status (does not un-hide inactive cards)');
+  const syncCode = fs.readFileSync(path.resolve(__dirname, '../api/plaid-sync-transactions.js'), 'utf8');
+  assert(syncCode.includes('transactionsSync'), 'Sync uses cursor-based /transactions/sync');
+  assert(syncCode.includes('plaid_sync_cursor'), 'Sync persists the per-Item cursor');
+  assert(syncCode.includes('CRON_SECRET') && syncCode.includes('isCronAuth'), 'Sync supports CRON auth');
+  assert(syncCode.includes('ITEM_LOGIN_REQUIRED') && syncCode.includes('needs_reauth'), 'Sync flags needs_reauth on ITEM_LOGIN_REQUIRED');
+  assert(/status.*for_review[\s\S]{0,120}\.in\("provider_transaction_id"/.test(syncCode) || syncCode.includes('.eq("status", "for_review")'), 'Removals only delete untouched for_review rows');
 
-  // Sync API: supports CRON auth
-  const syncCode = fs.readFileSync(path.resolve(__dirname, '../api/teller-sync-transactions.js'), 'utf8');
-  assert(syncCode.includes('CRON_SECRET'), 'Sync API supports CRON_SECRET auth');
-  assert(syncCode.includes('isCronAuth'), 'Sync API has dedicated cron auth check');
-  assert(syncCode.includes('req.method === "GET"'), 'Sync API accepts GET for Vercel Cron');
-  assert(syncCode.includes('fingerprint_hash'), 'Sync uses fingerprint dedup');
+  const hook = fs.readFileSync(path.resolve(__dirname, '../api/plaid-webhook.js'), 'utf8');
+  assert(hook.includes('jwtVerify') && hook.includes('request_body_sha256'), 'Webhook verifies ES256 JWT + body hash');
+  assert(hook.includes('SYNC_UPDATES_AVAILABLE'), 'Webhook handles SYNC_UPDATES_AVAILABLE');
+  assert(hook.includes('bodyParser: false'), 'Webhook disables body parser for raw-body hashing');
 
-  // Frontend: mTLS via Node.js https (not Deno)
-  assert(enrollCode.includes('https.request'), 'Enrollment uses Node.js https.request for mTLS');
-  assert(enrollCode.includes('opts.cert'), 'Enrollment passes mTLS certificate');
-  assert(enrollCode.includes('opts.key'), 'Enrollment passes mTLS private key');
-
-  // Frontend: Teller Connect SDK loaded dynamically
-  assert(APP_CODE.includes('TellerConnect'), 'App loads TellerConnect SDK');
-  assert(APP_CODE.includes('cdn.teller.io'), 'Teller SDK loaded from CDN');
-  assert(APP_CODE.includes('environment: "development"'), 'Teller environment set to development');
+  // Frontend: Plaid Link loaded dynamically, Teller Connect gone
+  assert(APP_CODE.includes('window.Plaid') && APP_CODE.includes('cdn.plaid.com'), 'App loads Plaid Link SDK from CDN');
+  assert(APP_CODE.includes('/api/plaid-create-link-token') && APP_CODE.includes('/api/plaid-exchange-token'), 'App calls Plaid link-token + exchange endpoints');
+  assert(!APP_CODE.includes('TellerConnect'), 'Teller Connect SDK no longer referenced in app');
 }
 
 // ───────────────────────────────────────────
@@ -398,7 +401,7 @@ async function main() {
   testBankRules();
   testDuplicatePrevention();
   testSourceLabels();
-  testTellerIntegration();
+  testPlaidIntegration();
   await testTellerFeedDedup();
   testGLAccountDeletion();
   testFeedManagement();
