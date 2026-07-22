@@ -2682,15 +2682,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               for (const acct of unselectedExisting) {
                 await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.existing_feed_id).eq("company_id", companyId);
               }
-              // Pull transactions. Plaid /transactions/sync is cursor-based
-              // and returns the full requested history (days_requested) on the
-              // first call, so no date range is passed.
+              // Pull transactions. Plaid /transactions/sync is cursor-based, but
+              // we pass the chosen start date as from_date so the INITIAL import
+              // only reaches back as far as the user selected (the API filters on
+              // insert; without this Plaid pulls its full 730-day default).
               const { data: { session } } = await supabase.auth.getSession();
               if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
               const res = await fetch("/api/plaid-sync-transactions", {
                 method: "POST",
                 headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-                body: JSON.stringify({ company_id: companyId })
+                body: JSON.stringify({ company_id: companyId, from_date: postConnectRange.from || undefined })
               });
               const data = await res.json();
               if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }

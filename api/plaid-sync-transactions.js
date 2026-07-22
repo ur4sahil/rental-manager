@@ -136,7 +136,15 @@ module.exports = async function handler(req, res) {
         }
 
         // ── Additions + modifications: skip pending, map to rows, dedup ────
-        const candidates = [...added, ...modified].filter(t => !t.pending);
+        // from_date (set by the post-connect "Import" using the user's chosen
+        // start date) caps how far back the INITIAL import reaches. Plaid's
+        // /transactions/sync has no date param — it returns the whole
+        // days_requested window — so we filter on insert. The cursor still
+        // advances past the older rows, so they're skipped for good (not
+        // re-pulled later). The daily cron/webhook pass no from_date, so
+        // steady-state syncs import everything new.
+        const fromDate = body.from_date || null;
+        const candidates = [...added, ...modified].filter(t => !t.pending && (!fromDate || (t.date && t.date >= fromDate)));
         const rows = [];
         for (const txn of candidates) {
           const feed = feedByAcct.get(txn.account_id);

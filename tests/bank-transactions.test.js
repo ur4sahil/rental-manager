@@ -224,6 +224,10 @@ function testPlaidIntegration() {
   const syncCode = fs.readFileSync(path.resolve(__dirname, '../api/plaid-sync-transactions.js'), 'utf8');
   assert(syncCode.includes('transactionsSync'), 'Sync uses cursor-based /transactions/sync');
   assert(syncCode.includes('plaid_sync_cursor'), 'Sync persists the per-Item cursor');
+  // Initial import must honor the user's chosen start date (Plaid /sync has no
+  // date param, so we filter on insert). Regression guard for the over-import.
+  assert(syncCode.includes('body.from_date') && /t\.date >= fromDate/.test(syncCode), 'Initial import filters inserts by from_date (post-connect start date)');
+  assert(APP_CODE.includes('from_date: postConnectRange.from'), 'Post-connect import passes the chosen start date to the sync');
   assert(syncCode.includes('CRON_SECRET') && syncCode.includes('isCronAuth'), 'Sync supports CRON auth');
   assert(syncCode.includes('ITEM_LOGIN_REQUIRED') && syncCode.includes('needs_reauth'), 'Sync flags needs_reauth on ITEM_LOGIN_REQUIRED');
   assert(/status.*for_review[\s\S]{0,120}\.in\("provider_transaction_id"/.test(syncCode) || syncCode.includes('.eq("status", "for_review")'), 'Removals only delete untouched for_review rows');
