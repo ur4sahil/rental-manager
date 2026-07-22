@@ -195,12 +195,14 @@ function testSourceLabels() {
 function testPlaidIntegration() {
   console.log('\n🔗 PLAID INTEGRATION');
 
-  // Adapter files exist as Vercel API routes
-  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-create-link-token.js')), 'api/plaid-create-link-token.js exists');
-  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-exchange-token.js')), 'api/plaid-exchange-token.js exists');
+  // Adapter files exist as Vercel API routes. link-token + exchange are
+  // combined into plaid-link.js (Hobby-plan 12-function limit).
+  assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-link.js')), 'api/plaid-link.js exists (create_token + exchange)');
   assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-sync-transactions.js')), 'api/plaid-sync-transactions.js exists');
   assert(fs.existsSync(path.resolve(__dirname, '../api/plaid-webhook.js')), 'api/plaid-webhook.js exists');
   assert(fs.existsSync(path.resolve(__dirname, '../api/_plaid.js')), 'api/_plaid.js shared helper exists');
+  // Under the 12-function Hobby cap
+  assert(fs.readdirSync(path.resolve(__dirname, '../api')).filter(f => f.endsWith('.js') && !f.startsWith('_')).length <= 12, 'api/ stays within the 12 serverless-function limit');
 
   const shared = fs.readFileSync(path.resolve(__dirname, '../api/_plaid.js'), 'utf8');
   // CRITICAL: Plaid amount sign is OPPOSITE of Teller (+ = outflow).
@@ -208,8 +210,9 @@ function testPlaidIntegration() {
   assert(shared.includes('pbkdf2Sync') && shared.includes('aes-256-gcm'), 'Reuses AES-256-GCM + PBKDF2 token encryption');
   assert(shared.includes('source_type: "plaid"'), 'Transform stamps source_type plaid');
 
-  const exch = fs.readFileSync(path.resolve(__dirname, '../api/plaid-exchange-token.js'), 'utf8');
+  const exch = fs.readFileSync(path.resolve(__dirname, '../api/plaid-link.js'), 'utf8');
   assert(exch.includes('itemPublicTokenExchange'), 'Exchange swaps public_token for access_token');
+  assert(exch.includes('linkTokenCreate') && exch.includes('"create_token"'), 'plaid-link handles create_token action');
   assert(exch.includes('is_existing') && exch.includes('suggested_gl_type'), 'Exchange returns post-connect metadata');
   // Last-4 fallback match (carried over from the Teller fix): a fresh Item
   // mints new account ids, so re-links re-attach by masked_number + adopt id.
@@ -232,7 +235,7 @@ function testPlaidIntegration() {
 
   // Frontend: Plaid Link loaded dynamically, Teller Connect gone
   assert(APP_CODE.includes('window.Plaid') && APP_CODE.includes('cdn.plaid.com'), 'App loads Plaid Link SDK from CDN');
-  assert(APP_CODE.includes('/api/plaid-create-link-token') && APP_CODE.includes('/api/plaid-exchange-token'), 'App calls Plaid link-token + exchange endpoints');
+  assert(APP_CODE.includes('/api/plaid-link') && APP_CODE.includes('"exchange"') && APP_CODE.includes('"create_token"'), 'App calls the combined Plaid link endpoint with create_token + exchange actions');
   assert(!APP_CODE.includes('TellerConnect'), 'Teller Connect SDK no longer referenced in app');
 }
 

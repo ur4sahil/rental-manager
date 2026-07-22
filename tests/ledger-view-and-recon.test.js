@@ -142,19 +142,18 @@ async function testTriggerRemoved() {
   await sb.from('acct_journal_entries').delete().eq('id', jeId);
 }
 
-async function testTellerSyncDedupPaginates() {
-  console.log('\n📥 teller-sync dedup query paginates beyond 1000');
-  const apiSrc = fs.readFileSync(path.join(__dirname, '..', 'api', 'teller-sync-transactions.js'), 'utf8');
-  // The fix swaps the single .select() for a paginated loop. Verify
-  // the loop is in place — without it, any feed with >1000 historical
-  // rows would silently drop rows from the dedup set and re-import
-  // them as duplicates.
-  assert(apiSrc.includes('dedupFrom += 1000') || /while\s*\(true\)\s*\{[\s\S]{0,400}fpQuery/.test(apiSrc),
-    'dedup pre-fetch uses a paginated while-loop instead of a single select');
-  assert(apiSrc.includes('existingPtid.add'),
-    'provider_transaction_id dedup set is built from paginated rows');
-  assert(apiSrc.includes('existingFp.add'),
-    'fingerprint_hash dedup set is built from paginated rows');
+async function testPlaidSyncDedup() {
+  console.log('\n📥 plaid-sync dedup uses provider id + CSV fingerprint');
+  const apiSrc = fs.readFileSync(path.join(__dirname, '..', 'api', 'plaid-sync-transactions.js'), 'utf8');
+  // Plaid /transactions/sync is cursor-based, so it only returns changes
+  // since the last cursor — but we still dedup to survive re-runs where the
+  // cursor didn't persist (crash mid-batch). Verify both dedup keys.
+  assert(apiSrc.includes('existingPtid') && /\.in\("provider_transaction_id"/.test(apiSrc),
+    'provider_transaction_id dedup set is built via chunked .in() lookups');
+  assert(apiSrc.includes('existingFpCsv') && apiSrc.includes('.is("provider_transaction_id", null)'),
+    'CSV-only fingerprints (no provider id) are deduped separately');
+  assert(apiSrc.includes('plaid_sync_cursor'),
+    'the per-Item cursor is persisted so steady-state syncs stay incremental');
 }
 
 async function testPmErrorSuppression() {
@@ -188,7 +187,7 @@ async function testReconPanelMath() {
   await testLedgerEntriesIsView();
   await testLedgerViewDerivesFromGL();
   await testTriggerRemoved();
-  await testTellerSyncDedupPaginates();
+  await testPlaidSyncDedup();
   await testPmErrorSuppression();
   await testReconPanelMath();
   console.log('\n═══════════════════════════════════════════════════════════════');

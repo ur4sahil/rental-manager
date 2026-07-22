@@ -65,7 +65,7 @@ function csvParseDate(raw) {
 // Teller returns unmasked (ID:8800429876); CSV drops enclosing
 // quotes, Teller keeps them. Collapse all mask tokens to "x", strip
 // long digit runs to "#", drop quotes/backslashes, collapse whitespace.
-// Must match normDescription in api/teller-sync-transactions.js.
+// Must match normDescription in api/_plaid.js.
 function csvNormDescription(s) {
   return String(s || "")
     .toLowerCase()
@@ -453,17 +453,17 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // mode against an existing Item — that re-authenticates the same
   // institution without creating a new Item (so it doesn't count toward
   // the Plaid plan's Item limit). The link_token is minted server-side by
-  // /api/plaid-create-link-token; the frontend needs no Plaid public key.
+  // /api/plaid-link (action:create_token); frontend needs no Plaid public key.
   async function connectBank(reconnectConnectionId) {
     setPlaidConnecting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
       // 1. Mint a link_token (new mode, or update mode for reconnect)
-      const ltRes = await fetch("/api/plaid-create-link-token", {
+      const ltRes = await fetch("/api/plaid-link", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId, ...(reconnectConnectionId ? { reconnect_connection_id: reconnectConnectionId } : {}) })
+        body: JSON.stringify({ action: "create_token", company_id: companyId, ...(reconnectConnectionId ? { reconnect_connection_id: reconnectConnectionId } : {}) })
       });
       const ltData = await ltRes.json();
       if (!ltRes.ok || !ltData.link_token) {
@@ -484,10 +484,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         token: ltData.link_token,
         onSuccess: async (public_token, metadata) => {
           showToast("Connecting accounts...", "success");
-          const saveRes = await fetch("/api/plaid-exchange-token", {
+          const saveRes = await fetch("/api/plaid-link", {
             method: "POST",
             headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
             body: JSON.stringify({
+              action: "exchange",
               public_token,
               company_id: companyId,
               institution: { name: metadata?.institution?.name || "Bank", id: metadata?.institution?.institution_id || "" }
@@ -2650,7 +2651,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             try {
               // Save mappings. NEW accounts (no existing_feed_id) get a
               // bank_account_feed row inserted now — deferred from
-              // /api/teller-save-enrollment so that canceling leaves no
+              // /api/plaid-link exchange so that canceling leaves no
               // orphans. EXISTING accounts (reconnect) get their gl_account_id
               // updated in place.
               for (const acct of selectedAccts) {
