@@ -229,7 +229,7 @@ function testPlaidIntegration() {
   assert(/status.*for_review[\s\S]{0,120}\.in\("provider_transaction_id"/.test(syncCode) || syncCode.includes('.eq("status", "for_review")'), 'Removals only delete untouched for_review rows');
 
   const hook = fs.readFileSync(path.resolve(__dirname, '../api/plaid-webhook.js'), 'utf8');
-  assert(hook.includes('jwtVerify') && hook.includes('ES256'), 'Webhook verifies the Plaid ES256 JWT signature');
+  assert(hook.includes('crypto.verify') && hook.includes('ES256') && hook.includes('ieee-p1363'), 'Webhook verifies the Plaid ES256 JWT via Node crypto (no jose/ESM)');
   assert(/payload\.iat/.test(hook) && hook.includes('300'), 'Webhook bounds replay via iat freshness (5 min)');
   assert(hook.includes('SYNC_UPDATES_AVAILABLE'), 'Webhook handles SYNC_UPDATES_AVAILABLE');
   assert(hook.includes('Invalid webhook signature'), 'Webhook rejects unverified requests');

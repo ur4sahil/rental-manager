@@ -2,24 +2,34 @@
 // Public endpoint, so every request is authenticated before we act. Plaid
 // signs each webhook with an ES256 JWT in the `Plaid-Verification` header,
 // signed by a key we fetch by `kid`. Verifying that signature proves the
-// request genuinely came from Plaid (the JWT can't be forged), and the `iat`
-// freshness check bounds replay. We route on the parsed JSON body; the JWT —
-// not the body — is the trust anchor, so we don't depend on fragile raw-body
-// reconstruction in the serverless runtime.
+// request genuinely came from Plaid (the JWT can't be forged); the `iat`
+// freshness check bounds replay. We route on the parsed JSON body; the JWT is
+// the trust anchor, so we don't depend on fragile raw-body reconstruction.
 //
-// Handled webhooks:
-//   TRANSACTIONS / SYNC_UPDATES_AVAILABLE (+ *_UPDATE) -> sync that Item
-//   ITEM / ERROR (ITEM_LOGIN_REQUIRED), ITEM / PENDING_EXPIRATION -> needs_reauth
+// JWT verification uses Node's built-in crypto (ES256 = ECDSA P-256 + SHA-256,
+// JOSE r||s signature). We deliberately avoid the `jose` package: it's ESM and
+// crashes at load (FUNCTION_INVOCATION_FAILED) when bundled into a CommonJS
+// Vercel function.
+const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
-const { importJWK, jwtVerify, decodeProtectedHeader } = require("jose");
 const { getPlaidClient } = require("./_plaid");
 
+function b64urlToBuf(s) { return Buffer.from(s, "base64url"); }
+function b64urlToJson(s) { return JSON.parse(b64urlToBuf(s).toString("utf8")); }
+
 async function verifyPlaidJwt(plaid, jwtToken) {
-  const { kid, alg } = decodeProtectedHeader(jwtToken);
-  if (alg !== "ES256" || !kid) return false;
-  const keyRes = await plaid.webhookVerificationKeyGet({ key_id: kid });
-  const key = await importJWK(keyRes.data.key, "ES256");
-  const { payload } = await jwtVerify(jwtToken, key, { algorithms: ["ES256"], clockTolerance: 300 });
+  const parts = String(jwtToken || "").split(".");
+  if (parts.length !== 3) return false;
+  const header = b64urlToJson(parts[0]);
+  if (header.alg !== "ES256" || !header.kid) return false;
+  // Fetch the ECDSA public key (JWK) for this kid from Plaid.
+  const keyRes = await plaid.webhookVerificationKeyGet({ key_id: header.kid });
+  const pubKey = crypto.createPublicKey({ key: keyRes.data.key, format: "jwk" });
+  const signingInput = Buffer.from(parts[0] + "." + parts[1]);
+  const signature = b64urlToBuf(parts[2]); // JOSE raw r||s
+  const sigOk = crypto.verify("sha256", signingInput, { key: pubKey, dsaEncoding: "ieee-p1363" }, signature);
+  if (!sigOk) return false;
+  const payload = b64urlToJson(parts[1]);
   // Bound replay: reject webhooks older than 5 minutes.
   if (!payload.iat || Date.now() / 1000 - payload.iat > 300) return false;
   return true;
