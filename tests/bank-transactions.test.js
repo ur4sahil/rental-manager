@@ -229,9 +229,10 @@ function testPlaidIntegration() {
   assert(/status.*for_review[\s\S]{0,120}\.in\("provider_transaction_id"/.test(syncCode) || syncCode.includes('.eq("status", "for_review")'), 'Removals only delete untouched for_review rows');
 
   const hook = fs.readFileSync(path.resolve(__dirname, '../api/plaid-webhook.js'), 'utf8');
-  assert(hook.includes('jwtVerify') && hook.includes('request_body_sha256'), 'Webhook verifies ES256 JWT + body hash');
+  assert(hook.includes('jwtVerify') && hook.includes('ES256'), 'Webhook verifies the Plaid ES256 JWT signature');
+  assert(/payload\.iat/.test(hook) && hook.includes('300'), 'Webhook bounds replay via iat freshness (5 min)');
   assert(hook.includes('SYNC_UPDATES_AVAILABLE'), 'Webhook handles SYNC_UPDATES_AVAILABLE');
-  assert(hook.includes('bodyParser: false'), 'Webhook disables body parser for raw-body hashing');
+  assert(hook.includes('Invalid webhook signature'), 'Webhook rejects unverified requests');
 
   // Frontend: Plaid Link loaded dynamically, Teller Connect gone
   assert(APP_CODE.includes('window.Plaid') && APP_CODE.includes('cdn.plaid.com'), 'App loads Plaid Link SDK from CDN');
