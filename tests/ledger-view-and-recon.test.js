@@ -176,8 +176,13 @@ async function testReconPanelMath() {
     'recon helper computes diff = bank - books - pending');
   assert(/feedPending/.test(bankingSrc),
     'panel reads pending from unfiltered feedPending state, not the date-windowed transactions list');
-  assert(/Reconciliation mismatch/.test(bankingSrc),
-    'one-time toast fires on first mismatch detection per feed');
+  // Regression guard: the mismatch TOAST was intentionally removed (commit
+  // 71ddfc0) — it fired on mount before feedPending loaded, so pendingNet was
+  // 0 and diff falsely read "mismatch" while the card showed Reconciled. The
+  // coloured status pill surfaces the same info without the race. Do not
+  // reintroduce the toast.
+  assert(!/showToast\([^)]*[Rr]econciliation mismatch/.test(bankingSrc),
+    'no mismatch toast (removed in 71ddfc0 — it raced feedPending; the status pill covers it)');
 }
 
 (async () => {
