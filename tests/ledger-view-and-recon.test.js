@@ -150,8 +150,8 @@ async function testPlaidSyncDedup() {
   // cursor didn't persist (crash mid-batch). Verify both dedup keys.
   assert(apiSrc.includes('existingPtid') && /\.in\("provider_transaction_id"/.test(apiSrc),
     'provider_transaction_id dedup set is built via chunked .in() lookups');
-  assert(apiSrc.includes('existingFpCsv') && apiSrc.includes('.is("provider_transaction_id", null)'),
-    'CSV-only fingerprints (no provider id) are deduped separately');
+  assert(apiSrc.includes('crossSourceKey') && apiSrc.includes('selectInserts') && apiSrc.includes('.neq("source_type", "plaid")'),
+    'cross-source rows (Teller/CSV) deduped count-aware via crossSourceKey + selectInserts');
   assert(apiSrc.includes('plaid_sync_cursor'),
     'the per-Item cursor is persisted so steady-state syncs stay incremental');
 }

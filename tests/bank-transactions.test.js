@@ -8,6 +8,7 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const { crossSourceKey, selectInserts } = require('../api/_plaid');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 // Read all source files (App.js + utils/ + components/) since code was split into modules
@@ -245,6 +246,43 @@ function testPlaidIntegration() {
 }
 
 // ───────────────────────────────────────────
+// 9b. PLAID CROSS-SOURCE DEDUP (count-aware)
+// ───────────────────────────────────────────
+// A Teller->Plaid migration re-pulls the same real events under a different
+// provider-id space, so provider_transaction_id can't dedup them. crossSourceKey
+// (feed+date+direction+cents, no description) + count-aware selectInserts closes
+// that gap WITHOUT collapsing genuinely-distinct same-day/amount transactions
+// (the $776.34 recon-gap bug).
+function testPlaidCrossSourceDedup() {
+  console.log('\n🎯 PLAID CROSS-SOURCE DEDUP (count-aware)');
+  const feedRow = (feed, date, dir, amt, id) => ({ bank_account_feed_id: feed, posted_date: date, direction: dir, amount: amt, provider_transaction_id: id });
+  const counts = (rows) => { const m = new Map(); for (const r of rows) { const k = crossSourceKey(r[0], r[1], r[2], r[3]); m.set(k, (m.get(k) || 0) + 1); } return m; };
+  const NONE = new Set();
+
+  assert(crossSourceKey('f1', '2026-07-01', 'outflow', 398.17) === 'f1|2026-07-01|outflow|39817', 'crossSourceKey = feed|date|dir|cents (description excluded)');
+  assert(crossSourceKey('f1', '2026-07-01', 'outflow', 398.18) !== crossSourceKey('f1', '2026-07-01', 'outflow', 398.17), 'different amount -> different key');
+
+  // Migration: 3 Teller + 3 identical Plaid -> all deduped
+  assert(selectInserts(
+    [feedRow('f1','2026-07-01','outflow',398.17,'a'), feedRow('f1','2026-07-01','outflow',398.17,'b'), feedRow('f1','2026-07-01','outflow',398.17,'c')],
+    counts([['f1','2026-07-01','outflow',398.17],['f1','2026-07-01','outflow',398.17],['f1','2026-07-01','outflow',398.17]]), NONE
+  ).length === 0, '3 existing + 3 identical incoming -> 0 inserted (migration dupes removed)');
+
+  // The $776.34 case: 1 existing + 3 genuinely-distinct same-key -> keep 2
+  assert(selectInserts(
+    [feedRow('f1','2026-01-15','inflow',398.17,'p1'), feedRow('f1','2026-01-15','inflow',398.17,'p2'), feedRow('f1','2026-01-15','inflow',398.17,'p3')],
+    counts([['f1','2026-01-15','inflow',398.17]]), NONE
+  ).length === 2, '1 existing + 3 distinct same-key -> insert 2 (no collapse; $776.34 bug stays fixed)');
+
+  // Re-imported provider id skipped
+  const ins = selectInserts([feedRow('f1','2026-07-10','outflow',50,'seen'), feedRow('f1','2026-07-10','outflow',60,'fresh')], new Map(), new Set(['seen']));
+  assert(ins.length === 1 && ins[0].provider_transaction_id === 'fresh', 're-imported provider id skipped, new one kept');
+
+  // Cross-feed isolation
+  assert(selectInserts([feedRow('f2','2026-07-01','outflow',100,'x')], counts([['f1','2026-07-01','outflow',100]]), NONE).length === 1, 'same date/amt on a different feed is not deduped');
+}
+
+// ───────────────────────────────────────────
 // 10. TELLER FEED DEDUP (DB)
 // ───────────────────────────────────────────
 async function testTellerFeedDedup() {
@@ -410,6 +448,7 @@ async function main() {
   testDuplicatePrevention();
   testSourceLabels();
   testPlaidIntegration();
+  testPlaidCrossSourceDedup();
   await testTellerFeedDedup();
   testGLAccountDeletion();
   testFeedManagement();

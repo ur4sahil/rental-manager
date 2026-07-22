@@ -7,7 +7,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
-const { getPlaidClient, decrypt, plaidTxnToRow, buildFingerprint } = require("./_plaid");
+const { getPlaidClient, decrypt, plaidTxnToRow, crossSourceKey, selectInserts } = require("./_plaid");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const CRON_CONCURRENCY = 3;
@@ -153,9 +153,15 @@ module.exports = async function handler(req, res) {
           if (row) rows.push(row);
         }
 
-        // Dedup against what's already stored:
-        //   - provider_transaction_id (exact, stable) — skip re-inserts
-        //   - CSV fingerprints (rows with no provider id) — cross-source crosswalk
+        // Dedup against what's already stored, two ways:
+        //   (a) provider_transaction_id — exact, stable; skips re-imports of the
+        //       same Plaid txn (survives crashes where the cursor didn't persist).
+        //   (b) cross-source, COUNT-AWARE — matches incoming Plaid rows against
+        //       existing NON-Plaid rows (Teller from a migration, or CSV imports)
+        //       for the same real bank event. See crossSourceKey/selectInserts:
+        //       key = feed+date+direction+cents (provider ids don't line up and
+        //       descriptions differ across sources), counted so genuinely-distinct
+        //       same-day/amount transactions are preserved.
         let addedCount = 0;
         if (rows.length) {
           const ptids = [...new Set(rows.map(r => r.provider_transaction_id).filter(Boolean))];
@@ -170,28 +176,36 @@ module.exports = async function handler(req, res) {
             (ex || []).forEach(r => r.provider_transaction_id && existingPtid.add(r.provider_transaction_id));
           }
 
-          // CSV-only fingerprints in the batch's date window, per feed.
+          // Cross-source key counts from existing NON-Plaid rows in the batch's
+          // date window, per feed. Paginated: a full-overlap migration window can
+          // hold thousands of Teller rows, past the 1000-row default.
           const feedIds = [...new Set(rows.map(r => r.bank_account_feed_id))];
           const dates = rows.map(r => r.posted_date).filter(Boolean).sort();
           const minDate = dates[0], maxDate = dates[dates.length - 1];
-          const existingFpCsv = new Set();
+          const existingCounts = new Map();
           for (const fid of feedIds) {
-            let q = supabase
-              .from("bank_feed_transaction")
-              .select("fingerprint_hash, provider_transaction_id, posted_date")
-              .eq("bank_account_feed_id", fid)
-              .eq("company_id", conn.company_id)
-              .is("provider_transaction_id", null);
-            if (minDate) q = q.gte("posted_date", minDate);
-            if (maxDate) q = q.lte("posted_date", maxDate);
-            const { data: csvRows } = await q;
-            (csvRows || []).forEach(r => r.fingerprint_hash && existingFpCsv.add(r.fingerprint_hash));
+            let from = 0;
+            while (true) {
+              let q = supabase
+                .from("bank_feed_transaction")
+                .select("posted_date, direction, amount")
+                .eq("bank_account_feed_id", fid)
+                .eq("company_id", conn.company_id)
+                .neq("source_type", "plaid");
+              if (minDate) q = q.gte("posted_date", minDate);
+              if (maxDate) q = q.lte("posted_date", maxDate);
+              const { data: page } = await q.range(from, from + 999);
+              if (!page?.length) break;
+              for (const r of page) {
+                const k = crossSourceKey(fid, r.posted_date, r.direction, r.amount);
+                existingCounts.set(k, (existingCounts.get(k) || 0) + 1);
+              }
+              if (page.length < 1000) break;
+              from += 1000;
+            }
           }
 
-          const inserts = rows.filter(r =>
-            !(r.provider_transaction_id && existingPtid.has(r.provider_transaction_id)) &&
-            !existingFpCsv.has(r.fingerprint_hash)
-          );
+          const inserts = selectInserts(rows, existingCounts, existingPtid);
 
           for (let i = 0; i < inserts.length; i += 50) {
             const chunk = inserts.slice(i, i + 50);

@@ -133,4 +133,39 @@ function plaidTxnToRow(txn, feed, companyId) {
   };
 }
 
-module.exports = { getPlaidClient, encrypt, decrypt, mapAcctType, normDescription, buildFingerprint, plaidTxnToRow };
+// ── Cross-source dedup (Teller/CSV -> Plaid) ────────────────────────────────
+// Match key for the SAME real bank event across DIFFERENT import sources.
+// Provider ids never line up across sources, and descriptions differ by
+// provider (Teller's raw bank string vs Plaid's cleaned `name`), so the key
+// deliberately EXCLUDES description: feed + posted date + direction + cents.
+// Looser than the full fingerprint, but paired with count-aware matching
+// (selectInserts) it can't collapse genuinely-distinct transactions — it only
+// skips as many incoming rows as there are existing rows with the same key.
+function crossSourceKey(feedId, date, direction, absAmount) {
+  return `${feedId}|${date}|${direction}|${Math.round(Math.abs(Number(absAmount) || 0) * 100)}`;
+}
+
+// Decide which incoming rows to INSERT after dedup. Pure + deterministic so
+// the count logic is unit-testable.
+//   - alreadyImported: Set of provider_transaction_id already in the DB
+//     (same-source re-import guard — exact).
+//   - existingCounts: Map<crossSourceKey, count> of existing OTHER-source rows
+//     in the window. COUNT-AWARE: an incoming row is skipped only while an
+//     unmatched existing row with its key remains; the count decrements as we
+//     match. So 3 Teller + 3 identical Plaid -> skip all 3; 1 Teller + 3
+//     distinct Plaid -> skip 1, insert 2 (no legit loss).
+function selectInserts(rows, existingCounts, alreadyImported) {
+  const counts = new Map(existingCounts); // clone; we mutate as we match
+  const seen = alreadyImported || new Set();
+  const inserts = [];
+  for (const r of rows) {
+    if (r.provider_transaction_id && seen.has(r.provider_transaction_id)) continue;
+    const k = crossSourceKey(r.bank_account_feed_id, r.posted_date, r.direction, r.amount);
+    const remaining = counts.get(k) || 0;
+    if (remaining > 0) { counts.set(k, remaining - 1); continue; }
+    inserts.push(r);
+  }
+  return inserts;
+}
+
+module.exports = { getPlaidClient, encrypt, decrypt, mapAcctType, normDescription, buildFingerprint, plaidTxnToRow, crossSourceKey, selectInserts };
