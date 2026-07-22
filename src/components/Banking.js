@@ -449,54 +449,61 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   // --- Teller Connect ---
-  // Opens Teller Connect. Pass a reconnectEnrollmentId to open in
-  // "update" mode against an existing enrollment — that re-authenticates
-  // the same institution without consuming a new slot against the
-  // Teller plan. Without it, Teller creates a fresh enrollment (a
-  // second BofA connection counts twice toward plan limits).
-  async function connectBank(reconnectEnrollmentId) {
+  // Opens Plaid Link. Pass a reconnectConnectionId to open in "update"
+  // mode against an existing Item — that re-authenticates the same
+  // institution without creating a new Item (so it doesn't count toward
+  // the Plaid plan's Item limit). The link_token is minted server-side by
+  // /api/plaid-create-link-token; the frontend needs no Plaid public key.
+  async function connectBank(reconnectConnectionId) {
     setPlaidConnecting(true);
     try {
-      const tellerAppId = window.__TELLER_APP_ID || process.env.REACT_APP_TELLER_APP_ID || "";
-      if (!tellerAppId) { showToast("Teller Application ID not configured. Set REACT_APP_TELLER_APP_ID.", "error"); return; }
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-      // Load Teller Connect SDK
-      if (!window.TellerConnect) {
+      // 1. Mint a link_token (new mode, or update mode for reconnect)
+      const ltRes = await fetch("/api/plaid-create-link-token", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: companyId, ...(reconnectConnectionId ? { reconnect_connection_id: reconnectConnectionId } : {}) })
+      });
+      const ltData = await ltRes.json();
+      if (!ltRes.ok || !ltData.link_token) {
+        pmError("PM-5004", { raw: new Error(ltData.error || `HTTP ${ltRes.status}`), context: "creating Plaid link token" });
+        return;
+      }
+      // 2. Load Plaid Link SDK
+      if (!window.Plaid) {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = "https://cdn.teller.io/connect/connect.js";
+          script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
           script.onload = resolve; script.onerror = reject;
           document.head.appendChild(script);
         });
       }
-      const setupOpts = {
-        applicationId: tellerAppId,
-        environment: "development",
-        onSuccess: async (enrollment) => {
+      // 3. Open Plaid Link
+      const handler = window.Plaid.create({
+        token: ltData.link_token,
+        onSuccess: async (public_token, metadata) => {
           showToast("Connecting accounts...", "success");
-          const saveRes = await fetch("/api/teller-save-enrollment", {
+          const saveRes = await fetch("/api/plaid-exchange-token", {
             method: "POST",
             headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
             body: JSON.stringify({
-              access_token: enrollment.accessToken,
-              enrollment_id: enrollment.enrollment?.id || "",
-              institution: enrollment.enrollment?.institution || {},
-              company_id: companyId
+              public_token,
+              company_id: companyId,
+              institution: { name: metadata?.institution?.name || "Bank", id: metadata?.institution?.institution_id || "" }
             })
           });
           const saveData = await saveRes.json();
-          if (!saveRes.ok || saveData.error || saveData.message === "Invalid JWT") {
-            pmError("PM-5003", { raw: new Error(saveData.error || saveData.message || `HTTP ${saveRes.status}`), context: "saving Teller enrollment" });
+          if (!saveRes.ok || saveData.error) {
+            pmError("PM-5003", { raw: new Error(saveData.error || `HTTP ${saveRes.status}`), context: "saving Plaid connection" });
           } else {
             // Show post-connection setup modal
             await fetchAll();
             const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
             setPostConnectRange({ from: formatLocalDate(ninetyDaysAgo), to: formatLocalDate(new Date()) });
             // Build default mappings + select all accounts by default. Keyed
-            // by plaid_account_id (Teller's stable account id) — new feeds
-            // don't have a local bank_account_feed.id yet, so we can't use
-            // the old key.
+            // by plaid_account_id (Plaid's account id) — new feeds don't have
+            // a local bank_account_feed.id yet, so we can't use the old key.
             const mappings = {};
             const selected = new Set();
             (saveData.accounts || []).forEach(a => {
@@ -508,16 +515,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             setPostConnectMappings(mappings);
             setPostConnectSelected(selected);
             setPostConnectNewAcct(null);
-            setPostConnectModal({ accounts: saveData.accounts || [], connectionId: saveData.connection_id, institutionName: enrollment.enrollment?.institution?.name || "Bank" });
+            setPostConnectModal({ accounts: saveData.accounts || [], connectionId: saveData.connection_id, institutionName: metadata?.institution?.name || "Bank" });
           }
         },
-        onExit: () => { /* user closed */ },
-      };
-      // Teller Connect opens in "update" mode when enrollmentId is set.
-      if (reconnectEnrollmentId) setupOpts.enrollmentId = reconnectEnrollmentId;
-      const tellerConnect = window.TellerConnect.setup(setupOpts);
-      tellerConnect.open();
-    } catch (e) { pmError("PM-5004", { raw: e, context: "connecting bank via Teller" }); }
+        onExit: () => { /* user closed or aborted */ },
+      });
+      handler.open();
+    } catch (e) { pmError("PM-5004", { raw: e, context: "connecting bank via Plaid" }); }
     finally { setPlaidConnecting(false); }
   }
 
@@ -526,31 +530,19 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-      const payload = { company_id: companyId };
-      if (opts.from_date) payload.from_date = opts.from_date;
-      if (opts.to_date) payload.to_date = opts.to_date;
-      const res = await fetch("/api/teller-sync-transactions", {
+      // Plaid /transactions/sync is cursor-based — it always pulls
+      // everything new since the last sync, so no date range is needed.
+      const res = await fetch("/api/plaid-sync-transactions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ company_id: companyId })
       });
       const data = await res.json();
       if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
       else {
-        // If from_date was provided, include the oldest txn Teller actually
-        // returned per feed. Lets the user see whether Teller ran out of
-        // history (bank retention) vs our pagination stopping early.
         let msg = `Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`;
-        if (opts.from_date && Array.isArray(data.feed_stats) && data.feed_stats.length) {
-          const summary = data.feed_stats
-            .filter(f => (f.raw_count || 0) > 0)
-            .map(f => `${String(f.feed_id).slice(0,4)}: ${f.raw_count} txns, oldest ${f.raw_oldest || "—"} (${f.pages_fetched}p)`)
-            .join(" · ");
-          if (summary) msg += " — " + summary;
-        }
+        if (data.total_removed) msg += `, ${data.total_removed} removed`;
         showToast(msg, "success");
-        // Also log full stats to console for easy copy/paste.
-        if (Array.isArray(data.feed_stats)) console.log("[bank-sync] feed stats:", data.feed_stats);
         fetchAll();
       }
     } catch (e) { showToast("Sync failed: " + e.message, "error"); }
@@ -1691,15 +1683,14 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex flex-wrap gap-2">
-      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
+      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => syncTransactions()} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       {activeTab !== "rules" && <Btn variant="dark" size="sm" icon="download" onClick={exportTransactionsExcel} disabled={filtered.length === 0}>Export</Btn>}
       <Btn variant="primary" size="sm" onClick={() => {
-        // If there are existing Teller enrollments, let the user pick
-        // reuse-vs-add-new before the SDK opens — otherwise Teller
-        // always creates a fresh enrollment and the same BofA shows up
-        // twice in the plan counter.
-        const hasTellerEnrollment = connections.some(c => c.source_type === "teller" && c.plaid_item_id);
-        if (hasTellerEnrollment) setConnectChooser(true);
+        // If there are existing Plaid connections, let the user pick
+        // reconnect-vs-add-new before Link opens — otherwise adding the
+        // same bank again mints a second Item against the plan limit.
+        const hasPlaidConnection = connections.some(c => c.source_type === "plaid" && c.plaid_item_id);
+        if (hasPlaidConnection) setConnectChooser(true);
         else connectBank();
       }} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <Btn variant="dark" size="sm" icon="upload_file" onClick={startImport}>Import CSV</Btn>
@@ -1711,10 +1702,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
     <div className="text-sm text-warn-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
     <Btn variant="warning-fill" size="sm" onClick={() => {
-      // Re-auth the specific needs_reauth connection in update mode
-      // so Teller doesn't mint a second enrollment for the same bank.
-      const stuck = connections.find(c => c.connection_status === "needs_reauth" && c.plaid_item_id);
-      connectBank(stuck?.plaid_item_id || undefined);
+      // Re-auth the specific needs_reauth connection in Plaid update mode
+      // (by connection id) so Plaid doesn't mint a second Item for the bank.
+      const stuck = connections.find(c => c.connection_status === "needs_reauth" && c.source_type === "plaid");
+      connectBank(stuck?.id || undefined);
     }}>Fix Now</Btn>
   </div>
   )}
@@ -2677,7 +2668,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                     masked_number: acct.mask || "",
                     account_type: acct.type,
                     institution_name: acct.institution_name || postConnectModal.institutionName || "",
-                    connection_type: "teller",
+                    connection_type: "plaid",
                     plaid_account_id: acct.plaid_account_id,
                     bank_balance_current: acct.balance,
                     status: "active",
@@ -2690,13 +2681,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               for (const acct of unselectedExisting) {
                 await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.existing_feed_id).eq("company_id", companyId);
               }
-              // Sync transactions with date range
+              // Pull transactions. Plaid /transactions/sync is cursor-based
+              // and returns the full requested history (days_requested) on the
+              // first call, so no date range is passed.
               const { data: { session } } = await supabase.auth.getSession();
               if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-              const res = await fetch("/api/teller-sync-transactions", {
+              const res = await fetch("/api/plaid-sync-transactions", {
                 method: "POST",
                 headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-                body: JSON.stringify({ company_id: companyId, from_date: postConnectRange.from, to_date: postConnectRange.to })
+                body: JSON.stringify({ company_id: companyId })
               });
               const data = await res.json();
               if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
@@ -2725,16 +2718,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <span className="text-2xl">🔗</span>
         <h3 className="text-lg font-bold text-neutral-800">Connect Bank</h3>
       </div>
-      <p className="text-sm text-neutral-500 mb-4">You already have Teller connections. Reconnecting an existing one is free; adding a different bank consumes another Teller enrollment slot.</p>
+      <p className="text-sm text-neutral-500 mb-4">You already have bank connections. Reconnecting an existing one re-authenticates it without adding a new connection; adding a different bank uses another connection slot.</p>
       <div className="space-y-2">
-        {connections.filter(c => c.source_type === "teller" && c.plaid_item_id).map(c => (
-          <button key={c.id} onClick={() => { setConnectChooser(false); connectBank(c.plaid_item_id); }}
+        {connections.filter(c => c.source_type === "plaid" && c.plaid_item_id).map(c => (
+          <button key={c.id} onClick={() => { setConnectChooser(false); connectBank(c.id); }}
             className="w-full text-left bg-neutral-50 hover:bg-brand-50 border border-neutral-200 hover:border-brand-300 rounded-lg px-3 py-2 transition-colors">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-brand-600">refresh</span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm text-neutral-800 truncate">Reconnect {c.institution_name || "Bank"}</div>
-                <div className="text-xs text-neutral-400">Re-authenticate the existing enrollment · no new plan slot</div>
+                <div className="text-xs text-neutral-400">Re-authenticate the existing connection · no new slot</div>
               </div>
             </div>
           </button>
@@ -2745,7 +2738,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <span className="material-icons-outlined text-neutral-500">add</span>
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm text-neutral-800">Add a different bank</div>
-              <div className="text-xs text-neutral-400">Consumes a new Teller enrollment slot</div>
+              <div className="text-xs text-neutral-400">Uses a new connection slot</div>
             </div>
           </div>
         </button>
