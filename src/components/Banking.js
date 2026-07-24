@@ -531,12 +531,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-      // Plaid /transactions/sync is cursor-based — it always pulls
-      // everything new since the last sync, so no date range is needed.
+      // Plaid /transactions/sync is cursor-based. from_date (from the Sync
+      // date modal) caps how far back a re-pull reaches — the API filters
+      // inserts by it. Steady-state syncs pass none and import all new.
+      const payload = { company_id: companyId };
+      if (opts.from_date) payload.from_date = opts.from_date;
       const res = await fetch("/api/plaid-sync-transactions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
@@ -1684,7 +1687,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex flex-wrap gap-2">
-      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => syncTransactions()} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
+      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       {activeTab !== "rules" && <Btn variant="dark" size="sm" icon="download" onClick={exportTransactionsExcel} disabled={filtered.length === 0}>Export</Btn>}
       <Btn variant="primary" size="sm" onClick={() => {
         // If there are existing Plaid connections, let the user pick
@@ -2752,10 +2755,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   </div>
   )}
 
-  {/* Sync-with-date modal. Teller's default /transactions response is */}
-  {/* usually ~90 days; the API route now paginates via ?from_id when a */}
-  {/* from_date is supplied, so typing an older date actually pulls  */}
-  {/* history. Empty = Teller default window. */}
+  {/* Sync-with-date modal. Plaid /transactions/sync is cursor-based; when a */}
+  {/* from_date is supplied the API filters inserts to that date, so typing an */}
+  {/* older date pulls history back to it (bounded by the item's 730-day */}
+  {/* window). Empty = import everything new since the last sync. */}
   {syncDateModal && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
@@ -2763,7 +2766,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <span className="text-2xl">🔄</span>
         <h3 className="text-lg font-bold text-neutral-800">Sync Bank Transactions</h3>
       </div>
-      <p className="text-sm text-neutral-500 mb-4">Pull from a specific date, or leave blank for Teller's default (~90 days).</p>
+      <p className="text-sm text-neutral-500 mb-4">Pull transactions back to a specific date, or leave blank to import everything new since the last sync.</p>
       <label className="text-xs text-neutral-500 block mb-1">From Date</label>
       <Input type="date" value={syncFromDate} onChange={e => setSyncFromDate(e.target.value)} className="w-full" />
       <div className="flex gap-2 mt-2 flex-wrap">
