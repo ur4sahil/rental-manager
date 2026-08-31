@@ -79,7 +79,7 @@ function csvBuildFingerprint(feedId, date, direction, absAmount, description) {
 }
 
 // --- Main Component ---
-export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting }) {
+export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE }) {
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -339,7 +339,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // fingerprint_hash, duplicate_group_key, excluded_at/by, accepted_at/by,
   // created_at, updated_at. If you add a new txn widget that reads a field
   // not listed here, add it.
-  const TXN_COLS = "id, bank_account_feed_id, source_type, posted_date, amount, direction, bank_description_raw, bank_description_clean, memo, check_number, payee_raw, payee_normalized, reference_number, status, suggestion_status, exclusion_reason, matched_target_type, matched_target_id, posting_decision_id, journal_entry_id, raw_payload_json";
+  const TXN_COLS = "id, bank_account_feed_id, source_type, posted_date, amount, direction, bank_description_raw, bank_description_clean, memo, check_number, payee_raw, payee_normalized, reference_number, status, suggestion_status, exclusion_reason, matched_target_type, matched_target_id, posting_decision_id, journal_entry_id, accepted_at, accepted_by, excluded_at, excluded_by, raw_payload_json";
 
   function dateRangeCutoff() {
     if (dateRangeMode === "all") return null;
@@ -1137,6 +1137,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     logAudit("update", "banking", `Undid bank txn: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction returned to For Review.", "success");
+    // The JE this row resolved to is now voided — drop the cached
+    // posting detail and collapse the row so it can't show a stale one.
+    invalidatePostedDetail(txn.id);
+    if (expandedTxn === txn.id) setExpandedTxn(null);
     refreshData();
     } finally { guardRelease("bankUndo", txn.id); }
   }
@@ -1605,6 +1609,170 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
   const paginatedTxns = filtered.slice(safeTxnPage * txnPageSize, (safeTxnPage + 1) * txnPageSize);
 
+  // --- Posting detail for already-actioned transactions ---------------
+  // Categorized/matched/posted rows used to render a hardcoded "Posted"
+  // badge and an expand-click that showed nothing. Both now resolve to
+  // the journal entry the transaction actually became.
+  //
+  // Two resolution paths, because `journal_entry_id` is only populated
+  // by the newer accept/split/transfer/match code. Older CSV imports
+  // that landed as status='posted' have a null journal_entry_id but
+  // their JE lines DO carry `bank_feed_transaction_id`, so:
+  //   1. lines by bank_feed_transaction_id  → covers both old and new
+  //   2. lines by journal_entry_id          → covers 'matched' rows,
+  //      which point at a pre-existing JE whose lines were never
+  //      stamped with this transaction's id
+  // Rows that resolve to nothing are cached as `{ je: null, lines: [] }`
+  // so a missing entry never re-queries on every render.
+  const [postedDetail, setPostedDetail] = useState({}); // txnId -> { je, lines }
+
+  // Supabase `.in()` tops out around 100 values — chunk every batch.
+  const CHUNK = 100;
+  const chunked = (arr) => { const out = []; for (let i = 0; i < arr.length; i += CHUNK) out.push(arr.slice(i, i + CHUNK)); return out; };
+
+  const pageDetailKey = activeTab === "categorized"
+    ? paginatedTxns.map(t => t.id).join(",")
+    : "";
+
+  useEffect(() => {
+    if (!companyId || !pageDetailKey) return;
+    const wanted = pageDetailKey.split(",").filter(id => id && !(id in postedDetail));
+    if (wanted.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        // 1. Lines stamped with the bank transaction id.
+        const linesByTxn = {};
+        for (const chunk of chunked(wanted)) {
+          const { data, error } = await supabase.from("acct_journal_lines")
+            .select("id, journal_entry_id, account_id, account_name, debit, credit, class_id, memo, bank_feed_transaction_id")
+            .eq("company_id", companyId)
+            .in("bank_feed_transaction_id", chunk);
+          if (error) throw error;
+          for (const l of data || []) {
+            (linesByTxn[l.bank_feed_transaction_id] ||= []).push(l);
+          }
+        }
+
+        // 2. Fall back to journal_entry_id for anything path 1 missed
+        //    (matched rows link to a JE they didn't create).
+        const byId = {};
+        for (const id of wanted) {
+          const txn = transactions.find(t => t.id === id);
+          if (!linesByTxn[id] && txn?.journal_entry_id) byId[txn.journal_entry_id] = id;
+        }
+        const fallbackJeIds = Object.keys(byId);
+        if (fallbackJeIds.length > 0) {
+          for (const chunk of chunked(fallbackJeIds)) {
+            const { data, error } = await supabase.from("acct_journal_lines")
+              .select("id, journal_entry_id, account_id, account_name, debit, credit, class_id, memo")
+              .eq("company_id", companyId)
+              .in("journal_entry_id", chunk);
+            if (error) throw error;
+            for (const l of data || []) {
+              const txnId = byId[l.journal_entry_id];
+              if (txnId) (linesByTxn[txnId] ||= []).push(l);
+            }
+          }
+        }
+
+        // 3. JE headers for every entry we touched.
+        const jeIds = [...new Set(Object.values(linesByTxn).flat().map(l => l.journal_entry_id).filter(Boolean))];
+        const headers = {};
+        for (const chunk of chunked(jeIds)) {
+          const { data, error } = await supabase.from("acct_journal_entries")
+            .select("id, number, date, description, reference, status, property")
+            .eq("company_id", companyId)
+            .in("id", chunk);
+          if (error) throw error;
+          for (const je of data || []) headers[je.id] = je;
+        }
+
+        if (cancelled) return;
+        const next = {};
+        for (const id of wanted) {
+          const all = linesByTxn[id] || [];
+          // A transaction can carry lines from SEVERAL journal entries:
+          // undoTransaction voids the JE it created but leaves that JE's
+          // lines stamped with this bank_feed_transaction_id, so every
+          // categorize→undo cycle leaves another set behind. Showing them
+          // all would list voided history as the current posting and
+          // multiply the totals, so pick the single entry that represents
+          // this transaction today:
+          //   1. a still-posted entry — that's what's actually in the
+          //      books, and it wins even over the id on the transaction
+          //      row, which real data shows can point at a voided entry
+          //   2. otherwise the entry the row points at, so a fully
+          //      undone transaction still shows its voided status
+          //   3. otherwise the newest entry by date, then JE number
+          const candidates = [...new Set(all.map(l => l.journal_entry_id).filter(Boolean))];
+          const txn = transactions.find(t => t.id === id);
+          const jeNum = (jeId) => parseInt(String(headers[jeId]?.number || "").replace(/\D/g, ""), 10) || 0;
+          const byRecency = (a, b) =>
+            String(headers[b]?.date || "").localeCompare(String(headers[a]?.date || "")) || (jeNum(b) - jeNum(a));
+          const posted = candidates.filter(c => headers[c]?.status === "posted").sort(byRecency);
+          const chosen = posted[0]
+            || (txn?.journal_entry_id && candidates.includes(txn.journal_entry_id) ? txn.journal_entry_id : null)
+            || candidates.slice().sort(byRecency)[0];
+          const lines = chosen ? all.filter(l => l.journal_entry_id === chosen) : all;
+          const superseded = candidates.length > 1 ? candidates.length - 1 : 0;
+          next[id] = { je: headers[chosen] || null, lines, superseded };
+        }
+        setPostedDetail(prev => ({ ...prev, ...next }));
+      } catch (e) {
+        if (cancelled) return;
+        pmError("PM-5001", { raw: e, context: "load bank posting detail", silent: true });
+        // Cache an empty result so a hard failure doesn't retry forever.
+        setPostedDetail(prev => {
+          const next = { ...prev };
+          for (const id of wanted) if (!(id in next)) next[id] = { je: null, lines: [], error: true };
+          return next;
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageDetailKey, companyId]);
+
+  // Accept/undo rewrites the underlying JE — drop the cache so the next
+  // render of that row re-resolves instead of showing the stale posting.
+  const invalidatePostedDetail = (txnId) => setPostedDetail(prev => {
+    if (!(txnId in prev)) return prev;
+    const next = { ...prev }; delete next[txnId]; return next;
+  });
+
+  // Split a transaction's JE lines into the bank side (the feed's own GL
+  // account) and the category side (everything else). Falls back to
+  // direction when the feed has no GL link, since an inflow credits the
+  // category and an outflow debits it.
+  function describePosting(txn) {
+    const detail = postedDetail[txn.id];
+    if (!detail) return { loading: true, lines: [], catLines: [], je: null };
+    const feedGl = feeds.find(f => f.id === txn.bank_account_feed_id)?.gl_account_id;
+    let catLines = feedGl ? detail.lines.filter(l => l.account_id !== feedGl) : [];
+    if (catLines.length === 0 || catLines.length === detail.lines.length) {
+      catLines = txn.direction === "inflow"
+        ? detail.lines.filter(l => safeNum(l.credit) > 0)
+        : detail.lines.filter(l => safeNum(l.debit) > 0);
+    }
+    if (catLines.length === 0) catLines = detail.lines;
+    const ref = detail.je?.reference || "";
+    const kind = txn.status === "matched" ? "Matched"
+      : ref.startsWith("SPLIT-") ? "Split"
+      : ref.startsWith("XFER-") ? "Transfer"
+      : detail.lines.length > 3 ? "Split"
+      : "Add";
+    return { loading: false, lines: detail.lines, catLines, je: detail.je, kind, error: detail.error, superseded: detail.superseded || 0 };
+  }
+
+  const acctLabel = (line) => {
+    const a = accounts.find(x => x.id === line.account_id);
+    const code = a?.code ? a.code + " " : "";
+    return code + (a?.name || line.account_name || "Unknown account");
+  };
+  const className_ = (classId) => classes.find(c => c.id === classId)?.name || "";
+
   // Excel export — uses the current `filtered` list so the download
   // matches exactly what's on screen (active tab, feed, direction,
   // date range, search), minus pagination.
@@ -2034,7 +2202,27 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
       </td>
       <td className="px-3 py-2.5 text-neutral-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
-      {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-success-100 text-success-700 px-2 py-0.5 rounded-full">Posted</span></td>}
+      {activeTab === "categorized" && (() => {
+        const d = describePosting(txn);
+        return (
+        <td className="px-3 py-2.5 text-xs">
+          {d.loading ? <span className="text-neutral-300">Loading…</span> : (
+          <div className="flex flex-col gap-0.5 max-w-56">
+            {d.catLines.length === 0
+              ? <span className="text-neutral-400 italic">Not linked to a journal entry</span>
+              : d.catLines.length === 1
+                ? <span className="text-neutral-800 truncate" title={acctLabel(d.catLines[0])}>{acctLabel(d.catLines[0])}</span>
+                : <span className="text-neutral-800 truncate" title={d.catLines.map(acctLabel).join(", ")}>{acctLabel(d.catLines[0])} <span className="text-neutral-400">+{d.catLines.length - 1} more</span></span>}
+            <span className="text-neutral-400">
+              <span className={`px-1.5 py-0.5 rounded-full ${txn.status === "matched" ? "bg-info-100 text-info-700" : "bg-success-100 text-success-700"}`}>{txn.status === "matched" ? "Matched" : "Posted"}</span>
+              {d.je?.number && <span className="ml-1.5">{d.je.number}</span>}
+              {d.kind && d.kind !== "Add" && d.kind !== "Matched" && <span className="ml-1.5">· {d.kind}</span>}
+            </span>
+          </div>
+          )}
+        </td>
+        );
+      })()}
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
@@ -2043,6 +2231,111 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.status === "excluded" && <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>}
       </td>
     </tr>
+    {/* Posting Detail Panel — categorized/matched/posted rows */}
+    {isExpanded && ["categorized", "matched", "posted"].includes(txn.status) && (() => {
+      const d = describePosting(txn);
+      const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+      const srcLabel = { plaid: "Plaid", teller: "Teller", csv: "CSV import" }[txn.source_type] || txn.source_type || "—";
+      const feedLabel = feed ? `${feed.institution_name || feed.account_name || "Account"}${feed.masked_number ? " ••••" + feed.masked_number : ""}` : "—";
+      return (
+      <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
+        {d.loading ? <div className="text-xs text-neutral-400 py-2">Loading posting detail…</div>
+        : d.lines.length === 0 ? (
+          <div className="text-xs text-neutral-500 py-1">
+            <p className="font-medium text-neutral-700 mb-1">No journal entry linked to this transaction.</p>
+            <p>It is marked <strong>{txn.status}</strong>{txn.accepted_by ? ` by ${txn.accepted_by}` : ""}{txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}, but no general-ledger lines reference it — so nothing was posted to the books. Use <strong>Undo</strong> to send it back to For Review and categorize it properly.</p>
+            {d.error && <p className="text-danger-600 mt-1">Detail could not be loaded — check your connection and reopen this row.</p>}
+          </div>
+        ) : (
+        <div className="space-y-3">
+          {/* Header line */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className="font-semibold text-neutral-800">{d.je?.number || "Journal entry"}</span>
+            {d.je?.status && <span className={`px-1.5 py-0.5 rounded-full ${d.je.status === "posted" ? "bg-success-100 text-success-700" : d.je.status === "voided" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700"}`}>{d.je.status}</span>}
+            <span className="text-neutral-400">·</span>
+            <span className="text-neutral-600">{d.kind}</span>
+            {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{d.je.date}</span></>}
+            <span className="ml-auto text-neutral-500">
+              {txn.accepted_by ? <>Accepted by <strong className="text-neutral-700">{txn.accepted_by}</strong></> : "No acceptor recorded"}
+              {txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}
+            </span>
+          </div>
+
+          {d.je?.description && <p className="text-xs text-neutral-600">{d.je.description}</p>}
+          {d.je?.status === "voided" && (
+            <p className="text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-2 py-1">
+              This transaction is still marked <strong>{txn.status}</strong>, but the journal entry behind it was voided — nothing is posted to the books. Use <strong>Undo</strong> to return it to For Review and categorize it again.
+            </p>
+          )}
+          {d.superseded > 0 && (
+            <p className="text-xs text-warn-700 bg-warn-50 border border-warn-200 rounded-lg px-2 py-1">
+              This transaction was categorized and undone before — {d.superseded} earlier journal {d.superseded === 1 ? "entry is" : "entries are"} voided and not shown below.
+            </p>
+          )}
+
+          {/* Journal lines */}
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-neutral-400">
+                <th className="text-left font-medium py-1">ACCOUNT</th>
+                <th className="text-left font-medium py-1">CLASS / PROPERTY</th>
+                <th className="text-left font-medium py-1">MEMO</th>
+                <th className="text-right font-medium py-1">DEBIT</th>
+                <th className="text-right font-medium py-1">CREDIT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.lines.map(l => {
+                const isBank = l.account_id === feed?.gl_account_id;
+                return (
+                <tr key={l.id} className="border-t border-brand-100/60">
+                  <td className={`py-1 pr-3 ${isBank ? "text-neutral-500" : "text-neutral-800 font-medium"}`}>
+                    {acctLabel(l)}{isBank && <span className="ml-1.5 text-neutral-400">(bank side)</span>}
+                  </td>
+                  <td className="py-1 pr-3 text-neutral-500">{className_(l.class_id) || d.je?.property || "—"}</td>
+                  <td className="py-1 pr-3 text-neutral-500 max-w-xs truncate" title={l.memo || ""}>{l.memo || "—"}</td>
+                  <td className="py-1 text-right font-mono text-neutral-700">{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</td>
+                  <td className="py-1 text-right font-mono text-neutral-700">{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</td>
+                </tr>
+                );
+              })}
+              <tr className="border-t border-brand-200 font-semibold text-neutral-700">
+                <td className="py-1" colSpan={3}>Total</td>
+                <td className="py-1 text-right font-mono">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.debit), 0))}</td>
+                <td className="py-1 text-right font-mono">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.credit), 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Bank-side context */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-neutral-500 pt-1 border-t border-brand-100">
+            <div><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></div>
+            <div><span className="text-neutral-400">Source:</span> <span className="text-neutral-700">{srcLabel} · {feedLabel}</span></div>
+            <div>
+              <span className="text-neutral-400">Payee:</span> <span className="text-neutral-700">{txn.payee_normalized || txn.payee_raw || "—"}</span>
+              {txn.check_number && <span className="ml-2 text-neutral-400">Check #<span className="text-neutral-700">{txn.check_number}</span></span>}
+            </div>
+          </div>
+
+          {d.je?.id && onViewJE && (
+            <div className="pt-1">
+              <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); onViewJE(d.je.id); }} className="font-semibold hover:underline">Open in Journal Entries →</TextLink>
+            </div>
+          )}
+        </div>
+        )}
+      </td></tr>
+      );
+    })()}
+    {/* Excluded Detail Panel */}
+    {isExpanded && txn.status === "excluded" && (
+    <tr><td colSpan={7} className="px-4 py-3 bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-500">
+      <p className="mb-1">Excluded as <strong className="text-danger-600">{txn.exclusion_reason || "no reason recorded"}</strong>
+      {txn.excluded_by ? <> by <strong className="text-neutral-700">{txn.excluded_by}</strong></> : ""}
+      {txn.excluded_at ? ` on ${formatLocalDate(new Date(txn.excluded_at))}` : ""}. Nothing was posted to the general ledger.</p>
+      <p><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></p>
+    </td></tr>
+    )}
     {/* Inline Action Panel */}
     {isExpanded && txn.status === "for_review" && (
     <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
