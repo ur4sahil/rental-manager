@@ -93,6 +93,14 @@ const MAX_COMPANYID_LEN = 128;
 const IV_HEX_LEN = 24;            // 12 bytes × 2 hex chars
 const SALT_HEX_MIN = 16;
 const SALT_HEX_MAX = 64;
+// The QuickBooks ledger import rides on this route rather than its own
+// api/qb-import.js: Vercel counts each non-underscore api/*.js as a
+// serverless function and the project is at its 12-function cap. This
+// route already performs exactly the authorization the import needs —
+// bearer token, active company_members row, role check — so the import
+// actions mount here and delegate to _qb-import-impl.js.
+const { handleQbImport, QB_ACTIONS } = require("./_qb-import-impl");
+
 const VALID_ACTIONS = new Set(["encrypt", "decrypt"]);
 const VALID_LEGACY_SCHEMES = new Set(["teller", "v2"]);
 const HEX_RE = /^[0-9a-fA-F]+$/;
@@ -114,11 +122,15 @@ module.exports = async function handler(req, res) {
   const body = req.body || {};
   const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme } = body;
 
-  if (!VALID_ACTIONS.has(action)) return res.status(400).json({ error: "Invalid action" });
+  const isQbImport = QB_ACTIONS.has(action);
+  if (!VALID_ACTIONS.has(action) && !isQbImport) return res.status(400).json({ error: "Invalid action" });
   if (typeof companyId !== "string" || !companyId || companyId.length > MAX_COMPANYID_LEN) {
     return res.status(400).json({ error: "Invalid companyId" });
   }
-  if (action === "encrypt") {
+  if (isQbImport) {
+    // Import payloads are arrays of rows, not credential strings — the
+    // shape checks below do not apply. _qb-import-impl validates its own.
+  } else if (action === "encrypt") {
     if (typeof plaintext !== "string" || plaintext.length > MAX_PLAINTEXT_LEN) {
       return res.status(400).json({ error: "Invalid plaintext" });
     }
@@ -178,6 +190,12 @@ module.exports = async function handler(req, res) {
   //                              admin-only workflow, which it isn't.
   //
   //   maintenance / tenant     — never need this; kept out.
+  if (isQbImport) {
+    // Membership is verified; the impl applies its own role allowlist,
+    // which is deliberately different from the credential one.
+    return handleQbImport({ action, body, res, userEmail, membershipRole: membership.role });
+  }
+
   const CRED_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant"]);
   if (!CRED_ROLES.has(membership.role)) {
     return res.status(403).json({ error: "Insufficient role for credential operations" });

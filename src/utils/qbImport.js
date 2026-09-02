@@ -440,3 +440,214 @@ export function buildTrialBalance(rows) {
   const credit = round2(list.reduce((s, t) => s + t.credit, 0));
   return { byType: list, debit, credit, difference: round2(debit - credit) };
 }
+
+// ---- account code assignment ---------------------------------------
+
+// QuickBooks exports carry no account numbers, so the importer generates
+// them. Two constraints shape the scheme:
+//
+//  1. Generated codes must never collide with the codes the app resolves
+//     by convention. resolveAccountId() maps bare 4-digit codes through
+//     _acctCodeToName, and the default chart seeds 1000/1100/2100/2200/
+//     3000/3100/3200/4000/4010/4100/4200/5300/5400. A generated account
+//     landing on 4000 would silently hijack every future rent posting.
+//     So each type's generated block starts at x500, clear of them.
+//
+//  2. The chart-of-accounts tree in Accounting.js treats a code
+//     containing "-" as a child and matches it to a parent by
+//     code.startsWith(parent.code + "-"). QuickBooks "Parent:Child"
+//     paths therefore become PARENT-NNN, or the hierarchy renders flat.
+export const GENERATED_CODE_BLOCKS = {
+  "Asset": 1500,
+  "Liability": 2500,
+  "Equity": 3500,
+  "Revenue": 4500,
+  "Cost of Goods Sold": 5000,
+  "Expense": 6000,
+  "Other Income": 7000,
+  "Other Expense": 8000,
+};
+
+// Codes the app resolves by convention — never generate onto these.
+export const RESERVED_CODES = new Set([
+  "1000", "1100", "2100", "2200", "3000", "3100", "3200",
+  "4000", "4010", "4100", "4200", "5300", "5400", "5500", "5600", "5610", "5710",
+]);
+
+// Tenant receivables live under 1100 to match getOrCreateTenantAR, so AR
+// aging, the ledger_entries view and tenants.balance all work on
+// imported data exactly as they do on app-created data.
+export const TENANT_AR_PARENT_CODE = "1100";
+
+// Assign a code to every account that will be created. `taken` is the
+// set of codes already used in the target company.
+export function assignAccountCodes(accounts, taken = new Set()) {
+  const used = new Set([...taken, ...RESERVED_CODES]);
+  const next = {};
+  const parentCode = {};
+  const out = new Map();
+
+  const claim = (code) => { used.add(code); return code; };
+  const nextInBlock = (type) => {
+    const start = GENERATED_CODE_BLOCKS[type] || 9000;
+    if (next[type] === undefined) next[type] = start;
+    let c = String(next[type]);
+    while (used.has(c)) { next[type] += 10; c = String(next[type]); }
+    next[type] += 10;
+    return claim(c);
+  };
+
+  // Parents first so children can hang off a stable code.
+  const parents = [...new Set(accounts.filter(a => a.parent).map(a => a.parent))];
+  for (const p of parents) {
+    const child = accounts.find(a => a.parent === p);
+    parentCode[p] = nextInBlock(child ? child.type : "Asset");
+  }
+
+  const arSeq = { n: 0 };
+  for (const a of accounts) {
+    if (a.role === "tenant_ar") {
+      // 1100-001, 1100-002 … matching getOrCreateTenantAR's format.
+      let code;
+      do {
+        arSeq.n += 1;
+        code = TENANT_AR_PARENT_CODE + "-" + String(arSeq.n).padStart(3, "0");
+      } while (used.has(code));
+      out.set(a.path, { code: claim(code), parentCode: TENANT_AR_PARENT_CODE });
+      continue;
+    }
+    if (a.parent) {
+      const pc = parentCode[a.parent];
+      let seq = 0, code;
+      do {
+        seq += 1;
+        code = pc + "-" + String(seq).padStart(3, "0");
+      } while (used.has(code));
+      out.set(a.path, { code: claim(code), parentCode: pc });
+      continue;
+    }
+    out.set(a.path, { code: nextInBlock(a.type), parentCode: null });
+  }
+  return { codes: out, parentCodes: parentCode };
+}
+
+// ---- mapping suggestions -------------------------------------------
+
+// QuickBooks names bank accounts by process ("Sigma ACH - 0822") while
+// PropManager names them by institution ("BOFA - 0822"). They share one
+// token out of five, so every string-similarity metric scores that pair
+// near zero — the only stable join key is the masked account number.
+// Hence: exact name first, then numeric tail, and nothing looser is ever
+// auto-applied.
+export function suggestAccountMatch(qbAccount, existingAccounts) {
+  const leaf = qbAccount.leaf || qbAccount.path || "";
+  const target = normalizeName(leaf);
+  if (!target) return null;
+
+  for (const ex of existingAccounts) {
+    if (normalizeName(ex.name) === target) {
+      return { accountId: ex.id, code: ex.code, name: ex.name, score: 1, reason: "exact name match" };
+    }
+  }
+  const tail = (leaf.match(/[-#\s](\d{3,5})\s*$/) || [])[1];
+  if (tail) {
+    for (const ex of existingAccounts) {
+      const exTail = (String(ex.name).match(/[-#\s](\d{3,5})\s*$/) || [])[1];
+      if (exTail && exTail === tail) {
+        return { accountId: ex.id, code: ex.code, name: ex.name, score: 0.85,
+          reason: `account number ${tail} matches "${ex.name}"` };
+      }
+    }
+  }
+  return null;
+}
+
+// ---- plan construction ---------------------------------------------
+
+// Builds the default plan the mapping UI then lets the user edit.
+// Nothing here writes anything; every decision is visible and revisable
+// before the import runs.
+export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold = 0.8 }) {
+  const accounts = buildAccountInventory(rows);
+  const entities = buildEntityInventory(rows);
+  const customerNames = entities.customers.map(c => c.name);
+
+  const enriched = accounts.map(a => {
+    const ar = a.type === "Asset" ? suggestTenantAR(a.path, customerNames) : null;
+    const suggestion = suggestAccountMatch(a, existingAccounts);
+    return {
+      ...a,
+      role: ar ? "tenant_ar" : "normal",
+      tenantName: ar ? ar.customer : null,
+      suggestion,
+      action: suggestion && suggestion.score >= autoMapThreshold ? "map" : "create",
+      targetAccountId: suggestion && suggestion.score >= autoMapThreshold ? suggestion.accountId : null,
+    };
+  });
+
+  const taken = new Set(existingAccounts.map(a => String(a.code || "")));
+  const toCreate = enriched.filter(a => a.action === "create");
+  const { codes } = assignAccountCodes(toCreate, taken);
+  for (const a of enriched) {
+    const c = codes.get(a.path);
+    if (c) { a.code = c.code; a.parentCode = c.parentCode; }
+  }
+
+  // A tenant's property is the one its lines most often carry — that is
+  // what tenants(company_id, name, property) needs to be unique on, and
+  // what getOrCreateTenantAR uses to disambiguate same-named tenants.
+  const tenantProperty = {};
+  for (const row of rows) {
+    if (!row.customer || !row.property) continue;
+    const m = (tenantProperty[row.customer] ||= {});
+    m[row.property] = (m[row.property] || 0) + 1;
+  }
+  const modal = (m) => m ? Object.entries(m).sort((a, b) => b[1] - a[1])[0][0] : "";
+
+  return {
+    accounts: enriched,
+    classes: entities.properties.map(p => ({ name: p.name, lineCount: p.lineCount })),
+    properties: entities.properties.map(p => ({ address: p.name, lineCount: p.lineCount })),
+    tenants: entities.customers.map(c => ({
+      name: c.name, property: modal(tenantProperty[c.name]), lineCount: c.lineCount,
+    })),
+    vendors: entities.vendors.map(v => ({ name: v.name, lineCount: v.lineCount })),
+    trialBalance: buildTrialBalance(rows),
+  };
+}
+
+// Turn grouped transactions + a resolved plan into the exact payload the
+// import route expects. Keeping this pure means the whole shape is
+// unit-testable without touching the network.
+export function buildEntriesPayload({ transactions, accountIdByPath, classIdByName, vendorIdByName, includeUnbalanced = false }) {
+  const out = [];
+  for (const t of transactions) {
+    if (!t.balanced && !includeUnbalanced) continue;
+    const lines = [];
+    for (const l of t.lines) {
+      const accountId = accountIdByPath[l.accountPath];
+      if (!accountId) continue; // account was skipped in mapping
+      lines.push({
+        accountId,
+        accountName: l.accountPath.split(":").pop(),
+        debit: l.debit,
+        credit: l.credit,
+        classId: l.property ? (classIdByName[l.property] || null) : null,
+        memo: l.memo || l.description || "",
+        vendorId: l.vendor ? (vendorIdByName[l.vendor] || null) : null,
+        customerName: l.customer || null,
+        entityName: l.vendor || l.customer || null,
+      });
+    }
+    if (!lines.length) continue;
+    out.push({
+      reference: t.reference,
+      date: t.date,
+      description: t.description,
+      property: t.property,
+      txnType: t.txnType,
+      lines,
+    });
+  }
+  return out;
+}

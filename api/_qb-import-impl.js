@@ -1,4 +1,13 @@
-// ============ QUICKBOOKS LEDGER IMPORT — SERVER ROUTE ============
+// ============ QUICKBOOKS LEDGER IMPORT — IMPLEMENTATION ============
+//
+// Not a route. Vercel counts every api/*.js that does not start with "_"
+// as a serverless function, and the project sits at the 12-function cap,
+// so this is mounted behind api/encrypt.js as the "qb_*" actions rather
+// than shipping as api/qb-import.js. Same pattern as
+// _notification-worker-impl.js and _send-push-impl.js.
+//
+// The host route has already authenticated the caller and checked their
+// company membership and role by the time handleQbImport runs.
 //
 // Bulk-writes a parsed QuickBooks general ledger into a company. The
 // browser does all parsing and mapping (src/utils/qbImport.js + the
@@ -27,7 +36,6 @@
 // verification sweep that also repairs any pre-existing drift.
 
 const { createClient } = require("@supabase/supabase-js");
-const { setCors } = require("./_cors");
 
 // Roles allowed to import a ledger. Mirrors has_write_access() in the DB.
 const IMPORT_ROLES = new Set(["admin", "owner", "pm", "manager", "accountant", "office_assistant"]);
@@ -59,70 +67,42 @@ function requireCompanyId(cid) {
   return cid;
 }
 
-module.exports = async function handler(req, res) {
-  setCors(req, res);
-  if (req.method === "OPTIONS") return res.status(200).end("ok");
-  if (req.method !== "POST") return bad(res, 405, "POST only");
+// The five QuickBooks import actions, dispatched by api/encrypt.js.
+const QB_ACTIONS = new Set(["qb_resolve", "qb_entries", "qb_finalize", "qb_rollback", "qb_status"]);
 
-  // Cheap local validation before any Supabase call.
-  const authHeader = req.headers.authorization || "";
-  if (!authHeader.startsWith("Bearer ") || authHeader.length < 20 || authHeader.length > 4096) {
-    return bad(res, 401, "Missing bearer token");
-  }
-
-  const body = req.body || {};
-  const action = body.action;
+// Called only after the host route has verified the bearer token,
+// company membership and role. `membershipRole` is that verified role.
+async function handleQbImport({ action, body, res, userEmail, membershipRole }) {
   const companyId = requireCompanyId(body.companyId);
   if (!companyId) return bad(res, 400, "Invalid companyId");
-  if (!["resolve", "entries", "finalize", "rollback", "status"].includes(action)) {
-    return bad(res, 400, "Invalid action");
+  if (!IMPORT_ROLES.has(membershipRole)) {
+    return bad(res, 403, "Insufficient role to import a ledger");
   }
-
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return bad(res, 500, "Server not configured for import");
   }
 
-  // ── authorize the caller ──────────────────────────────────────────
-  const token = authHeader.slice(7);
-  const userClient = createClient(
-    process.env.REACT_APP_SUPABASE_URL,
-    process.env.REACT_APP_SUPABASE_ANON_KEY,
-    {
-      global: { headers: { Authorization: "Bearer " + token } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  );
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userData?.user) return bad(res, 401, "Invalid session");
-  const userEmail = userData.user.email;
-
-  const { data: membership } = await userClient
-    .from("company_members")
-    .select("role, status")
-    .eq("company_id", companyId)
-    .eq("user_email", userEmail)
-    .eq("status", "active")
-    .maybeSingle();
-  if (!membership) return bad(res, 403, "Not a member of this company");
-  if (!IMPORT_ROLES.has(membership.role)) {
-    return bad(res, 403, "Insufficient role to import a ledger");
-  }
-
+  // Service role: the RLS policies on acct_* are permissive-OR'd and
+  // include a VOLATILE has_write_access() plus a per-row correlated
+  // subquery, which a 14,000-row insert would pay on every row.
   const db = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   try {
-    if (action === "status") return await handleStatus(db, companyId, res);
-    if (action === "rollback") return await handleRollback(db, companyId, userEmail, res);
-    if (action === "resolve") return await handleResolve(db, companyId, body, res);
-    if (action === "entries") return await handleEntries(db, companyId, body, res);
-    if (action === "finalize") return await handleFinalize(db, companyId, userEmail, res);
+    if (action === "qb_status") return await handleStatus(db, companyId, res);
+    if (action === "qb_rollback") return await handleRollback(db, companyId, userEmail, res);
+    if (action === "qb_resolve") return await handleResolve(db, companyId, body, res);
+    if (action === "qb_entries") return await handleEntries(db, companyId, body, res);
+    if (action === "qb_finalize") return await handleFinalize(db, companyId, userEmail, res);
+    return bad(res, 400, "Invalid import action");
   } catch (e) {
     console.error("[qb-import]", action, e);
     return bad(res, 500, "Import failed", { detail: String(e?.message || e).slice(0, 400) });
   }
-};
+}
+
+module.exports = { handleQbImport, QB_ACTIONS, IMPORT_ROLES };
 
 // ── status ──────────────────────────────────────────────────────────
 
@@ -142,22 +122,30 @@ async function handleStatus(db, companyId, res) {
 // properties, tenants and vendors are intentionally left in place —
 // they may already be referenced by other work.
 async function handleRollback(db, companyId, userEmail, res) {
-  const { data: doomed, error: selErr } = await db
-    .from("acct_journal_entries")
-    .select("id")
-    .eq("company_id", companyId)
-    .like("reference", REF_PREFIX + "%");
-  if (selErr) throw selErr;
-
+  // Loop until nothing is left. A single select would return at most
+  // 1000 ids — PostgREST's hard response ceiling, verified against the
+  // live API — so a one-shot delete silently leaves the rest behind and
+  // reports success. Re-selecting after each pass is also self-healing:
+  // whatever is still there gets picked up on the next iteration.
   let deleted = 0;
-  for (const batch of chunk((doomed || []).map(d => d.id), IN_CHUNK)) {
-    const { error } = await db
+  for (let pass = 0; pass < 200; pass++) {
+    const { data: doomed, error: selErr } = await db
       .from("acct_journal_entries")
-      .delete()
+      .select("id")
       .eq("company_id", companyId)
-      .in("id", batch);
-    if (error) throw error;
-    deleted += batch.length;
+      .like("reference", REF_PREFIX + "%")
+      .limit(1000);
+    if (selErr) throw selErr;
+    if (!doomed || doomed.length === 0) break;
+    for (const batch of chunk(doomed.map(d => d.id), IN_CHUNK)) {
+      const { error } = await db
+        .from("acct_journal_entries")
+        .delete()
+        .eq("company_id", companyId)
+        .in("id", batch);
+      if (error) throw error;
+      deleted += batch.length;
+    }
   }
 
   await db.from("audit_trail").insert([{
@@ -215,17 +203,38 @@ async function handleResolve(db, companyId, body, res) {
   }
 
   // --- properties ---------------------------------------------------
+  // idx_properties_unique_address is PARTIAL (WHERE archived_at IS NULL),
+  // and PostgREST cannot infer a partial index for ON CONFLICT — it fails
+  // with 42P10. So read what exists, then insert only the gap. Same for
+  // tenants below; acct_classes and acct_accounts have plain unique
+  // indexes and can use upsert.
   const propertyMap = {};
   if (properties.length) {
-    const rows = properties.map(p => ({
-      company_id: companyId,
-      address: p.address,
-      type: p.type || "Residential",
-      class_id: classMap[p.address] || null,
-    }));
-    for (const batch of chunk(rows, HEADER_BATCH)) {
-      const { error } = await db.from("properties")
-        .upsert(batch, { onConflict: "company_id,address", ignoreDuplicates: true });
+    const seen = new Set();
+    for (const batch of chunk(properties.map(p => p.address), IN_CHUNK)) {
+      const { data, error } = await db.from("properties")
+        .select("address").eq("company_id", companyId).is("archived_at", null).in("address", batch);
+      if (error) throw error;
+      (data || []).forEach(r => seen.add(r.address));
+    }
+    const newProps = properties.filter(p => !seen.has(p.address));
+    for (const batch of chunk(newProps, HEADER_BATCH)) {
+      const { error } = await db.from("properties").insert(batch.map(p => ({
+        company_id: companyId,
+        // address_line_1, NOT address. properties carries a BEFORE INSERT
+        // trigger (sync_addr) whose condition is
+        // "WHEN address_line_1 IS NOT NULL" — and address_line_1 DEFAULTS
+        // to '', which is not null. So the trigger fires on every insert
+        // and overwrites address with
+        // compute_property_address(line1, line2, city, state, zip).
+        // Setting only `address` therefore silently blanks it, and the
+        // second row then collides with the first on the unique index.
+        // Writing address_line_1 lets the trigger derive an identical
+        // address (CONCAT_WS over the empty rest returns line1 verbatim).
+        address_line_1: p.address,
+        type: p.type || "Residential",
+        class_id: classMap[p.address] || null,
+      })));
       if (error) throw error;
     }
     for (const batch of chunk(properties.map(p => p.address), IN_CHUNK)) {
@@ -246,18 +255,28 @@ async function handleResolve(db, companyId, body, res) {
   }
 
   // --- tenants ------------------------------------------------------
+  // idx_tenants_unique_name_property is also partial — same treatment.
   const tenantMap = {};
   if (tenants.length) {
-    const rows = tenants.map(t => ({
-      company_id: companyId,
-      name: t.name,
-      property: t.property || "",
-      lease_status: t.leaseStatus || "past",
-      rent: 0,
-    }));
-    for (const batch of chunk(rows, HEADER_BATCH)) {
-      const { error } = await db.from("tenants")
-        .upsert(batch, { onConflict: "company_id,name,property", ignoreDuplicates: true });
+    const seen = new Set();
+    for (const batch of chunk(tenants.map(t => t.name), IN_CHUNK)) {
+      const { data, error } = await db.from("tenants")
+        .select("name, property").eq("company_id", companyId).is("archived_at", null).in("name", batch);
+      if (error) throw error;
+      (data || []).forEach(r => seen.add(r.name + "\u0000" + (r.property || "")));
+    }
+    const newTenants = tenants.filter(t => !seen.has(t.name + "\u0000" + (t.property || "")));
+    for (const batch of chunk(newTenants, HEADER_BATCH)) {
+      const { error } = await db.from("tenants").insert(batch.map(t => ({
+        company_id: companyId,
+        name: t.name,
+        property: t.property || "",
+        // Imported history describes people who may long since have moved
+        // out; "past" keeps them out of the active tenant list until a
+        // human says otherwise.
+        lease_status: t.leaseStatus || "past",
+        rent: 0,
+      })));
       if (error) throw error;
     }
     for (const batch of chunk(tenants.map(t => t.name), IN_CHUNK)) {

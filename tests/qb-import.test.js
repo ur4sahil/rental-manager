@@ -217,7 +217,78 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
     assertEq(tb.byType[0].type, "Asset", "trial balance is ordered Asset first");
   }
 
-  console.log("\n════ 8. REAL QUICKBOOKS EXPORTS ════");
+  console.log("\n════ 8. CODE ASSIGNMENT + PLAN ════");
+  {
+    // Reserved codes must be unreachable: resolveAccountId() maps bare
+    // 4-digit codes by convention, so a generated account landing on
+    // 4000 would hijack every future rent posting.
+    const many = [];
+    for (let i = 0; i < 60; i++) many.push({ path: "Acct " + i, type: "Revenue", role: "normal" });
+    const { codes } = qb.assignAccountCodes(many, new Set());
+    const generated = [...codes.values()].map(c => c.code);
+    assertEq(generated.filter(c => qb.RESERVED_CODES.has(c)).length, 0,
+      "no generated code collides with a reserved code");
+    assertEq(new Set(generated).size, generated.length, "all generated codes are unique");
+    assert(generated.every(c => parseInt(c, 10) >= 4500), "Revenue codes start at the 4500 block, clear of 4000-4200");
+
+    // Existing codes in the company are also avoided.
+    const { codes: c2 } = qb.assignAccountCodes(
+      [{ path: "A", type: "Asset", role: "normal" }, { path: "B", type: "Asset", role: "normal" }],
+      new Set(["1500"]));
+    const asset = [...c2.values()].map(c => c.code);
+    assert(!asset.includes("1500"), "an already-taken code is skipped");
+
+    // Parent:Child becomes PARENT-NNN so the COA tree renders nested.
+    const { codes: c3 } = qb.assignAccountCodes([
+      { path: "Conventus Loan:CV Loan - 4620", parent: "Conventus Loan", type: "Liability", role: "normal" },
+      { path: "Conventus Loan:CV Loan - 4747", parent: "Conventus Loan", type: "Liability", role: "normal" },
+    ], new Set());
+    const kids = [...c3.values()];
+    assert(kids.every(k => k.code.includes("-")), "child accounts get a dashed code");
+    assertEq(kids[0].parentCode, kids[1].parentCode, "siblings share one parent code");
+    assert(kids[0].code.startsWith(kids[0].parentCode + "-"), "child code is prefixed by its parent code");
+
+    // Tenant AR always lands under 1100 regardless of its QB parent.
+    const { codes: c4 } = qb.assignAccountCodes(
+      [{ path: "Jane Doe", type: "Asset", role: "tenant_ar" }], new Set());
+    assertEq([...c4.values()][0].code, "1100-001", "tenant AR uses the 1100-NNN format");
+    assertEq([...c4.values()][0].parentCode, "1100", "tenant AR hangs off Accounts Receivable");
+
+    // Suggestion ranking: the real-world pair that defeats fuzzy matching.
+    const existing = [{ id: "u1", code: "1110", name: "BOFA - 0822" }, { id: "u2", code: "4000", name: "Rental Income" }];
+    const s1 = qb.suggestAccountMatch({ leaf: "Rental Income", path: "Rental Income" }, existing);
+    assertEq(s1.score, 1, "exact name match scores 1");
+    const s2 = qb.suggestAccountMatch({ leaf: "Sigma ACH - 0822", path: "Sigma ACH - 0822" }, existing);
+    assertEq(s2 && s2.accountId, "u1", "Sigma ACH - 0822 matches BOFA - 0822 on the account number");
+    assert(s2.reason.includes("0822"), "the match explains itself via the account number");
+    const s3 = qb.suggestAccountMatch({ leaf: "Sigma Management Fee", path: "Sigma Management Fee" }, existing);
+    assertEq(s3, null, "sharing the word 'Sigma' alone is NOT a match");
+  }
+
+  console.log("\n════ 9. ENTRIES PAYLOAD ════");
+  {
+    const txns = [
+      { reference: "QB-1", date: "2023-01-01", description: "Rent", property: "A St", txnType: "Journal Entry", balanced: true,
+        lines: [ { accountPath: "AR:Jane", debit: 100, credit: 0, property: "A St", memo: "m", customer: "Jane", vendor: "" },
+                 { accountPath: "Rental Income", debit: 0, credit: 100, property: "A St", memo: "", customer: "", vendor: "" } ] },
+      { reference: "QB-2", date: "2023-01-02", description: "Odd", property: "", txnType: "Deposit", balanced: false,
+        lines: [ { accountPath: "Rental Income", debit: 0, credit: 50, property: "", memo: "", customer: "", vendor: "" } ] },
+    ];
+    const maps = { accountIdByPath: { "AR:Jane": "a1", "Rental Income": "a2" }, classIdByName: { "A St": "c1" }, vendorIdByName: {} };
+    const bal = qb.buildEntriesPayload({ transactions: txns, ...maps });
+    assertEq(bal.length, 1, "unbalanced transactions are excluded by default");
+    assertEq(bal[0].lines.length, 2, "balanced entry keeps both lines");
+    assertEq(bal[0].lines[0].classId, "c1", "property resolves to a class id");
+    assertEq(bal[0].lines[0].customerName, "Jane", "customer is carried for entity attribution");
+    const withUnb = qb.buildEntriesPayload({ transactions: txns, ...maps, includeUnbalanced: true });
+    assertEq(withUnb.length, 2, "unbalanced can be opted in");
+    // An account the user chose to skip drops its line, and an entry
+    // left with no lines is omitted entirely rather than posted empty.
+    const skipped = qb.buildEntriesPayload({ transactions: txns, accountIdByPath: {}, classIdByName: {}, vendorIdByName: {} });
+    assertEq(skipped.length, 0, "entries whose accounts were all skipped are omitted");
+  }
+
+  console.log("\n════ 10. REAL QUICKBOOKS EXPORTS ════");
   {
     const dl = path.join(os.homedir(), "Downloads");
     const files = [

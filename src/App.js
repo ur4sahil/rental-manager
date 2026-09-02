@@ -152,7 +152,7 @@ let _toastIdCounter = 0;
 // Accounting sub-page IDs — match ALL_NAV's accounting.children
 // below. Listed once and spread into each role that has accounting
 // access so they show up in the expanded sidebar.
-const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_reconcile","acct_classes","acct_reports"];
+const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_qbimport","acct_reconcile","acct_classes","acct_reports"];
 
 const ROLES = {
   admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
@@ -191,6 +191,7 @@ const ALL_NAV = [
     { id: "acct_journal",    label: "Journal Entries",   icon: "receipt_long" },
     { id: "acct_recurring",  label: "Recurring Entries", icon: "autorenew" },
     { id: "acct_bankimport", label: "Bank Transactions", icon: "credit_card" },
+    { id: "acct_qbimport",   label: "Import from QuickBooks", icon: "cloud_upload" },
     { id: "acct_reconcile",  label: "Reconcile",         icon: "account_balance_wallet" },
     { id: "acct_classes",    label: "Class Tracking",    icon: "category" },
     { id: "acct_reports",    label: "Reports",           icon: "assessment" },
@@ -242,6 +243,7 @@ const pageComponents = {
   acct_journal:    (p) => <Accounting {...p} initialTab="journal" />,
   acct_recurring:  (p) => <Accounting {...p} initialTab="recurring" />,
   acct_bankimport: (p) => <Accounting {...p} initialTab="bankimport" />,
+  acct_qbimport:   (p) => <Accounting {...p} initialTab="qbimport" />,
   acct_reconcile:  (p) => <Accounting {...p} initialTab="reconcile" />,
   acct_classes:    (p) => <Accounting {...p} initialTab="classes" />,
   acct_reports:    (p) => <Accounting {...p} initialTab="reports" />,
