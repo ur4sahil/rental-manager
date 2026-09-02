@@ -1120,6 +1120,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // Void the linked JE if exists
     if (txn.journal_entry_id) {
       await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("id", txn.journal_entry_id).eq("company_id", companyId);
+      // Release that entry's lines from this transaction. The JE and its
+      // lines stay as an audit record — only the claim that they belong
+      // to this bank transaction is dropped. Without this, re-categorizing
+      // stamps a second set with the same id and the transaction slowly
+      // accumulates lines from every voided attempt.
+      const { error: relErr } = await supabase.from("acct_journal_lines")
+        .update({ bank_feed_transaction_id: null })
+        .eq("journal_entry_id", txn.journal_entry_id)
+        .eq("company_id", companyId);
+      if (relErr) pmError("PM-4013", { raw: relErr, context: "release journal lines on bank undo", silent: true });
     }
 
     // Reset transaction status

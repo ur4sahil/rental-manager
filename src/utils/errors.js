@@ -47,6 +47,10 @@ export const PM_ERRORS = {
   "PM-4010": { message: "Could not save the accounting class.", action: "retry", severity: "error", module: "accounting" },
   "PM-4011": { message: "Could not lock/unlock the accounting period.", action: "retry", severity: "error", module: "accounting" },
   "PM-4012": { message: "Journal entry was created but lines could not be saved. The entry has been rolled back.", action: "contact", severity: "critical", module: "accounting" },
+  // Critical: every balance on screen is derived from these lines, so a
+  // failed load must be loud. Silently treating it as "no lines" renders
+  // a confident $0.00 across the whole accounting module.
+  "PM-4013": { message: "Could not load the journal entry lines. Balances and reports on this page are incomplete — reload before relying on them.", action: "retry", severity: "critical", module: "accounting" },
   // PM-5xxx: BANKING & IMPORT
   "PM-5001": { message: "Could not parse the CSV file. Check the format and try again.", action: "retry", severity: "error", module: "banking" },
   "PM-5002": { message: "Could not import transactions. Some rows may have been skipped.", action: "retry", severity: "warning", module: "banking" },

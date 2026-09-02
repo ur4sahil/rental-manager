@@ -3389,13 +3389,41 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (accounts.length === 0) pmError("PM-4006", { raw: { message: "No accounts created" }, context: "create default chart of accounts" });
   }
 
-  // Fetch all journal lines for this company's JEs and attach to entries
+  // Fetch all journal lines for this company and attach them to entries.
+  //
+  // Scoped by company_id and paged, NOT by .in("journal_entry_id", jeIds).
+  // PostgREST puts an .in() list in the query string, so that shape grew
+  // the request URL by ~37 bytes per journal entry: fine at 300 entries
+  // (~11KB), rejected by the gateway with a 400 at ~700 (~25KB). The
+  // error was never checked, so past that point allLines came back null,
+  // every entry silently got lines = [], and the whole accounting module
+  // — reports, ledger, reconciliation, class tracking — read zero with
+  // nothing on screen to say why. Filtering on company_id keeps the URL
+  // a fixed ~200 bytes at any book size; idx_acct_jl_company covers it.
   if (jeHeaders.length > 0) {
-  const jeIds = jeHeaders.map(je => je.id);
-  const { data: allLines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", jeIds);
+  const allLines = [];
+  let linesFailed = false;
+  for (let from = 0; ; from += 1000) {
+  const { data: page, error: lineErr } = await supabase.from("acct_journal_lines")
+  .select("*").eq("company_id", companyId).order("id").range(from, from + 999);
+  if (lineErr) {
+  // Surface it loudly — a partial or failed load understates every
+  // balance, and the old code's silent fallback to [] is exactly what
+  // made this render a confident $0.00 instead of an error.
+  pmError("PM-4013", { raw: lineErr, context: "fetch journal lines for company" });
+  linesFailed = true;
+  break;
+  }
+  allLines.push(...(page || []));
+  if (!page || page.length < 1000) break;
+  }
+  // Attach whatever loaded either way: downstream reads assume je.lines
+  // is an array and would crash on undefined. The PM-4013 toast above is
+  // what tells the user the numbers can't be trusted.
   const linesByJE = {};
-  (allLines || []).forEach(l => { if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = []; linesByJE[l.journal_entry_id].push(l); });
+  allLines.forEach(l => { if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = []; linesByJE[l.journal_entry_id].push(l); });
   jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
+  if (linesFailed) console.warn("[accounting] journal lines incomplete — balances understated");
   }
 
   // Auto-sync property classes (only on first load, not every re-fetch)
@@ -3653,7 +3681,45 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     .update({ reconciled: false, reconciled_date: null })
     .eq("journal_entry_id", id);
   if (lineErr) pmError("PM-4002", { raw: lineErr, context: "clear reconciled flags on void", silent: true });
+
+  // A bank transaction may have created (or been matched to) this entry.
+  // Voiding it means nothing is on the books any more, so leaving that
+  // transaction marked "categorized" makes Bank Transactions claim a
+  // posting that no longer exists. Send it back to For Review and release
+  // its lines, the same way the Undo button does.
+  // bank_feed_transaction.journal_entry_id is a uuid column while JE ids
+  // are text, so a legacy non-uuid id (je-seed-…) would throw 22P02.
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
+  const affectedTxnIds = new Set();
+  if (isUUID) {
+  const { data: pointedTxns } = await supabase.from("bank_feed_transaction")
+    .select("id").eq("company_id", companyId).eq("journal_entry_id", id);
+  (pointedTxns || []).forEach(t => affectedTxnIds.add(t.id));
+  }
+  // Older postings never set journal_entry_id on the transaction row —
+  // their only link is the stamp on the lines.
+  const { data: stamped } = await supabase.from("acct_journal_lines")
+    .select("bank_feed_transaction_id").eq("company_id", companyId)
+    .eq("journal_entry_id", id).not("bank_feed_transaction_id", "is", null);
+  (stamped || []).forEach(l => l.bank_feed_transaction_id && affectedTxnIds.add(l.bank_feed_transaction_id));
+
+  if (affectedTxnIds.size > 0) {
+  const ids = [...affectedTxnIds];
+  const { error: revertErr } = await supabase.from("bank_feed_transaction").update({
+    status: "for_review", accepted_at: null, accepted_by: null,
+    journal_entry_id: null, posting_decision_id: null,
+    matched_target_type: null, matched_target_id: null,
+  }).eq("company_id", companyId).in("id", ids)
+    .in("status", ["categorized", "matched", "posted"]);
+  if (revertErr) pmError("PM-4005", { raw: revertErr, context: "return bank txn to review on JE void", silent: true });
+  const { error: unstampErr } = await supabase.from("acct_journal_lines")
+    .update({ bank_feed_transaction_id: null })
+    .eq("company_id", companyId).eq("journal_entry_id", id);
+  if (unstampErr) pmError("PM-4005", { raw: unstampErr, context: "release journal lines on JE void", silent: true });
+  showToast(`Journal entry voided. ${ids.length} bank transaction${ids.length === 1 ? "" : "s"} returned to For Review.`, "success");
+  } else {
   showToast("Journal entry voided.", "success");
+  }
   // Reverse tenant balance based on JE type
   if (je) {
   const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
