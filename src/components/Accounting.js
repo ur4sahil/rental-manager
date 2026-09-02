@@ -3348,12 +3348,34 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   stripLedgerParam();
   }, [acctAccounts]);
 
+  // Page past PostgREST's hard 1000-row response ceiling. Verified
+  // against the live API: an unranged select returns exactly 1000 rows
+  // and silently drops the rest — .limit() does NOT override it. A
+  // company with more journal entries than that would otherwise render
+  // every report off a truncated ledger, which looks like real numbers
+  // rather than an error. Same failure the journal-lines fetch below
+  // used to have.
+  async function fetchAllPaged(build, label) {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+  const { data: page, error } = await build().range(from, from + 999);
+  if (error) {
+  pmError("PM-4013", { raw: error, context: "paged fetch: " + label });
+  return { rows, failed: true };
+  }
+  rows.push(...(page || []));
+  if (!page || page.length < 1000) break;
+  }
+  return { rows, failed: false };
+  }
+
   async function fetchAll() {
   setLoading(true);
   try {
-  const [acctsRes, jesRes, clsRes, tenantsRes, vendorsRes] = await Promise.all([
+  const [acctsRes, jesPaged, clsRes, tenantsRes, vendorsRes] = await Promise.all([
   supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code"),
-  supabase.from("acct_journal_entries").select("*").eq("company_id", companyId).order("date", { ascending: false }),
+  fetchAllPaged(() => supabase.from("acct_journal_entries").select("*").eq("company_id", companyId)
+    .order("date", { ascending: false }).order("id"), "journal entries"),
   supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name"),
   supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("vendors").select("id, name").eq("company_id", companyId).is("archived_at", null).order("name"),
@@ -3361,7 +3383,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // Normalize account types to PascalCase (DB may have lowercase from older seeds)
   const _typeNorm = { asset: "Asset", liability: "Liability", equity: "Equity", revenue: "Revenue", expense: "Expense", income: "Revenue", "other income": "Other Income", "other expense": "Other Expense", "cost of goods sold": "Cost of Goods Sold" };
   let accounts = (acctsRes.data || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
-  const jeHeaders = jesRes.data || [];
+  const jeHeaders = jesPaged.rows || [];
   const classes = clsRes.data || [];
 
   // Ensure default chart of accounts exists (creates if missing)
