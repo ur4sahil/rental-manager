@@ -3365,6 +3365,24 @@ export function csvBuildFingerprint(feedId, date, amount, description) {
   return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
 }
 
+// Every accounting sub-page (Chart of Accounts, Journal Entries,
+// Reconcile, …) is routed as its OWN <Accounting> element, so switching
+// tabs unmounts and remounts this component and re-runs fetchAll. With
+// an imported ledger that is ~29 sequential requests per tab click —
+// 8 pages of journal entries plus 17 pages of lines — which on a slow
+// connection makes every tab take minutes.
+//
+// Hold the fetched ledger at module scope so a remount reuses it.
+// Invalidated explicitly after every write and by the Reports Refresh
+// button, so this only ever skips a redundant re-download.
+const _acctDataCache = { companyId: null, payload: null, at: 0 };
+const ACCT_CACHE_TTL_MS = 5 * 60 * 1000;
+export function invalidateAccountingCache(companyId) {
+  if (!companyId || _acctDataCache.companyId === companyId) {
+    _acctDataCache.companyId = null; _acctDataCache.payload = null; _acctDataCache.at = 0;
+  }
+}
+
 export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction, initialTab }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
@@ -3388,7 +3406,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
   const companyName = activeCompany?.name || "My Company";
 
-  useEffect(() => { fetchAll(); }, [companyId]);
+  useEffect(() => { fetchAll({ allowCache: true }); }, [companyId]);
 
   // Deep-link: a fresh tab opened via LedgerLink (Ctrl/Cmd/middle-click on an
   // account row) boots with ?ledger=<id,id> in the search string. Once the
@@ -3443,7 +3461,17 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   return { rows, failed: false };
   }
 
-  async function fetchAll() {
+  async function fetchAll(opts = {}) {
+  // Only the mount path passes allowCache; every post-write caller
+  // forces a real fetch so nothing renders stale.
+  if (opts.allowCache && _acctDataCache.companyId === companyId && _acctDataCache.payload
+      && Date.now() - _acctDataCache.at < ACCT_CACHE_TTL_MS) {
+    const p = _acctDataCache.payload;
+    setAcctAccounts(p.accounts); setJournalEntries(p.jeHeaders); setAcctClasses(p.classes);
+    setAcctTenants(p.tenants); setAcctVendors(p.vendors);
+    setLoading(false);
+    return;
+  }
   setLoading(true);
   try {
   const [acctsRes, jesPaged, clsRes, tenantsRes, vendorsRes] = await Promise.all([
@@ -3610,6 +3638,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   setAcctClasses(classes);
   setAcctTenants(tenantsRes.data || []);
   setAcctVendors(vendorsRes.data || []);
+  _acctDataCache.companyId = companyId;
+  _acctDataCache.payload = { accounts, jeHeaders, classes,
+    tenants: tenantsRes.data || [], vendors: vendorsRes.data || [] };
+  _acctDataCache.at = Date.now();
   } finally { setLoading(false); }
   }
 

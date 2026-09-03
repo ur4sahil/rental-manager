@@ -664,7 +664,17 @@ export async function parseAccountList(data, filename = "") {
     const qbDetail = detailCol ? cellText(row.getCell(detailCol)) : "";
     const mapped = QB_TYPE_MAP[qbType];
     if (!mapped) { warnings.push(`Unrecognised QuickBooks account type "${qbType}" on "${name}".`); continue; }
-    const subtype = QB_DETAIL_REFINE[qbDetail] || mapped.subtype;
+    // Balance-sheet accounts must carry one of the app's canonical
+    // subtypes, because the Balance Sheet groups on them — "Checking" or
+    // "Buildings" would fall out of Bank Accounts and Fixed Assets. For
+    // profit-and-loss accounts the subtype is informational, so keep
+    // QuickBooks' own Detail type verbatim rather than flattening
+    // "Other Business Expenses" to a generic value. The app accepts
+    // custom subtypes (getAccountSubtypes unions in whatever exists).
+    const isBalanceSheet = ["Asset", "Liability", "Equity"].includes(mapped.type);
+    const subtype = isBalanceSheet
+      ? (QB_DETAIL_REFINE[qbDetail] && mapped.type === "Equity" ? QB_DETAIL_REFINE[qbDetail] : mapped.subtype)
+      : (qbDetail || mapped.subtype);
     out.set(name, {
       qbType, qbDetail,
       type: mapped.type,
