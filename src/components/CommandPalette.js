@@ -10,6 +10,7 @@
 // permitted to open.
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { openShortcuts } from "./KeyboardShortcuts";
 
 // Subsequence match: every character of the query must appear in order,
 // so "jrnl" finds "Journal Entries" and "pl prop" finds "P&L by
@@ -76,6 +77,9 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
         group: "Actions", keywords: "import quickbooks qbo ledger",
         run: () => onNavigate("acct_qbimport") });
     }
+    out.push({ id: "shortcuts", kind: "action", label: "Keyboard shortcuts", icon: "keyboard",
+      group: "Actions", keywords: "keyboard shortcuts keys help hotkeys cheat sheet",
+      run: () => openShortcuts() });
     if (onSwitchCompany) {
       out.push({ id: "switch-co", kind: "action", label: "Switch company", icon: "swap_horiz",
         group: "Actions", keywords: "switch change company organisation organization",

@@ -8,6 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { checkPeriodLock } from "../utils/accounting";
 import { Spinner } from "./shared";
+import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 
 // --- Account type constants (kept local for backward compat) ---
 const ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
@@ -207,6 +208,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [wizDetected, setWizDetected] = useState(null);
   const [wizInvertSign, setWizInvertSign] = useState(false);
   const fileRef = useRef();
+
+  // Keyboard review: which row the shortcuts act on. Separate from
+  // expandedTxn so you can move the selection with the panel closed.
+  const [selectedTxn, setSelectedTxn] = useState(null);
 
   // Action panel state
   const [actionMode, setActionMode] = useState("add"); // add | match | transfer | split
@@ -1619,6 +1624,163 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
   const paginatedTxns = filtered.slice(safeTxnPage * txnPageSize, (safeTxnPage + 1) * txnPageSize);
 
+  // --- Keyboard review ------------------------------------------------
+  // The review queue is the highest-volume screen in the app, so it takes
+  // keys directly. `selectedTxn` is the cursor; it is deliberately not
+  // the same thing as `expandedTxn`, so you can walk the list with the
+  // panel shut and only open the ones that need a decision.
+  //
+  // Keys are read from the shared registry, so the help sheet and these
+  // handlers can never describe different things.
+
+  // Keep the cursor honest: if the row it names leaves the page (filter,
+  // tab or page change, or the row got actioned), fall back to the top.
+  useEffect(() => {
+    if (selectedTxn && !paginatedTxns.some(t => t.id === selectedTxn)) setSelectedTxn(null);
+  }, [paginatedTxns, selectedTxn]);
+
+  // Scroll the cursor into view when it moves by keyboard.
+  useEffect(() => {
+    if (!selectedTxn) return;
+    const row = document.querySelector(`[data-txn-id="${selectedTxn}"]`);
+    if (row?.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  }, [selectedTxn]);
+
+  useEffect(() => {
+    if (activeTab === "rules") return;
+
+    const move = (dir) => {
+      const idx = paginatedTxns.findIndex(t => t.id === selectedTxn);
+      const next = idx === -1
+        ? (dir > 0 ? 0 : paginatedTxns.length - 1)
+        : Math.max(0, Math.min(paginatedTxns.length - 1, idx + dir));
+      const txn = paginatedTxns[next];
+      if (!txn) return;
+      setSelectedTxn(txn.id);
+      // Follow the cursor with the panel only if one is already open, so
+      // arrowing through the list doesn't spring panels open behind you.
+      if (expandedTxn) openPanel(txn);
+    };
+
+    // Opening a row seeds the action panel from the rule suggestion, the
+    // same way the Add link does — otherwise the keyboard path would
+    // silently lose the suggested account the mouse path fills in.
+    const openPanel = (txn) => {
+      setExpandedTxn(txn.id);
+      if (txn.status !== "for_review") return;
+      const sug = txn.raw_payload_json?._suggestion;
+      if (sug?.type === "split" && sug.lines?.length >= 2) {
+        setActionMode("split");
+        const abs = Math.abs(txn.amount);
+        setSplitLines(sug.lines.map(l => ({
+          accountId: l.account_id || "", accountName: l.account_name || "",
+          classId: l.class_id || "", memo: sug.memo || "",
+          amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0),
+        })));
+      } else {
+        setActionMode("add");
+        setAddForm({
+          accountId: sug?.accountId || "", accountName: sug?.accountName || "",
+          memo: sug?.memo || "", classId: sug?.classId || "",
+          entityType: "", entityId: "", entityName: "",
+        });
+      }
+    };
+
+    const handler = (e) => {
+      // Cmd/Ctrl+Enter posts even from inside a field — you finish typing
+      // the memo and post without leaving the keyboard. Every other key
+      // yields to whatever is being typed.
+      const modified = e.metaKey || e.ctrlKey;
+      // Escape is the one unmodified key that must work from inside a
+      // field too — otherwise typing a memo traps you in the panel with
+      // no keyboard way out.
+      if (!modified && e.key === "Escape" && expandedTxn) {
+        e.preventDefault();
+        if (isTypingTarget(e) && e.target.blur) e.target.blur();
+        setExpandedTxn(null);
+        return;
+      }
+      if (!modified && isTypingTarget(e)) return;
+      if (e.altKey) return;
+      // Don't fight a modal, the command palette, or the help sheet.
+      if (document.querySelector('[role="dialog"]')) return;
+
+      const key = e.key.toLowerCase();
+      const current = paginatedTxns.find(t => t.id === selectedTxn);
+
+      if (modified && key === "enter") {
+        if (!current || current.status !== "for_review") return;
+        e.preventDefault();
+        postSelected(current);
+        return;
+      }
+      if (modified) return;
+
+      if (REVIEW_KEYS.down.includes(key)) { e.preventDefault(); move(1); return; }
+      if (REVIEW_KEYS.up.includes(key)) { e.preventDefault(); move(-1); return; }
+
+      if (!current) return;
+
+      if (REVIEW_KEYS.open.includes(key)) {
+        e.preventDefault();
+        if (expandedTxn === current.id) setExpandedTxn(null); else openPanel(current);
+        return;
+      }
+      if (REVIEW_KEYS.undo.includes(key)) {
+        if (!["categorized", "matched", "posted", "excluded"].includes(current.status)) return;
+        e.preventDefault();
+        undoTransaction(current);
+        return;
+      }
+      if (current.status !== "for_review") return;
+
+      if (REVIEW_KEYS.exclude.includes(key)) {
+        e.preventDefault();
+        const reason = window.prompt("Exclude reason: duplicate / personal / noise / error");
+        if (reason) excludeTransaction(current, reason);
+        return;
+      }
+      const mode = REVIEW_KEYS.add.includes(key) ? "add"
+        : REVIEW_KEYS.match.includes(key) ? "match"
+        : REVIEW_KEYS.transfer.includes(key) ? "transfer"
+        : REVIEW_KEYS.split.includes(key) ? "split" : null;
+      if (mode) {
+        e.preventDefault();
+        if (expandedTxn !== current.id) openPanel(current);
+        setActionMode(mode);
+      }
+    };
+
+    // Posts whatever the open action panel is set up to do, then steps to
+    // the next row so a queue can be cleared without touching the mouse.
+    const postSelected = async (txn) => {
+      const advance = () => {
+        const idx = paginatedTxns.findIndex(t => t.id === txn.id);
+        const next = paginatedTxns[idx + 1];
+        if (next) { setSelectedTxn(next.id); setExpandedTxn(null); }
+      };
+      if (actionMode === "add") {
+        if (!addForm.accountId) return;
+        await acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo,
+          addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName);
+      } else if (actionMode === "transfer") {
+        if (!transferForm.accountId) return;
+        await acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo);
+      } else if (actionMode === "split") {
+        if (splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2) return;
+        await acceptSplit(txn, splitLines);
+      } else if (actionMode === "match") {
+        // Match needs a chosen candidate; there is no safe default.
+        return;
+      }
+      advance();
+    };
+
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [activeTab, paginatedTxns, selectedTxn, expandedTxn, actionMode, addForm, transferForm, splitLines]);
+
   // --- Posting detail for already-actioned transactions ---------------
   // Categorized/matched/posted rows used to render a hardcoded "Posted"
   // badge and an expand-click that showed nothing. Both now resolve to
@@ -1863,8 +2025,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       stack to the right of the subtitle. All buttons share size="sm"
       so they match height. */}
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-    <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
-    <div className="flex flex-wrap gap-2">
+    <div>
+      <h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3>
+      <p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p>
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <ShortcutsHint onClick={() => openShortcuts("review")} className="mr-1" />
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       {activeTab !== "rules" && <Btn variant="dark" size="sm" icon="download" onClick={exportTransactionsExcel} disabled={filtered.length === 0}>Export</Btn>}
       <Btn variant="primary" size="sm" onClick={() => {
@@ -2203,7 +2369,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const isExpanded = expandedTxn === txn.id;
     return (
     <React.Fragment key={txn.id}>
-    <tr data-txn-id={txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
+    <tr data-txn-id={txn.id} aria-selected={selectedTxn === txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""} ${selectedTxn === txn.id ? "ring-2 ring-inset ring-brand-400" : ""}`} onClick={() => { setSelectedTxn(txn.id); setExpandedTxn(isExpanded ? null : txn.id); }}>
       {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
       <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">

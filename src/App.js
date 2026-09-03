@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
@@ -36,6 +36,7 @@ import { EmailNotifications } from "./components/Notifications";
 import { Messages } from "./components/Messages";
 import { CompanySelector, PendingRequestsPanel, PendingPMAssignments } from "./components/CompanySelector";
 import { CommandPalette } from "./components/CommandPalette";
+import { ShortcutsHelp, useShortcutsHost } from "./components/KeyboardShortcuts";
 import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
 import { InsuranceTracker } from "./components/Insurance";
@@ -399,8 +400,19 @@ function AppInner() {
   const deepLinkRef = useRef(initialDeepLink);
   const [page, setPageRaw] = useState(() => initialDeepLink || "dashboard");
 
+  // Read by the "?" handler, which is bound once and so cannot close over
+  // a live `page` value.
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
   const [pageAction, setPageAction] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // "?" leads with the group that applies to the page showing, so the
+  // sheet isn't mostly keys that don't work where the user is.
+  const [shortcuts, closeShortcuts] = useShortcutsHost(useCallback(() => {
+    const p = pageRef.current;
+    return p === "acct_bankimport" ? "review" : p === "acct_journal" ? "je" : null;
+  }, []));
   // Cmd+K (Ctrl+K elsewhere) opens the command palette from anywhere.
   // Bound on the document rather than a container so it works no matter
   // what has focus, and skipped while typing into a field so it can't
@@ -1416,6 +1428,7 @@ function AppInner() {
   )}
   {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
   {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
+  <ShortcutsHelp open={!!shortcuts} onClose={closeShortcuts} scope={shortcuts?.scope} />
   <CommandPalette
   open={paletteOpen}
   onClose={() => setPaletteOpen(false)}

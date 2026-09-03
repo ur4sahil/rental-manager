@@ -10,6 +10,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache } from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
+import { ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 import { QuickBooksImport } from "./QuickBooksImport";
 import { BankTransactions } from "./Banking";
 
@@ -1256,6 +1257,94 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   setModal(null);
   };
 
+  // --- Journal entry keyboard shortcuts --------------------------------
+  // Entering a multi-line JE is the other high-repetition task in the
+  // app. These keys are read from the same registry the help sheet
+  // renders, so the two cannot drift.
+  //
+  // The "current line" is whichever row holds focus, read from the DOM
+  // rather than tracked in state — the form has six focusable controls
+  // per row and mirroring focus into React state would fight the browser.
+  const currentLineIndex = () => {
+    const row = document.activeElement?.closest?.("tr[data-je-line]");
+    return row ? Number(row.getAttribute("data-je-line")) : -1;
+  };
+
+  useEffect(() => {
+    if (!modal) return;
+
+    const focusRow = (i) => {
+      // Defer past the render that creates the row.
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`tr[data-je-line="${i}"]`);
+        row?.querySelector("input, select, button")?.focus();
+      });
+    };
+
+    const handler = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      if (mod && key === "enter") {
+        e.preventDefault();
+        if (form.description.trim() && validation.isValid) saveEntry("posted");
+        return;
+      }
+      if (!mod && key === "enter") {
+        // Enter walks the grid: next row, or a fresh row off the last one.
+        const i = currentLineIndex();
+        if (i === -1) return;
+        e.preventDefault();
+        if (i === form.lines.length - 1) { addLine(); focusRow(i + 1); }
+        else focusRow(i + 1);
+        return;
+      }
+      if (!mod) return;
+
+      if (key === "d") {
+        // Duplicate the current line's coding, not its amounts — the
+        // repetitive part of a split is the account/class/tenant triple.
+        const i = currentLineIndex();
+        if (i === -1) return;
+        e.preventDefault();
+        setForm(f => {
+          const lines = [...f.lines];
+          const src = lines[i];
+          lines.splice(i + 1, 0, { ...src, debit: "", credit: "", memo: src.memo || "" });
+          return { ...f, lines };
+        });
+        focusRow(i + 1);
+        return;
+      }
+      if (key === "b") {
+        // Fill the amount that squares the entry, on the side that needs it.
+        const i = currentLineIndex();
+        if (i === -1) return;
+        e.preventDefault();
+        const diff = Math.round((totalDebit - totalCredit) * 100) / 100;
+        if (diff === 0) return;
+        setForm(f => {
+          const lines = [...f.lines];
+          lines[i] = diff > 0
+            ? { ...lines[i], credit: diff.toFixed(2), debit: "" }
+            : { ...lines[i], debit: Math.abs(diff).toFixed(2), credit: "" };
+          return { ...f, lines };
+        });
+        return;
+      }
+      if (key === "backspace" || key === "delete") {
+        const i = currentLineIndex();
+        if (i === -1 || form.lines.length <= 2) return;
+        e.preventDefault();
+        removeLine(i);
+        focusRow(Math.max(0, i - 1));
+      }
+    };
+
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [modal, form, validation.isValid, totalDebit, totalCredit]);
+
   const JEFormUI = () => (
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
@@ -1267,7 +1356,10 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <input type="hidden" value={form.property} />
   <div className="flex items-center justify-between mb-2">
   <p className="text-xs font-semibold text-neutral-500 uppercase">Journal Entry Lines</p>
+  <div className="flex items-center gap-3">
+  <ShortcutsHint onClick={() => openShortcuts("je")} />
   <TextLink tone="neutral" size="xs" underline={false} onClick={addLine}>+ Add Line</TextLink>
+  </div>
   </div>
   {showNewAcct !== null && (
   <div className="bg-brand-50 rounded-xl p-3 mb-3 border-2 border-brand-400 shadow-lg">
@@ -1285,7 +1377,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-44">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-28">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Tenant/Vendor</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[120px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
-  <tr key={i} className="border-b border-neutral-100">
+  <tr key={i} data-je-line={i} className="border-b border-neutral-100">
   <td className="px-2 py-1.5"><AccountPicker value={line.account_id} onChange={v => setLine(i,"account_id",v)} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption className="px-2 py-1.5 bg-white" /></td>
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select></td>
