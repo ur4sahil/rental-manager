@@ -800,7 +800,18 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
       : (byName ? "account name matches a customer exactly" : null);
     const suggestion = suggestAccountMatch(a, existingAccounts);
     // QuickBooks' own Account List wins over anything inferred.
-    const authoritative = accountList ? accountList.get(a.path) : null;
+    //
+    // Fall back to matching on the leaf name. A Profit and Loss Detail
+    // export flattens sub-accounts — "Utilities:Electric" appears simply
+    // as "Electric", with its parent closed off by its own total before
+    // the child begins — so the path we parsed can be a leaf while the
+    // Account List holds the full path.
+    let authoritative = accountList ? accountList.get(a.path) : null;
+    if (!authoritative && accountList && !a.path.includes(":")) {
+      for (const [listPath, info] of accountList) {
+        if (listPath.includes(":") && listPath.split(":").pop() === a.path) { authoritative = info; break; }
+      }
+    }
     const role = ar ? "tenant_ar" : "normal";
     return {
       ...a,
