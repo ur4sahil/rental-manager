@@ -2954,7 +2954,38 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
         // Only surface the column when something actually landed in it.
         if (propData[NOT_SPECIFIED]) props.push({ id: NOT_SPECIFIED, name: "Not Specified" });
-        if (props.length === 0) return <p className="text-center py-8 text-neutral-400">No property data for this period</p>;
+        if (props.length === 0) {
+          // "No data" is nearly always the wrong period rather than an
+          // empty ledger — an imported history sits years before the
+          // default "This Year". Say so, and show the range that does
+          // have data instead of leaving the user to guess.
+          let lo = null, hi = null;
+          for (const je of journalEntries) {
+            if (je.status !== "posted") continue;
+            const hasPL = (je.lines || []).some(l => {
+              const a = acctMap[l.account_id];
+              return a && ["Revenue","Other Income","Expense","Cost of Goods Sold","Other Expense"].includes(a.type);
+            });
+            if (!hasPL) continue;
+            if (!lo || je.date < lo) lo = je.date;
+            if (!hi || je.date > hi) hi = je.date;
+          }
+          return (
+            <div className="text-center py-10">
+              <p className="text-neutral-500 mb-1">No property activity between {acctFmtDate(start)} and {acctFmtDate(end)}.</p>
+              {lo && hi ? (
+                <>
+                  <p className="text-sm text-neutral-400 mb-3">This company has profit &amp; loss activity from <strong className="text-neutral-600">{acctFmtDate(lo)}</strong> to <strong className="text-neutral-600">{acctFmtDate(hi)}</strong>.</p>
+                  <Btn size="sm" onClick={() => { setPeriod("Custom"); setCustomDates({ start: lo, end: hi }); }}>
+                    Show {acctFmtDate(lo)} – {acctFmtDate(hi)}
+                  </Btn>
+                </>
+              ) : (
+                <p className="text-sm text-neutral-400">No posted profit &amp; loss entries exist yet.</p>
+              )}
+            </div>
+          );
+        }
         // Group accounts by category
         const incomeAccts = accounts.filter(a => a.type === "Revenue" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
         const otherIncomeAccts = accounts.filter(a => a.type === "Other Income" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
@@ -2987,7 +3018,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
             <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{label}</td>
             {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{show(v)}</td>; })}
-            <td className={`${bold ? boldCellCls : cellCls} bg-neutral-50 border-l border-neutral-300 ${total < 0 && bold ? "text-danger-600" : ""}`}>{show(total)}</td>
+            {/* Pinned right: with 40+ property columns an unpinned total
+                is off-screen, which reads as "the report has no totals". */}
+            <td className={`${bold ? boldCellCls : cellCls} border-l-2 border-neutral-400 sticky right-0 z-10 ${bold ? "bg-neutral-100" : "bg-white"} ${total < 0 && bold ? "text-danger-600" : ""}`}>{show(total)}</td>
           </tr>
           );
         };
@@ -2997,7 +3030,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         <thead><tr className="bg-neutral-50 border-b border-neutral-200">
           <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 sticky left-0 bg-neutral-50 min-w-48"></th>
           {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{p.name.split(",")[0]}</th>)}
-          <th className="px-3 py-2 text-right text-xs font-bold text-neutral-900 min-w-28 bg-neutral-100 border-l border-neutral-300">TOTAL</th>
+          <th className="px-3 py-2 text-right text-xs font-bold text-neutral-900 min-w-28 bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10">TOTAL</th>
         </tr></thead>
         <tbody>
           {/* Income */}
@@ -3037,7 +3070,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
             })}
             {(() => {
               const ni = sumGroupAll([...incomeAccts, ...otherIncomeAccts]) - sumGroupAll([...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td className={`px-3 py-2 text-right font-mono text-xs font-black bg-neutral-50 border-l border-neutral-300 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
+              return <td className={`px-3 py-2 text-right font-mono text-xs font-black bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
             })()}
           </tr>
         </tbody>
