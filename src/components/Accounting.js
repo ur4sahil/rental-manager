@@ -2179,8 +2179,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       }
       const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
       const val = (cid, aid) => propData[cid]?.[aid] || 0;
-      const incomeAccts = accounts.filter(a => ["Revenue","Other Income"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
-      const expenseAccts = accounts.filter(a => ["Expense","Cost of Goods Sold","Other Expense"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+      const incomeAccts = accounts.filter(a => ["Revenue","Other Income"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
+      const expenseAccts = accounts.filter(a => ["Expense","Cost of Goods Sold","Other Expense"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
       const nc = props.length + 1;
       addTitle("Profit & Loss by Property", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
       const hr = ws.addRow(["Account", ...props.map(p => p.name)]); styleHeaderRow(hr, nc);
@@ -2930,78 +2930,102 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Profit and Loss by Property</p><p className="text-xs text-neutral-400 mt-1">{acctFmtDate(start)} – {acctFmtDate(end)}</p></div>
       {(() => {
         const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+        const NOT_SPECIFIED = "__unclassified__";
         // Gather all properties (classes) that have data
         const propData = {}; // { classId: { accountId: amount } }
         const accountsUsed = new Set();
         for (const je of journalEntries) {
           if (je.status !== "posted" || je.date < start || je.date > end) continue;
           for (const l of (je.lines || [])) {
-            if (!l.class_id) continue;
             const acct = acctMap[l.account_id]; if (!acct) continue;
             if (!["Revenue","Other Income","Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) continue;
-            if (!propData[l.class_id]) propData[l.class_id] = {};
-            if (!propData[l.class_id][l.account_id]) propData[l.class_id][l.account_id] = 0;
-            if (["Revenue","Other Income"].includes(acct.type)) propData[l.class_id][l.account_id] += safeNum(l.credit) - safeNum(l.debit);
-            else propData[l.class_id][l.account_id] += safeNum(l.debit) - safeNum(l.credit);
+            // Lines with no property go to a "Not Specified" column rather
+            // than being dropped. Dropping them silently made this report
+            // disagree with the plain P&L — QuickBooks shows the same
+            // column for exactly this reason.
+            const key = l.class_id || NOT_SPECIFIED;
+            if (!propData[key]) propData[key] = {};
+            if (!propData[key][l.account_id]) propData[key][l.account_id] = 0;
+            if (["Revenue","Other Income"].includes(acct.type)) propData[key][l.account_id] += safeNum(l.credit) - safeNum(l.debit);
+            else propData[key][l.account_id] += safeNum(l.debit) - safeNum(l.credit);
             accountsUsed.add(l.account_id);
           }
         }
         const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
+        // Only surface the column when something actually landed in it.
+        if (propData[NOT_SPECIFIED]) props.push({ id: NOT_SPECIFIED, name: "Not Specified" });
         if (props.length === 0) return <p className="text-center py-8 text-neutral-400">No property data for this period</p>;
         // Group accounts by category
-        const incomeAccts = accounts.filter(a => a.type === "Revenue" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
-        const otherIncomeAccts = accounts.filter(a => a.type === "Other Income" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
-        const cogsAccts = accounts.filter(a => a.type === "Cost of Goods Sold" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
-        const expenseAccts = accounts.filter(a => a.type === "Expense" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
-        const otherExpAccts = accounts.filter(a => a.type === "Other Expense" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const incomeAccts = accounts.filter(a => a.type === "Revenue" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
+        const otherIncomeAccts = accounts.filter(a => a.type === "Other Income" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
+        const cogsAccts = accounts.filter(a => a.type === "Cost of Goods Sold" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
+        const expenseAccts = accounts.filter(a => a.type === "Expense" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
+        const otherExpAccts = accounts.filter(a => a.type === "Other Expense" && accountsUsed.has(a.id)).sort((a,b) => String(a.code || "").localeCompare(String(b.code || "")));
         const val = (classId, acctId) => propData[classId]?.[acctId] || 0;
         const sumGroup = (classId, group) => group.reduce((s, a) => s + val(classId, a.id), 0);
+        // Total across every property. Without this the breakdown can't be
+        // tied back to the plain P&L, which is the first check anyone makes
+        // against QuickBooks — and QuickBooks' own P&L by Class carries it.
+        const TOTAL = "__total__";
+        const valAll = (acctId) => props.reduce((s, p) => s + val(p.id, acctId), 0);
+        const sumGroupAll = (group) => group.reduce((s, a) => s + valAll(a.id), 0);
+        const at = (classId, fnProp, fnAll) => (classId === TOTAL ? fnAll() : fnProp(classId));
+        // Line items follow the QuickBooks convention of showing expenses
+        // unsigned, but a subtotal must keep its sign: a loss rendered as
+        // a bare positive is indistinguishable from a profit.
         const fmtCell = (v) => v === 0 ? "–" : acctFmt(Math.abs(v));
+        const fmtSigned = (v) => v === 0 ? "–" : (v < 0 ? "(" + acctFmt(Math.abs(v)) + ")" : acctFmt(v));
         const cellCls = "px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap";
         const labelCls = "px-3 py-1.5 text-sm text-neutral-700 whitespace-nowrap";
         const boldLabelCls = "px-3 py-1.5 text-sm font-bold text-neutral-900 whitespace-nowrap";
         const boldCellCls = "px-3 py-1.5 text-right font-mono text-xs font-bold whitespace-nowrap";
         const sectionCls = "px-3 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50";
-        const renderRow = (label, getVal, bold, borderTop, acctId) => (
+        const renderRow = (label, getVal, bold, borderTop, acctId) => {
+          const show = bold ? fmtSigned : fmtCell;
+          const total = getVal(TOTAL);
+          return (
           <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
             <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{label}</td>
-            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{fmtCell(v)}</td>; })}
+            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{show(v)}</td>; })}
+            <td className={`${bold ? boldCellCls : cellCls} bg-neutral-50 border-l border-neutral-300 ${total < 0 && bold ? "text-danger-600" : ""}`}>{show(total)}</td>
           </tr>
-        );
+          );
+        };
         return (
         <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse min-w-max">
         <thead><tr className="bg-neutral-50 border-b border-neutral-200">
           <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 sticky left-0 bg-neutral-50 min-w-48"></th>
           {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{p.name.split(",")[0]}</th>)}
+          <th className="px-3 py-2 text-right text-xs font-bold text-neutral-900 min-w-28 bg-neutral-100 border-l border-neutral-300">TOTAL</th>
         </tr></thead>
         <tbody>
           {/* Income */}
-          {incomeAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Income</td></tr>}
-          {incomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
-          {renderRow("Total for Income", cid => sumGroup(cid, incomeAccts), true, true)}
+          {incomeAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Income</td></tr>}
+          {incomeAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
+          {renderRow("Total for Income", cid => at(cid, id => sumGroup(id, incomeAccts), () => sumGroupAll(incomeAccts)), true, true)}
 
           {/* COGS */}
-          {cogsAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Cost of Goods Sold</td></tr>}
-          {cogsAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false, a.id))}
-          {cogsAccts.length > 0 && renderRow("Total COGS", cid => sumGroup(cid, cogsAccts), true, true)}
+          {cogsAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Cost of Goods Sold</td></tr>}
+          {cogsAccts.map(a => renderRow(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, false, a.id))}
+          {cogsAccts.length > 0 && renderRow("Total COGS", cid => at(cid, id => sumGroup(id, cogsAccts), () => sumGroupAll(cogsAccts)), true, true)}
 
           {/* Gross Profit */}
-          {renderRow("Gross Profit", cid => sumGroup(cid, incomeAccts) - sumGroup(cid, cogsAccts), true, true)}
+          {renderRow("Gross Profit", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts)), true, true)}
 
           {/* Expenses */}
-          {expenseAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Expenses</td></tr>}
-          {expenseAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
-          {renderRow("Total for Expenses", cid => sumGroup(cid, expenseAccts), true, true)}
+          {expenseAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Expenses</td></tr>}
+          {expenseAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
+          {renderRow("Total for Expenses", cid => at(cid, id => sumGroup(id, expenseAccts), () => sumGroupAll(expenseAccts)), true, true)}
 
           {/* Net Operating Income */}
-          {renderRow("Net Operating Income", cid => sumGroup(cid, incomeAccts) - sumGroup(cid, cogsAccts) - sumGroup(cid, expenseAccts), true, true)}
+          {renderRow("Net Operating Income", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts) - sumGroup(id, expenseAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts) - sumGroupAll(expenseAccts)), true, true)}
 
           {/* Other Income/Expense */}
           {(otherIncomeAccts.length > 0 || otherExpAccts.length > 0) && <>
-            {otherIncomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
-            {otherExpAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false, a.id))}
-            {renderRow("Net Other Income", cid => sumGroup(cid, otherIncomeAccts) - sumGroup(cid, otherExpAccts), true, true)}
+            {otherIncomeAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
+            {otherExpAccts.map(a => renderRow(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, false, a.id))}
+            {renderRow("Net Other Income", cid => at(cid, id => sumGroup(id, otherIncomeAccts) - sumGroup(id, otherExpAccts), () => sumGroupAll(otherIncomeAccts) - sumGroupAll(otherExpAccts)), true, true)}
           </>}
 
           {/* Net Income */}
@@ -3009,8 +3033,12 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
             <td className="px-3 py-2 text-sm font-black text-neutral-900">Net Income</td>
             {props.map(p => {
               const ni = sumGroup(p.id, [...incomeAccts, ...otherIncomeAccts]) - sumGroup(p.id, [...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td key={p.id} className={`px-3 py-2 text-right font-mono text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtCell(ni)}</td>;
+              return <td key={p.id} className={`px-3 py-2 text-right font-mono text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
             })}
+            {(() => {
+              const ni = sumGroupAll([...incomeAccts, ...otherIncomeAccts]) - sumGroupAll([...cogsAccts, ...expenseAccts, ...otherExpAccts]);
+              return <td className={`px-3 py-2 text-right font-mono text-xs font-black bg-neutral-50 border-l border-neutral-300 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
+            })()}
           </tr>
         </tbody>
         </table>
