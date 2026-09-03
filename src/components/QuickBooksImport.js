@@ -34,6 +34,21 @@ const STEPS = [
 // progress feels continuous.
 const CHUNK = 250;
 
+// Mirrors DEFAULT_ACCOUNT_TYPES / DEFAULT_ACCOUNT_SUBTYPES in
+// Accounting.js. Duplicated rather than imported because Accounting.js
+// imports this component, and a back-import would be circular.
+const ACCOUNT_TYPE_OPTIONS = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+const ACCOUNT_SUBTYPE_OPTIONS = {
+  Asset: ["Bank","Accounts Receivable","Other Current Asset","Fixed Asset","Other Asset"],
+  Liability: ["Accounts Payable","Credit Card","Other Current Liability","Long Term Liability"],
+  Equity: ["Owners Equity","Retained Earnings","Common Stock"],
+  Revenue: ["Rental Income","Other Primary Income","Service Income"],
+  "Cost of Goods Sold": ["Cost of Goods Sold","Supplies & Materials"],
+  Expense: ["Advertising & Marketing","Auto","Bank Charges","Depreciation","Insurance","Maintenance & Repairs","Meals & Entertainment","Office Supplies","Professional Fees","Property Tax","Rent & Lease","Utilities","Wages & Salaries","Other Expense"],
+  "Other Income": ["Interest Earned","Late Fees","Other Miscellaneous Income"],
+  "Other Expense": ["Depreciation","Other Miscellaneous Expense"],
+};
+
 // Guess which account group a file holds from its name, so the common
 // case needs no clicks. Always overridable: a Transaction Report does
 // not state its own type anywhere, so this is a hint, not a fact.
@@ -400,24 +415,39 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         </p>
       </div>
       <p className="text-xs text-neutral-500">
-        Accounts named after a customer become tenant receivables under 1100, so AR aging and tenant ledgers work on the
-        imported history. Anything already in your chart of accounts is only matched automatically on an exact name or a
-        matching account number — check the rest.
+        Type comes from the file each account was found in (and, for Profit &amp; Loss, from its section) — that part isn't
+        guessed. <strong>Subtype is inferred from the account name</strong> and decides how the Balance Sheet groups it, so
+        check anything that looks wrong; both are editable here. Tenant receivables are identified from the Customer column
+        on each account's own transactions, with the evidence shown.
       </p>
       <div className="max-h-96 overflow-y-auto border border-neutral-100 rounded-lg">
       <table className="w-full text-xs">
         <thead className="bg-neutral-50 sticky top-0"><tr className="text-neutral-400 text-left">
-          <th className="px-2 py-1.5">QUICKBOOKS ACCOUNT</th><th>TYPE</th><th className="text-right">LINES</th>
-          <th className="text-right">NET</th><th className="px-2">ACTION</th><th className="px-2">TARGET</th>
+          <th className="px-2 py-1.5">QUICKBOOKS ACCOUNT</th><th className="px-2">TYPE</th><th className="px-2">SUBTYPE</th>
+          <th className="text-right">LINES</th><th className="text-right">NET</th><th className="px-2">ACTION</th><th className="px-2">TARGET</th>
         </tr></thead>
         <tbody>
           {plan.accounts.map(a => (
           <tr key={a.path} className="border-t border-neutral-100">
             <td className="px-2 py-1.5 text-neutral-800 max-w-xs truncate" title={a.path}>
               {a.path}
-              {a.role === "tenant_ar" && <span className="ml-1.5 text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full">tenant AR</span>}
+              {a.role === "tenant_ar" && (
+                <span className="ml-1.5 text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full"
+                      title={a.roleReason || ""}>tenant AR</span>
+              )}
+              {a.roleReason && <div className="text-[10px] text-neutral-400 truncate" title={a.roleReason}>{a.roleReason}</div>}
             </td>
-            <td className="text-neutral-500">{a.type}</td>
+            <td className="px-2">
+              <Select value={a.type} size="sm" onChange={e => updateAccount(a.path, { type: e.target.value, subtype: "" })}>
+                {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </td>
+            <td className="px-2">
+              <Select value={a.subtype || ""} size="sm" onChange={e => updateAccount(a.path, { subtype: e.target.value })}>
+                <option value="">— none —</option>
+                {(ACCOUNT_SUBTYPE_OPTIONS[a.type] || []).map(t => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </td>
             <td className="text-right font-mono text-neutral-500">{a.lineCount}</td>
             <td className="text-right font-mono text-neutral-700">{formatCurrency(a.net)}</td>
             <td className="px-2">

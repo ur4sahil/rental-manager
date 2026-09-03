@@ -402,6 +402,45 @@ export function suggestTenantAR(accountPath, customers) {
   return null;
 }
 
+// Identify per-tenant receivable accounts from the TRANSACTIONS, not the
+// account name.
+//
+// Name matching was the wrong tool: it needs the account to be spelled
+// exactly like the customer ("Jasmine Morgan 7919" vs customer "Jasmine
+// Morgan" failed), and the same name shapes collide with bank accounts.
+// QuickBooks already answers the question — every line on a tenant's
+// receivable carries that tenant in the Customer column, and a bank
+// account has no dominant customer at all. Measured on real books:
+// tenant AR accounts sit at 100% one customer, the main operating
+// accounts at 1-9%.
+//
+// Returns Map<accountPath, { customer, share, lines, confidence }>.
+export function detectTenantARFromActivity(rows, { minShare = 0.9, minLines = 2 } = {}) {
+  const byAccount = new Map();
+  for (const row of rows) {
+    if (row.accountType !== "Asset") continue;
+    let a = byAccount.get(row.accountPath);
+    if (!a) { a = { total: 0, byCustomer: new Map() }; byAccount.set(row.accountPath, a); }
+    a.total++;
+    if (row.customer) a.byCustomer.set(row.customer, (a.byCustomer.get(row.customer) || 0) + 1);
+  }
+  const out = new Map();
+  for (const [path, a] of byAccount) {
+    if (a.total < minLines || a.byCustomer.size === 0) continue;
+    let top = null, topN = 0;
+    for (const [cust, n] of a.byCustomer) if (n > topN) { top = cust; topN = n; }
+    const share = topN / a.total;
+    if (share < minShare) continue;
+    out.set(path, {
+      customer: top,
+      share,
+      lines: a.total,
+      confidence: share >= 0.99 ? "certain" : "high",
+    });
+  }
+  return out;
+}
+
 // Distinct Property / Customer / Vendor values, for the mapping steps.
 export function buildEntityInventory(rows) {
   const properties = new Map();
@@ -632,8 +671,18 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
   const entities = buildEntityInventory(rows);
   const customerNames = entities.customers.map(c => c.name);
 
+  // Evidence first: which accounts do the transactions themselves say are
+  // a single tenant's receivable? Name matching is only a fallback for an
+  // account with too little activity to judge.
+  const arByActivity = detectTenantARFromActivity(rows);
+
   const enriched = accounts.map(a => {
-    const ar = a.type === "Asset" ? suggestTenantAR(a.path, customerNames) : null;
+    const byActivity = arByActivity.get(a.path);
+    const byName = a.type === "Asset" && !byActivity ? suggestTenantAR(a.path, customerNames) : null;
+    const ar = byActivity || byName;
+    const arReason = byActivity
+      ? `${Math.round(byActivity.share * 100)}% of its ${byActivity.lines} lines are customer "${byActivity.customer}"`
+      : (byName ? "account name matches a customer exactly" : null);
     const suggestion = suggestAccountMatch(a, existingAccounts);
     const role = ar ? "tenant_ar" : "normal";
     return {
@@ -641,6 +690,8 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
       role,
       subtype: inferAccountSubtype({ type: a.type, path: a.path, leaf: a.leaf, parent: a.parent, role }),
       tenantName: ar ? ar.customer : null,
+      // Shown in the mapping UI so every classification can be checked.
+      roleReason: arReason,
       suggestion,
       action: suggestion && suggestion.score >= autoMapThreshold ? "map" : "create",
       targetAccountId: suggestion && suggestion.score >= autoMapThreshold ? suggestion.accountId : null,
