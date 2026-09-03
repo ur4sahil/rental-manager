@@ -3375,11 +3375,12 @@ export function csvBuildFingerprint(feedId, date, amount, description) {
 // Hold the fetched ledger at module scope so a remount reuses it.
 // Invalidated explicitly after every write and by the Reports Refresh
 // button, so this only ever skips a redundant re-download.
-const _acctDataCache = { companyId: null, payload: null, at: 0 };
+const _acctDataCache = { companyId: null, payload: null, at: 0, inFlight: null };
 const ACCT_CACHE_TTL_MS = 5 * 60 * 1000;
 export function invalidateAccountingCache(companyId) {
   if (!companyId || _acctDataCache.companyId === companyId) {
     _acctDataCache.companyId = null; _acctDataCache.payload = null; _acctDataCache.at = 0;
+    _acctDataCache.inFlight = null;
   }
 }
 
@@ -3448,35 +3449,89 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // rather than an error. Same failure the journal-lines fetch below
   // used to have.
   async function fetchAllPaged(build, label) {
-  const rows = [];
-  for (let from = 0; ; from += 1000) {
-  const { data: page, error } = await build().range(from, from + 999);
-  if (error) {
-  pmError("PM-4013", { raw: error, context: "paged fetch: " + label });
-  return { rows, failed: true };
+  // Fetch pages CONCURRENTLY without needing a row count.
+  //
+  // This used to walk pages one at a time, waiting for each before
+  // asking for the next: 17 sequential round trips for the lines alone,
+  // so wall time was 17x the latency rather than 1x. That is why every
+  // accounting tab took ~20 seconds on a slow connection.
+  //
+  // Deliberately NOT count-based. Chaining a second .select() onto the
+  // caller's builder to get a count returns count=null with no error —
+  // which silently collapsed the fetch to a single page. Instead: read
+  // page 0, and while the last page came back full, request the next
+  // batch of pages in parallel. Correct by construction, because the
+  // loop only stops on a short page.
+  const PAGE = 1000, MAX_PARALLEL = 6;
+  const first = await build().range(0, PAGE - 1);
+  if (first.error) {
+  pmError("PM-4013", { raw: first.error, context: "paged fetch: " + label });
+  return { rows: [], failed: true };
   }
-  rows.push(...(page || []));
-  if (!page || page.length < 1000) break;
+  const rows = [...(first.data || [])];
+  if (!first.data || first.data.length < PAGE) return { rows, failed: false };
+
+  let next = 1, done = false, failed = false;
+  while (!done && !failed) {
+  const batch = [];
+  for (let k = 0; k < MAX_PARALLEL; k++, next++) {
+  batch.push(build().range(next * PAGE, next * PAGE + PAGE - 1));
   }
-  return { rows, failed: false };
+  const results = await Promise.all(batch);
+  for (const r of results) {
+  if (r.error) {
+  pmError("PM-4013", { raw: r.error, context: "paged fetch: " + label });
+  failed = true;
+  break;
+  }
+  rows.push(...(r.data || []));
+  // A short page means the end of the table; anything after it in
+  // this batch is empty, so stop asking for more.
+  if (!r.data || r.data.length < PAGE) done = true;
+  }
+  }
+  return { rows, failed };
   }
 
   async function fetchAll(opts = {}) {
   // Only the mount path passes allowCache; every post-write caller
   // forces a real fetch so nothing renders stale.
-  if (opts.allowCache && _acctDataCache.companyId === companyId && _acctDataCache.payload
-      && Date.now() - _acctDataCache.at < ACCT_CACHE_TTL_MS) {
-    const p = _acctDataCache.payload;
+  const hydrate = (p) => {
     setAcctAccounts(p.accounts); setJournalEntries(p.jeHeaders); setAcctClasses(p.classes);
     setAcctTenants(p.tenants); setAcctVendors(p.vendors);
     setLoading(false);
+  };
+  if (opts.allowCache && _acctDataCache.companyId === companyId && _acctDataCache.payload
+      && Date.now() - _acctDataCache.at < ACCT_CACHE_TTL_MS) {
+    hydrate(_acctDataCache.payload);
+    return;
+  }
+  // Several <Accounting> elements can mount at once — swapping sub-page
+  // remounts one while React StrictMode double-invokes another — and each
+  // would otherwise start its own full ledger download. Measured: four
+  // concurrent copies, 126 requests and 34MB for a 8.6MB ledger. Share a
+  // single in-flight fetch instead.
+  if (opts.allowCache && _acctDataCache.inFlight && _acctDataCache.companyId === companyId) {
+    setLoading(true);
+    try { hydrate(await _acctDataCache.inFlight); } catch (_) { setLoading(false); }
     return;
   }
   setLoading(true);
+  let _resolveInFlight = null, _rejectInFlight = null;
+  if (opts.allowCache) {
+  _acctDataCache.companyId = companyId;
+  _acctDataCache.inFlight = new Promise((res, rej) => { _resolveInFlight = res; _rejectInFlight = rej; });
+  }
   try {
   const [acctsRes, jesPaged, clsRes, tenantsRes, vendorsRes] = await Promise.all([
   supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code"),
-  fetchAllPaged(() => supabase.from("acct_journal_entries").select("*").eq("company_id", companyId)
+  // Explicit column list: select("*") also ships company_id (constant
+  // and already known), created_at, transaction_type and
+  // stripe_payment_intent_id, none of which this page reads — about
+  // 1.1MB of the payload on a large ledger.
+  fetchAllPaged(() => supabase.from("acct_journal_entries")
+    .select("id,number,date,description,reference,status,property")
+    .eq("company_id", companyId)
     .order("date", { ascending: false }).order("id"), "journal entries"),
   supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name"),
   supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name"),
@@ -3525,27 +3580,25 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // nothing on screen to say why. Filtering on company_id keeps the URL
   // a fixed ~200 bytes at any book size; idx_acct_jl_company covers it.
   if (jeHeaders.length > 0) {
-  const allLines = [];
-  let linesFailed = false;
-  for (let from = 0; ; from += 1000) {
-  const { data: page, error: lineErr } = await supabase.from("acct_journal_lines")
-  .select("*").eq("company_id", companyId).order("id").range(from, from + 999);
-  if (lineErr) {
-  // Surface it loudly — a partial or failed load understates every
-  // balance, and the old code's silent fallback to [] is exactly what
-  // made this render a confident $0.00 instead of an error.
-  pmError("PM-4013", { raw: lineErr, context: "fetch journal lines for company" });
-  linesFailed = true;
-  break;
-  }
-  allLines.push(...(page || []));
-  if (!page || page.length < 1000) break;
-  }
+  // Same concurrent paging as the headers above. A failed or partial
+  // load raises PM-4013 loudly — the old silent fallback to [] is what
+  // once made this render a confident $0.00 instead of an error.
+  // company_id is omitted from the projection: it is constant for the
+  // whole fetch and was costing ~0.8MB across 16,548 rows.
+  const { rows: allLines, failed: linesFailed } = await fetchAllPaged(
+  () => supabase.from("acct_journal_lines")
+    .select("id,journal_entry_id,account_id,account_name,debit,credit,class_id,memo,reconciled,entity_type,entity_id,entity_name,bank_feed_transaction_id")
+    .eq("company_id", companyId).order("id"),
+  "journal lines");
   // Attach whatever loaded either way: downstream reads assume je.lines
   // is an array and would crash on undefined. The PM-4013 toast above is
   // what tells the user the numbers can't be trusted.
   const linesByJE = {};
-  allLines.forEach(l => { if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = []; linesByJE[l.journal_entry_id].push(l); });
+  allLines.forEach(l => {
+  l.company_id = companyId; // constant for this fetch; not shipped per row
+  if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = [];
+  linesByJE[l.journal_entry_id].push(l);
+  });
   jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
   if (linesFailed) console.warn("[accounting] journal lines incomplete — balances understated");
   }
@@ -3642,7 +3695,14 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   _acctDataCache.payload = { accounts, jeHeaders, classes,
     tenants: tenantsRes.data || [], vendors: vendorsRes.data || [] };
   _acctDataCache.at = Date.now();
-  } finally { setLoading(false); }
+  if (_resolveInFlight) _resolveInFlight(_acctDataCache.payload);
+  } catch (e) {
+  if (_rejectInFlight) _rejectInFlight(e);
+  throw e;
+  } finally {
+  _acctDataCache.inFlight = null;
+  setLoading(false);
+  }
   }
 
   // --- Account CRUD ---
