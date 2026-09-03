@@ -17,8 +17,8 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { Spinner } from "./shared";
 import {
-  QB_FILE_GROUPS, parseWorkbook, groupTransactions, buildImportPlan,
-  buildEntriesPayload, buildTrialBalance,
+  QB_FILE_GROUPS, parseWorkbook, parseAccountList, isAccountListShape, groupTransactions,
+  buildImportPlan, buildEntriesPayload, buildTrialBalance,
 } from "../utils/qbImport";
 
 const STEPS = [
@@ -29,10 +29,11 @@ const STEPS = [
   { n: 5, label: "Import" },
 ];
 
-// One chunk per request. 250 entries is ~525 lines and ~110KB of JSON —
-// comfortably inside the serverless body limit and fast enough that
-// progress feels continuous.
-const CHUNK = 250;
+// One chunk per request. Sized down from 250 because on a slow or flaky
+// connection the chunk is the unit of loss: a drop mid-chunk means
+// re-sending all of it. 100 entries is roughly 90KB, so a failure costs
+// seconds rather than a minute, and progress moves visibly.
+const CHUNK = 100;
 
 // Mirrors DEFAULT_ACCOUNT_TYPES / DEFAULT_ACCOUNT_SUBTYPES in
 // Accounting.js. Duplicated rather than imported because Accounting.js
@@ -68,10 +69,14 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
   const [progress, setProgress] = useState(null); // { phase, done, total }
   const [result, setResult] = useState(null);
   const [pickerKey, setPickerKey] = useState(0);
+  // QuickBooks' own Account List, when supplied. It states every
+  // account's Type and Detail type, which removes all guessing about
+  // how accounts are classified.
+  const [accountList, setAccountList] = useState(null);
 
   // ---- derived ------------------------------------------------------
   const allRows = useMemo(
-    () => files.filter(f => f.parsed).flatMap(f => f.parsed.rows),
+    () => files.filter(f => f.parsed && !f.isAccountList).flatMap(f => f.parsed.rows),
     [files]
   );
   const grouped = useMemo(
@@ -89,7 +94,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
   // create one-sided journal entries. So the check is not cosmetic: a
   // material imbalance means a file is missing, and Import stays blocked.
   const groupsLoaded = useMemo(() => {
-    const g = new Set(files.filter(f => f.parsed).map(f => f.group));
+    const g = new Set(files.filter(f => f.parsed && !f.isAccountList).map(f => f.group));
     return { asset: g.has("asset"), liability: g.has("liability") || g.has("equity"), pl: g.has("pl") };
   }, [files]);
   const balances = trialBalance ? Math.abs(trialBalance.difference) < 0.005 : false;
@@ -110,6 +115,17 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       const group = guessGroup(file.name);
       try {
         const buf = await file.arrayBuffer();
+        // An Account List has no Transaction date column; route it aside.
+        if (/account\s*list/i.test(file.name)) {
+          const al = await parseAccountList(buf.slice(0), file.name);
+          if (al.accounts.size > 0) {
+            setAccountList(al.accounts);
+            next.push({ name: file.name, isAccountList: true, count: al.accounts.size, group: null });
+            setPlan(null);
+            await new Promise(r => setTimeout(r, 0));
+            continue;
+          }
+        }
         const parsed = await parseWorkbook(buf.slice(0), file.name, group);
         // Hold the buffer: ExcelJS consumes the File, and changing a
         // file's account group has to re-parse it.
@@ -157,7 +173,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     if (!allRows.length) { showToast("Add at least one readable QuickBooks export.", "error"); return; }
     setBusy("Building the mapping plan…");
     await new Promise(r => setTimeout(r, 0));
-    setPlan(buildImportPlan({ rows: allRows, existingAccounts: accounts }));
+    setPlan(buildImportPlan({ rows: allRows, existingAccounts: accounts, accountList }));
     setBusy("");
     setStep(2);
   }
@@ -203,18 +219,26 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           json = await r.json().catch(() => ({}));
         } catch (netErr) {
           // Network-level failure — no response at all.
-          if (attempt < 3) {
-            await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+          // Exponential backoff, and patient: a domestic connection can
+          // drop for a minute at a time, and giving up strands the import
+          // half-written. Every chunk is idempotent, so retrying costs
+          // nothing but time.
+          if (attempt < 6) {
+            const wait = Math.min(30000, 2000 * Math.pow(2, attempt));
+            setProgress(pr => pr ? { ...pr, note: `Connection interrupted — retrying in ${Math.round(wait/1000)}s (attempt ${attempt + 2} of 7)` } : pr);
+            await new Promise(res => setTimeout(res, wait));
             return call(payload, attempt + 1);
           }
-          throw new Error("Lost connection to the server. Nothing is corrupted — run the import again and it will "
-            + "resume from where it stopped.");
+          throw new Error("Lost connection to the server after several attempts. Nothing is corrupted — reconnect and "
+            + "run the import again; it resumes from where it stopped.");
         }
         if (!r.ok) {
           // 5xx is worth retrying; a 4xx is our own bad request and won't
           // get better by repeating it.
-          if (r.status >= 500 && attempt < 3) {
-            await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+          if (r.status >= 500 && attempt < 6) {
+            const wait = Math.min(30000, 2000 * Math.pow(2, attempt));
+            setProgress(pr => pr ? { ...pr, note: `Server busy — retrying in ${Math.round(wait/1000)}s` } : pr);
+            await new Promise(res => setTimeout(res, wait));
             return call(payload, attempt + 1);
           }
           throw new Error(json.error || `Import failed (${r.status})`);
@@ -268,10 +292,12 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       // 3. Post in chunks. Every chunk is idempotent on its references,
       //    so a retry after a failure re-sends safely.
       let inserted = 0, skipped = 0, lines = 0;
+      const startedAt = Date.now();
       const chunks = [];
       for (let i = 0; i < entries.length; i += CHUNK) chunks.push(entries.slice(i, i + CHUNK));
       for (let i = 0; i < chunks.length; i++) {
-        setProgress({ phase: "Posting journal entries…", done: i, total: chunks.length });
+        setProgress({ phase: "Posting journal entries…", done: i, total: chunks.length,
+                      startedAt: startedAt, entries: entries.length });
         const r = await call({ action: "qb_entries", entries: chunks[i], status: options.status });
         inserted += r.inserted; skipped += r.skipped; lines += r.lines;
       }
@@ -347,6 +373,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           In QuickBooks: <strong>Reports → Transaction Report</strong> for assets, liabilities and equity, and
           <strong> Profit and Loss Detail</strong> for income and expenses. Export each as .xlsx over the full date range.
           Add one file per account group — assets, liabilities &amp; equity, and P&amp;L — so every side of each transaction is present.
+          Also add <strong>Reports → Account List</strong> if you have it: it states every account's type, so nothing has to be guessed.
         </p>
       </div>
       <FileInput key={pickerKey} accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
@@ -363,15 +390,18 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
             <td className="pr-3">
               {f.error
                 ? <span className="text-danger-600">{f.error}</span>
-                : <span className="text-neutral-500">{f.parsed.shape === "pl-detail" ? "Profit & Loss Detail" : "Transaction Report"}</span>}
+                : f.isAccountList
+                  ? <span className="text-success-700">Account List — account types</span>
+                  : <span className="text-neutral-500">{f.parsed.shape === "pl-detail" ? "Profit & Loss Detail" : "Transaction Report"}</span>}
             </td>
             <td className="pr-3">
+              {f.isAccountList ? <span className="text-neutral-400">—</span> :
               <Select value={f.group} size="sm" disabled={!f.parsed || f.parsed.shape === "pl-detail"}
                 onChange={e => changeGroup(i, e.target.value)}>
                 {QB_FILE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
-              </Select>
+              </Select>}
             </td>
-            <td className="text-right pr-3 font-mono text-neutral-700">{f.parsed ? f.parsed.rows.length.toLocaleString() : "—"}</td>
+            <td className="text-right pr-3 font-mono text-neutral-700">{f.isAccountList ? f.count.toLocaleString() + " accounts" : (f.parsed ? f.parsed.rows.length.toLocaleString() : "—")}</td>
             <td className="text-right"><TextLink tone="danger" size="xs" onClick={() => removeFile(i)}>Remove</TextLink></td>
           </tr>
           ))}
@@ -609,7 +639,15 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
             <div className="h-full bg-brand-600 transition-all" style={{ width: `${Math.round(100 * progress.done / progress.total)}%` }} />
           </div>
-          <p className="text-xs text-neutral-500">Batch {progress.done} of {progress.total}</p>
+          <p className="text-xs text-neutral-500">
+            Batch {progress.done} of {progress.total}
+            {progress.done > 0 && progress.startedAt && (() => {
+              const per = (Date.now() - progress.startedAt) / progress.done;
+              const left = Math.round(per * (progress.total - progress.done) / 1000);
+              return left > 0 ? <> · about {left < 90 ? `${left}s` : `${Math.round(left / 60)} min`} remaining</> : null;
+            })()}
+          </p>
+          {progress.note && <p className="text-xs text-warn-700">{progress.note}</p>}
         </>
         )}
         <p className="text-xs text-neutral-400">Leave this tab open until it finishes. If it is interrupted, run the

@@ -55,12 +55,15 @@ function lineKey(accountId, debit, credit) {
   return `${accountId || ""}|${n(debit)}|${n(credit)}`;
 }
 
-function lineRow(jeId, companyId, l) {
+function lineRow(jeId, companyId, l, nameById) {
   return {
     journal_entry_id: jeId,
     company_id: companyId,
     account_id: l.accountId,
-    account_name: (l.accountName || "").slice(0, 200),
+    // Resolved here rather than sent per line: acct_journal_lines
+    // requires a name, but shipping it 16,548 times over a slow uplink
+    // is pure waste when the id is already present.
+    account_name: ((nameById && nameById[l.accountId]) || l.accountName || "").slice(0, 200),
     debit: l.debit || 0,
     credit: l.credit || 0,
     class_id: l.classId || null,
@@ -380,6 +383,19 @@ async function handleEntries(db, companyId, body, res) {
   }
   const status = body.status === "draft" ? "draft" : "posted";
 
+  // One lookup per chunk gives every line its account_name without the
+  // client having to send it.
+  const nameById = {};
+  {
+    const ids = [...new Set(entries.flatMap(e => e.lines.map(l => l.accountId)).filter(Boolean))];
+    for (const batch of chunk(ids, IN_CHUNK)) {
+      const { data, error } = await db.from("acct_accounts")
+        .select("id, name").eq("company_id", companyId).in("id", batch);
+      if (error) throw error;
+      (data || []).forEach(a => { nameById[a.id] = a.name; });
+    }
+  }
+
   // 1. Split into new entries and ones already present.
   //
   //    A QuickBooks transaction's legs are spread ACROSS FILES — the
@@ -436,7 +452,7 @@ async function handleEntries(db, companyId, body, res) {
         const k = lineKey(l.accountId, l.debit, l.credit);
         const n = remaining.get(k) || 0;
         if (n > 0) { remaining.set(k, n - 1); continue; }
-        repairRows.push(lineRow(jeId, companyId, l));
+        repairRows.push(lineRow(jeId, companyId, l, nameById));
         added++;
       }
       if (added) { repairedEntries++; repairedLines += added; }
@@ -500,7 +516,7 @@ async function handleEntries(db, companyId, body, res) {
   for (const e of todo) {
     const jeId = idByRef[e.reference];
     if (!jeId) continue;
-    for (const l of e.lines) lineRows.push(lineRow(jeId, companyId, l));
+    for (const l of e.lines) lineRows.push(lineRow(jeId, companyId, l, nameById));
   }
   for (const batch of chunk(lineRows, LINE_BATCH)) {
     const { error } = await db.from("acct_journal_lines").insert(batch);

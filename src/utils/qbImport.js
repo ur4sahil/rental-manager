@@ -570,6 +570,111 @@ export function assignAccountCodes(accounts, taken = new Set()) {
   return { codes: out, parentCodes: parentCode };
 }
 
+// ---- QuickBooks Account List (authoritative) -----------------------
+
+// QuickBooks' own "Account List" report states every account's Type and
+// Detail type. When it is supplied, nothing about an account's
+// classification needs inferring — measured against these books, the
+// name-based subtype rules were wrong on 36 of 164 balance-sheet
+// accounts (24 loans QuickBooks calls Other Current Liabilities were
+// guessed as Long Term, "Utopia Atlantic Checking" is not a bank account
+// at all, and the LLC inter-company receivables are Other Current
+// Assets, not A/R).
+//
+// Its Type column maps 1:1 onto the type + subtype pair the app's
+// reports key on.
+const QB_TYPE_MAP = {
+  "Bank":                        { type: "Asset",              subtype: "Bank" },
+  "Accounts receivable (A/R)":   { type: "Asset",              subtype: "Accounts Receivable" },
+  "Other Current Assets":        { type: "Asset",              subtype: "Other Current Asset" },
+  "Fixed Assets":                { type: "Asset",              subtype: "Fixed Asset" },
+  "Other Assets":                { type: "Asset",              subtype: "Other Asset" },
+  "Accounts payable (A/P)":      { type: "Liability",          subtype: "Accounts Payable" },
+  "Credit Card":                 { type: "Liability",          subtype: "Credit Card" },
+  "Other Current Liabilities":   { type: "Liability",          subtype: "Other Current Liability" },
+  "Long Term Liabilities":       { type: "Liability",          subtype: "Long Term Liability" },
+  "Equity":                      { type: "Equity",             subtype: "Owners Equity" },
+  "Income":                      { type: "Revenue",            subtype: "Other Primary Income" },
+  "Other Income":                { type: "Other Income",       subtype: "Other Miscellaneous Income" },
+  "Cost of Goods Sold":          { type: "Cost of Goods Sold", subtype: "Cost of Goods Sold" },
+  "Expenses":                    { type: "Expense",            subtype: "Other Expense" },
+  "Other Expense":               { type: "Other Expense",      subtype: "Other Miscellaneous Expense" },
+};
+
+// A few Detail types map onto a more specific app subtype than the Type
+// alone implies. Only applied where the app actually has a matching
+// value; everything else keeps the Type-derived subtype.
+const QB_DETAIL_REFINE = {
+  "Retained Earnings": "Retained Earnings",
+  "Repair & Maintenance": "Maintenance & Repairs",
+  "Utilities": "Utilities",
+  "Insurance": "Insurance",
+  "Bank Charges": "Bank Charges",
+  "Taxes Paid": "Property Tax",
+  "Legal & Professional Fees": "Professional Fees",
+  "Office/General Administrative Expenses": "Office Supplies",
+  "Advertising/Promotional": "Advertising & Marketing",
+  "Auto": "Auto",
+  "Travel": "Meals & Entertainment",
+  "Entertainment Meals": "Meals & Entertainment",
+  "Rent or Lease of Buildings": "Rent & Lease",
+  "Payroll Expenses": "Wages & Salaries",
+};
+
+// True when a workbook looks like an Account List rather than a
+// transaction report: it names accounts and types but has no dates.
+export function isAccountListShape(headers) {
+  const h = headers.map(x => String(x).toLowerCase());
+  return h.includes("type") && h.some(x => x.includes("account name")) && !h.includes("transaction date");
+}
+
+// Parse the Account List into Map<accountPath, {qbType, qbDetail, type,
+// subtype, balance}>. Keyed on the full colon path, which is what the
+// transaction reports carry in their Account Name column.
+export async function parseAccountList(data, filename = "") {
+  const wb = new ExcelJS.Workbook();
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) await wb.xlsx.load(data);
+  else await wb.xlsx.readFile(data);
+  const ws = wb.worksheets[0];
+  const out = new Map();
+  const warnings = [];
+  if (!ws) return { accounts: out, warnings: ["Workbook has no sheets."], filename };
+
+  // Find the header row by looking for "Account Name" + "Type".
+  let hdrRow = 0, col = {};
+  for (let r = 1; r <= Math.min(15, ws.rowCount) && !hdrRow; r++) {
+    const labels = [];
+    ws.getRow(r).eachCell({ includeEmpty: false }, (c, i) => { labels.push(cellText(c)); col[cellText(c)] = i; });
+    if (isAccountListShape(labels)) hdrRow = r; else col = {};
+  }
+  if (!hdrRow) return { accounts: out, warnings: ["Could not find an 'Account Name' / 'Type' header row."], filename };
+
+  const nameCol = col["Account Name"] || 1;
+  const typeCol = col["Type"];
+  const detailCol = col["Detail type"] || col["Detail Type"];
+  const balCol = col["Total balance"] || col["Balance"];
+
+  for (let r = hdrRow + 1; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const name = cellText(row.getCell(nameCol));
+    const qbType = typeCol ? cellText(row.getCell(typeCol)) : "";
+    if (!name || !qbType) continue;
+    // QuickBooks appends a "<weekday>, <date> <time> GMT" footer row.
+    if (/GMT[-+]\d/.test(qbType)) continue;
+    const qbDetail = detailCol ? cellText(row.getCell(detailCol)) : "";
+    const mapped = QB_TYPE_MAP[qbType];
+    if (!mapped) { warnings.push(`Unrecognised QuickBooks account type "${qbType}" on "${name}".`); continue; }
+    const subtype = QB_DETAIL_REFINE[qbDetail] || mapped.subtype;
+    out.set(name, {
+      qbType, qbDetail,
+      type: mapped.type,
+      subtype,
+      balance: balCol ? cellNumber(row.getCell(balCol)) : 0,
+    });
+  }
+  return { accounts: out, warnings, filename };
+}
+
 // ---- subtype inference ---------------------------------------------
 
 // The Balance Sheet groups by SUBTYPE, not type: Accounting.js:2773
@@ -666,7 +771,7 @@ export function suggestAccountMatch(qbAccount, existingAccounts) {
 // Builds the default plan the mapping UI then lets the user edit.
 // Nothing here writes anything; every decision is visible and revisable
 // before the import runs.
-export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold = 0.8 }) {
+export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold = 0.8, accountList = null }) {
   const accounts = buildAccountInventory(rows);
   const entities = buildEntityInventory(rows);
   const customerNames = entities.customers.map(c => c.name);
@@ -684,11 +789,20 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
       ? `${Math.round(byActivity.share * 100)}% of its ${byActivity.lines} lines are customer "${byActivity.customer}"`
       : (byName ? "account name matches a customer exactly" : null);
     const suggestion = suggestAccountMatch(a, existingAccounts);
+    // QuickBooks' own Account List wins over anything inferred.
+    const authoritative = accountList ? accountList.get(a.path) : null;
     const role = ar ? "tenant_ar" : "normal";
     return {
       ...a,
       role,
-      subtype: inferAccountSubtype({ type: a.type, path: a.path, leaf: a.leaf, parent: a.parent, role }),
+      type: authoritative ? authoritative.type : a.type,
+      subtype: authoritative
+        ? authoritative.subtype
+        : inferAccountSubtype({ type: a.type, path: a.path, leaf: a.leaf, parent: a.parent, role }),
+      classifiedBy: authoritative ? "QuickBooks Account List" : "inferred from the account name",
+      qbType: authoritative ? authoritative.qbType : null,
+      qbDetail: authoritative ? authoritative.qbDetail : null,
+      qbBalance: authoritative ? authoritative.balance : null,
       tenantName: ar ? ar.customer : null,
       // Shown in the mapping UI so every classification can be checked.
       roleReason: arReason,
@@ -752,16 +866,18 @@ export function buildEntriesPayload({ transactions, accountIdByPath, classIdByNa
         dropped.push({ reference: t.reference, accountPath: l.accountPath });
         break;
       }
+      // accountName and entityName are deliberately NOT sent: the server
+      // resolves the name from accountId, and the entity name is always
+      // the vendor or customer already present. On a slow uplink every
+      // redundant byte is paid for 7,722 times.
       lines.push({
         accountId,
-        accountName: l.accountPath.split(":").pop(),
         debit: l.debit,
         credit: l.credit,
         classId: l.property ? (classIdByName[l.property] || null) : null,
         memo: l.memo || l.description || "",
         vendorId: l.vendor ? (vendorIdByName[l.vendor] || null) : null,
         customerName: l.customer || null,
-        entityName: l.vendor || l.customer || null,
       });
     }
     if (missingAccount || !lines.length) continue;
