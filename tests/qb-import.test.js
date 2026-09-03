@@ -288,6 +288,41 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
     assertEq(skipped.length, 0, "entries whose accounts were all skipped are omitted");
   }
 
+  console.log("\n════ 9b. NEVER EMIT A HALF ENTRY ════");
+  {
+    // This is the regression that matters most. An earlier version
+    // dropped a line whose account was unmapped and posted the REST of
+    // the entry, producing one-sided journal entries that looked real —
+    // 4,510 of them, and a $7.4m imbalance, in a live company.
+    const txns = [{
+      reference: "QB-9", date: "2023-01-01", description: "Rent", property: "", txnType: "JE", balanced: true,
+      lines: [
+        { accountPath: "AR:Jane", debit: 100, credit: 0, property: "", memo: "", customer: "", vendor: "" },
+        { accountPath: "Rental Income", debit: 0, credit: 100, property: "", memo: "", customer: "", vendor: "" },
+      ],
+    }];
+    // Only one of the two accounts resolves — the P&L side is missing,
+    // exactly what happens when the P&L export hasn't been loaded.
+    const out = qb.buildEntriesPayload({
+      transactions: txns,
+      accountIdByPath: { "AR:Jane": "a1" },
+      classIdByName: {}, vendorIdByName: {},
+    });
+    assertEq(out.length, 0, "an entry with an unresolvable account is NOT posted at all");
+    assertEq(out.dropped.length, 1, "the skipped transaction is reported, not silently discarded");
+    assertEq(out.dropped[0].accountPath, "Rental Income", "the report names the account that could not be resolved");
+
+    // With both sides mapped it posts normally, both lines intact.
+    const ok = qb.buildEntriesPayload({
+      transactions: txns,
+      accountIdByPath: { "AR:Jane": "a1", "Rental Income": "a2" },
+      classIdByName: {}, vendorIdByName: {},
+    });
+    assertEq(ok.length, 1, "with every account resolved the entry posts");
+    assertEq(ok[0].lines.length, 2, "and keeps both of its legs");
+    assertEq(ok.dropped.length, 0, "nothing is reported as dropped");
+  }
+
   console.log("\n════ 10. REAL QUICKBOOKS EXPORTS ════");
   {
     const dl = path.join(os.homedir(), "Downloads");

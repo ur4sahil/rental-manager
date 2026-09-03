@@ -621,12 +621,24 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
 // unit-testable without touching the network.
 export function buildEntriesPayload({ transactions, accountIdByPath, classIdByName, vendorIdByName, includeUnbalanced = false }) {
   const out = [];
+  const dropped = [];
   for (const t of transactions) {
     if (!t.balanced && !includeUnbalanced) continue;
     const lines = [];
+    let missingAccount = false;
     for (const l of t.lines) {
       const accountId = accountIdByPath[l.accountPath];
-      if (!accountId) continue; // account was skipped in mapping
+      if (!accountId) {
+        // NEVER post the rest of the entry without this line. Dropping a
+        // leg and posting the remainder produces a one-sided journal
+        // entry that looks real and silently unbalances the books — it is
+        // how an early version of this importer put 4,510 half-entries
+        // and a $7.4m imbalance into a live company. Skip the whole
+        // transaction and report it instead.
+        missingAccount = true;
+        dropped.push({ reference: t.reference, accountPath: l.accountPath });
+        break;
+      }
       lines.push({
         accountId,
         accountName: l.accountPath.split(":").pop(),
@@ -639,7 +651,7 @@ export function buildEntriesPayload({ transactions, accountIdByPath, classIdByNa
         entityName: l.vendor || l.customer || null,
       });
     }
-    if (!lines.length) continue;
+    if (missingAccount || !lines.length) continue;
     out.push({
       reference: t.reference,
       date: t.date,
@@ -649,5 +661,7 @@ export function buildEntriesPayload({ transactions, accountIdByPath, classIdByNa
       lines,
     });
   }
-  return out;
+  // Callers must surface `dropped` — a non-empty list means accounts were
+  // skipped in mapping and whole transactions are being left out.
+  return Object.assign(out, { dropped });
 }

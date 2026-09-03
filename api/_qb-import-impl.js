@@ -48,6 +48,34 @@ const MAX_ENTRIES_PER_CALL = 400;
 
 const MAX_COMPANYID_LEN = 64;
 
+// Compares an incoming line against one already stored. Amounts are
+// rounded to cents because Postgres hands numerics back as strings.
+function lineKey(accountId, debit, credit) {
+  const n = v => Math.round((Number(v) || 0) * 100);
+  return `${accountId || ""}|${n(debit)}|${n(credit)}`;
+}
+
+function lineRow(jeId, companyId, l) {
+  return {
+    journal_entry_id: jeId,
+    company_id: companyId,
+    account_id: l.accountId,
+    account_name: (l.accountName || "").slice(0, 200),
+    debit: l.debit || 0,
+    credit: l.credit || 0,
+    class_id: l.classId || null,
+    memo: (l.memo || "").slice(0, 500),
+    // chk_entity_type permits only 'customer' or 'vendor' — anything else
+    // aborts the insert. entity_id is a uuid column, so a vendor id fits
+    // but a tenant id (integer) does not: a customer line carries the name
+    // only, and the real tenant linkage lives on the AR account's
+    // tenant_id, set during resolve.
+    entity_type: l.vendorId ? "vendor" : (l.customerName ? "customer" : null),
+    entity_id: l.vendorId || null,
+    entity_name: l.entityName || l.customerName || null,
+  };
+}
+
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -352,21 +380,77 @@ async function handleEntries(db, companyId, body, res) {
   }
   const status = body.status === "draft" ? "draft" : "posted";
 
-  // 1. Skip anything already imported. The unique index on
-  //    (company_id, reference) is partial, so ON CONFLICT can't reliably
-  //    infer it — an explicit pre-filter is simpler and provably right,
-  //    and makes a re-run after a partial failure a no-op.
+  // 1. Split into new entries and ones already present.
+  //
+  //    A QuickBooks transaction's legs are spread ACROSS FILES — the
+  //    receivable side sits in the assets export, the income side in the
+  //    P&L export. So "this reference already exists" does NOT mean
+  //    "nothing to do": if the user imports one file at a time, the first
+  //    run creates the entry with only its own lines and the later runs
+  //    must ADD the missing legs. An earlier version skipped existing
+  //    references outright, which left 4,510 one-sided entries and a
+  //    $7.4m imbalance in a live company.
+  //
+  //    So existing entries are repaired: any incoming line that isn't
+  //    already on the entry is inserted. Matching is on
+  //    (account_id, debit, credit) so re-running with the same file is
+  //    still a no-op.
   const refs = entries.map(e => e.reference);
-  const existing = new Set();
+  const existingIdByRef = {};
   for (const batch of chunk(refs, IN_CHUNK)) {
     const { data, error } = await db.from("acct_journal_entries")
-      .select("reference").eq("company_id", companyId).in("reference", batch);
+      .select("id, reference").eq("company_id", companyId).in("reference", batch);
     if (error) throw error;
-    (data || []).forEach(r => existing.add(r.reference));
+    (data || []).forEach(r => { existingIdByRef[r.reference] = r.id; });
   }
-  const todo = entries.filter(e => !existing.has(e.reference));
-  const skipped = entries.length - todo.length;
-  if (!todo.length) return res.status(200).json({ ok: true, inserted: 0, skipped, lines: 0 });
+  const todo = entries.filter(e => !existingIdByRef[e.reference]);
+  const present = entries.filter(e => existingIdByRef[e.reference]);
+  let repairedEntries = 0, repairedLines = 0;
+
+  if (present.length) {
+    const ids = present.map(e => existingIdByRef[e.reference]);
+    const have = {};
+    for (const batch of chunk(ids, IN_CHUNK)) {
+      const { data, error } = await db.from("acct_journal_lines")
+        .select("journal_entry_id, account_id, debit, credit")
+        .eq("company_id", companyId).in("journal_entry_id", batch);
+      if (error) throw error;
+      (data || []).forEach(l => {
+        // Count occurrences, don't just record presence: a transaction can
+        // legitimately carry two identical lines (same account, same
+        // amount), and set-membership would restore only one of them.
+        const m = (have[l.journal_entry_id] ||= new Map());
+        const k = lineKey(l.account_id, l.debit, l.credit);
+        m.set(k, (m.get(k) || 0) + 1);
+      });
+    }
+    const repairRows = [];
+    for (const e of present) {
+      const jeId = existingIdByRef[e.reference];
+      // Consume one stored occurrence per matching incoming line; whatever
+      // is left over is genuinely missing and gets inserted. This keeps a
+      // re-run of the same file a no-op while still restoring duplicates.
+      const remaining = new Map(have[jeId] || []);
+      let added = 0;
+      for (const l of e.lines) {
+        const k = lineKey(l.accountId, l.debit, l.credit);
+        const n = remaining.get(k) || 0;
+        if (n > 0) { remaining.set(k, n - 1); continue; }
+        repairRows.push(lineRow(jeId, companyId, l));
+        added++;
+      }
+      if (added) { repairedEntries++; repairedLines += added; }
+    }
+    for (const batch of chunk(repairRows, LINE_BATCH)) {
+      const { error } = await db.from("acct_journal_lines").insert(batch);
+      if (error) throw error;
+    }
+  }
+
+  const skipped = present.length - repairedEntries;
+  if (!todo.length) {
+    return res.status(200).json({ ok: true, inserted: 0, skipped, lines: repairedLines, repairedEntries, repairedLines });
+  }
 
   // 2. One JE-number base for the whole chunk. next_je_number is
   //    MAX-based and O(n) per call — calling it per entry would be
@@ -416,26 +500,7 @@ async function handleEntries(db, companyId, body, res) {
   for (const e of todo) {
     const jeId = idByRef[e.reference];
     if (!jeId) continue;
-    for (const l of e.lines) {
-      lineRows.push({
-        journal_entry_id: jeId,
-        company_id: companyId,
-        account_id: l.accountId,
-        account_name: (l.accountName || "").slice(0, 200),
-        debit: l.debit || 0,
-        credit: l.credit || 0,
-        class_id: l.classId || null,
-        memo: (l.memo || "").slice(0, 500),
-        // chk_entity_type permits only 'customer' or 'vendor' — anything
-        // else aborts the insert. entity_id is a uuid column, so a vendor
-        // id fits but a tenant id (integer) does not: a customer line
-        // carries the name only, and the real tenant linkage lives on the
-        // AR account's tenant_id, set during resolve.
-        entity_type: l.vendorId ? "vendor" : (l.customerName ? "customer" : null),
-        entity_id: l.vendorId || null,
-        entity_name: l.entityName || l.customerName || null,
-      });
-    }
+    for (const l of e.lines) lineRows.push(lineRow(jeId, companyId, l));
   }
   for (const batch of chunk(lineRows, LINE_BATCH)) {
     const { error } = await db.from("acct_journal_lines").insert(batch);
@@ -446,7 +511,9 @@ async function handleEntries(db, companyId, body, res) {
     ok: true,
     inserted: Object.keys(idByRef).length,
     skipped,
-    lines: lineRows.length,
+    lines: lineRows.length + repairedLines,
+    repairedEntries,
+    repairedLines,
     firstNumber: headers.length ? headers[0].number : null,
     lastNumber: headers.length ? headers[headers.length - 1].number : null,
   });

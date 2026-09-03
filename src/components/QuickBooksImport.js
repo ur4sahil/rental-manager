@@ -9,7 +9,7 @@
 // already ~4,500 lines and imports Banking.js, so adding a component that
 // needs both would risk a circular import.
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, Select, TextLink } from "../ui";
 import { formatCurrency, safeNum } from "../utils/helpers";
@@ -52,7 +52,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
   const [options, setOptions] = useState({ status: "posted", includeUnbalanced: false });
   const [progress, setProgress] = useState(null); // { phase, done, total }
   const [result, setResult] = useState(null);
-  const fileRef = useRef();
+  const [pickerKey, setPickerKey] = useState(0);
 
   // ---- derived ------------------------------------------------------
   const allRows = useMemo(
@@ -68,6 +68,19 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     [allRows]
   );
 
+  // A QuickBooks transaction's legs live in DIFFERENT files — the
+  // receivable side in the assets export, the income side in the P&L. If
+  // any group is missing, the totals cannot balance and importing would
+  // create one-sided journal entries. So the check is not cosmetic: a
+  // material imbalance means a file is missing, and Import stays blocked.
+  const groupsLoaded = useMemo(() => {
+    const g = new Set(files.filter(f => f.parsed).map(f => f.group));
+    return { asset: g.has("asset"), liability: g.has("liability") || g.has("equity"), pl: g.has("pl") };
+  }, [files]);
+  const balances = trialBalance ? Math.abs(trialBalance.difference) < 0.005 : false;
+  const missingGroups = Object.entries(groupsLoaded).filter(([, v]) => !v)
+    .map(([k]) => ({ asset: "Assets", liability: "Liabilities & Equity", pl: "Profit & Loss" }[k]));
+
   // ---- step 1: files ------------------------------------------------
   async function addFiles(fileList) {
     const incoming = Array.from(fileList || []);
@@ -82,8 +95,10 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       const group = guessGroup(file.name);
       try {
         const buf = await file.arrayBuffer();
-        const parsed = await parseWorkbook(buf, file.name, group);
-        next.push({ name: file.name, group, parsed, error: parsed.shape ? null : (parsed.warnings[0] || "Unrecognised file") });
+        const parsed = await parseWorkbook(buf.slice(0), file.name, group);
+        // Hold the buffer: ExcelJS consumes the File, and changing a
+        // file's account group has to re-parse it.
+        next.push({ name: file.name, group, buf, parsed, error: parsed.shape ? null : (parsed.warnings[0] || "Unrecognised file") });
       } catch (e) {
         pmError("PM-5001", { raw: e, context: "QuickBooks workbook parse: " + file.name });
         next.push({ name: file.name, group, error: String(e?.message || e).slice(0, 160) });
@@ -94,30 +109,34 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     }
     setFiles(next);
     setBusy("");
-    if (fileRef.current) fileRef.current.value = "";
+    setPickerKey(k => k + 1); // reset the picker so the same file can be re-added
   }
 
   // Re-parse a file when its account group changes: the group decides
-  // whether a Transaction Report's accounts are assets or liabilities.
+  // whether a Transaction Report's accounts are assets, liabilities or
+  // equity, which in turn drives every account's type.
   async function changeGroup(idx, group) {
     const f = files[idx];
-    if (!f?.parsed) {
+    if (!f?.buf) {
       setFiles(files.map((x, i) => (i === idx ? { ...x, group } : x)));
       return;
     }
     setBusy("Re-reading " + f.name + "…");
+    await new Promise(r => setTimeout(r, 0));
     try {
-      const parsed = await parseWorkbook(f.rawBuffer || (await refetchBuffer(f)), f.name, group);
+      // ExcelJS detaches the ArrayBuffer it loads, so hand it a copy and
+      // keep the original for any later group change.
+      const parsed = await parseWorkbook(f.buf.slice(0), f.name, group);
       setFiles(files.map((x, i) => (i === idx ? { ...x, group, parsed } : x)));
+      // The plan is derived from the parsed rows, so it is now stale.
+      setPlan(null);
     } catch (e) {
-      pmError("PM-5001", { raw: e, context: "QuickBooks re-parse", silent: true });
+      pmError("PM-5001", { raw: e, context: "QuickBooks re-parse for group change" });
     }
     setBusy("");
   }
-  // The File object is gone after the first read, so keep the buffer.
-  async function refetchBuffer() { throw new Error("Re-select the file to change its group"); }
 
-  function removeFile(idx) { setFiles(files.filter((_, i) => i !== idx)); }
+  function removeFile(idx) { setFiles(files.filter((_, i) => i !== idx)); setPlan(null); }
 
   async function goToAccounts() {
     if (!allRows.length) { showToast("Add at least one readable QuickBooks export.", "error"); return; }
@@ -152,14 +171,39 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       // the project is at its 12-function cap, so the logic lives in
       // api/_qb-import-impl.js behind a route that already does exactly
       // the auth it needs.
-      const call = async (payload) => {
-        const r = await fetch("/api/encrypt", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-          body: JSON.stringify({ companyId, ...payload }),
-        });
-        const json = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(json.error || `Import failed (${r.status})`);
+      // Retry transient failures. An import is ~27 sequential requests
+      // over a couple of minutes, so a single dropped connection would
+      // otherwise abandon the run half-written. Retrying is safe because
+      // every chunk is keyed on its journal-entry references: a chunk
+      // that already landed re-runs as a no-op, and one that half-landed
+      // is repaired.
+      const call = async (payload, attempt = 0) => {
+        let r, json;
+        try {
+          r = await fetch("/api/encrypt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+            body: JSON.stringify({ companyId, ...payload }),
+          });
+          json = await r.json().catch(() => ({}));
+        } catch (netErr) {
+          // Network-level failure — no response at all.
+          if (attempt < 3) {
+            await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+            return call(payload, attempt + 1);
+          }
+          throw new Error("Lost connection to the server. Nothing is corrupted — run the import again and it will "
+            + "resume from where it stopped.");
+        }
+        if (!r.ok) {
+          // 5xx is worth retrying; a 4xx is our own bad request and won't
+          // get better by repeating it.
+          if (r.status >= 500 && attempt < 3) {
+            await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+            return call(payload, attempt + 1);
+          }
+          throw new Error(json.error || `Import failed (${r.status})`);
+        }
         return json;
       };
 
@@ -193,6 +237,17 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         vendorIdByName: resolved.vendorMap || {},
         includeUnbalanced: options.includeUnbalanced,
       });
+
+      if (entries.dropped && entries.dropped.length) {
+        // Accounts left on "Skip" mean whole transactions cannot be
+        // written. Never post the rest of such an entry — a half entry
+        // unbalances the books while looking legitimate.
+        const paths = [...new Set(entries.dropped.map(d => d.accountPath))];
+        throw new Error(
+          `${entries.dropped.length} transactions reference accounts that were skipped in mapping ` +
+          `(${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, +${paths.length - 3} more` : ""}). ` +
+          `Go back to Accounts and map or create them — importing would leave those entries one-sided.`);
+      }
 
       // 3. Post in chunks. Every chunk is idempotent on its references,
       //    so a retry after a failure re-sends safely.
@@ -278,7 +333,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           Add one file per account group — assets, liabilities &amp; equity, and P&amp;L — so every side of each transaction is present.
         </p>
       </div>
-      <FileInput ref={fileRef} accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
+      <FileInput key={pickerKey} accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
 
       {files.length > 0 && (
       <table className="w-full text-xs">
@@ -306,6 +361,16 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           ))}
         </tbody>
       </table>
+      )}
+
+      {files.some(f => f.parsed) && (
+      <div className="flex flex-wrap gap-2 text-xs">
+        {[["asset","Assets"],["liability","Liabilities & Equity"],["pl","Profit & Loss"]].map(([k,label]) => (
+          <span key={k} className={`px-2 py-1 rounded-full ${groupsLoaded[k] ? "bg-success-50 text-success-700" : "bg-warn-50 text-warn-700"}`}>
+            {groupsLoaded[k] ? "\u2713" : "\u2014"} {label}
+          </span>
+        ))}
+      </div>
       )}
 
       {grouped && (
@@ -450,8 +515,8 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       <div className="bg-warn-50 border border-warn-200 rounded-lg px-3 py-2 text-xs text-warn-800 space-y-1">
         <p className="font-medium">{grouped.unbalanced.length} transactions don't balance on their own
           {Math.abs(grouped.totals.unbalancedNet) < 0.005 && <> (they cancel out to zero overall)</>}.</p>
-        <p>Each is missing a leg that isn't in the files you uploaded. They are skipped by default; add the missing
-          export and run this again — everything already imported is skipped automatically, so only the gaps get filled.</p>
+        <p>Each is missing a leg that isn't in the files you uploaded — so they are skipped. To include them, add the
+          missing export <strong>to this same screen</strong> and import once with every file loaded together.</p>
         <label className="flex items-center gap-2 pt-1">
           <Checkbox checked={options.includeUnbalanced} onChange={e => setOptions({ ...options, includeUnbalanced: e.target.checked })} />
           <span>Import them anyway (they will post out of balance)</span>
@@ -476,9 +541,28 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         <span>Post entries immediately (uncheck to import them as drafts)</span>
       </label>
 
-      <div className="flex justify-between">
+      {!balances && (
+      <div className="bg-danger-50 border border-danger-200 rounded-lg px-3 py-2 text-xs text-danger-700 space-y-1">
+        <p className="font-medium">These files don't balance — {formatCurrency(Math.abs(trialBalance.difference))} of
+          {trialBalance.difference > 0 ? " debits" : " credits"} have no matching side.</p>
+        <p>
+          A QuickBooks transaction is split across exports: the receivable side is in the assets report, the income side
+          in the Profit &amp; Loss report. An imbalance this size means an export is missing
+          {missingGroups.length > 0 && <> — nothing loaded for <strong>{missingGroups.join(" or ")}</strong></>}.
+        </p>
+        <p><strong>Add the missing file above and import once with all of them loaded.</strong> Importing now would
+          create one-sided journal entries, and importing the rest afterwards cannot repair every case.</p>
+      </div>
+      )}
+
+      <div className="flex justify-between items-center">
         <Btn variant="secondary" onClick={() => setStep(3)}>Back</Btn>
-        <Btn onClick={runImport}>Import {(options.includeUnbalanced ? grouped.totals.entries : grouped.totals.balancedEntries).toLocaleString()} entries</Btn>
+        <div className="flex items-center gap-3">
+          {!balances && <span className="text-xs text-danger-600">Import blocked until the files balance</span>}
+          <Btn onClick={runImport} disabled={!balances}>
+            Import {(options.includeUnbalanced ? grouped.totals.entries : grouped.totals.balancedEntries).toLocaleString()} entries
+          </Btn>
+        </div>
       </div>
     </div>
     )}
