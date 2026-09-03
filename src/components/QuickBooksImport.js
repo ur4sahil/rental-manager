@@ -214,7 +214,8 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         action: "qb_resolve",
         accounts: creates.map(a => ({
           code: a.code, name: a.role === "tenant_ar" ? `AR - ${a.tenantName}` : a.leaf,
-          type: a.type, tenantName: a.role === "tenant_ar" ? a.tenantName : null,
+          type: a.type, subtype: a.subtype || null,
+          tenantName: a.role === "tenant_ar" ? a.tenantName : null,
           description: `Imported from QuickBooks (${a.path})`,
         })),
         classes: plan.classes.map(c => ({ name: c.name })),

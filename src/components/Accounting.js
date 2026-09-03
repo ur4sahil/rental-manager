@@ -1486,7 +1486,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 }
 
 // --- Reports Center (QuickBooks-style) ---
-export function AcctReports({ accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger }) {
+export function AcctReports({ accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
   const [activeView, setActiveView] = useState("catalog"); // catalog | viewer
   const [currentReport, setCurrentReport] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1498,6 +1498,7 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [asOfDate, setAsOfDate] = useState(acctToday());
+  const [refreshing, setRefreshing] = useState(false);
   const [compareTo, setCompareTo] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
@@ -2721,6 +2722,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       </div>
       <div className="flex gap-2 flex-wrap md:flex-nowrap shrink-0">
         <button onClick={() => toggleFavorite(reportId)} className={"shrink-0 " + (favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400")}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
+        {/* Reports render from the journal entries loaded when the
+            Accounting page mounted. Anything posted since — a bulk
+            import, another tab, the recurring engine — isn't reflected
+            until that data is re-fetched, and there was no way to do
+            that short of reloading the browser. */}
+        {onRefresh && (
+        <Btn variant="slate" size="sm" icon="refresh" disabled={refreshing}
+             onClick={async () => { setRefreshing(true); try { await onRefresh(); showToast && showToast("Report data refreshed.", "success"); } finally { setRefreshing(false); } }}>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Btn>
+        )}
         <Btn variant="slate" size="sm" icon="download" onClick={exportExcel}>Export</Btn>
         <Btn variant="slate" size="sm" icon="picture_as_pdf" onClick={exportPDF}>PDF</Btn>
         <Btn variant="slate" size="sm" icon="print" onClick={printReport}>Print</Btn>
@@ -4071,7 +4083,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
   {/* Account Ledger Drill-Down */}
   {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 

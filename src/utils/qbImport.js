@@ -531,6 +531,66 @@ export function assignAccountCodes(accounts, taken = new Set()) {
   return { codes: out, parentCodes: parentCode };
 }
 
+// ---- subtype inference ---------------------------------------------
+
+// The Balance Sheet groups by SUBTYPE, not type: Accounting.js:2773
+// selects bank accounts with `subtype === "Bank" || name includes
+// "Checking"/"Savings"`. Import without subtypes and the main operating
+// accounts ("Sigma ACH - 0822", "Sigma Housing LLC - 6027") fall out of
+// the Bank Accounts group and get listed among the investment
+// properties, which is why an imported balance sheet looked nothing like
+// the QuickBooks one.
+//
+// Values come from DEFAULT_ACCOUNT_SUBTYPES in Accounting.js.
+export function inferAccountSubtype({ type, path, leaf, parent, role }) {
+  const name = String(leaf || path || "");
+  const par = String(parent || "");
+  const both = (par + " " + name).toLowerCase();
+
+  if (type === "Asset") {
+    if (role === "tenant_ar") return "Accounts Receivable";
+    if (/\breceivable\b|^ar\b|\ba\/r\b/i.test(both)) return "Accounts Receivable";
+    // Real-estate held as an asset — QuickBooks "Investment Asset".
+    if (/investment asset|\bbuilding\b|\bland\b/i.test(both)) return "Fixed Asset";
+    if (/\bescrow\b/i.test(both)) return "Other Current Asset";
+    // Bank accounts: an explicit word, or the "Name - 1234" shape banks
+    // are habitually named with in these books.
+    if (/checking|savings|\bbank\b|\bach\b|\bbofa\b|chase|wells|citi/i.test(name)) return "Bank";
+    // "Sigma Housing LLC - 6027", "Sigma Cap Imp - 1402" — a masked
+    // account number after a DASH. The dash matters: a bare trailing
+    // number is far more often part of a tenant's name ("Jasmine Morgan
+    // 7919", "Tamika Ford 8693"), which must not become a bank account.
+    if (/[-#]\s*\d{4}\s*$/.test(name)) return "Bank";
+    return "Other Current Asset";
+  }
+  if (type === "Liability") {
+    if (/\bloan\b|mortgage|note payable|\bnewrez\b|conventus|lima|genesis|rgmg|atlantinc|atlantic union/i.test(both)) return "Long Term Liability";
+    if (/payable/i.test(both)) return "Accounts Payable";
+    if (/credit card/i.test(both)) return "Credit Card";
+    return "Other Current Liability";
+  }
+  if (type === "Equity") {
+    if (/retained/i.test(name)) return "Retained Earnings";
+    return "Owners Equity";
+  }
+  if (type === "Revenue") {
+    if (/rent/i.test(name)) return "Rental Income";
+    return "Other Primary Income";
+  }
+  if (type === "Cost of Goods Sold") return "Cost of Goods Sold";
+  if (type === "Expense") {
+    if (/repair|maintenance|construction/i.test(name)) return "Maintenance & Repairs";
+    if (/insurance/i.test(name)) return "Insurance";
+    if (/tax/i.test(name)) return "Property Tax";
+    if (/utilit|electric|\bgas\b|water/i.test(name)) return "Utilities";
+    if (/bank charge|\bfee\b/i.test(name)) return "Bank Charges";
+    if (/legal|professional/i.test(name)) return "Professional Fees";
+    if (/office|software/i.test(name)) return "Office Supplies";
+    return "Other Expense";
+  }
+  return null;
+}
+
 // ---- mapping suggestions -------------------------------------------
 
 // QuickBooks names bank accounts by process ("Sigma ACH - 0822") while
@@ -575,9 +635,11 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
   const enriched = accounts.map(a => {
     const ar = a.type === "Asset" ? suggestTenantAR(a.path, customerNames) : null;
     const suggestion = suggestAccountMatch(a, existingAccounts);
+    const role = ar ? "tenant_ar" : "normal";
     return {
       ...a,
-      role: ar ? "tenant_ar" : "normal",
+      role,
+      subtype: inferAccountSubtype({ type: a.type, path: a.path, leaf: a.leaf, parent: a.parent, role }),
       tenantName: ar ? ar.customer : null,
       suggestion,
       action: suggestion && suggestion.score >= autoMapThreshold ? "map" : "create",
