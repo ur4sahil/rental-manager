@@ -82,14 +82,24 @@ function testFileStructure() {
   const actualCompFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.js'));
   assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 40, `src/components/ has 23..40 files (found ${actualCompFiles.length})`);
 
-  // Total line count. Upper bound bumped to 35000 to match the
-  // product surface today (reports center, bank rules v2, wizard,
-  // move-out RPC wrappers, etc.). Lower bound kept as a sanity
-  // floor that catches accidental mass-deletes.
+  // Total line count. Upper bound raised to 37500 for the QuickBooks
+  // ledger import (parser, mapping wizard, server route) and the Cmd+K
+  // command palette — roughly 1,900 deliberate lines across
+  // src/utils/qbImport.js, src/components/QuickBooksImport.js and
+  // src/components/CommandPalette.js.
+  //
+  // Worth noting how this was found: the bound was breached and stayed
+  // breached for ten commits because this suite wasn't being run
+  // alongside the bank and schema ones. The guard only earns its keep if
+  // it runs — it is in `npm run test:unit`, so use that rather than
+  // cherry-picking suites.
+  //
+  // Lower bound kept as a sanity floor that catches accidental
+  // mass-deletes.
   const allJsFiles = collectJsFiles(SRC);
   const totalLines = allJsFiles.reduce((sum, f) => sum + lineCount(f), 0);
   assert(totalLines >= 20000, `Total src lines >= 20000 (${totalLines})`);
-  assert(totalLines <= 35000, `Total src lines <= 35000 (${totalLines})`);
+  assert(totalLines <= 37500, `Total src lines <= 37500 (${totalLines})`);
 }
 
 // ───────────────────────────────────────────

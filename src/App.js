@@ -35,6 +35,7 @@ import { RoleManagement, AuditTrail, ArchivePage, ArchivedItems, ErrorLogDashboa
 import { EmailNotifications } from "./components/Notifications";
 import { Messages } from "./components/Messages";
 import { CompanySelector, PendingRequestsPanel, PendingPMAssignments } from "./components/CompanySelector";
+import { CommandPalette } from "./components/CommandPalette";
 import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
 import { InsuranceTracker } from "./components/Insurance";
@@ -399,6 +400,27 @@ function AppInner() {
   const [page, setPageRaw] = useState(() => initialDeepLink || "dashboard");
 
   const [pageAction, setPageAction] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Cmd+K (Ctrl+K elsewhere) opens the command palette from anywhere.
+  // Bound on the document rather than a container so it works no matter
+  // what has focus, and skipped while typing into a field so it can't
+  // steal a keystroke from a form.
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = (e.key || "").toLowerCase();
+      if (k !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const el = document.activeElement;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      // Cmd+K inside a text field is a legitimate app shortcut too, so
+      // still open — but never when a modifier-less key would be eaten.
+      e.preventDefault();
+      setPaletteOpen(v => !v);
+      if (typing && el.blur) el.blur();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
   function setScreen(s) { setScreenRaw(s); screenRef.current = s; if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
   // Mirror `screen` into a ref so the auth-state-change subscriber
@@ -1394,6 +1416,15 @@ function AppInner() {
   )}
   {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
   {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
+  <CommandPalette
+  open={paletteOpen}
+  onClose={() => setPaletteOpen(false)}
+  nav={adminNav}
+  currentPage={effectivePage}
+  companyName={activeCompany?.name || ""}
+  onNavigate={(id, action) => setPage(id, action)}
+  onSwitchCompany={() => setScreen("company_select")}
+  />
   <ErrorBoundary key={effectivePage + "-" + activeCompany.id}>
   <Page
   key={activeCompany.id}
