@@ -864,79 +864,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
 
-  {/* LEDGER */}
-  {activePanel === "ledger" && (
-  <div className="flex-1 overflow-y-auto p-4">
-  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-danger-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-positive-50" : "bg-brand-50/30"}`}>
-  <Btn variant="danger" size="sm" className="absolute top-3 right-3" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
-  <div className="text-xs text-neutral-400 mb-1">Current Balance</div>
-  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-danger-500" : safeNum(selectedTenant?.balance) < 0 ? "text-positive-600" : "text-neutral-700"}`}>
-  {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
-  </div>
-  {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
-  <Btn variant="danger" size="sm" className="mt-2 w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
-  )}
-  </div>
-  <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
-  <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
-  <div className="grid grid-cols-3 gap-2">
-  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })}>
-  <option value="charge">Charge</option>
-  <option value="payment">Payment</option>
-  <option value="credit">Credit</option>
-  <option value="late_fee">Late Fee</option>
-  </Select>
-  <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
-  <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
-  </div>
-  <Btn size="sm" className="mt-2 w-full" onClick={addLedgerEntry}>Add Transaction</Btn>
-  </div>
-  <div className="space-y-2">
-  {ledger.map(e => (
-  <div key={e.id} className="bg-white border border-brand-50 rounded-lg px-3 py-2.5">
-  <div className="flex justify-between items-start">
-  <div>
-  <div className="text-sm font-medium text-neutral-800">{e.description}</div>
-  <div className="text-xs text-neutral-400">{e.date}</div>
-  </div>
-  <div className="text-right">
-  <div className={`text-sm font-bold ${e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500"}`}>
-  {e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}
-  </div>
-  <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
-  </div>
-  </div>
-  </div>
-  ))}
-  {ledger.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No ledger entries yet</div>}
-  </div>
-  </div>
-  )}
-
-  {/* MESSAGES */}
-  {activePanel === "messages" && (
-  <div className="flex-1 flex flex-col overflow-hidden">
-  <MessageThread
-    messages={messages}
-    viewerRole={userRole || "admin"}
-    viewerName={userProfile?.name || "You"}
-    tenantName={selectedTenant?.name}
-    onDelete={deleteStaffMessage}
-    emptyLabel="No messages yet"
-  />
-  <MessageComposer
-    value={newMessage}
-    onChange={setNewMessage}
-    onSend={sendMessage}
-    sending={sendingMsg}
-    attachment={msgAttachment}
-    onAttachmentChange={setMsgAttachment}
-    showToast={showToast}
-    placeholder={"Message " + selectedTenant.name + "…"}
-  />
-  </div>
-  )}
-
   {/* LEASE */}
   {activePanel === "lease" && (
   <div className="flex-1 overflow-y-auto p-4">
@@ -1064,19 +991,49 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Tab content */}
   <div className="px-6 py-4 flex-1 overflow-y-auto">
 
-  {/* Ledger tab (default) */}
+  {/* Ledger tab (default).
+      This is the ONLY reachable tenant ledger panel. A second, richer
+      copy used to sit inside the lease drawer above, permanently dead
+      behind that drawer's `activePanel === "lease"` gate. Hoisting it
+      would have put two ledgers on screen at once, so it was deleted
+      and its exclusive features — Export PDF, Apply Late Fee, the
+      inline Add Transaction form and the per-entry running balance —
+      were folded in here instead. */}
   {(activePanel === "detail" || activePanel === "ledger") && (
   <div>
-  <div className="flex items-center justify-between mb-3">
+  <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
   <h3 className="text-sm font-semibold text-neutral-700">Transaction History</h3>
+  <div className="flex gap-2">
+  <Btn variant="danger" size="sm" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
   <Btn variant="primary" size="sm" onClick={() => setPage("accounting", "newJE")}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
+  </div>
+  </div>
+  {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
+  <Btn variant="danger" size="sm" className="mb-3 w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
+  )}
+  <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
+  <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
+  <div className="grid grid-cols-3 gap-2">
+  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })}>
+  <option value="charge">Charge</option>
+  <option value="payment">Payment</option>
+  <option value="credit">Credit</option>
+  <option value="late_fee">Late Fee</option>
+  </Select>
+  <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
+  <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
+  </div>
+  <Btn size="sm" className="mt-2 w-full" onClick={addLedgerEntry}>Add Transaction</Btn>
   </div>
   {ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
   {ledger.slice(0, 20).map((e, i) => (
-  <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
+  <div key={e.id || i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
   <div><div className="font-medium text-neutral-700">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
+  <div className="text-right">
   <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
+  </div>
   </div>
   ))}
   </div>
@@ -1568,7 +1525,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex items-center gap-2 mb-4 flex-wrap">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="w-64" />
   <Select filter value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
-  <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
+  {/* Must cover every lease_status the app can write. PropertyImport
+      stores "current"/"past" for imported tenants; omitting those made
+      the filter silently return zero rows on any imported portfolio. */}
+  <option value="all">All Status</option><option value="active">Active</option><option value="current">Current</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
   <Select filter value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Properties</option>
@@ -1679,7 +1639,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-400 block mb-1">New Status</label>
   <Select id="bulk-status-val"  >
-  <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
+  <option value="active">Active</option><option value="current">Current</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
   </div>
   <Btn variant="purple" className="w-full" onClick={async () => {
@@ -1750,7 +1710,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1 items-center"><Input type="number" min="0" step="0.01" placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-0 focus:border-brand-300 focus:outline-none" /><Select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="border border-brand-100 rounded-2xl px-2 py-2 text-sm w-12 shrink-0 focus:outline-none"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
-  {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
+  {["active", "current", "notice", "past", "expired", "inactive"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>

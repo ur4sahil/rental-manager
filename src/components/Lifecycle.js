@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TextLink} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -288,6 +288,28 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <PageHeader title="Move-Out Complete" />
   <p className="text-neutral-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
   <Btn onClick={() => setPage("dashboard")}>Back to Dashboard</Btn>
+  </div>
+  );
+
+  // Nothing to move out: the tenants query above is deliberately scoped to
+  // lease_status = "active" (moving out a tenant who already left would
+  // re-run terminations and post duplicate accounting), so a company whose
+  // tenants are all "past" gets an empty dropdown. Without this the wizard
+  // renders a select containing only the placeholder and a permanently
+  // disabled "Next" — indistinguishable from a broken page. Say why, and
+  // point at the screen where the lease status can be fixed.
+  // companyId guard: before it hydrates the effect bails without querying,
+  // so an empty `tenants` there means "not loaded yet", not "none eligible".
+  if (companyId && tenants.length === 0) return (
+  <div className="max-w-2xl mx-auto">
+  <PageHeader title="Move-Out Wizard" />
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <EmptyState icon="person_off" title="No tenants with an active lease"
+  subtitle="A move-out can only be run for a tenant whose lease status is Active. No tenant in this company currently has one." />
+  <div className="flex justify-center">
+  <Btn variant="primary" icon="people" onClick={() => setPage("tenants")}>Go to Tenants</Btn>
+  </div>
+  </div>
   </div>
   );
 

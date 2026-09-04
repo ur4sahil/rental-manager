@@ -376,6 +376,28 @@ function ResetPasswordScreen({ currentUser, showToast }) {
   );
 }
 
+// Every value setScreen() is ever called with, plus the initial `screen`
+// state ("loading") and the legacy camelCase spelling older builds wrote.
+// setScreen() pushes the screen name into the URL hash, so any of these can
+// be sitting in `location.hash` — none of them is a page id, and treating
+// one as a page id silently dumps the user on the Dashboard. Both deep-link
+// guards read THIS list so they can never drift out of sync with the
+// setScreen() call sites again (they previously checked "companySelect"
+// while setScreen wrote "company_select", so it sailed straight through).
+const SCREEN_HASHES = new Set([
+  "loading",
+  "landing",
+  "login",
+  "set_password",
+  "reset_password",
+  "company_select",
+  "app",
+  // Legacy spelling — still honored so old bookmarks/history entries that
+  // carry it are not mistaken for a page.
+  "companySelect",
+]);
+function isScreenHash(h) { return SCREEN_HASHES.has(h); }
+
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
   // Capture the very first hash the user landed on. Push notification
@@ -392,7 +414,7 @@ function AppInner() {
     if (!h) return null;
     // Filter out values that are screen names, not pages, so we don't
     // bounce a user who reloaded mid-login back to the login screen.
-    if (h === "login" || h === "companySelect" || h === "loading" || h === "app") return null;
+    if (isScreenHash(h)) return null;
     // Supabase's recovery / magic-link hash lands here as
     // "access_token=...&type=recovery&...". detectSessionInUrl usually
     // clears it before this runs, but if a version bump ever changes
@@ -835,10 +857,20 @@ function AppInner() {
   if (deepLink) {
     setPage(deepLink);
     deepLinkRef.current = null; // one-shot — don't replay on re-auth
-  } else if (hashPage && hashPage !== "app" && hashPage !== "login" && hashPage !== "companySelect" && hashPage !== "loading") {
+  } else if (hashPage && !isScreenHash(hashPage)) {
     setPageRaw(hashPage);
   } else {
-    setPage("dashboard");
+    // The hash is a screen name (or empty). That happens on a SECOND
+    // routing pass: getSession().then(routeSignedIn) and the
+    // onAuthStateChange INITIAL_SESSION handler can both reach
+    // autoSelectCompany, and the loser re-runs setScreen("company_select")
+    // — pushing "#company_select" over the page the first pass had
+    // already resolved. deepLinkRef is one-shot, so it is null by then
+    // and hard-coding "dashboard" here yanked the user off the page they
+    // had just landed on. `page` was seeded from the deep link at mount
+    // and updated by the first pass, so it is the right answer; re-push
+    // it to repair the clobbered hash too.
+    setPage(pageRef.current || "dashboard");
   }
   }
 

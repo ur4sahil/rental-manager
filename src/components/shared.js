@@ -45,8 +45,21 @@ export class ErrorBoundary extends React.Component {
   }
 }
 
+// Lease-lifecycle states that only the tenant Badge renders. They are
+// kept out of the shared `statusColors` map (helpers.js) so they cannot
+// collide with the work-order / payment / property vocabularies that
+// map reuses. `current` and `past` are what PropertyImport writes for
+// imported tenants, so without these every imported tenant rendered an
+// unstyled grey badge.
+const leaseStatusColors = {
+  current: "bg-positive-100 text-positive-700",
+  past: "bg-neutral-200 text-neutral-700",
+  expired: "bg-caution-100 text-caution-700",
+  inactive: "bg-neutral-100 text-neutral-500",
+};
+
 export function Badge({ status, label }) {
-  const color = statusColors[status] || "bg-neutral-100 text-neutral-600";
+  const color = statusColors[status] || leaseStatusColors[status] || "bg-neutral-100 text-neutral-600";
   return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${color}`}>{label || status}</span>;
 }
 
