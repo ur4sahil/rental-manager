@@ -714,7 +714,12 @@ function AppInner() {
   }
   if (match) {
   const { data: company } = await supabase.from("companies").select("*").eq("id", urlCompanyId).maybeSingle();
-  if (company) { window.history.replaceState({}, "", window.location.pathname); handleSelectCompany(company, match.role, user); return; }
+  // Keep the hash. window.location.pathname is just "/", so replacing
+  // with it dropped the deep-link fragment as well as the query string:
+  // "?company=<id>#accounting" became "/" and the user landed on the
+  // dashboard instead. Anyone sharing a link into a specific page was
+  // silently redirected.
+  if (company) { window.history.replaceState({}, "", window.location.pathname + window.location.hash); handleSelectCompany(company, match.role, user); return; }
   }
   }
   // Only tenants auto-select their company (skip selector)
