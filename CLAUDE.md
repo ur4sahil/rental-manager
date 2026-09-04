@@ -19,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm start                # Dev server (localhost:3000)
 npm run build            # Production build
 git push origin main     # Deploy to production (Vercel auto-deploys; never use `vercel --prod`)
+git push origin staging  # Test environment — see ENVIRONMENTS.md (SETUP IN PROGRESS, not yet live)
 npx supabase db push     # Push DB migrations
 ```
 
@@ -30,6 +31,9 @@ Tests live in a **separate `tests/` directory** with its own `package.json` and 
 cd tests && npm test                                  # Run ALL tests (infra + schema + data + errors + bank + e2e)
 cd tests && node data-layer.test.js                   # 298 data-layer tests
 cd tests && node bank-transactions.test.js            # 147 bank/teller/export tests
+cd tests && node class-integrity.test.js              # acct_classes PK / orphaning guards
+cd tests && node shortcuts.test.js                    # keyboard shortcut registry + handlers
+cd tests && npm run test:unit                         # every non-e2e suite — run this before pushing
 cd tests && node error-management.test.js             # 41 error management tests
 cd tests && npx playwright test                       # 35 E2E browser specs (headless)
 cd tests && npx playwright test --headed              # E2E with visible browser
@@ -76,6 +80,7 @@ src/
 - **File uploads** — MIME type whitelist + magic bytes validation + size limit. Only `text/plain` and `text/csv` allowed for text types
 - **DOMPurify** — all `dangerouslySetInnerHTML` content goes through `DOMPurify.sanitize()` via `sanitizeTemplateHtml()`
 - **DB unique index** — `idx_je_company_reference_unique` on `(company_id, reference)` prevents double-posting
+- **Never put `id` in an `.upsert()` payload when `onConflict` names a different unique constraint** — PostgREST compiles it to `ON CONFLICT (...) DO UPDATE SET id = EXCLUDED.id`, which REWRITES the row's primary key and orphans every reference. This silently detached 13,947 journal lines from `acct_classes` on 2026-09-04. Let the column default supply the id. `acct_journal_lines.class_id` and `properties.class_id` now have FKs (`ON UPDATE CASCADE ON DELETE SET NULL`) so it cannot recur; `tests/class-integrity.test.js` guards it
 - **Autopay/lease operations** — always scope by BOTH tenant name AND property to prevent same-name collisions
 
 ## Key Code Patterns
@@ -142,6 +147,7 @@ Teller Connect requires: `script-src cdn.teller.io`, `connect-src api.teller.io 
 
 - All DB writes must include `company_id` — multi-tenant by design
 - Do not run destructive database commands without explicit confirmation
+- Any column holding a reference to another table needs a real FK — without one, nothing prevents silent orphaning
 - Do not force push to main
 - Use soft-delete/archive patterns, never hard-delete production data
 - Always handle errors in async Supabase operations
