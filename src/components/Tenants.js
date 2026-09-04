@@ -650,7 +650,27 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const amount = isCredit ? -Math.abs(Number(newCharge.amount)) : Math.abs(Number(newCharge.amount));
   const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(selectedTenant.property, companyId);
-  const ledgerData = { tenant: selectedTenant.name, property: selectedTenant.property, date: today, description: newCharge.description, amount, type: newCharge.type, balance: 0 };
+  // The receivable leg has to land on the tenant's OWN AR sub-account
+  // (1100-NNN), not the bare 1100 parent. `ledger_entries` is a view
+  // over journal lines whose account carries a tenant_id, so a charge
+  // posted to the parent is real in the GL but invisible in the
+  // tenant's ledger and absent from tenants.balance. This is the same
+  // account the payments path and the QuickBooks import use.
+  const tenantArId = await getOrCreateTenantAR(companyId, selectedTenant.name, selectedTenant.id);
+  // getOrCreateTenantAR falls back to the plain 1100 parent when it
+  // can't resolve or create a sub-account. Read the account back so
+  // the line carries that account's real name either way ("AR - Name"
+  // for a sub-account, "Accounts Receivable" for the parent fallback),
+  // and so we know whether the DB balance trigger will fire for it.
+  const arAccountId = tenantArId || "1100";
+  let arAccountName = "Accounts Receivable";
+  let arIsPerTenant = false;
+  if (tenantArId) {
+  const { data: arAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", tenantArId).maybeSingle();
+  if (arAcct?.name) arAccountName = arAcct.name;
+  arIsPerTenant = !!arAcct?.tenant_id && String(arAcct.tenant_id) === String(selectedTenant.id);
+  }
+  const ledgerData = { tenant: selectedTenant.name, tenant_id: selectedTenant.id, property: selectedTenant.property, date: today, description: newCharge.description, amount, type: newCharge.type, balance: 0 };
   const balData = { tenantId: selectedTenant.id, amount };
   // JE lines depend on charge type
   let jeLines;
@@ -658,13 +678,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (newCharge.type === "charge") {
   jeDesc = "Manual charge \u2014 " + selectedTenant.name + " \u2014 " + newCharge.description;
   jeLines = [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
+  { account_id: arAccountId, account_name: arAccountName, debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
   { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
   ];
   } else if (newCharge.type === "late_fee") {
   jeDesc = "Late fee \u2014 " + selectedTenant.name + " \u2014 " + newCharge.description;
   jeLines = [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: "Late fee: " + selectedTenant.name },
+  { account_id: arAccountId, account_name: arAccountName, debit: Math.abs(amount), credit: 0, class_id: classId, memo: "Late fee: " + selectedTenant.name },
   { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
   ];
   } else {
@@ -674,12 +694,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
   ];
   }
+  // When the receivable leg lands on the per-tenant AR sub-account the
+  // sync_tenant_balance_lines trigger recomputes tenants.balance from
+  // the GL on line insert. Passing balanceUpdate as well would apply
+  // the amount a second time (see 20260430000003_post_je_drop_manual_
+  // balance.sql — same double-count that drifted 14 tenants). The
+  // payment/credit branch still posts to the bare parent, so it keeps
+  // the manual balance update.
+  const arLegIsPerTenant = arIsPerTenant && (newCharge.type === "charge" || newCharge.type === "late_fee");
   // Unified: JE first → ledger → balance (all gated on JE success)
   const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
   lines: jeLines,
   ledgerEntry: ledgerData,
-  balanceUpdate: balData,
+  balanceUpdate: arLegIsPerTenant ? null : balData,
   });
   if (!result.jeId) return; // toast already shown by postAccountingTransaction
   // Fetch fresh tenant data to avoid stale closure state
