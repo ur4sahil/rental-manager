@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Multi-file React SPA** — `src/App.js` (~800 lines, thin router) + 8 utils in `src/utils/` + 23 components in `src/components/`, bootstrapped with create-react-app (via CRACO)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS + RPCs)
-- **Hosting:** Vercel (https://housify365.com)
+- **Hosting:** Vercel — production `https://housify365.com`, test `https://test.housify365.com` (`staging` branch, separate Supabase project). Schema and data changes go to test first; see `ENVIRONMENTS.md`
 - **Payments:** Stripe
 - **Banking:** Teller.io (mTLS) — Vercel API routes in `/api/`, NOT Supabase Edge Functions
 - **Styling:** Tailwind CSS v4 (via PostCSS)
@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm start                # Dev server (localhost:3000)
 npm run build            # Production build
 git push origin main     # Deploy to production (Vercel auto-deploys; never use `vercel --prod`)
-git push origin staging  # Test environment — see ENVIRONMENTS.md (SETUP IN PROGRESS, not yet live)
+git push origin staging  # Deploys test.housify365.com (own DB, Sahil LLC only) — see ENVIRONMENTS.md
 npx supabase db push     # Push DB migrations
 ```
 
@@ -82,6 +82,7 @@ src/
 - **DB unique index** — `idx_je_company_reference_unique` on `(company_id, reference)` prevents double-posting
 - **Never put `id` in an `.upsert()` payload when `onConflict` names a different unique constraint** — PostgREST compiles it to `ON CONFLICT (...) DO UPDATE SET id = EXCLUDED.id`, which REWRITES the row's primary key and orphans every reference. This silently detached 13,947 journal lines from `acct_classes` on 2026-09-04. Let the column default supply the id. `acct_journal_lines.class_id` and `properties.class_id` now have FKs (`ON UPDATE CASCADE ON DELETE SET NULL`) so it cannot recur; `tests/class-integrity.test.js` guards it
 - **Autopay/lease operations** — always scope by BOTH tenant name AND property to prevent same-name collisions
+- **`properties.address` is DERIVED**, not set directly — the `sync_addr_ins`/`sync_addr_upd` triggers compute it from `address_line_1/2`, `city`, `state`, `zip` via `compute_property_address()`. To change an address, update the components and call `rename_property_from_components()`, which cascades the new value to tenants, payments, leases, work orders, documents, utilities, journal entries, `acct_classes.name` and `property_setup_wizard`. `properties.short_name` is what reports display
 
 ## Key Code Patterns
 
@@ -153,3 +154,15 @@ Teller Connect requires: `script-src cdn.teller.io`, `connect-src api.teller.io 
 - Always handle errors in async Supabase operations
 - Teller API routes MUST be Vercel serverless functions (need mTLS), never Supabase Edge Functions
 - New reports MUST include an `exportExcel` case with formulas, sections, and formatting
+
+## Schema Baseline
+
+`supabase/baseline/schema.sql` is the full production schema. The 158 migrations
+**cannot rebuild the database** — none of the core tables is created by any of
+them; they predate the migration chain, and the first already assumes `payments`
+exists. `supabase db push` against an empty project fails. Rebuild from the
+baseline instead (verified byte-for-byte identical to production across 4,083
+objects). Regenerate it with `pg_dump --schema=public --schema-only --no-owner`
+after schema changes reach production — and never with `--no-privileges`, or the
+508 GRANTs to anon/authenticated/service_role are lost and PostgREST reads
+nothing.
