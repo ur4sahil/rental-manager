@@ -32,7 +32,12 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   if (!guardSubmit("uploadDocument")) return;
   try {
   const file = fileRef.current?.files?.[0];
-  if (!file || !form.name) return;
+  // Fail loudly. Returning silently here meant clicking "Upload" with an
+  // empty form did nothing at all — no toast, no inline error, no state
+  // change — so the user had no idea what was wrong. Same
+  // showToast(..., "error") pattern every other create form uses.
+  if (!form.name.trim()) { showToast("Document name is required.", "error"); return; }
+  if (!file) { showToast("Please select a file to upload.", "error"); return; }
   // Validate file type and size
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }

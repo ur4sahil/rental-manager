@@ -15,7 +15,14 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "Standard Late Fee", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount || 50), fee_type: companySettings.late_fee_type || "flat" });
+  // A new rule starts with NO name. The name is the one field that
+  // identifies the rule, so requiring the user to type it is what makes
+  // "+ New Rule" → "Save Rule" a deliberate act rather than a one-click
+  // insert of a fully pre-filled row. The numeric policy defaults stay
+  // seeded from company settings (same convention as Leases /
+  // RecurringJournalEntries) and the form says so explicitly.
+  const blankRule = () => ({ name: "", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount || 50), fee_type: companySettings.late_fee_type || "flat" });
+  const [form, setForm] = useState(blankRule);
 
   useEffect(() => { fetchData(); }, [companyId]);
 
@@ -70,6 +77,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   async function saveRule() {
   if (!guardSubmit("saveRule")) return;
   try {
+  if (!form.name.trim()) { showToast("Rule name is required.", "error"); return; }
   if (!form.grace_days || !form.fee_amount) { showToast("Please fill all fields.", "error"); return; }
   if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { showToast("Grace days must be a valid number.", "error"); return; }
   if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { showToast("Fee amount must be a positive number.", "error"); return; }
@@ -77,6 +85,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   addNotification("⚠️", `Late fee rule "${form.name}" created`);
   setShowForm(false);
+  setForm(blankRule());
   fetchData();
   } finally { guardRelease("saveRule"); }
   }
@@ -161,7 +170,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   <div className="flex gap-2">
   {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-danger-500 hover:bg-danger-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
-  <Btn onClick={() => setShowForm(!showForm)}>+ New Rule</Btn>
+  <Btn onClick={() => { if (!showForm) setForm(blankRule()); setShowForm(!showForm); }}>+ New Rule</Btn>
   </div>
   </div>
   {rules.length > 0 && (
@@ -180,16 +189,17 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   )}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
-  <h3 className="font-semibold text-neutral-700 mb-3">New Late Fee Rule</h3>
+  <h3 className="font-semibold text-neutral-700 mb-1">New Late Fee Rule</h3>
+  <p className="text-xs text-neutral-400 mb-3">Grace period, fee type and amount are pre-filled as suggested defaults from your company settings — adjust them as needed. Give the rule a name to save it.</p>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days) <span className="text-neutral-300">· suggested</span></label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })}><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"} <span className="text-neutral-300">· suggested</span></label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveRule}>Save Rule</Btn>
-  <Btn variant="secondary" onClick={() => setShowForm(false)}>Cancel</Btn>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setForm(blankRule()); }}>Cancel</Btn>
   </div>
   </div>
   )}

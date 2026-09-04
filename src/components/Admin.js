@@ -178,9 +178,14 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   async function saveUser() {
   if (!guardSubmit("saveUser")) return;
   try {
+  // These mirror, field for field, what the Save button's `disabled`
+  // expression used to swallow. The button is now always clickable so
+  // the user gets a message naming the actual problem instead of a
+  // greyed-out button with no explanation.
+  if (!form.first_name.trim()) { showToast("First name is required.", "error"); return; }
+  if (!form.last_name.trim()) { showToast("Last name is required.", "error"); return; }
   if (!form.email.trim()) { showToast("Email is required.", "error"); return; }
-  if (!form.name.trim()) { showToast("Name is required.", "error"); return; }
-  if (!form.email.trim() || !form.email.includes("@")) { showToast("Please enter a valid email address.", "error"); return; }
+  if (!form.email.includes("@")) { showToast("Please enter a valid email address.", "error"); return; }
   if (customPages.length === 0) { showToast("Please select at least one module.", "error"); return; }
 
   // Admin/tenant never get a manager — admin sits at the top of the
@@ -419,7 +424,6 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   <Btn
     size="sm"
     onClick={saveUser}
-    disabled={!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.email.includes("@") || customPages.length === 0}
   >
     {editingUser ? "Save Changes" : "Add User"}
   </Btn>
