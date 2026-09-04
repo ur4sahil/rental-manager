@@ -2,13 +2,23 @@
   "redirects": [
     {
       "source": "/(.*)",
-      "has": [{ "type": "host", "value": "rental-manager-one.vercel.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "rental-manager-one.vercel.app"
+        }
+      ],
       "destination": "https://housify365.com/$1",
       "permanent": true
     },
     {
       "source": "/(.*)",
-      "has": [{ "type": "host", "value": "www.housify365.com" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "www.housify365.com"
+        }
+      ],
       "destination": "https://housify365.com/$1",
       "permanent": true
     }
@@ -39,13 +49,49 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-        { "key": "X-DNS-Prefetch-Control", "value": "on" },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' https://js.stripe.com https://cdn.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://hcaptcha.com https://*.hcaptcha.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://hoymytpyaudjvsgiiibn.supabase.co wss://hoymytpyaudjvsgiiibn.supabase.co https://api.stripe.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io; frame-src https://js.stripe.com https://cdn.plaid.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com; object-src 'none'; base-uri 'self'" }
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "X-DNS-Prefetch-Control",
+          "value": "on"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://js.stripe.com https://cdn.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://hcaptcha.com https://*.hcaptcha.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://hoymytpyaudjvsgiiibn.supabase.co wss://hoymytpyaudjvsgiiibn.supabase.co https://api.stripe.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io; frame-src https://js.stripe.com https://cdn.plaid.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com; object-src 'none'; base-uri 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "test.housify365.com"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://js.stripe.com https://cdn.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://hcaptcha.com https://*.hcaptcha.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://vpeewlplgxthckpidhxo.supabase.co wss://vpeewlplgxthckpidhxo.supabase.co https://api.stripe.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io; frame-src https://js.stripe.com https://cdn.plaid.com https://*.plaid.com https://hcaptcha.com https://*.hcaptcha.com; object-src 'none'; base-uri 'self'"
+        }
       ]
     }
   ]

@@ -1,0 +1,282 @@
+-- acct_accounts	4368db04-1fa2-4720-a215-8f2abc0efd6f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	4368db04-1fa2-4720-a215-8f2abc0efd6f	4150	b2e6d4cf-9bbf-4738-ae79-22335145a15f	\N	\N
+-- acct_accounts	6bb75e25-6fc3-4add-a68d-9141d8d01fbf-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	6bb75e25-6fc3-4add-a68d-9141d8d01fbf	4150	da846a43-f66b-4cf8-aa5b-0dbb218c0c13	\N	\N
+-- acct_accounts	7c12c2ac-cf6f-4836-9a7d-9f2a46783770-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	7c12c2ac-cf6f-4836-9a7d-9f2a46783770	4150	1bae1d7a-941b-43ee-9574-3214f69b028c	\N	\N
+-- acct_accounts	8b858d39-2272-442a-9986-62c2b6d08451-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	8b858d39-2272-442a-9986-62c2b6d08451	4150	720a11f0-e6b7-48a2-8754-e16f49f14a09	\N	\N
+-- acct_accounts	912f655e-24d7-4aa7-91fa-03539e2c55fe-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	912f655e-24d7-4aa7-91fa-03539e2c55fe	4150	a999478e-b9c2-45a3-a655-56a0b5efe928	\N	\N
+-- acct_accounts	b97d9f8c-2d0e-44ea-bbf0-03fbf0f99c6e-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	b97d9f8c-2d0e-44ea-bbf0-03fbf0f99c6e	4150	79af72fb-8eb2-46a2-aff0-b953a07aeec5	\N	\N
+-- acct_accounts	c6f4db4b-a6fa-4168-a1d2-8d7bc6998ba4-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	c6f4db4b-a6fa-4168-a1d2-8d7bc6998ba4	4150	de6659f8-3a1b-4585-ad20-74c3eef6c258	\N	\N
+-- acct_accounts	co-02a3619adb7bb646-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-02a3619adb7bb646	4150	504d104d-4594-4ffe-bcc6-15b2b7152a8c	\N	\N
+-- acct_accounts	co-0a71232a01d739a2-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0a71232a01d739a2	4150	749a82f3-a759-450e-8df7-1f23a859b9da	\N	\N
+-- acct_accounts	co-0c6f5627ffcb321c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0c6f5627ffcb321c	4150	12b19d07-0739-4186-a05b-728f214085dd	\N	\N
+-- acct_accounts	co-0c71e47549e506ca-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0c71e47549e506ca	4150	0454c893-fa58-486f-ac04-92d6a0506d92	\N	\N
+-- acct_accounts	co-0f371b61b9d00601-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0f371b61b9d00601	4150	83793f7c-cb3c-47bb-adb2-af11dc92cb16	\N	\N
+-- acct_accounts	co-0f879ff6aaafed45-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0f879ff6aaafed45	4150	36da6079-f522-4d45-9413-7dc2a22531e1	\N	\N
+-- acct_accounts	co-0fdc6890b2f2020d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0fdc6890b2f2020d	4150	c3ba1e27-4dd7-4990-b114-81402fd8a5e2	\N	\N
+-- acct_accounts	co-0ff5cad9d200ba44-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-0ff5cad9d200ba44	4150	3b57ba01-e600-4a51-a0b9-8b381f18a5b5	\N	\N
+-- acct_accounts	co-1116a7cdd7b1e37c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-1116a7cdd7b1e37c	4150	fd8738d7-b9c6-4ae7-9486-a35f64ccdf88	\N	\N
+-- acct_accounts	co-15d59dc61861c65d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-15d59dc61861c65d	4150	b29a182b-a234-405c-b604-e19c5a8249fe	\N	\N
+-- acct_accounts	co-18112e6b9fb405b0-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-18112e6b9fb405b0	4150	a160a1be-07a6-436d-947b-63caee30d36e	\N	\N
+-- acct_accounts	co-18d7da074c75b14c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-18d7da074c75b14c	4150	f0a8dcbe-0866-4127-a78d-5415b2fd8a52	\N	\N
+-- acct_accounts	co-1a5d3b152209104d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-1a5d3b152209104d	4150	fc1138c0-f7a3-4771-90ae-2cf9d53543af	\N	\N
+-- acct_accounts	co-1bf49691bf21ad02-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-1bf49691bf21ad02	4150	05697d59-bf92-4af8-9de4-efe671ddffbb	\N	\N
+-- acct_accounts	co-21f812174a076e73-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-21f812174a076e73	4150	a213e47e-c6b1-42d4-9e4f-19ed74baaa41	\N	\N
+-- acct_accounts	co-22c24e29049d6063-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-22c24e29049d6063	4150	67f54041-c74f-4eb9-8c2a-985ddef61ce0	\N	\N
+-- acct_accounts	co-24bad7d3f60e9935-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-24bad7d3f60e9935	4150	23ceac25-2d93-424d-af68-1baf35e52f11	\N	\N
+-- acct_accounts	co-266a2653488247d1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-266a2653488247d1	4150	fda3cce5-f8d0-488b-ae2b-4118b21d580a	\N	\N
+-- acct_accounts	co-2932b113392356dc-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-2932b113392356dc	4150	921d874d-3033-4206-a3ca-b94ee30ff667	\N	\N
+-- acct_accounts	co-2a2986332b5eb945-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-2a2986332b5eb945	4150	6adfac48-0dbb-47c8-a2cc-a97cd201d8dc	\N	\N
+-- acct_accounts	co-2cdf1253d69e719d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-2cdf1253d69e719d	4150	a3e1e2fe-a60f-44e5-972e-5aaf2efe178d	\N	\N
+-- acct_accounts	co-2de91b07cdcf8ae1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-2de91b07cdcf8ae1	4150	14b26fe3-d88b-4037-a674-95ae4d90c218	\N	\N
+-- acct_accounts	co-3017247de7fe4664-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3017247de7fe4664	4150	ab351769-03c2-4dfa-bebc-79437d19fef3	\N	\N
+-- acct_accounts	co-310de5d0c839b0b9-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-310de5d0c839b0b9	4150	179312bb-a511-4942-9824-1f6c4f56c1dd	\N	\N
+-- acct_accounts	co-326eed4b3134b91f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-326eed4b3134b91f	4150	dcbcd543-8650-4dc1-b6af-b431eddb224e	\N	\N
+-- acct_accounts	co-37e94492bf6e326f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-37e94492bf6e326f	4150	74eeb5ea-50b6-4b7a-a536-73342ab414fb	\N	\N
+-- acct_accounts	co-39b1d1eeed4ef66b-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-39b1d1eeed4ef66b	4150	c4d1a2da-c2d7-4929-b568-94b6f1eacc8a	\N	\N
+-- acct_accounts	co-3d898fbe795cb0c3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3d898fbe795cb0c3	4150	731b0b68-f21d-4f74-9811-1b0b1386bca4	\N	\N
+-- acct_accounts	co-3d8d92dd3f415772-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3d8d92dd3f415772	4150	19cb90c3-7ae9-4c16-a5ae-e7d46232bff0	\N	\N
+-- acct_accounts	co-3eb3d1a13365a639-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3eb3d1a13365a639	4150	ce4c8360-0874-4694-9d29-f1d93d25f8d4	\N	\N
+-- acct_accounts	co-3f32536aaf75d1f0-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3f32536aaf75d1f0	4150	094c6d97-ca06-4099-8f19-1fb79f1e8349	\N	\N
+-- acct_accounts	co-3f6aff45026f25bc-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3f6aff45026f25bc	4150	6a358dc0-03b6-4ae0-b61f-427af6f9cc72	\N	\N
+-- acct_accounts	co-3f948e039a5895c4-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-3f948e039a5895c4	4150	b9fae6e2-9882-44d5-a9b0-35c5a4d834bf	\N	\N
+-- acct_accounts	co-40572b1bab7b66ae-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-40572b1bab7b66ae	4150	4a40c0a6-4418-4cb2-b65d-61525c842084	\N	\N
+-- acct_accounts	co-43a4ead9bed3b4e9-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-43a4ead9bed3b4e9	4150	c9b28a41-7b51-409c-a81f-c12d98fb29bf	\N	\N
+-- acct_accounts	co-46bb7ad565026ede-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-46bb7ad565026ede	4150	83da9393-960f-4dfb-86e5-262b5252089b	\N	\N
+-- acct_accounts	co-4912db72b8c83a66-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-4912db72b8c83a66	4150	c1b81cc1-3b39-4729-84e7-4e4f90438af8	\N	\N
+-- acct_accounts	co-4d8ae528bcbfb8a1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-4d8ae528bcbfb8a1	4150	7a0f8b37-81f0-46a0-aff3-08c7e741f909	\N	\N
+-- acct_accounts	co-4f353b765f08d6cc-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-4f353b765f08d6cc	4150	09f044ab-48b0-43ea-879e-1a833a5b7c12	\N	\N
+-- acct_accounts	co-53f76eb4832d01d3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-53f76eb4832d01d3	4150	b51798f2-a400-4ee0-ae3f-4eb22606cc64	\N	\N
+-- acct_accounts	co-573ca544cc858890-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-573ca544cc858890	4150	42d4400c-dd63-45d2-ab7d-1cd2094ddb17	\N	\N
+-- acct_accounts	co-57f185ae4b802ca0-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-57f185ae4b802ca0	4150	c17b3802-a4d1-4ac0-bf89-9b2d8f222787	\N	\N
+-- acct_accounts	co-58548becda59b980-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-58548becda59b980	4150	5250a694-ce64-4dd7-be12-a072216d4f43	\N	\N
+-- acct_accounts	co-596921d6a8a8eb6c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-596921d6a8a8eb6c	4150	1519503d-14ba-4107-9271-920c2f45f0eb	\N	\N
+-- acct_accounts	co-5a1ebea20f53ca1d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-5a1ebea20f53ca1d	4150	e7e3baea-a9d2-40d7-b543-cdf6bad086f1	\N	\N
+-- acct_accounts	co-5bdd39f1cc8b0d73-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-5bdd39f1cc8b0d73	4150	432f3538-0f4d-409b-91d8-da688cd3d853	\N	\N
+-- acct_accounts	co-5c7e70d5b06504aa-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-5c7e70d5b06504aa	4150	c8684410-675b-43b8-96f0-6094ed8897c9	\N	\N
+-- acct_accounts	co-5c870fa261dfdc17-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-5c870fa261dfdc17	4150	536e65b2-0246-459a-a345-2a767c4187ee	\N	\N
+-- acct_accounts	co-5ea467641712c9b3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-5ea467641712c9b3	4150	c02c19e4-d4e4-48f6-b18f-29b1ce629be2	\N	\N
+-- acct_accounts	co-6276a7c06437f288-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-6276a7c06437f288	4150	1f201de8-fd77-45d0-b12e-1ec081e625c7	\N	\N
+-- acct_accounts	co-64ca54551340f274-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-64ca54551340f274	4150	67695c4b-5119-48ba-a03e-b4ca45a05ddf	\N	\N
+-- acct_accounts	co-66ff434d45de7594-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-66ff434d45de7594	4150	0fe8bfce-05eb-4e73-b9b1-59a3ab1fdbe6	\N	\N
+-- acct_accounts	co-68415dc8dcaa05c7-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-68415dc8dcaa05c7	4150	b91f92ce-27c5-4210-8012-f4c1d28b2b6f	\N	\N
+-- acct_accounts	co-6b067bc67bf3bbeb-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-6b067bc67bf3bbeb	4150	e6a2353b-c59b-4242-936b-174a59217d97	\N	\N
+-- acct_accounts	co-6d535a7b7b8a2d25-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-6d535a7b7b8a2d25	4150	6986ef77-7b27-4d98-91a2-bc0d995df5e9	\N	\N
+-- acct_accounts	co-70d9618db59db10c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-70d9618db59db10c	4150	2f310331-0bbd-4961-bb00-62046447d0e5	\N	\N
+-- acct_accounts	co-742657f4a552716c-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-742657f4a552716c	4150	ae90b392-2bd8-4b16-9c7e-88f4788bb420	\N	\N
+-- acct_accounts	co-743b8b12aaf096a7-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-743b8b12aaf096a7	4150	01a26aae-b131-404f-bac0-7f5ed495e005	\N	\N
+-- acct_accounts	co-760e68a884087006-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-760e68a884087006	4150	c4f02cfc-4e7d-40e5-bbde-f050e4d34354	\N	\N
+-- acct_accounts	co-7a050dfb7030a8a0-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7a050dfb7030a8a0	4150	88d9dfd2-3401-4e35-81e6-0fbd2be933c8	\N	\N
+-- acct_accounts	co-7a7b65eb9f86e7ef-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7a7b65eb9f86e7ef	4150	9aa9f8db-3e3b-4f96-bad1-4b9181a69bd7	\N	\N
+-- acct_accounts	co-7aa05e0c2224ed5f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7aa05e0c2224ed5f	4150	b002fcfc-2a90-45e9-a5db-aa92665ff66b	\N	\N
+-- acct_accounts	co-7ade7a23b5748ef3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7ade7a23b5748ef3	4150	15caa6b0-51eb-44c5-b566-3f43f174335a	\N	\N
+-- acct_accounts	co-7c72f02b96e18d46-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7c72f02b96e18d46	4150	5ea581a5-a8cc-4db8-9b08-c5702cf68d15	\N	\N
+-- acct_accounts	co-7e0e3d1ee3d66de3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-7e0e3d1ee3d66de3	4150	76c4270f-6f9b-4254-8717-e3ff77408af4	\N	\N
+-- acct_accounts	co-800dbebdedb526aa-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-800dbebdedb526aa	4150	37cae463-ee5e-4b25-8e37-722bddd6f566	\N	\N
+-- acct_accounts	co-8225a2d3ba1be2ea-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-8225a2d3ba1be2ea	4150	e47b23cd-36aa-4bd8-8240-869d4e37cf6d	\N	\N
+-- acct_accounts	co-848cc9b4a397c5be-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-848cc9b4a397c5be	4150	d8bf1503-88db-454d-a5c1-cb37315cfa65	\N	\N
+-- acct_accounts	co-86e58891d5c1ab33-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-86e58891d5c1ab33	4150	182e9f2e-4ae8-485a-bbd1-bb0a3942a62e	\N	\N
+-- acct_accounts	co-8bdb5db6c46f9a1f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-8bdb5db6c46f9a1f	4150	296a5932-669b-400f-b99b-7de49b84983d	\N	\N
+-- acct_accounts	co-8d3dc8922a406957-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-8d3dc8922a406957	4150	a6404f3f-9f78-4bc3-8954-e515ef6b784d	\N	\N
+-- acct_accounts	co-90ed9f8db6b6f44e-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-90ed9f8db6b6f44e	4150	b91be069-a138-4f03-a659-79ac5c05eae6	\N	\N
+-- acct_accounts	co-9112b7d7aa607927-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-9112b7d7aa607927	4150	316baa4f-8937-4846-b882-73f2994c8044	\N	\N
+-- acct_accounts	co-9240e57ee0d702f3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-9240e57ee0d702f3	4150	4ac73360-c463-46a9-9731-1e7347cab2a3	\N	\N
+-- acct_accounts	co-9476b63f39fb3dca-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-9476b63f39fb3dca	4150	288e49ec-2497-4697-98cc-dbe7c88c945b	\N	\N
+-- acct_accounts	co-97608879b2cd45ea-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-97608879b2cd45ea	4150	364c2f2e-7cee-48da-a564-d8a56adeb6e2	\N	\N
+-- acct_accounts	co-990aee27caec1733-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-990aee27caec1733	4150	c6f2eac0-ea77-45d5-af3c-bdbca0d262cd	\N	\N
+-- acct_accounts	co-99ee688d5e16f871-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-99ee688d5e16f871	4150	bd7de15f-7d91-447a-8aae-e4f22cbc394f	\N	\N
+-- acct_accounts	co-9b1fb6f3f5142b04-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-9b1fb6f3f5142b04	4150	b5f06ad0-7498-48cc-9c06-ce045fb8f059	\N	\N
+-- acct_accounts	co-a371833eb9a10e15-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-a371833eb9a10e15	4150	075b43fa-912e-48bc-9db8-4b633fba401c	\N	\N
+-- acct_accounts	co-a6aeedb249a078dc-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-a6aeedb249a078dc	4150	ee4e76c6-6a51-4ba3-9602-14e3bd306b2c	\N	\N
+-- acct_accounts	co-a97a8b295ccb06cb-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-a97a8b295ccb06cb	4150	0e545627-551c-4e04-b9e9-fa3958a68088	\N	\N
+-- acct_accounts	co-aaaa2137f8ed4bb3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-aaaa2137f8ed4bb3	4150	565d1468-0cce-4a00-8b84-179f2f1f018e	\N	\N
+-- acct_accounts	co-ab98466f6564e63d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-ab98466f6564e63d	4150	bccefdf0-d196-4b92-8b30-f2be667b84cc	\N	\N
+-- acct_accounts	co-acd33f0fbe206853-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-acd33f0fbe206853	4150	893e73e2-b600-47da-b17a-401ded61619c	\N	\N
+-- acct_accounts	co-ad39ebbfd66d360d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-ad39ebbfd66d360d	4150	1066b71b-2385-42c3-b226-db60e0127684	\N	\N
+-- acct_accounts	co-adc06d7e8238300a-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-adc06d7e8238300a	4150	50e90ee2-28ac-4cbd-a24f-ea52b1ce3b33	\N	\N
+-- acct_accounts	co-b218b5ce5eee404d-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-b218b5ce5eee404d	4150	9ae3e78e-acc2-4291-867e-79839ca52867	\N	\N
+-- acct_accounts	co-b2efa807f59b836f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-b2efa807f59b836f	4150	0756962b-1686-4e3d-9068-d468192f4ed8	\N	\N
+-- acct_accounts	co-b6f38bc613ce8d02-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-b6f38bc613ce8d02	4150	503c5c93-63dc-4c55-9ad0-534affed3310	\N	\N
+-- acct_accounts	co-bda7ed19288f02ab-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-bda7ed19288f02ab	4150	8373fc31-21a7-4aa9-9f1f-e4ab4ed611ee	\N	\N
+-- acct_accounts	co-bdf6792ddbea8349-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-bdf6792ddbea8349	4150	feac1c41-7245-45eb-ade5-3444183493ba	\N	\N
+-- acct_accounts	co-c1e674be2158f71e-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-c1e674be2158f71e	4150	3d9e8e31-f853-4f19-8786-64396b8c4662	\N	\N
+-- acct_accounts	co-c49ed080d138dfb1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-c49ed080d138dfb1	4150	2f3c0069-d492-4c9f-b925-ab28e09cf0ba	\N	\N
+-- acct_accounts	co-c62291fdd0220a47-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-c62291fdd0220a47	4150	0365013f-e36f-48e2-9aac-f20867083f55	\N	\N
+-- acct_accounts	co-c7b183181786214e-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-c7b183181786214e	4150	0c959caa-8a0f-49ea-8e13-b462ce5496ed	\N	\N
+-- acct_accounts	co-cb3eb16e72e2b15b-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-cb3eb16e72e2b15b	4150	13e17c4e-1e48-4d92-b730-48f27deb785f	\N	\N
+-- acct_accounts	co-cf6030f2bb8ac897-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-cf6030f2bb8ac897	4150	3e333c1b-bc27-49e8-9286-85400b5c5c10	\N	\N
+-- acct_accounts	co-cf73bce3f0b23dea-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-cf73bce3f0b23dea	4150	bc4496cf-9982-48ce-8e85-28c48861eb4a	\N	\N
+-- acct_accounts	co-d22fd3ffd192c974-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d22fd3ffd192c974	4150	ed88b8eb-caaa-4842-9fea-921dff484c99	\N	\N
+-- acct_accounts	co-d266b085afb61f53-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d266b085afb61f53	4150	44cbdc88-132a-4835-9078-49f4d2d2faf2	\N	\N
+-- acct_accounts	co-d37101511bf6d455-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d37101511bf6d455	4150	60fd049e-be30-495d-98a0-d1948920fb5c	\N	\N
+-- acct_accounts	co-d41de988bff863f4-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d41de988bff863f4	4150	3c4c56a9-a3f6-4d22-8bc9-ad368f47a178	\N	\N
+-- acct_accounts	co-d4ffaa6e7e347da9-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d4ffaa6e7e347da9	4150	8bf73cd2-c515-4092-93cf-00e8b76fe057	\N	\N
+-- acct_accounts	co-d7d88b9f99d15ca7-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-d7d88b9f99d15ca7	4150	a88b3e8d-432d-4f59-a3e2-12c132c279fe	\N	\N
+-- acct_accounts	co-db83ee74d2a0612a-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-db83ee74d2a0612a	4150	0818e4c9-5fb2-4b31-b36a-7ac005822b73	\N	\N
+-- acct_accounts	co-dc243cb48ca4bc8f-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-dc243cb48ca4bc8f	4150	583e6907-1e5c-44c0-a165-b3a26a917d15	\N	\N
+-- acct_accounts	co-dd874c80016039de-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-dd874c80016039de	4150	99d090bf-a838-4af2-9f45-c956de73e570	\N	\N
+-- acct_accounts	co-de97c9bccc92bfca-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-de97c9bccc92bfca	4150	11537208-4c7f-4662-a108-1db14940a974	\N	\N
+-- acct_accounts	co-e226a885de93d528-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-e226a885de93d528	4150	c8d708e6-4f54-498f-a7cb-097f95c57a38	\N	\N
+-- acct_accounts	co-e3cacaddfd2d6db1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-e3cacaddfd2d6db1	4150	039a403e-a4f4-41d3-9eb5-4f2ba1cdb6c5	\N	\N
+-- acct_accounts	co-e4321456f634ac70-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-e4321456f634ac70	4150	458a92c0-77e5-492b-ae71-5225c84266af	\N	\N
+-- acct_accounts	co-e48c6a5f99f607ff-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-e48c6a5f99f607ff	4150	229ef8d5-3dcb-4f0d-b30e-6d9a94622b21	\N	\N
+-- acct_accounts	co-e83c09d041f1eded-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-e83c09d041f1eded	4150	6561db4a-c197-4839-9982-7d3ddb537c82	\N	\N
+-- acct_accounts	co-eb71251de62caba7-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-eb71251de62caba7	4150	0fc23034-adc1-4b1d-8ad8-b6612f1ef0f3	\N	\N
+-- acct_accounts	co-ebd25cdbd94e5cf5-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-ebd25cdbd94e5cf5	4150	74891581-ede3-4fb2-aa86-92efd3b53f5b	\N	\N
+-- acct_accounts	co-ecc900c0863315e3-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-ecc900c0863315e3	4150	9eb12c06-3f4c-424b-a898-2671350f53a0	\N	\N
+-- acct_accounts	co-ecc9c15fd1c5ed20-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-ecc9c15fd1c5ed20	4150	09db3042-284d-4a51-84a5-f76de7c80689	\N	\N
+-- acct_accounts	co-eee07c502be987f9-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-eee07c502be987f9	4150	b2dd10af-262c-4eca-8dae-7ded5471f93b	\N	\N
+-- acct_accounts	co-eefcfc745c1a3a75-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-eefcfc745c1a3a75	4150	50304b40-da49-4b09-8039-b3ce56b88941	\N	\N
+-- acct_accounts	co-f0d8f1c4942e4393-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f0d8f1c4942e4393	4150	d8f1f32d-9468-4f64-860c-ac81352fe6bd	\N	\N
+-- acct_accounts	co-f2c9050d768c1be7-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f2c9050d768c1be7	4150	dd04a56f-488c-4b33-82db-62804418e5de	\N	\N
+-- acct_accounts	co-f30b2f45a266d9d8-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f30b2f45a266d9d8	4150	ec6a5b89-4d72-45f1-b8ef-3bcc6ab3ffad	\N	\N
+-- acct_accounts	co-f34adaaf3d393e91-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f34adaaf3d393e91	4150	4e58add3-1c8d-424b-96b4-1cfb7e74d964	\N	\N
+-- acct_accounts	co-f3f1830c1b10adff-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f3f1830c1b10adff	4150	c314b6c6-5e87-4f97-9e5f-1fc36b58f8df	\N	\N
+-- acct_accounts	co-f5802de0f101e3c1-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f5802de0f101e3c1	4150	e209a46d-9a55-479e-931a-4f827c19a451	\N	\N
+-- acct_accounts	co-f95014f0d9c36262-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f95014f0d9c36262	4150	80987ebe-c411-4017-bfdb-fd35bb01cd50	\N	\N
+-- acct_accounts	co-f9b269293d081f64-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f9b269293d081f64	4150	113777ed-64d9-4b54-b6ab-2ed6688c09da	\N	\N
+-- acct_accounts	co-f9c8bfcd2cef1acc-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-f9c8bfcd2cef1acc	4150	d4599783-16c9-4e8c-b174-b8083ce47204	\N	\N
+-- acct_accounts	co-faf63e3803638ff9-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-faf63e3803638ff9	4150	cbb07e48-3d2e-41d6-8f3c-112f82d387b3	\N	\N
+-- acct_accounts	co-fd4c8d6957de2a12-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-fd4c8d6957de2a12	4150	603ac5dc-c748-44c1-8165-9ecf4c139bca	\N	\N
+-- acct_accounts	co-fd75f334d2ec2a90-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-fd75f334d2ec2a90	4150	50e1e67e-1f8e-4f4d-932e-16aebb085fa5	\N	\N
+-- acct_accounts	co-fe50f94e5c0f7c65-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	co-fe50f94e5c0f7c65	4150	2fe4e53e-5195-4902-8377-c0308b2db4ae	\N	\N
+-- acct_accounts	df7a0947-3e7c-4c0d-94ae-797b87866232-4150	Deposit Forfeiture Income	Revenue	Other Income		0	t	2026-03-26 12:47:04.292043+00	df7a0947-3e7c-4c0d-94ae-797b87866232	4150	c2a462a3-8fd1-4f21-9d30-ecfc647bb3db	\N	\N
+-- companies	co-800dbebdedb526aa	Harkirat LLC	LLC	38829069	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:52.066634+00	owner	\N	\N
+-- companies	co-53f76eb4832d01d3	Harkirat LLC	LLC	23674385	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:55.065383+00	owner	\N	\N
+-- companies	co-743b8b12aaf096a7	Harkirat LLC	LLC	88328416	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:56.785546+00	owner	\N	\N
+-- companies	co-8bdb5db6c46f9a1f	Harkirat LLC	LLC	77519421	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:57.732354+00	owner	\N	\N
+-- companies	co-fd4c8d6957de2a12	Harkirat LLC	LLC	31254387	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:58.18979+00	owner	\N	\N
+-- companies	co-57f185ae4b802ca0	Harkirat LLC	LLC	79697704	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:58.381218+00	owner	\N	\N
+-- companies	co-22c24e29049d6063	Harkirat LLC	LLC	45121950	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:58.617725+00	owner	\N	\N
+-- companies	co-37e94492bf6e326f	Harkirat LLC	LLC	74425988	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:59.054644+00	owner	\N	\N
+-- companies	co-d37101511bf6d455	Harkirat LLC	LLC	88504977	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:59.340725+00	owner	\N	\N
+-- companies	co-9b1fb6f3f5142b04	Harkirat LLC	LLC	81552930	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:59.591344+00	owner	\N	\N
+-- companies	co-2932b113392356dc	Harkirat LLC	LLC	86646389	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:54:59.903424+00	owner	\N	\N
+-- companies	co-b6f38bc613ce8d02	Harkirat LLC	LLC	37554717	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:00.193225+00	owner	\N	\N
+-- companies	co-4912db72b8c83a66	Harkirat LLC	LLC	93937988	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:00.787071+00	owner	\N	\N
+-- companies	co-266a2653488247d1	Harkirat LLC	LLC	55762798	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:01.082382+00	owner	\N	\N
+-- companies	co-5bdd39f1cc8b0d73	Harkirat LLC	LLC	13711489	4826		harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:01.419554+00	owner	\N	\N
+-- companies	co-3f32536aaf75d1f0	Harkirat LLC	LLC	65935616	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:11.46329+00	owner	\N	\N
+-- companies	co-0c71e47549e506ca	Harkirat LLC	LLC	34333902	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:12.832147+00	owner	\N	\N
+-- companies	co-8225a2d3ba1be2ea	Harkirat LLC	LLC	73967580	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:13.670621+00	owner	\N	\N
+-- companies	co-0f371b61b9d00601	Harkirat LLC	LLC	44828138	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:13.854292+00	owner	\N	\N
+-- companies	co-a6aeedb249a078dc	Harkirat LLC	LLC	22094582	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:14.079135+00	owner	\N	\N
+-- companies	co-99ee688d5e16f871	Harkirat LLC	LLC	19776355	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:14.257569+00	owner	\N	\N
+-- companies	co-1116a7cdd7b1e37c	Harkirat LLC	LLC	63561029	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:14.415406+00	owner	\N	\N
+-- companies	co-db83ee74d2a0612a	Harkirat LLC	LLC	90540158	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:18.459299+00	owner	\N	\N
+-- companies	co-24bad7d3f60e9935	Harkirat LLC	LLC	31557615	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:18.844104+00	owner	\N	\N
+-- companies	co-c62291fdd0220a47	Harkirat LLC	LLC	82469141	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:19.075615+00	owner	\N	\N
+-- companies	co-ecc900c0863315e3	Harkirat LLC	LLC	21380594	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:19.26861+00	owner	\N	\N
+-- companies	co-f30b2f45a266d9d8	Harkirat LLC	LLC	14560240	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:19.481209+00	owner	\N	\N
+-- companies	co-64ca54551340f274	Harkirat LLC	LLC	68983576	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:19.660282+00	owner	\N	\N
+-- companies	co-596921d6a8a8eb6c	Harkirat LLC	LLC	44061223	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:20.073119+00	owner	\N	\N
+-- companies	co-3f6aff45026f25bc	Harkirat LLC	LLC	23338921	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:20.292198+00	owner	\N	\N
+-- companies	co-6d535a7b7b8a2d25	Harkirat LLC	LLC	24281418	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:20.710417+00	owner	\N	\N
+-- companies	co-b218b5ce5eee404d	Harkirat LLC	LLC	55999642	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:20.800114+00	owner	\N	\N
+-- companies	co-5c7e70d5b06504aa	Harkirat LLC	LLC	23787487	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:22.551296+00	management	\N	\N
+-- companies	co-848cc9b4a397c5be	Harkirat LLC	LLC	80055975	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:22.823133+00	management	\N	\N
+-- companies	co-21f812174a076e73	Harkirat LLC	LLC	67928956	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:23.074829+00	management	\N	\N
+-- companies	co-97608879b2cd45ea	Harkirat LLC	LLC	35388183	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:23.265078+00	management	\N	\N
+-- companies	co-5c870fa261dfdc17	Harkirat LLC	LLC	82067042	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:23.474399+00	management	\N	\N
+-- companies	co-326eed4b3134b91f	Harkirat LLC	LLC	73642952	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:24.700047+00	management	\N	\N
+-- companies	co-990aee27caec1733	Harkirat LLC	LLC	88839245	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:24.711179+00	management	\N	\N
+-- companies	co-5a1ebea20f53ca1d	Harkirat LLC	LLC	96120245	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:24.970403+00	management	\N	\N
+-- companies	co-f95014f0d9c36262	Harkirat LLC	LLC	29415165	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:25.218561+00	management	\N	\N
+-- companies	co-c1e674be2158f71e	Harkirat LLC	LLC	17170188	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:25.515543+00	management	\N	\N
+-- companies	co-760e68a884087006	Harkirat LLC	LLC	24474290	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:25.741047+00	management	\N	\N
+-- companies	co-7e0e3d1ee3d66de3	Harkirat LLC	LLC	59313457	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:46.103672+00	management	\N	\N
+-- companies	co-eefcfc745c1a3a75	Harkirat LLC	LLC	71138468	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:46.351722+00	management	\N	\N
+-- companies	co-310de5d0c839b0b9	Harkirat LLC	LLC	91297968	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:47.12761+00	management	\N	\N
+-- companies	co-ab98466f6564e63d	Harkirat LLC	LLC	61517061	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:46.684295+00	management	\N	\N
+-- companies	co-f9c8bfcd2cef1acc	Harkirat LLC	LLC	54434701	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:46.927193+00	management	\N	\N
+-- companies	co-3d8d92dd3f415772	Harkirat LLC	LLC	19445381	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:47.436062+00	management	\N	\N
+-- companies	co-ad39ebbfd66d360d	Harkirat LLC	LLC	41144571	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:48.6144+00	management	\N	\N
+-- companies	co-d41de988bff863f4	Harkirat LLC	LLC	65676699	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:48.804781+00	management	\N	\N
+-- companies	co-2de91b07cdcf8ae1	Harkirat LLC	LLC	33215928	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:49.032629+00	management	\N	\N
+-- companies	co-9112b7d7aa607927	Harkirat LLC	LLC	89260680	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:49.237661+00	management	\N	\N
+-- companies	co-a97a8b295ccb06cb	Harkirat LLC	LLC	13405098	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:49.484417+00	management	\N	\N
+-- companies	co-fd75f334d2ec2a90	Harkirat LLC	LLC	57042568	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:49.716917+00	management	\N	\N
+-- companies	co-15d59dc61861c65d	Harkirat LLC	LLC	84239671	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:49.866686+00	management	\N	\N
+-- companies	co-3d898fbe795cb0c3	Harkirat LLC	LLC	93442795	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:50.08789+00	management	\N	\N
+-- companies	co-90ed9f8db6b6f44e	Harkirat LLC	LLC	51630358	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:50.40488+00	management	\N	\N
+-- companies	co-6b067bc67bf3bbeb	Harkirat LLC	LLC	21894718	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:50.508464+00	management	\N	\N
+-- companies	co-eb71251de62caba7	Harkirat LLC	LLC	47617311	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:50.715021+00	management	\N	\N
+-- companies	co-58548becda59b980	Harkirat LLC	LLC	21726796	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:55:51.002231+00	management	\N	\N
+-- companies	co-fe50f94e5c0f7c65	Harkirat LLC	LLC	49458574	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:08.427281+00	management	\N	\N
+-- companies	co-acd33f0fbe206853	Harkirat LLC	LLC	33513640	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:08.518073+00	management	\N	\N
+-- companies	co-0fdc6890b2f2020d	Harkirat LLC	LLC	75140913	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:08.685935+00	management	\N	\N
+-- companies	co-dc243cb48ca4bc8f	Harkirat LLC	LLC	32916187	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:09.080396+00	management	\N	\N
+-- companies	co-cf6030f2bb8ac897	Harkirat LLC	LLC	87002013	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:09.449714+00	management	\N	\N
+-- companies	co-eee07c502be987f9	Harkirat LLC	LLC	63873024	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:09.752829+00	management	\N	\N
+-- companies	co-aaaa2137f8ed4bb3	Harkirat LLC	LLC	90865830	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:09.960007+00	management	\N	\N
+-- companies	co-adc06d7e8238300a	Harkirat LLC	LLC	46703961	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:10.26716+00	management	\N	\N
+-- companies	co-742657f4a552716c	Harkirat LLC	LLC	53573581	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:10.471986+00	management	\N	\N
+-- companies	co-18112e6b9fb405b0	Harkirat LLC	LLC	78220525	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:10.786712+00	management	\N	\N
+-- companies	co-7a7b65eb9f86e7ef	Harkirat LLC	LLC	54938503	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:11.399865+00	management	\N	\N
+-- companies	co-7ade7a23b5748ef3	Harkirat LLC	LLC	93786860	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:11.612133+00	management	\N	\N
+-- companies	co-86e58891d5c1ab33	Harkirat LLC	LLC	89014889	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:11.812571+00	management	\N	\N
+-- companies	co-d4ffaa6e7e347da9	Harkirat LLC	LLC	98177463	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:12.958466+00	management	\N	\N
+-- companies	co-f34adaaf3d393e91	Harkirat LLC	LLC	61281069	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:13.151197+00	management	\N	\N
+-- companies	co-02a3619adb7bb646	Harkirat LLC	LLC	75743413	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:13.367975+00	management	\N	\N
+-- companies	co-e83c09d041f1eded	Harkirat LLC	LLC	14862511	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:13.535398+00	management	\N	\N
+-- companies	co-7a050dfb7030a8a0	Harkirat LLC	LLC	38245793	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:13.682387+00	management	\N	\N
+-- companies	co-f5802de0f101e3c1	Harkirat LLC	LLC	70097361	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:13.958111+00	management	\N	\N
+-- companies	co-39b1d1eeed4ef66b	Harkirat LLC	LLC	85151768	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:14.288833+00	management	\N	\N
+-- companies	co-cf73bce3f0b23dea	Harkirat LLC	LLC	69454782	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:14.487869+00	management	\N	\N
+-- companies	co-b2efa807f59b836f	Harkirat LLC	LLC	74082582	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:14.812964+00	management	\N	\N
+-- companies	co-0ff5cad9d200ba44	Harkirat LLC	LLC	21266593	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:15.072728+00	management	\N	\N
+-- companies	co-e48c6a5f99f607ff	Harkirat LLC	LLC	73388429	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:16.229332+00	management	\N	\N
+-- companies	co-68415dc8dcaa05c7	Harkirat LLC	LLC	84226473	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:16.391823+00	management	\N	\N
+-- companies	co-3f948e039a5895c4	Harkirat LLC	LLC	22067717	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:16.62693+00	management	\N	\N
+-- companies	co-d7d88b9f99d15ca7	Harkirat LLC	LLC	12216718	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:17.241924+00	management	\N	\N
+-- companies	co-ecc9c15fd1c5ed20	Harkirat LLC	LLC	55488505	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:17.664465+00	management	\N	\N
+-- companies	co-1bf49691bf21ad02	Harkirat LLC	LLC	80806210	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:17.892273+00	management	\N	\N
+-- companies	co-5ea467641712c9b3	Harkirat LLC	LLC	34688912	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:18.069878+00	management	\N	\N
+-- companies	co-c49ed080d138dfb1	Harkirat LLC	LLC	97024327	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:56:18.479106+00	management	\N	\N
+-- companies	co-3eb3d1a13365a639	Harkirat LLC	LLC	13218157	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:04.483993+00	management	\N	\N
+-- companies	co-9476b63f39fb3dca	Harkirat LLC	LLC	34984944	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:04.614443+00	management	\N	\N
+-- companies	co-9240e57ee0d702f3	Harkirat LLC	LLC	25660816	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:05.270114+00	management	\N	\N
+-- companies	co-d22fd3ffd192c974	Harkirat LLC	LLC	84941226	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:05.502047+00	management	\N	\N
+-- companies	co-faf63e3803638ff9	Harkirat LLC	LLC	98168630	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:05.775764+00	management	\N	\N
+-- companies	co-66ff434d45de7594	Harkirat LLC	LLC	16877441	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:06.096263+00	management	\N	\N
+-- companies	co-bda7ed19288f02ab	Harkirat LLC	LLC	53672746	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:07.006383+00	management	\N	\N
+-- companies	co-a371833eb9a10e15	Harkirat LLC	LLC	48038268	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:07.143001+00	management	\N	\N
+-- companies	co-7c72f02b96e18d46	Harkirat LLC	LLC	60999138	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:07.435183+00	management	\N	\N
+-- companies	co-6276a7c06437f288	Harkirat LLC	LLC	32955120	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:08.90982+00	management	\N	\N
+-- companies	co-43a4ead9bed3b4e9	Harkirat LLC	LLC	66090194	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:09.200844+00	management	\N	\N
+-- companies	co-f0d8f1c4942e4393	Harkirat LLC	LLC	87787361	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:10.346438+00	management	\N	\N
+-- companies	co-7aa05e0c2224ed5f	Harkirat LLC	LLC	82280588	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:10.578011+00	management	\N	\N
+-- companies	co-573ca544cc858890	Harkirat LLC	LLC	63058331	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:10.795765+00	management	\N	\N
+-- companies	co-e3cacaddfd2d6db1	Harkirat LLC	LLC	68611412	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:15.089268+00	owner	\N	\N
+-- companies	co-de97c9bccc92bfca	Harkirat LLC	LLC	25531578	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:15.299956+00	owner	\N	\N
+-- companies	co-f3f1830c1b10adff	Harkirat LLC	LLC	45493792	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:15.60061+00	owner	\N	\N
+-- companies	co-ebd25cdbd94e5cf5	Harkirat LLC	LLC	90791715	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:15.920422+00	owner	\N	\N
+-- companies	co-f2c9050d768c1be7	Harkirat LLC	Other	77864486	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:20.41958+00	owner	\N	\N
+-- companies	co-0c6f5627ffcb321c	Harkirat LLC	Other	89314610	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:20.614103+00	owner	\N	\N
+-- companies	co-cb3eb16e72e2b15b	Harkirat LLC	Other	60813129	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:20.934884+00	owner	\N	\N
+-- companies	co-2cdf1253d69e719d	Harkirat LLC	Other	38682759	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:21.235214+00	owner	\N	\N
+-- companies	co-d266b085afb61f53	Harkirat LLC	LLC	41348562	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:29.429971+00	management	\N	\N
+-- companies	co-18d7da074c75b14c	Harkirat LLC	LLC	90699693	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:29.595228+00	management	\N	\N
+-- companies	co-0f879ff6aaafed45	Harkirat LLC	LLC	17208943	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:29.887601+00	management	\N	\N
+-- companies	co-e4321456f634ac70	Harkirat LLC	LLC	86475053	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:30.119361+00	management	\N	\N
+-- companies	co-1a5d3b152209104d	Harkirat LLC	LLC	73083871	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:30.402461+00	management	\N	\N
+-- companies	co-f9b269293d081f64	Harkirat LLC	LLC	77539666	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:30.696017+00	management	\N	\N
+-- companies	co-4d8ae528bcbfb8a1	Harkirat LLC	LLC	29810892	4826	(785) 548-4578	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 18:57:30.892421+00	management	\N	\N
+-- companies	co-dd874c80016039de	Trail 02	LLC	62051144	126	(555) 555-5555	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 19:15:28.123353+00	management	\N	\N
+-- companies	co-bdf6792ddbea8349	Trail 02	LLC	46689729	126	(555) 555-5555	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 19:15:29.789189+00	management	\N	\N
+-- companies	co-8d3dc8922a406957	Trail 02	LLC	76631320	126	(555) 555-5555	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 19:15:31.154889+00	management	\N	\N
+-- companies	co-3017247de7fe4664	Trail 02	LLC	23814742	126	(555) 555-5555	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 19:15:32.155468+00	management	\N	\N
+-- companies	co-40572b1bab7b66ae	Trail 03	LLC	44091448	123	(555) 555-5555	harkirathousify@gmail.com		harkirathousify@gmail.com	2026-03-21 19:29:49.544755+00	management	\N	\N
+-- companies	co-2a2986332b5eb945	Sahil Agarwal	LLC	17062300		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:26:33.895127+00	owner	\N	\N
+-- companies	co-c7b183181786214e	Sahil Agarwal	LLC	91198015		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:26:35.997643+00	owner	\N	\N
+-- companies	co-0a71232a01d739a2	Sahil Agarwal	LLC	93703585		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:26:46.477816+00	owner	\N	\N
+-- companies	co-70d9618db59db10c	Sahil Agarwal	LLC	10744964		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:27:36.002866+00	owner	\N	\N
+-- companies	co-e226a885de93d528	Sahil Agarwal	LLC	37600067		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:27:49.186193+00	management	\N	\N
+-- companies	co-4f353b765f08d6cc	Sahil Agarwal	LLC	41373217		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:32:20.897366+00	management	\N	\N
+-- companies	co-46bb7ad565026ede	Sahil Agarwal	LLC	73830776		(703) 303-0778	aggarwalsahil66@gmail.com		admin@propmanager.com	2026-03-21 20:35:14.298022+00	management	\N	\N
+-- companies	c6f4db4b-a6fa-4168-a1d2-8d7bc6998ba4	Sahil Agarwal	LLC	50469958	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:21:48.620288+00	management	\N	\N
+-- companies	df7a0947-3e7c-4c0d-94ae-797b87866232	Sahil Agarwal	LLC	23026795	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:21:54.649774+00	management	\N	\N
+-- companies	912f655e-24d7-4aa7-91fa-03539e2c55fe	Sahil Agarwal	LLC	87016988	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:25:36.944809+00	management	\N	\N
+-- companies	7c12c2ac-cf6f-4836-9a7d-9f2a46783770	Sahil Agarwal	LLC	77599792	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:31:51.070085+00	management	\N	\N
+-- companies	b97d9f8c-2d0e-44ea-bbf0-03fbf0f99c6e	Sahil Agarwal	LLC	86526331	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:31:57.263807+00	management	\N	\N
+-- companies	4368db04-1fa2-4720-a215-8f2abc0efd6f	Sahil Agarwal	LLC	88740715	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:36:11.584476+00	management	\N	\N
+-- companies	8b858d39-2272-442a-9986-62c2b6d08451	Sahil Agarwal 2	LLC	77220926	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:36:20.688119+00	management	\N	\N
+-- companies	6bb75e25-6fc3-4add-a68d-9141d8d01fbf	Sahil Agarwal 221	LLC	93237582	13431 Marble Rock Drive	(703) 303-0778	aggarwalsahil66@gmail.com			2026-03-23 04:36:28.181145+00	management	\N	\N
