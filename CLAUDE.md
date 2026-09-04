@@ -18,10 +18,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm start                # Dev server (localhost:3000)
 npm run build            # Production build
-git push origin main     # Deploy to production (Vercel auto-deploys; never use `vercel --prod`)
-git push origin staging  # Deploys test.housify365.com (own DB, Sahil LLC only) — see ENVIRONMENTS.md
+git push origin staging  # ← DEFAULT. Deploys test.housify365.com (own DB, Sahil LLC only)
+git push origin main     # PRODUCTION. Only after Sahil has reviewed on the test site.
 npx supabase db push     # Push DB migrations
 ```
+
+## Where work goes — read this before pushing anything
+
+**`staging` is the default target for every change.** `main` auto-deploys to
+housify365.com, which is Sahil's live books. The sequence is:
+
+1. commit and `git push origin staging`
+2. tell Sahil it is on `test.housify365.com`
+3. he looks at it and says to ship it
+4. `git push origin main` — and only then
+
+This applies to database work too. Migrations go to the test project
+(`vpeewlplgxthckpidhxo`) first and to production (`hoymytpyaudjvsgiiibn`) only
+after the same approval. `scripts/clone-prod-to-test.sh` refreshes test data.
+
+On 2026-09-04 twenty-two commits went straight to `main` in a single session,
+including nine bug fixes Sahil never saw on the test site first — the day that
+environment was built specifically to prevent exactly that. The fixes were
+sound, but "the change was fine" is not the same as "the gate was honoured".
+Push to `staging` and wait.
+
+Do not `git checkout` another branch while subagents are editing the working
+tree; the checkout aborts on their uncommitted files. Fast-forward the remote
+instead: `git push origin main:staging`.
 
 ## Test Commands
 
