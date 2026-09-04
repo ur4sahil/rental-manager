@@ -23,11 +23,27 @@ if [ "$PROD_DB_URL" = "$TEST_DB_URL" ]; then
   exit 1
 fi
 
-# Guard against a fat-fingered swap: the destination must not be the
-# production project ref. Adjust if the prod ref ever changes.
-PROD_REF="hoymytpyaudjvsgiiibn"
-if [[ "$TEST_DB_URL" == *"$PROD_REF"* ]]; then
-  echo "REFUSING: TEST_DB_URL points at the production project ($PROD_REF)." >&2
+# Guard against a fat-fingered swap. This script DROPS the public schema
+# on its destination, so every known production database is named here
+# and refused outright -- not just this app's. A misdirected run against
+# any of them would be unrecoverable without a backup.
+PROTECTED_REFS=(
+  "hoymytpyaudjvsgiiibn"   # rental-manager  (PropManager production)
+  "ifjzvwvuxkdcdqqhtadl"   # tradelog        (LogStocks production)
+  "kaaofehjinxvmjcfumjx"   # flipradar       (FlipRadar production)
+  "axifjxeiaghpevpmdymg"   # taskforge       (TaskForge production)
+)
+for ref in "${PROTECTED_REFS[@]}"; do
+  if [[ "$TEST_DB_URL" == *"$ref"* ]]; then
+    echo "REFUSING: TEST_DB_URL points at a PRODUCTION project ($ref)." >&2
+    echo "This script drops and recreates the public schema on its target." >&2
+    exit 1
+  fi
+done
+
+# The source must be this app's production database, not another app's.
+if [[ "$PROD_DB_URL" != *"hoymytpyaudjvsgiiibn"* ]]; then
+  echo "REFUSING: PROD_DB_URL is not the rental-manager production project." >&2
   exit 1
 fi
 
