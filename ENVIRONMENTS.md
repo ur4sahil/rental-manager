@@ -32,16 +32,26 @@ applied to the test database first and only reach the live one after the
 test site proves them out. This is the part that matters most — a bad
 database change is the one kind of mistake that is genuinely hard to undo.
 
+## Current state (verified 2026-09-04)
+
+- Test project `vpeewlplgxthckpidhxo`, Postgres 17.6 — an exact match for production
+- Schema identical: 73 tables, 1199 columns, 185 RLS policies, 74 functions, 26 triggers, 253 indexes, 45 foreign keys
+- Holds **Sahil LLC only** — 41 properties, 73 tenants, 212 accounts, 41 classes, 7,722 entries, 16,548 lines, DR = CR = $53,671,220.15
+- 73 MB, well inside the free tier
+- Log in with your normal email and password
+
 ## Refreshing the test data
 
 The test database starts as a copy of the live one. It drifts as you
 experiment. To reset it to a fresh copy:
 
 ```bash
-export PROD_DB_URL='...'   # live database connection string
-export TEST_DB_URL='...'   # test database connection string
+export PROD_DB_URL='postgresql://postgres:<pw>@db.hoymytpyaudjvsgiiibn.supabase.co:5432/postgres'
+export TEST_DB_URL='postgresql://postgres.vpeewlplgxthckpidhxo:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres'
 ./scripts/clone-prod-to-test.sh
 ```
+
+Passwords come from each project's Settings → Database, URL-encoded (`#` → `%23`, `!` → `%21`). Set `KEEP_COMPANY` to keep a different company instead of Sahil LLC.
 
 Production is only ever read. The script refuses to run if the two
 addresses match, or if the destination is the live project.
@@ -58,7 +68,8 @@ of these must be set on the test environment in Vercel:
 | `NOTIFICATIONS_PAUSED` | `true` | no email or push reaches a real tenant |
 | `STRIPE_SECRET_KEY` / `REACT_APP_STRIPE_PUBLISHABLE_KEY` | Stripe **test** keys | cards are fake by construction |
 | `PLAID_ENV` / `PLAID_SECRET` | `sandbox` | fake banks, not real accounts |
-| `RESEND_API_KEY` | unset | outbound email falls back to logging |
+| `RESEND_API_KEY` | blank | outbound email falls back to logging |
+| `STRIPE_SECRET_KEY` etc. | dead values | the live keys were scoped to Preview too, so the test site would have inherited them |
 
 Scheduled jobs (nightly bank sync, reminders, late fees) only run on the
 live site — Vercel runs crons against production deployments only, so the
@@ -72,3 +83,18 @@ against real data. It also means the switches above are not optional.
 
 - `main` — the live site. Only ever updated by promoting from `staging`.
 - `staging` — the test site. All work lands here first.
+
+## Two things worth knowing
+
+**Access comes from `company_members`, not `app_users`.** Every RLS policy routes
+through `get_user_company_ids()`, which reads `company_members` by the email in
+the JWT. An account can have an `app_users` row and still see nothing at all.
+This is also why nobody can open Sahil LLC in production — it has no members.
+
+**The migrations cannot rebuild the database.** Not one of the 15 core tables is
+created by any of the 158 migration files; they were made in the dashboard
+before migrations were kept, and the first migration already assumes `payments`
+exists. So `supabase db push` against an empty project fails immediately, and the
+schema here was copied with `pg_dump` instead. If production were lost, those
+files would not restore it — Supabase's backups are the only recovery. Worth
+fixing with a baseline migration, and the test database is the place to prove it.
