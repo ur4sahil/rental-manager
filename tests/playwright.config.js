@@ -3,7 +3,11 @@ require('dotenv').config();
 
 module.exports = defineConfig({
   testDir: './e2e',
-  timeout: 90000,
+  // 3 minutes. The Accounting page on a real dataset genuinely takes
+  // longer than 90s to settle, and a timeout there reports as "browser
+  // closed" rather than anything informative. Raise the ceiling so a
+  // slow page fails on an assertion that says something useful.
+  timeout: 180000,
   expect: { timeout: 10000 },
   retries: 1,
   workers: 1,           // sequential — shared auth state
@@ -17,8 +21,12 @@ module.exports = defineConfig({
     navigationTimeout: 30000,
   },
   projects: [
+    // Signs in once; every other project reuses the session. See
+    // e2e/auth.setup.js for why.
+    { name: 'setup', testMatch: /auth\.setup\.js/ },
     // Desktop browsers
-    { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'],
+        storageState: './playwright/.auth/admin.json' }, dependencies: ['setup'] },
     { name: 'firefox-desktop',  use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit-desktop',   use: { ...devices['Desktop Safari'] } },
     // Tablet

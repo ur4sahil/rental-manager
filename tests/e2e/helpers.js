@@ -41,7 +41,12 @@ async function login(page, arg = 'sandbox-llc') {
     'nav button:has-text("Overview"), nav button:has-text("Pay Rent"), nav button:has-text("Statements"), nav button:has-text("Distributions")'
   ).first();
   const successMarker = expectsPortal ? portalMarker : dashboardMarker;
-  if (await successMarker.isVisible({ timeout: 3000 }).catch(() => false)) return;
+  // Generous: with a shared storageState the session already exists, and
+  // this app takes ten seconds or more to paint the shell on a real
+  // dataset. At 3s the check lost the race, login() went looking for an
+  // email field that was never going to appear, and every spec failed
+  // with a timeout that pointed at the wrong thing.
+  if (await successMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
 
   // Landing page: click Sign In to reveal the login form.
   const signInBtn = page.locator('button:has-text("Sign In"), a:has-text("Sign In")').first();
@@ -398,7 +403,209 @@ async function respondToConfirmModal(page, confirm = true) {
   return false;
 }
 
+
+// ---------------------------------------------------------------------
+// Complete route coverage.
+//
+// goToPage() above knows 15 of the app's 43 routes, which is why whole
+// areas -- the accounting sub-pages, both portals, the importers -- were
+// never reached by any spec. These cover the rest.
+//
+// Navigation is ALWAYS a full load of `?company=<id>#<route>`. Two other
+// approaches look like they work and do not:
+//   - setting window.location.hash in-app silently falls back to the
+//     dashboard (the app reads the hash on load, not on hashchange)
+//   - clicking a sidebar label matches by substring, so "Payments" also
+//     matches "HOA Payments"
+// ---------------------------------------------------------------------
+
+// Every routable page, with the heading that proves it actually rendered.
+const ROUTES = {
+  dashboard:       'Dashboard',
+  tasks:           'Tasks',
+  properties:      'Properties',
+  property_import: 'Import properties',
+  tenants:         'Tenants',
+  payments:        'Payments',
+  maintenance:     'Maintenance',
+  utilities:       'Utilities',
+  hoa:             'HOA',
+  loans:           'Loans',
+  insurance:       'Insurance',
+  tax_bills:       'Tax',
+  inspections:     'Inspections',
+  accounting:      'Accounting',
+  acct_opening:    'Opening',
+  acct_coa:        'Chart of Accounts',
+  acct_journal:    'Journal',
+  acct_recurring:  'Recurring',
+  acct_bankimport: 'Bank Transactions',
+  acct_qbimport:   'QuickBooks',
+  acct_reconcile:  'Reconcile',
+  acct_classes:    'Class',
+  acct_reports:    'Reports',
+  documents:       'Documents',
+  doc_builder:     'Document',
+  leases:          'Leases',
+  latefees:        'Late Fee',
+  vendors:         'Vendors',
+  owners:          'Owners',
+  notifications:   'Notifications',
+  messages:        'Messages',
+  moveout:         'Move',
+  evictions:       'Eviction',
+  admin:           'Team',
+};
+
+// The company these specs run against. Overridable so the suite can be
+// pointed at a different dataset without editing every file.
+const TEST_COMPANY = process.env.E2E_COMPANY || 'sandbox-llc';
+
+// Sidebar label for every route, and which parent must be expanded first.
+// Deep-linking alone is NOT reliable: `?company=X#route` works on a fresh
+// login but is ignored when a session is restored from storageState -- the
+// app lands on the dashboard instead. Tests that trusted it were asserting
+// against the dashboard while believing they were on another page.
+const NAV = {
+  dashboard:       { label: 'Dashboard' },
+  tasks:           { label: 'Tasks & Approvals' },
+  properties:      { label: 'Properties' },
+  property_import: { label: 'Import from Excel', parent: 'Properties' },
+  maintenance:     { label: 'Maintenance',       parent: 'Properties' },
+  inspections:     { label: 'Inspections',       parent: 'Properties' },
+  utilities:       { label: 'Utilities',         parent: 'Properties' },
+  hoa:             { label: 'HOA Payments',      parent: 'Properties' },
+  loans:           { label: 'Loans',             parent: 'Properties' },
+  insurance:       { label: 'Insurance',         parent: 'Properties' },
+  tax_bills:       { label: 'Tax Bills',         parent: 'Properties' },
+  tenants:         { label: 'Tenants' },
+  payments:        { label: 'Payments' },
+  accounting:      { label: 'Accounting' },
+  acct_opening:    { label: 'Opening Balances',      parent: 'Accounting' },
+  acct_coa:        { label: 'Chart of Accounts',     parent: 'Accounting' },
+  acct_journal:    { label: 'Journal Entries',       parent: 'Accounting' },
+  acct_recurring:  { label: 'Recurring Entries',     parent: 'Accounting' },
+  acct_bankimport: { label: 'Bank Transactions',     parent: 'Accounting' },
+  acct_qbimport:   { label: 'Import from QuickBooks',parent: 'Accounting' },
+  acct_reconcile:  { label: 'Reconcile',             parent: 'Accounting' },
+  acct_classes:    { label: 'Class Tracking',        parent: 'Accounting' },
+  acct_reports:    { label: 'Reports',               parent: 'Accounting' },
+  documents:       { label: 'Documents' },
+  doc_builder:     { label: 'Document Builder' },
+  leases:          { label: 'Leases' },
+  latefees:        { label: 'Late Fees' },
+  vendors:         { label: 'Vendors' },
+  owners:          { label: 'Owners' },
+  notifications:   { label: 'Notifications' },
+  messages:        { label: 'Messages' },
+  moveout:         { label: 'Move Out' },
+  evictions:       { label: 'Evictions' },
+  admin:           { label: 'Team & Roles' },
+};
+
+// Navigate by clicking the sidebar, then PROVE we arrived. Throws if not.
+//
+// Silently landing on the wrong page is the worst failure mode a UI suite
+// has: every later assertion still runs, against content that has nothing
+// to do with the test's name. This function refuses to return until the
+// requested page is genuinely showing.
+async function gotoRoute(page, routeId, opts = {}) {
+  const company = opts.company || TEST_COMPANY;
+  const nav = NAV[routeId];
+  if (!nav) throw new Error(`gotoRoute: unknown route "${routeId}"`);
+
+  if (!page.url().includes('localhost') && !page.url().includes('http')) {
+    await page.goto(`/?company=${encodeURIComponent(company)}`, { timeout: 90000 });
+  }
+  if (!(await page.locator('nav, aside').first().isVisible({ timeout: 5000 }).catch(() => false))) {
+    await page.goto(`/?company=${encodeURIComponent(company)}`, { timeout: 90000 });
+  }
+  await page.locator('button:visible:has-text("Dashboard")').first()
+    .waitFor({ timeout: 90000 });
+
+  // Finding a sidebar button is fiddlier than it looks. Each renders as
+  // an icon ligature followed by the label, and textContent concatenates
+  // them with no separator ("apartmentProperties"), so:
+  //   - hasText 'Properties'      also matches other buttons
+  //   - /(^|\s)Properties$/       never matches (there is no whitespace)
+  //   - /Properties$/             also matches "HOA Payments" for "Payments"
+  // innerText DOES contain the newline, so match on that in the page.
+  const clickNav = async (label) => {
+    const idx = await page.evaluate((wanted) => {
+      const btns = [...document.querySelectorAll('nav button')];
+      return btns.findIndex(b => {
+        const lines = (b.innerText || '').split('\n').map(t => t.trim()).filter(Boolean);
+        return lines[lines.length - 1] === wanted;
+      });
+    }, label);
+    if (idx < 0) return false;
+    await page.locator('nav button').nth(idx).click();
+    return true;
+  };
+
+  if (nav.parent) {
+    if (await clickNav(nav.parent)) await page.waitForTimeout(1200);
+  }
+  if (!(await clickNav(nav.label))) {
+    // Six routes have no sidebar entry at all -- admin, documents,
+    // leases, latefees, moveout, evictions -- and are reachable only by
+    // deep link. That path works now that the company handler stopped
+    // discarding the hash, but it is racy, so retry before giving up.
+    let arrived = false;
+    for (let attempt = 0; attempt < 3 && !arrived; attempt++) {
+      await page.goto(`/?company=${encodeURIComponent(company)}#${routeId}`, { timeout: 90000 });
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const txt = await page.locator('main').innerText().catch(() => '');
+      arrived = !/^\s*Dashboard/.test(txt) && !/YOUR COMPANIES/.test(txt);
+    }
+    if (!arrived) {
+      throw new Error(`gotoRoute("${routeId}"): no sidebar button "${nav.label}" and the deep link did not land`);
+    }
+    return page;
+  }
+
+  await page.waitForLoadState('networkidle', { timeout: 45000 }).catch(() => {});
+  await page.waitForTimeout(800);
+
+  // Prove it. The dashboard is the fallback the app drops to, so seeing
+  // it when we asked for something else means navigation failed.
+  const body = await page.locator('main').innerText().catch(() => '');
+  if (routeId !== 'dashboard' && /^\s*Dashboard/.test(body)) {
+    throw new Error(`gotoRoute("${routeId}") landed on the Dashboard instead`);
+  }
+  return page;
+}
+
+// Fails the calling test if the page logged a console error or any
+// request came back 4xx/5xx. A page that renders but 400s on every load
+// is exactly the shape of bug a "does it look right" suite misses --
+// the dashboard's year-to-date card was blank for months that way.
+function watchForFailures(page) {
+  const problems = [];
+  page.on('pageerror', e => problems.push(`pageerror: ${e.message.slice(0, 160)}`));
+  page.on('console', m => {
+    if (m.type() !== 'error') return;
+    const t = m.text();
+    // Chrome logs a generic line for every failed request; the response
+    // listener below reports those with their URL, so skip the duplicate.
+    if (/Failed to load resource/.test(t)) return;
+    problems.push(`console: ${t.slice(0, 160)}`);
+  });
+  page.on('response', r => {
+    if (r.status() < 400) return;
+    if (/\.(png|jpg|jpeg|svg|ico|woff2?)($|\?)/.test(r.url())) return;
+    problems.push(`HTTP ${r.status()} ${r.url().slice(0, 150)}`);
+  });
+  return problems;
+}
+
 module.exports = {
+  ROUTES,
+  NAV,
+  TEST_COMPANY,
+  gotoRoute,
+  watchForFailures,
   login,
   navigateTo,
   goToPage,
