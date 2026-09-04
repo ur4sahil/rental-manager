@@ -108,7 +108,7 @@ export function LedgerLink({ ids, title, onOpenLedger, className = "", children 
 // the parent hasn't wired the prop — the .X || fallback pattern below
 // tolerates missing keys. Without this, the page threw ReferenceError
 // and fired the PM-8009 ErrorBoundary.
-export function RecurringJournalEntries({ companyId, companySettings = {}, addNotification, userProfile }) {
+export function RecurringJournalEntries({ companyId, companySettings = {}, addNotification, userProfile, showToast, showConfirm }) {
   const [entries, setEntries] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -494,7 +494,11 @@ export const getTrialBalance = (accounts, journalEntries, endDate) => {
   const entry = index[a.id];
   const net = entry ? entry.debit - entry.credit : 0;
   return { ...a, debitBalance: net > 0 ? net : 0, creditBalance: net < 0 ? Math.abs(net) : 0 };
-  }).filter(a => a.debitBalance !== 0 || a.creditBalance !== 0);
+  // Balances are running float sums, so an account that nets to exactly zero
+  // in the DB lands on ~1e-10 in JS and survives an exact "!== 0" test — it
+  // then renders as a spurious $0.00 row. Use the same half-cent tolerance
+  // the rest of this file uses (see validateJE / opening balances).
+  }).filter(a => a.debitBalance >= 0.005 || a.creditBalance >= 0.005);
 };
 
 export const getGeneralLedger = (accountId, accounts, journalEntries) => {
@@ -4327,7 +4331,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
-  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} />}
+  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
