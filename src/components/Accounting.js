@@ -1024,7 +1024,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
 }
 
 // --- Chart of Accounts Sub-Page ---
-export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger }) {
+export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger, showToast }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
@@ -4065,10 +4065,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const newReference = "REV-" + origRef;
   const newDescription = "Reversal of " + (je.description || je.number || "");
   // Retry on 23505 — see addJournalEntry above for rationale.
-  let jeRow = null, headerErr = null;
+  // newNumber has to outlive this loop: it is read further down for the
+  // logAudit row and the success toast. Each attempt deliberately draws a
+  // FRESH number from next_je_number (that is what a 23505 collision is
+  // retried for), so it is reassigned per attempt and ends up holding the
+  // number that was actually inserted. Retry behaviour is unchanged.
+  let jeRow = null, headerErr = null, newNumber = null;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: newNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
-    if (numErr || !newNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+    const { data: nextNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
+    if (numErr || !nextNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+    newNumber = nextNumber;
     ({ data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: newNumber, date: today,
       description: newDescription, reference: newReference,
@@ -4332,10 +4338,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
-  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
-  {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
+  {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
   {/* Account Ledger Drill-Down */}
@@ -4345,7 +4351,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
   );
 }
-export function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile }) {
+export function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile, userRole }) {
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
