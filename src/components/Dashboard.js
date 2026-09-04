@@ -82,11 +82,28 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   // showed YTD — same labels, very different numbers, confused users.
   try {
   const yearStart = new Date().getFullYear() + "-01-01";
-  // Cap at 2000 posted entries this year — at 10k entries/year this
-  // page would slow to a crawl on first paint without the limit.
-  const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted").gte("date", yearStart).order("date", { ascending: false }).limit(2000);
-  const jeIds = (jeHeaders || []).map(j => j.id);
-  const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").eq("company_id", companyId).in("journal_entry_id", jeIds) : { data: [] };
+  // Filter through the embedded entry rather than collecting ids and
+  // sending them back as .in(...). The old shape was broken twice over:
+  // PostgREST caps a response at 1000 rows whatever .limit() says, so the
+  // id list was already truncated, and ~650+ ids overflow the URL length
+  // limit — the request came back 400, jeLines was undefined, and this
+  // card silently showed nothing. Any company with a busy year hit it;
+  // one has 7,722 entries.
+  const PAGE = 1000;
+  let jeLines = [], failed = false;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("acct_journal_lines")
+      .select("account_id, debit, credit, acct_journal_entries!inner(date, status)")
+      .eq("company_id", companyId)
+      .eq("acct_journal_entries.status", "posted")
+      .gte("acct_journal_entries.date", yearStart)
+      .range(from, from + PAGE - 1);
+    if (error) { failed = true; pmError("PM-4013", { raw: error, context: "dashboard YTD revenue/expense", silent: true }); break; }
+    jeLines.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  if (failed) jeLines = null;
   const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId);
   if (jeLines && accounts) {
   const acctMap = {};
