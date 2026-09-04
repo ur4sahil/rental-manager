@@ -8,6 +8,7 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
+import { ArchivedItems } from "./Admin";
 
 function Maintenance({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   function exportWorkOrders() {

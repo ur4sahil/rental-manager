@@ -31,6 +31,9 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   if (!form.property || !form.provider || !form.premium_amount) { showToast("Property, provider, and premium amount are required.", "error"); return; }
   const payload = { ...form, premium_amount: Number(form.premium_amount), coverage_amount: Number(form.coverage_amount || 0) };
   delete payload.username; delete payload.password;
+  // `expiration_date` is a Postgres `date` column — an empty string is not a
+  // valid date literal. Coerce blanks to null so INSERT behaves like UPDATE.
+  payload.expiration_date = form.expiration_date || null;
   payload.website = form.website || "";
   if (form.username || form.password) {
     try {

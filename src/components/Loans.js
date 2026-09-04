@@ -33,6 +33,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   if (!form.property || !form.lender_name || !form.original_amount) { showToast("Property, lender name, and original amount are required.", "error"); return; }
   const payload = { ...form, original_amount: Number(form.original_amount), current_balance: Number(form.current_balance || form.original_amount), interest_rate: Number(form.interest_rate || 0), monthly_payment: Number(form.monthly_payment || 0), escrow_amount: form.escrow_included ? Number(form.escrow_amount || 0) : 0, escrow_covers: form.escrow_included ? form.escrow_covers : "" };
   delete payload.username; delete payload.password;
+  // Optional date columns are `date` in Postgres — an empty string is not a
+  // valid date literal. Coerce blanks to null so INSERT behaves like UPDATE.
+  payload.loan_start_date = form.loan_start_date || null;
+  payload.maturity_date = form.maturity_date || null;
   payload.website = form.website || "";
   if (form.username || form.password) {
     try {
