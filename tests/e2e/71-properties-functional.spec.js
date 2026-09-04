@@ -432,12 +432,11 @@ test('maintenance: the Work Orders, Inspections and Vendors tabs each swap the p
 //     ReferenceError: ArchivedItems is not defined
 // which the error boundary catches as PM-8009: the whole Maintenance
 // page is replaced by "Something went wrong / Reload App" and the only
-// way out is a reload. Marked test.fail() so the suite stays honest
-// without going red on a defect it did not cause — once the import is
+// way out is a reload. This was a live crash when the test was written
+// (ArchivedItems was rendered without being imported); the import is
 // added this test starts reporting "expected to fail but passed" and
 // the marker should be deleted.
 test('maintenance: the Archived tab does not take the page down', async ({ page }) => {
-  test.fail();
   await open(page, 'maintenance');
   await expect(page.locator('main button:text-is("+ New Work Order")')).toBeVisible({ timeout: 30000 });
 
@@ -739,8 +738,8 @@ test('loans: validates, creates a loan, filters on it, shows it on the property,
     await modal.locator('input[placeholder="230000"]').fill('275000');
     await modal.locator('input[placeholder="6.5"]').fill('6.25');
     await modal.locator('input[placeholder="1800"]').fill('1750');
-    // Both date fields must be filled: the insert path sends "" straight
-    // to a date column (see the test.fail() case below).
+    // Dates filled here so this test covers the happy path; the
+    // blank-date case is exercised separately below.
     await modal.locator('input[type="date"]').nth(0).fill('2026-01-01');
     await modal.locator('input[type="date"]').nth(1).fill('2056-01-01');
 
@@ -803,9 +802,8 @@ test('loans: validates, creates a loan, filters on it, shows it on the property,
 // so leaving them blank posts "" to a date column and Postgres answers
 //     invalid input syntax for type date: ""
 // The modal stays open and the loan is never created. Marked
-// test.fail(): delete the marker once the insert coerces "" to null.
+// Fixed: the insert now coerces "" to null, as the update path always did.
 test('loans: a loan can be created without the optional date fields', async ({ page }) => {
-  test.fail();
   const lender = `E2E-TEST-${Date.now()}`;
   await open(page, 'loans');
   await page.locator('main button:text-is("+ Add Loan")').click();
@@ -896,9 +894,8 @@ test('insurance: validates, creates a policy, filters on it, shows it on the pro
 // Insurance.js savePolicy(). "Expiration Date" is optional in the UI;
 // leaving it blank posts "" to a date column and the insert is
 // rejected with `invalid input syntax for type date: ""`, so the modal
-// hangs open and no policy is created. Marked test.fail().
+// hung open and no policy was created. Fixed alongside the loans case.
 test('insurance: a policy can be created without an expiration date', async ({ page }) => {
-  test.fail();
   const provider = `E2E-TEST-${Date.now()}`;
   await open(page, 'insurance');
   await page.locator('main button:text-is("+ Add Policy")').click();
