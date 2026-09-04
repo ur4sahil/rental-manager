@@ -2361,8 +2361,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   // Auto-create accounting class for new properties
   if (!editingProperty) {
-  const classId = crypto.randomUUID();
-  const { data: newClass } = await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(compositeAddress || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+  // See the acct_classes id note in Accounting.js: never send `id` on
+  // an upsert keyed by (company_id, name). A conflict would rewrite the
+  // primary key and orphan the class's whole ledger history.
+  const { data: newClass } = await supabase.from("acct_classes").upsert([{ name: compositeAddress, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(compositeAddress || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
   // #17: Store class_id on property for reliable lookups
   if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", compositeAddress);
   } else {
@@ -2587,8 +2589,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { error: apErr } = await supabase.from("properties").insert([{ company_id: companyId, address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
   if (apErr) { showToast("Error adding property: " + apErr.message, "error"); return; }
   // Auto-create accounting class for this property
-  const classId = crypto.randomUUID();
-  const { data: newClass, error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+  // Same rule as above: no `id` on a (company_id, name) upsert.
+  const { data: newClass, error: classErr } = await supabase.from("acct_classes").upsert([{ name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
   if (classErr) pmError("PM-4010", { raw: classErr, context: "accounting class creation", silent: true });
   if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", req.address);
   addNotification("✅", `Property approved & added: ${req.address}`);

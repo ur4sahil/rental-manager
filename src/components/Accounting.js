@@ -3703,8 +3703,13 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const colors = chartPalette;
   const missing = allProps.filter(p => !existingNames.has(p.address));
   if (missing.length > 0) {
+  // No `id` in the payload. PostgREST turns upsert into
+  // ON CONFLICT (company_id, name) DO UPDATE SET <payload columns>, so
+  // sending an id here REWROTE the primary key of any class that already
+  // existed by name -- orphaning every journal line and property that
+  // referenced it. The column now defaults to gen_random_uuid()::text,
+  // so an insert still gets an id and a conflict leaves the key alone.
   const newClasses = missing.map(p => ({
-  id: crypto.randomUUID(),
   name: p.address,
   description: `${p.type || "Property"} · ${formatCurrency(p.rent || 0)}/mo`,
   color: pickColor(p.address),
