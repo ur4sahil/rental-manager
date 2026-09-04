@@ -342,9 +342,17 @@ async function testAccountingPipeline() {
   //    The view's `amount` is magnitude only; type disambiguates
   //    direction. So netting = sum(charge - payment) per type rather
   //    than signed sum.
+  // Scoped to the two entries THIS run created, not every row whose
+  // description starts with "Pipeline test". The description filter also
+  // matched leftovers: a run interrupted before its cleanup step on
+  // 2026-09-02 left a posted charge with no matching payment in
+  // sandbox-llc, and every run since inherited its $1,500 and netted to
+  // 1500 instead of 0. A test that fails because an earlier test crashed
+  // is not telling you anything about the code.
   const { data: tenantLedger } = await supabase.from('ledger_entries').select('*')
-    .eq('company_id', cid).eq('tenant', testTenant)
-    .like('description', 'Pipeline test%').order('date', { ascending: false });
+    .eq('company_id', cid)
+    .in('journal_entry_id', [ids.jeId, ids.payJeId].filter(Boolean))
+    .order('date', { ascending: false });
   assert(tenantLedger?.length >= 2, 'Pipeline: tenant ledger has both charge and payment entries');
   const netBalance = (tenantLedger || []).reduce((s, l) => {
     const amt = Number(l.amount || 0);
