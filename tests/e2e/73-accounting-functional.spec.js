@@ -568,7 +568,6 @@ test.describe('Accounting — functional', () => {
   // Delete this annotation when the props are passed through; the test
   // then reports "expected to fail but passed".
   test('recurring entries form rejects an empty submission', async ({ page }) => {
-    test.fail(true, 'showToast is not in scope inside RecurringJournalEntries');
     const problems = watchForFailures(page);
     await gotoRoute(page, 'acct_recurring');
 

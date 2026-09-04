@@ -1794,9 +1794,12 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
 
   function getNOIByProperty(startDate, endDate) {
     const classReport = getClassReport(accounts, journalEntries, classes, startDate, endDate);
-    return Object.entries(classReport).map(([name, data]) => ({
-      property: name, revenue: data.revenue || 0, expenses: data.expenses || 0, noi: (data.revenue || 0) - (data.expenses || 0),
-      noiMargin: data.revenue ? Math.round(((data.revenue - data.expenses) / data.revenue) * 100) : 0
+    // getClassReport returns an ARRAY of class objects, each already
+    // carrying its name. Object.entries() over an array yields the
+    // INDEX as the key, so every property was labelled "0", "1", "2".
+    return classReport.map(c => ({
+      property: c.name, revenue: c.revenue || 0, expenses: c.expenses || 0, noi: (c.revenue || 0) - (c.expenses || 0),
+      noiMargin: c.revenue ? Math.round(((c.revenue - c.expenses) / c.revenue) * 100) : 0
     })).sort((a,b) => b.noi - a.noi);
   }
 
@@ -1948,9 +1951,13 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   function getRentCollectionSummary(startDate, endDate) {
     const classReport = getClassReport(accounts, journalEntries, classes, startDate, endDate);
     const arIds = new Set(accounts.filter(a => (a.code||"").startsWith("1100")).map(a => a.id));
-    const byProperty = Object.entries(classReport).map(([property, data]) => {
-      const charged = data.revenue || 0;
-      const cls = classes.find(c => c.name === property);
+    // Same defect as getNOIByProperty, with a worse symptom: `property`
+    // was the array index, so classes.find(c => c.name === "0") never
+    // matched, `cls` was always undefined, and every property reported
+    // zero rent collected. The element IS the class -- no lookup needed.
+    const byProperty = classReport.map(cls => {
+      const property = cls.name;
+      const charged = cls.revenue || 0;
       let collected = 0;
       if (cls) {
         journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate && (je.description||"").toLowerCase().includes("payment")).forEach(je => {
