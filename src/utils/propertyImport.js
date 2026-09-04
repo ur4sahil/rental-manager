@@ -148,3 +148,360 @@ export function computeAddress({ address_line_1, address_line_2, city, state, zi
 }
 
 export default { PROPERTY_COLUMNS, TENANT_COLUMNS, inferTenantStatus, computeAddress };
+
+// ---- template generation -------------------------------------------
+//
+// The workbook is built FOR a company and pre-filled with what exists.
+// That is what makes matching by id possible, and therefore what makes
+// it impossible to duplicate a QuickBooks property or split a tenant's
+// AR balance across two records.
+
+const HEADER_FILL   = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+const LOCKED_FILL   = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+const READONLY_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+const GAP_FILL      = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF9C3" } };
+
+function writeHeader(ws, columns) {
+  ws.columns = columns.map(c => ({ key: c.key, width: c.width || 14 }));
+  const row = ws.getRow(1);
+  columns.forEach((c, i) => {
+    const cell = row.getCell(i + 1);
+    cell.value = c.header;
+    cell.fill = HEADER_FILL;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+    cell.alignment = { vertical: "middle", horizontal: "left" };
+    if (c.note) cell.note = c.note;
+  });
+  row.height = 22;
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+}
+
+// Shading is not decoration here: a locked column that looks like every
+// other column WILL be edited, and an edited id silently retargets a row
+// at a different property.
+function styleRow(ws, rowIdx, columns, record) {
+  const row = ws.getRow(rowIdx);
+  columns.forEach((c, i) => {
+    const cell = row.getCell(i + 1);
+    if (c.locked)        { cell.fill = LOCKED_FILL;   cell.font = { color: { argb: "FF6B7280" } }; }
+    else if (c.readOnly) { cell.fill = READONLY_FILL; cell.font = { color: { argb: "FF6B7280" }, italic: true }; }
+    else if (record && (cell.value === null || cell.value === undefined || cell.value === "")) {
+      cell.fill = GAP_FILL;   // a blank on an existing row is something to fill in
+    }
+    if (c.numeric) cell.numFmt = c.integer ? "0" : "#,##0.00";
+    if (c.date) cell.numFmt = "yyyy-mm-dd";
+  });
+}
+
+function addListValidation(ws, colIdx, rowCount, values) {
+  if (!values || !values.length) return;
+  // Excel caps an inline list at 255 characters; longer lists are left
+  // free-text rather than silently truncated to a wrong set of options.
+  const joined = values.join(",");
+  if (joined.length > 250) return;
+  for (let r = 2; r <= rowCount + 1; r++) {
+    ws.getCell(r, colIdx).dataValidation = {
+      type: "list", allowBlank: true, formulae: [`"${joined}"`],
+      showErrorMessage: true, errorTitle: "Not a valid value",
+      error: `Choose one of: ${values.join(", ")}`,
+    };
+  }
+}
+
+export async function buildTemplate(ExcelJS, {
+  companyName = "", properties = [], tenants = [], owners = [], blankRows = 25,
+} = {}) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Housify";
+  wb.created = new Date();
+
+  // --- Properties -----------------------------------------------------
+  const wsP = wb.addWorksheet(SHEET_PROPERTIES, { views: [{ state: "frozen", ySplit: 1 }] });
+  writeHeader(wsP, PROPERTY_COLUMNS);
+  properties.forEach((p, i) => {
+    const row = wsP.getRow(i + 2);
+    PROPERTY_COLUMNS.forEach((c, ci) => { row.getCell(ci + 1).value = p[c.key] ?? null; });
+    styleRow(wsP, i + 2, PROPERTY_COLUMNS, p);
+  });
+  for (let i = 0; i < blankRows; i++) styleRow(wsP, properties.length + 2 + i, PROPERTY_COLUMNS, null);
+
+  const pTypeIdx   = PROPERTY_COLUMNS.findIndex(c => c.key === "type") + 1;
+  const pStatusIdx = PROPERTY_COLUMNS.findIndex(c => c.key === "status") + 1;
+  const pOwnerIdx  = PROPERTY_COLUMNS.findIndex(c => c.key === "owner_name") + 1;
+  const pRows = properties.length + blankRows;
+  addListValidation(wsP, pTypeIdx, pRows, PROPERTY_TYPES);
+  addListValidation(wsP, pStatusIdx, pRows, PROPERTY_STATUSES);
+  addListValidation(wsP, pOwnerIdx, pRows, owners);
+
+  // --- Tenants --------------------------------------------------------
+  const wsT = wb.addWorksheet(SHEET_TENANTS, { views: [{ state: "frozen", ySplit: 1 }] });
+  writeHeader(wsT, TENANT_COLUMNS);
+  tenants.forEach((t, i) => {
+    const row = wsT.getRow(i + 2);
+    TENANT_COLUMNS.forEach((c, ci) => { row.getCell(ci + 1).value = t[c.key] ?? null; });
+    styleRow(wsT, i + 2, TENANT_COLUMNS, t);
+  });
+  for (let i = 0; i < blankRows; i++) styleRow(wsT, tenants.length + 2 + i, TENANT_COLUMNS, null);
+
+  const tStatusIdx = TENANT_COLUMNS.findIndex(c => c.key === "tenant_status") + 1;
+  const tVoucherIdx = TENANT_COLUMNS.findIndex(c => c.key === "is_voucher") + 1;
+  const tRows = tenants.length + blankRows;
+  addListValidation(wsT, tStatusIdx, tRows, TENANT_STATUSES);
+  addListValidation(wsT, tVoucherIdx, tRows, ["Yes", "No"]);
+
+  // --- Instructions ---------------------------------------------------
+  const wsI = wb.addWorksheet(SHEET_REFERENCE);
+  wsI.columns = [{ width: 4 }, { width: 30 }, { width: 78 }];
+  const lines = [
+    ["", `Property import — ${companyName}`, ""],
+    ["", "", ""],
+    ["", "How this works", ""],
+    ["", "1.", "Rows already filled in are your existing records. Fill the yellow gaps."],
+    ["", "2.", "Add new properties or tenants in the blank rows at the bottom."],
+    ["", "3.", "Upload the file back. You will see exactly what will change before anything is saved."],
+    ["", "", ""],
+    ["", "Do not edit grey columns", "Property ID and Tenant ID identify the record being updated."],
+    ["", "", "Changing one retargets the row at a different record. Leave blank to create."],
+    ["", "", ""],
+    ["", "Short Name", "What reports and dropdowns display. Pre-filled with your QuickBooks naming,"],
+    ["", "", "so reports keep reading the way they do today even after you add city and ZIP."],
+    ["", "", ""],
+    ["", "Tenant Status", "Pre-filled from ledger activity, not guesswork:"],
+    ["", "", "Current — active in the last 3 months."],
+    ["", "", "Past — nothing for over a year. Kept visible with their history."],
+    ["", "", "Review — settled up but recently active. Please confirm which they are."],
+    ["", "", "Not a tenant — no AR account and no ledger activity (lenders, title companies)."],
+    ["", "", "Balance, Last Activity and Ledger Lines are shown so you can check each call."],
+    ["", "", ""],
+    ["", "Nothing is posted to the ledger", "This import never creates journal entries. Your books are untouched."],
+    ["", "", "Anything left blank becomes a pending item for a manager or admin to approve."],
+  ];
+  lines.forEach((l, i) => {
+    const row = wsI.getRow(i + 1);
+    row.getCell(2).value = l[1];
+    row.getCell(3).value = l[2];
+    if (i === 0) row.getCell(2).font = { bold: true, size: 14 };
+    if (["How this works", "Do not edit grey columns", "Short Name", "Tenant Status", "Nothing is posted to the ledger"].includes(l[1])) {
+      row.getCell(2).font = { bold: true };
+    }
+  });
+
+  return wb;
+}
+
+// ---- parsing --------------------------------------------------------
+
+function headerIndex(ws, columns) {
+  const map = {};
+  const header = ws.getRow(1);
+  header.eachCell((cell, col) => {
+    const text = cellString(cell.value).toLowerCase();
+    const def = columns.find(c => c.header.toLowerCase() === text);
+    if (def) map[def.key] = col;
+  });
+  return map;
+}
+
+function readSheet(ws, columns) {
+  if (!ws) return { rows: [], missingHeaders: columns.filter(c => c.required).map(c => c.header) };
+  const idx = headerIndex(ws, columns);
+  const missingHeaders = columns.filter(c => c.required && !idx[c.key]).map(c => c.header);
+  const rows = [];
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const rec = { _row: r };
+    let any = false;
+    for (const c of columns) {
+      if (c.readOnly) continue;              // context columns are never read back
+      const col = idx[c.key];
+      if (!col) { rec[c.key] = null; continue; }
+      const raw = row.getCell(col).value;
+      let v;
+      if (c.numeric) v = cellNumber(raw);
+      else if (c.date) v = cellDate(raw);
+      else v = cellString(raw);
+      rec[c.key] = v;
+      if (v !== null && v !== "" && !(typeof v === "number" && Number.isNaN(v))) any = true;
+    }
+    if (any) rows.push(rec);                 // silently skip wholly blank rows
+  }
+  return { rows, missingHeaders };
+}
+
+export async function parseWorkbook(ExcelJS, data) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(data);
+  const wsP = wb.getWorksheet(SHEET_PROPERTIES);
+  const wsT = wb.getWorksheet(SHEET_TENANTS);
+  const p = readSheet(wsP, PROPERTY_COLUMNS);
+  const t = readSheet(wsT, TENANT_COLUMNS);
+  const fatal = [];
+  if (!wsP) fatal.push(`The workbook has no "${SHEET_PROPERTIES}" sheet. Use the downloaded template.`);
+  if (p.missingHeaders.length) fatal.push(`Properties sheet is missing: ${p.missingHeaders.join(", ")}`);
+  return { properties: p.rows, tenants: t.rows, fatal };
+}
+
+// ---- planning -------------------------------------------------------
+//
+// Produces exactly what will happen, so the preview is the truth rather
+// than a summary of it. Nothing here writes.
+
+export function buildImportPlan({ properties = [], tenants = [], existingProperties = [], existingTenants = [] }) {
+  const byId = new Map(existingProperties.map(p => [String(p.id), p]));
+  const tById = new Map(existingTenants.map(t => [String(t.id), t]));
+  const errors = [], warnings = [], creates = [], updates = [], renames = [];
+  const tenantCreates = [], tenantUpdates = [];
+
+  const seenAddresses = new Map();
+
+  for (const r of properties) {
+    const id = cellString(r.id);
+    const where = `Properties row ${r._row}`;
+
+    if (!cellString(r.address_line_1)) {
+      errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Street Address", message: "Street Address is required" });
+      continue;
+    }
+    if (Number.isNaN(r.bedrooms) || Number.isNaN(r.bathrooms) || Number.isNaN(r.sqft) ||
+        Number.isNaN(r.rent) || Number.isNaN(r.security_deposit)) {
+      errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Numbers", message: "A numeric cell contains text" });
+      continue;
+    }
+    const state = cellString(r.state);
+    if (state && state.length !== 2) {
+      errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "State", message: `State should be 2 letters, got "${state}"` });
+      continue;
+    }
+
+    const newAddress = computeAddress(r);
+    // Two rows resolving to one address would collide on
+    // idx_properties_unique_address, so catch it here rather than as a
+    // database error halfway through the import.
+    if (seenAddresses.has(newAddress)) {
+      errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Street Address",
+        message: `Same address as row ${seenAddresses.get(newAddress)}` });
+      continue;
+    }
+    seenAddresses.set(newAddress, r._row);
+
+    if (id) {
+      const existing = byId.get(id);
+      if (!existing) {
+        errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Property ID",
+          message: `No property with id ${id}. Do not edit the ID column.` });
+        continue;
+      }
+      const addressChanged = newAddress !== (existing.address || "");
+      if (addressChanged) {
+        const collision = existingProperties.find(p => String(p.id) !== id && p.address === newAddress);
+        if (collision) {
+          errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Street Address",
+            message: `That address already belongs to property ${collision.id}` });
+          continue;
+        }
+        renames.push({ id, row: r._row, from: existing.address, to: newAddress, className: existing.address });
+      }
+      updates.push({ id, row: r._row, record: r, existing, addressChanged, newAddress });
+    } else {
+      const clash = existingProperties.find(p => p.address === newAddress);
+      if (clash) {
+        errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Street Address",
+          message: `"${newAddress}" already exists (property ${clash.id}). Fill in that row instead of adding a new one.` });
+        continue;
+      }
+      creates.push({ row: r._row, record: r, newAddress });
+    }
+  }
+
+  // Address changes have to be applied before tenant rows are matched by
+  // property, because the cascade rewrites tenants.property.
+  const addressAfter = new Map();
+  for (const u of updates) addressAfter.set(String(u.id), u.newAddress);
+  const validProperties = new Set([
+    ...existingProperties.map(p => addressAfter.get(String(p.id)) || p.address),
+    ...creates.map(c => c.newAddress),
+  ]);
+
+  for (const r of tenants) {
+    const id = cellString(r.id);
+    const name = cellString(r.name);
+    const prop = cellString(r.property);
+    if (!name) {
+      errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Tenant Name", message: "Tenant Name is required" });
+      continue;
+    }
+    const status = cellString(r.tenant_status) || "Review";
+    if (!TENANT_STATUSES.includes(status)) {
+      errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Status",
+        message: `"${status}" is not one of: ${TENANT_STATUSES.join(", ")}` });
+      continue;
+    }
+    if (r.move_out && r.move_in && r.move_out < r.move_in) {
+      errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Move Out", message: "Move Out is before Move In" });
+      continue;
+    }
+    if (Number.isNaN(r.move_in) || Number.isNaN(r.move_out) ||
+        Number.isNaN(r.lease_start) || Number.isNaN(r.lease_end_date)) {
+      errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Dates", message: "A date cell could not be read" });
+      continue;
+    }
+
+    if (id) {
+      const existing = tById.get(id);
+      if (!existing) {
+        errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Tenant ID",
+          message: `No tenant with id ${id}. Do not edit the ID column.` });
+        continue;
+      }
+      tenantUpdates.push({ id, row: r._row, record: r, existing, status });
+    } else {
+      if (prop && !validProperties.has(prop)) {
+        errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Property",
+          message: `"${prop}" is not one of the properties in this file` });
+        continue;
+      }
+      // Refuse to create a second tenant of the same name on the same
+      // property: they carry AR balances, and a duplicate splits the
+      // ledger across two records that look identical.
+      const dupe = existingTenants.find(t =>
+        t.name.trim().toLowerCase() === name.toLowerCase() &&
+        (t.property || "") === prop);
+      if (dupe) {
+        errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Tenant Name",
+          message: `"${name}" already exists at ${prop} (tenant ${dupe.id}). Fill in that row instead.` });
+        continue;
+      }
+      tenantCreates.push({ row: r._row, record: r, status });
+    }
+  }
+
+  // Gaps become pendencies rather than blocking the import.
+  for (const u of updates) {
+    const missing = [];
+    if (!cellString(u.record.city)) missing.push("city");
+    if (!cellString(u.record.state)) missing.push("state");
+    if (!cellString(u.record.zip)) missing.push("ZIP");
+    if (!cellString(u.record.owner_name)) missing.push("owner");
+    if (u.record.bedrooms === null) missing.push("bedrooms");
+    if (missing.length) warnings.push({ sheet: SHEET_PROPERTIES, row: u.row, kind: "pendency",
+      message: `${u.newAddress}: still missing ${missing.join(", ")}` });
+  }
+  for (const t of tenantUpdates) {
+    if (t.status === "Review") warnings.push({ sheet: SHEET_TENANTS, row: t.row, kind: "pendency",
+      message: `${cellString(t.record.name)}: status left as Review — please confirm current or past` });
+  }
+
+  return {
+    creates, updates, renames, tenantCreates, tenantUpdates, errors, warnings,
+    summary: {
+      propertiesToCreate: creates.length,
+      propertiesToUpdate: updates.length,
+      addressChanges: renames.length,
+      tenantsToCreate: tenantCreates.length,
+      tenantsToUpdate: tenantUpdates.length,
+      errors: errors.length,
+      pendencies: warnings.length,
+    },
+  };
+}

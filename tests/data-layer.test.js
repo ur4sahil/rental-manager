@@ -684,9 +684,15 @@ async function testWizardProgress() {
 
 async function testARSubAccountCreation() {
   console.log('\n📋 AR SUB-ACCOUNT CREATION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
-  const cid = companies?.[0]?.id;
-  if (!cid) { assert(false, 'AR Sub: no company found'); return; }
+  // Pick a company that actually HAS the 1100 parent, rather than
+  // whichever row the database happens to return first. The unordered
+  // version passed only by luck: cleaning up 141 unused companies changed
+  // which company sorted first, and the new one ("_health_check") has no
+  // chart of accounts at all.
+  const { data: parents } = await supabase.from('acct_accounts')
+    .select('company_id').eq('code', '1100').limit(1);
+  const cid = parents?.[0]?.company_id;
+  if (!cid) { assert(false, 'AR Sub: no company with a 1100 account found'); return; }
 
   const testName = 'TEST-AR-TENANT-' + Date.now();
 
