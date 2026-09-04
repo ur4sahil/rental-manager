@@ -82,7 +82,12 @@ function testFileStructure() {
   const actualCompFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.js'));
   assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 40, `src/components/ has 23..40 files (found ${actualCompFiles.length})`);
 
-  // Total line count. Upper bound raised to 37500 for the QuickBooks
+  // Total line count. Raised to 38500 for the bulk property importer
+  // (src/utils/propertyImport.js + src/components/PropertyImport.js,
+  // ~990 lines). This bound exists to catch the codebase drifting back
+  // toward one enormous file — run `npm run test:unit`, not a single
+  // suite, before pushing, or it only surfaces after the commit.
+  // Previously raised to 37500 for the QuickBooks
   // ledger import (parser, mapping wizard, server route) and the Cmd+K
   // command palette — roughly 1,900 deliberate lines across
   // src/utils/qbImport.js, src/components/QuickBooksImport.js and
@@ -99,7 +104,7 @@ function testFileStructure() {
   const allJsFiles = collectJsFiles(SRC);
   const totalLines = allJsFiles.reduce((sum, f) => sum + lineCount(f), 0);
   assert(totalLines >= 20000, `Total src lines >= 20000 (${totalLines})`);
-  assert(totalLines <= 37500, `Total src lines <= 37500 (${totalLines})`);
+  assert(totalLines <= 38500, `Total src lines <= 38500 (${totalLines})`);
 }
 
 // ───────────────────────────────────────────
