@@ -2660,7 +2660,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!guardSubmit("assignPM")) return;
   try {
   if (!pmCode.trim()) { showToast("Please enter the PM company's 8-digit code.", "error"); return; }
-  const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
+  // Via RPC, not a direct read: `companies` is no longer world-readable
+  // to authenticated users (that grant let anyone enumerate every company
+  // and its code). find_company_by_code is SECURITY DEFINER and returns
+  // at most one row, without echoing the code back.
+  const { data: pmRows } = await supabase.rpc("find_company_by_code", { p_code: pmCode.trim() });
+  const pmCompany = pmRows?.[0];
   if (!pmCompany) { showToast("No company found with that code.", "error"); return; }
   if (pmCompany.company_role !== "management") { showToast(pmCompany.name + " is not a management company. Only management companies can be assigned as PM.", "error"); return; }
   // Check for existing pending or accepted assignment

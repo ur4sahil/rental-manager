@@ -60,6 +60,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.58.2",
     "@supabase/supabase-js": "^2.98.0",
     "dotenv": "^17.3.1"

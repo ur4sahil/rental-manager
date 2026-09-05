@@ -137,18 +137,12 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   tenantRedemption = redeemResult;
   }
 
-  // For tenants: auto-join their company using the invite redemption data
-  if (tenantRedemption?.company_id) {
-  const { error: memErr } = await supabase.from("company_members").upsert([{
-  company_id: tenantRedemption.company_id,
-  user_email: email.toLowerCase(),
-  user_name: name.trim(),
-  role: "tenant",
-  status: "active",  // Invite was redeemed — full access immediately
-  invited_by: "invite_code",
-  }], { onConflict: "company_id,user_email" });
-  if (memErr) pmError("PM-1006", { raw: memErr, context: "auto-join from invite", silent: true });
-  }
+  // No client-side membership write here on purpose. redeem_invite_code
+  // is SECURITY DEFINER and has already inserted the company_members row
+  // (role 'tenant', status 'active') as part of redeeming the code, so
+  // this was always a duplicate. It is also the one remaining path that
+  // would need a "self-insert at status=active" policy -- precisely the
+  // hole that let any authenticated user join any company as admin.
 
   // Save user_type to app_users
   const { error: appUserErr } = await supabase.from("app_users").insert([{

@@ -189,7 +189,11 @@ const ALL_NAV = [
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
-  { id: "accounting", label: "Accounting", icon: "account_balance", children: [
+  // impliesChildren: holding "accounting" grants the acct_* sub-pages.
+  // Properties deliberately does NOT carry this flag -- its children
+  // include Loans, Insurance and Import from Excel, which the role
+  // allowlists withhold from manager and office_assistant on purpose.
+  { id: "accounting", label: "Accounting", icon: "account_balance", impliesChildren: true, children: [
     { id: "acct_opening",    label: "Opening Balances",  icon: "restart_alt" },
     { id: "acct_coa",        label: "Chart of Accounts", icon: "list_alt" },
     { id: "acct_journal",    label: "Journal Entries",   icon: "receipt_long" },
@@ -1262,7 +1266,7 @@ function AppInner() {
   const allowedPages = (() => {
     const set = new Set(baseAllowedPages);
     for (const n of ALL_NAV) {
-      if (n.children && set.has(n.id)) {
+      if (n.impliesChildren && n.children && set.has(n.id)) {
         for (const c of n.children) set.add(c.id);
       }
     }
@@ -1277,7 +1281,7 @@ function AppInner() {
         // rows were saved before the sub-page list existed, so they
         // include only the parent — and without this fallback the
         // sidebar dropdown renders empty for those users.
-        const parentAllowed = allowedPages.includes(n.id);
+        const parentAllowed = !!n.impliesChildren && allowedPages.includes(n.id);
         const filteredChildren = n.children.filter(c => parentAllowed || allowedPages.includes(c.id));
         return { ...n, children: filteredChildren };
       });

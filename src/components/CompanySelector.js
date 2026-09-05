@@ -5,6 +5,7 @@ import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue }
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
 import { Spinner } from "./shared";
+import { UserProfile } from "./Admin";
 
 // ============ COMPANY SELECTOR ============
 function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, showConfirm }) {
@@ -116,7 +117,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   for (let attempt = 0; attempt < 5; attempt++) {
   const ccArr = new Uint32Array(1); crypto.getRandomValues(ccArr);
   companyCode = String(10000000 + (ccArr[0] % 89999999));
-  const { data: existing } = await supabase.from("companies").select("id").eq("company_code", companyCode).maybeSingle();
+  const { data: existing } = await supabase.rpc("company_code_exists", { p_code: companyCode });
   if (!existing) break;
   if (attempt === 4) { showToast("Could not generate unique company code. Please try again.", "error"); setCreating(false); return; }
   }
@@ -146,6 +147,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   company_code: companyCode, company_role: createForm.company_role || "management",
   address: createForm.address || "", phone: createForm.phone || "",
   email: normalizeEmail(createForm.email),
+  // created_by is what authorises the membership insert below: the
+  // members_manage policy only lets you make yourself an admin of a
+  // company you created. It defaults to '' in the DB, so omitting it
+  // here leaves the founder unable to join their own company.
+  created_by: normalizeEmail(currentUser?.email),
   }]);
   if (compErr) throw new Error("Company insert: " + compErr.message);
   // Add creator as admin member
@@ -153,6 +159,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const { error: memErr } = await supabase.from("company_members").insert([{
   company_id: companyId, user_email: normalizeEmail(currentUser?.email),
   role: "admin", status: "active",
+  // invited_by:"self" is required by members_manage's founder branch.
+  // Without it this insert is only a self-insert at an arbitrary role,
+  // which is exactly the escalation the policy exists to refuse.
+  invited_by: "self",
   }]);
   if (memErr) {
   // If membership insert fails, company exists but user can't access it — delete the orphan
@@ -195,7 +205,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (!joinCode.trim()) { showToast("Please enter the 8-digit company code shared by your administrator.", "error"); return; }
   if (joinCode.trim().length < 8) { showToast("Please enter the full 8-digit company code.", "error"); return; }
   // Only exact code match — no name search (prevents company enumeration)
-  const { data } = await supabase.from("companies").select("id, name, type").eq("company_code", joinCode.trim()).limit(1);
+  const { data } = await supabase.rpc("find_company_by_code", { p_code: joinCode.trim() });
   setSearchResults(data || []);
   }
 
