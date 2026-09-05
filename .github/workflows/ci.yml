@@ -1,0 +1,31 @@
+# Catches the bug class that has cost this codebase the most: an
+# identifier that does not exist, referenced inside a try/catch that
+# swallows the ReferenceError so nothing surfaces but a generic error
+# code. A missing atomicPostJEAndLedger import meant security deposits
+# and first-month rent were silently never posted for months.
+#
+# Deliberately does not run the DB-backed suites: they need service-role
+# credentials and read live data.
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Undefined identifiers (no-undef + react/jsx-no-undef)
+        run: npx eslint src --rule '{"no-undef":"error","react/jsx-no-undef":"error"}'
+      - name: Build
+        run: npm run build
+        env:
+          CI: false
