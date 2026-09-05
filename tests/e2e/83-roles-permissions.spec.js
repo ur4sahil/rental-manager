@@ -56,14 +56,22 @@
 //
 // Everything is torn down in afterAll.
 //
-// ── KNOWN HOLES ────────────────────────────────────────────────────
-// Several tests below are marked test.fail(). Those assert the
-// SECURITY-CORRECT behaviour and are currently expected to fail,
-// which is how a confirmed hole is recorded without editing app code:
-// the run stays green, and the day the hole is closed the test flips
-// to an unexpected pass and breaks the build. Each carries a HOLE
-// comment describing what an attacker gets. See the report for the
-// full write-up.
+// ── CLOSED HOLES ───────────────────────────────────────────────────
+// Seven tests here were written as test.fail() markers recording
+// confirmed privilege-escalation holes. All seven were closed by
+// migration 20260905090000_rls_membership_lockdown.sql and the markers
+// removed, so they are now ordinary regression tests: each asserts the
+// security-correct behaviour and must PASS. The HOLE comments are kept
+// as-is -- they describe what an attacker got before the fix, which is
+// the clearest statement of what each test is defending.
+//
+// One caution kept from the original run: apiAs() re-authenticates ten
+// minutes before the JWT expires and every test calls
+// assertSessionAlive() first. That is not padding. An expired token
+// makes every write fail with 401, which is indistinguishable from
+// "RLS refused it" -- during development that made a test report an
+// open hole as closed. Any test that concludes something from a
+// refusal needs the same liveness proof.
 const { test, expect } = require('@playwright/test');
 const { execFileSync } = require('child_process');
 const path = require('path');
@@ -518,7 +526,6 @@ test.describe('83.1 — cross-company isolation', () => {
   // against a throwaway company; the same insert would work verbatim
   // against any real customer's company id.
   test('a member of one company cannot insert themselves into another company', async () => {
-    test.fail(); // documented hole — see comment above
     const c = await apiAs('office_assistant');
     await assertSessionAlive(c, 'office_assistant');
     const ins = await c.from('company_members').insert({
@@ -625,8 +632,7 @@ for (const role of ROLE_KEYS) {
       // property importer.
       test(`${role} cannot reach pages ROLES withholds but the parent→children rule re-grants (${leaked.join(', ')})`, async ({ page }) => {
         test.setTimeout(1500000);
-        test.fail(); // documented hole — see comment above
-        await signInAs(page, role);
+            await signInAs(page, role);
         const reached = [];
         for (const route of leaked) {
           await deepLink(page, route);
@@ -702,7 +708,6 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
   // role='admin' with the anon key and their own session — full
   // self-service privilege escalation, no UI involved.
   test('a non-admin cannot escalate their own role to admin', async () => {
-    test.fail(); // documented hole — see comment above
     const results = {};
     for (const role of ['manager', 'office_assistant']) {
       const c = await apiAs(role);
@@ -722,7 +727,6 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
   // member — including every admin — locking the owner out of their
   // own company.
   test('a non-admin cannot remove another member from the company', async () => {
-    test.fail(); // documented hole — see comment above
     const c = await apiAs('office_assistant');
     await assertSessionAlive(c, 'office_assistant');
     const { data: victim } = await c.from('company_members')
@@ -749,7 +753,6 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
   // full write. The office_assistant can DELETE the lock over the API
   // and then backdate entries into a closed period.
   test('an office_assistant cannot remove a period lock the UI forbids them to remove', async () => {
-    test.fail(); // documented hole — see comment above
     // Admin sets a lock.
     sql(`DELETE FROM accounting_period_lock WHERE company_id='${SANDBOX}';
          INSERT INTO accounting_period_lock (company_id, lock_date, locked_by, locked_at)
@@ -766,10 +769,16 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
   // HOLE. Properties.js offers an office_assistant only "Request
   // Delete" (which files a property_change_request for admin approval)
   // and runs a server-side role re-check inside deleteProperty(). Both
-  // live in React. `properties_staff` (FOR ALL, is_company_staff) lets
-  // any non-tenant/owner member DELETE the row outright.
+  // used to live only in React: `properties_staff` (FOR ALL,
+  // is_company_staff) let any non-tenant/owner member DELETE the row
+  // outright. Closed by properties_delete (admin/manager only).
+  //
+  // Asserts on SURVIVAL, not on an error. A DELETE refused by RLS is
+  // filtered by the USING clause, so PostgREST reports success with
+  // zero rows affected -- it does not raise 42501. Only INSERT/UPDATE
+  // WITH CHECK violations raise. Requiring an error here would fail
+  // against a correctly locked-down table.
   test('an office_assistant cannot hard-delete a property (UI only offers "Request Delete")', async () => {
-    test.fail(); // documented hole — see comment above
     const c = await apiAs('office_assistant');
     await assertSessionAlive(c, 'office_assistant');
     const created = await c.from('properties')
@@ -780,9 +789,9 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
     const del = await c.from('properties').delete().eq('id', id).select();
     const gone = sql(`SELECT count(*) FROM properties WHERE id=${id};`) === '0';
     sql(`DELETE FROM properties WHERE id=${id};`); // backstop
-    expect({ deleteRefused: !!del.error, rowGone: gone },
+    expect({ rowsDeleted: (del.data || []).length, rowGone: gone },
       'HOLE: office_assistant hard-deleted a property the UI would only let them REQUEST to delete')
-      .toEqual({ deleteRefused: true, rowGone: false });
+      .toEqual({ rowsDeleted: 0, rowGone: false });
   });
 
   test('manager and office_assistant CAN post to the ledger (both are granted Accounting)', async () => {
