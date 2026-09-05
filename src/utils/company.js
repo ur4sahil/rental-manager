@@ -1,6 +1,6 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
-import { safeNum, emailFilterValue, escapeFilterValue } from "./helpers";
+import { safeNum, emailFilterValue, escapeFilterValue , pgrestQuote} from "./helpers";
 import { COMPANY_DEFAULTS } from "../config";
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
@@ -131,7 +131,12 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
       const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active").limit(INTEGRITY_MAX_TENANTS);
       for (const t of (activeTenants || [])) {
         let q = supabase.from("leases").select("id").eq("company_id", companyId).eq("status", "active");
-        q = t.id ? q.or(`tenant_id.eq.${t.id},tenant_name.ilike.${escapeFilterValue(t.name)}`) : q.ilike("tenant_name", escapeFilterValue(t.name));
+        // The name branch is paired with the property, otherwise a
+        // NAMESAKE's active lease satisfies this check and the real
+        // violation ("this tenant has no active lease") goes unreported.
+        q = t.id
+          ? q.or(`tenant_id.eq.${t.id},and(tenant_name.ilike.${pgrestQuote(escapeFilterValue(t.name))},property.eq.${pgrestQuote(t.property || "")})`)
+          : q.ilike("tenant_name", escapeFilterValue(t.name)).eq("property", t.property || "");
         const { data: leaseRows } = await q.limit(1);
         if (!leaseRows || leaseRows.length === 0) {
           violations.push({ code: "PM-9002", details: `Tenant "${t.name}" at ${t.property} has no active lease`, meta: { tenantId: t.id, tenantName: t.name } });

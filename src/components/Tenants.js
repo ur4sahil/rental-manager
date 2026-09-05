@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -12,6 +12,37 @@ import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messa
 import { queueNotification } from "../utils/notifications";
 import { LeaseManagement } from "./Leases";
 import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
+
+// One tenant's rows, precisely.
+//
+// tenant_id is authoritative. The (name, property) pair is the fallback
+// for rows written before the tenant_id backfill, and it identifies a
+// tenant uniquely among ACTIVE tenants because of the partial unique
+// index idx_tenants_unique_name_property on (company_id, name, property).
+//
+// Matching on the NAME ALONE -- which is what these queries used to do --
+// merged two namesakes' records into a single view: one running ledger
+// balance built from two people's charges, one document list holding
+// both their leases. Staff are authorised to see all of it, so this is
+// not a disclosure bug; it is a wrong-data bug, which is harder to
+// notice and worse to act on.
+//
+// Both halves are kept rather than filtering on tenant_id alone: the
+// backfill could not resolve every historical row (an archived tenant's
+// documents, for instance), and an id-only filter would silently drop
+// that history.
+function scopeToTenant(q, tenant, nameCol = "tenant") {
+  // pgrestQuote, not escapeFilterValue: inside and(...) a comma ends the
+  // argument, and addresses carry two of them ("7200 Bogley, District
+  // Heights, MD 20747"). Unquoted, the filter is malformed and PostgREST
+  // returns 400, which the caller's `data || []` turns into "no rows".
+  const name = pgrestQuote(tenant?.name || "");
+  const prop = pgrestQuote(tenant?.property || "");
+  return tenant?.id
+    ? q.or(`tenant_id.eq.${tenant.id},and(${nameCol}.eq.${name},property.eq.${prop})`)
+    : q.eq(nameCol, tenant?.name || "").eq("property", tenant?.property || "");
+}
+
 
 const acctToday = () => formatLocalDate(new Date());
 
@@ -254,9 +285,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   supabase.from("work_orders").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
   supabase.from("documents").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
   supabase.from("autopay_schedules").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
-  editingTenant.id
-    ? supabase.from("ledger_entries").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant_id", editingTenant.id)
-    : supabase.from("ledger_entries").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  // ledger_entries is deliberately absent: it is a VIEW over a window
+  // function and is not updatable, so this entry always rejected. It sat
+  // inside Promise.allSettled, so it failed silently on every rename
+  // rather than aborting its siblings. The view derives `tenant` from
+  // acct_journal_lines -> acct_accounts and follows on its own.
   editingTenant.id
     ? supabase.from("messages").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant_id", editingTenant.id)
     : supabase.from("messages").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
@@ -310,7 +343,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   return;
   }
   // Check for outstanding balance before allowing deletion
-  const { data: tenantRow } = await supabase.from("tenants").select("balance").eq("id", id).eq("company_id", companyId).maybeSingle();
+  // property comes along so the security-deposit lookup below can scope
+  // the lease to this tenant rather than to everyone sharing their name.
+  const { data: tenantRow } = await supabase.from("tenants").select("balance, property").eq("id", id).eq("company_id", companyId).maybeSingle();
   if (tenantRow && safeNum(tenantRow.balance) > 0) {
   showToast(`Cannot delete tenant "${name}" with an outstanding balance of $${safeNum(tenantRow.balance).toFixed(2)}. Please settle the balance first.`, "error");
   return;
@@ -319,7 +354,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!await showConfirm({ message: `Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?` })) return;
   }
   // #16: Check for unreturned security deposit
-  const { data: activeLease } = await supabase.from("leases").select("security_deposit").eq("company_id", companyId).eq("tenant_name", name).eq("status", "active").maybeSingle();
+  const { data: activeLease } = await scopeToTenant(
+    supabase.from("leases").select("security_deposit").eq("company_id", companyId).eq("status", "active"),
+    { id, name, property: tenantRow?.property }, "tenant_name"
+  ).maybeSingle();
   if (activeLease && safeNum(activeLease.security_deposit) > 0) {
   if (isAdmin) {
   if (!await showConfirm({ message: `Tenant "${name}" has an unreturned security deposit of ${formatCurrency(activeLease.security_deposit)}.\n\nDeleting without processing the deposit through the Move-Out Wizard will leave the deposit liability on your books.\n\nProceed anyway?`, variant: "danger", confirmText: "Delete Anyway" })) return;
@@ -373,7 +411,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // property, which terminated every other active lease at a multi-unit
   // address when one tenant was archived.
   let leaseTermQ = supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("status", "active");
-  leaseTermQ = id ? leaseTermQ.or(`tenant_id.eq.${id},and(tenant_name.eq.${escapeFilterValue(name)},property.eq.${escapeFilterValue(tenantProperty || "")})`) : leaseTermQ.eq("tenant_name", name).eq("property", tenantProperty || "");
+  leaseTermQ = id ? leaseTermQ.or(`tenant_id.eq.${id},and(tenant_name.eq.${pgrestQuote(name)},property.eq.${pgrestQuote(tenantProperty || "")})`) : leaseTermQ.eq("tenant_name", name).eq("property", tenantProperty || "");
   const { error: leaseErr } = await leaseTermQ;
   if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
@@ -579,7 +617,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function fetchTenantDocs(tenant) {
-  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(50);
+  const { data } = await scopeToTenant(
+    supabase.from("documents").select("*").eq("company_id", companyId).is("archived_at", null),
+    tenant
+  ).order("uploaded_at", { ascending: false }).limit(50);
   setTenantDocs(data || []);
   }
 
@@ -635,14 +676,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   let data = [];
   if (tenant.id) {
   const { data: byId } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant_id", tenant.id).order("date", { ascending: false }).limit(200);
-  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).is("tenant_id", null).order("date", { ascending: false }).limit(200);
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId)
+    .eq("tenant", tenant.name).eq("property", tenant.property || "")
+    .is("tenant_id", null).order("date", { ascending: false }).limit(200);
   // Merge and deduplicate by id, sort by date desc
   const merged = {};
   (byId || []).forEach(e => { merged[e.id] = e; });
   (byName || []).forEach(e => { if (!merged[e.id]) merged[e.id] = e; });
   data = Object.values(merged).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   } else {
-  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).order("date", { ascending: false }).limit(200);
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId)
+    .eq("tenant", tenant.name).eq("property", tenant.property || "")
+    .order("date", { ascending: false }).limit(200);
   data = byName || [];
   }
   setLedger(data);
@@ -841,7 +886,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
   if (error) { pmError("PM-3004", { raw: error, context: "renew lease" }); return; }
   // #4: Update active lease end_date if one exists, or create one
-  const { data: activeLease, error: leaseErr } = await supabase.from("leases").select("id, rent_amount").eq("company_id", companyId).eq("tenant_name", selectedTenant.name).eq("status", "active").limit(1);
+  // Scoped to this tenant, not to their name. Matching on tenant_name
+  // alone picked whichever active lease came first among namesakes, and
+  // the update below then wrote the new end_date onto that lease --
+  // extending a different person's tenancy. tenant_id is authoritative;
+  // (name, property) is the fallback for rows predating the backfill and
+  // is unique among active tenants (idx_tenants_unique_name_property).
+  let activeLeaseQ = supabase.from("leases").select("id, rent_amount").eq("company_id", companyId).eq("status", "active");
+  activeLeaseQ = selectedTenant.id
+    ? activeLeaseQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant_name.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
+    : activeLeaseQ.eq("tenant_name", selectedTenant.name).eq("property", selectedTenant.property || "");
+  const { data: activeLease, error: leaseErr } = await activeLeaseQ.limit(1);
   if (leaseErr) { showToast("Lease lookup failed: " + leaseErr.message, "error"); }
   if (activeLease?.[0]) {
   const { error: leaseUpErr } = await supabase.from("leases").update({ end_date: newMoveOut }).eq("company_id", companyId).eq("id", activeLease[0].id);
@@ -855,7 +910,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   await supabase.from("properties").update({ lease_end: newMoveOut }).eq("company_id", companyId).eq("address", selectedTenant.property);
   }
   // #4: Sync autopay schedule end_date
-  await supabase.from("autopay_schedules").update({ end_date: newMoveOut }).eq("company_id", companyId).eq("tenant", selectedTenant.name);
+  // Same hazard, worse consequence: an unscoped name match set end_date
+  // on EVERY autopay row carrying that name, silently ending a namesake's
+  // rent collection.
+  let apSyncQ = supabase.from("autopay_schedules").update({ end_date: newMoveOut }).eq("company_id", companyId);
+  apSyncQ = selectedTenant.id
+    ? apSyncQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
+    : apSyncQ.eq("tenant", selectedTenant.name).eq("property", selectedTenant.property || "");
+  const { error: apSyncErr } = await apSyncQ;
+  if (apSyncErr) pmError("PM-3004", { raw: apSyncErr, context: "sync autopay end_date on renew", silent: true });
   addNotification("\u{1F4C4}", `Lease extended for ${selectedTenant.name} until ${newMoveOut}`);
   logAudit("update", "tenants", `Lease renewed for ${selectedTenant.name} until ${newMoveOut}`, selectedTenant.id, userProfile?.email, userRole, companyId);
   setLeaseModal(null);
@@ -874,7 +937,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", selectedTenant.id);
   if (error) { pmError("PM-3006", { raw: error, context: "generate move-out notice" }); return; }
   // #8: Also update lease status to reflect notice
-  const { error: leaseErr } = await supabase.from("leases").update({ status: "notice" }).eq("company_id", companyId).eq("tenant_name", selectedTenant.name).eq("status", "active");
+  // Unscoped, this flipped a namesake's active lease to "notice" too.
+  let noticeQ = supabase.from("leases").update({ status: "notice" }).eq("company_id", companyId).eq("status", "active");
+  noticeQ = selectedTenant.id
+    ? noticeQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant_name.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
+    : noticeQ.eq("tenant_name", selectedTenant.name).eq("property", selectedTenant.property || "");
+  const { error: leaseErr } = await noticeQ;
   if (leaseErr) showToast("Lease status update failed: " + leaseErr.message, "error");
   addNotification("\u{1F4CB}", `${days}-day move-out notice generated for ${selectedTenant.name}`);
   logAudit("update", "tenants", `${days}-day notice issued for ${selectedTenant.name}`, selectedTenant.id, userProfile?.email, userRole, companyId);
@@ -1396,13 +1464,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       t.id
         ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("date", { ascending: false }).limit(500)
         : supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(500),
-      supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("uploaded_at", { ascending: false }).limit(200),
+      scopeToTenant(supabase.from("documents").select("*").eq("company_id", companyId), t)
+        .order("uploaded_at", { ascending: false }).limit(200),
       t.id
         ? supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("created_at", { ascending: true }).limit(500)
         : supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(500),
       supabase.from("leases").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("start_date", { ascending: false }),
-      supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(200),
-      supabase.from("work_orders").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: false }).limit(100),
+      scopeToTenant(supabase.from("payments").select("*").eq("company_id", companyId), t)
+        .order("date", { ascending: false }).limit(200),
+      scopeToTenant(supabase.from("work_orders").select("*").eq("company_id", companyId), t)
+        .order("created_at", { ascending: false }).limit(100),
     ]);
     setArchivedDetail({
       tenant: t,

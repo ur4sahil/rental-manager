@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -3433,10 +3433,21 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // match cross-tenant rows when the name contains % or _. Classic
   // scope-leak pattern — escape the LIKE meta-chars before query.
   const tSafe = escapeFilterValue(t.name || "");
+  // Scoped to this tenant, not to their name. The ternary already
+  // checked t.id but the query then matched on the NAME anyway, so a
+  // namesake at another property had their ledger, documents and
+  // messages merged into this one's history. tenant_id is authoritative;
+  // (name, property) is the fallback for rows predating the backfill and
+  // is unique among active tenants.
+  const tQuoted = pgrestQuote(t.name || "");
+  const tProp = pgrestQuote(t.property || "");
+  const scoped = (q, nameCol = "tenant") => t.id
+    ? q.or(`tenant_id.eq.${t.id},and(${nameCol}.eq.${tQuoted},property.eq.${tProp})`)
+    : q.eq(nameCol, t.name || "").eq("property", t.property || "");
   const [ledgerRes, docsRes, msgsRes] = await Promise.all([
-  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
-  supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("uploaded_at", { ascending: false }).limit(100),
-  supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(100),
+  t.id ? scoped(supabase.from("ledger_entries").select("*").eq("company_id", companyId)).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
+  scoped(supabase.from("documents").select("*").eq("company_id", companyId)).order("uploaded_at", { ascending: false }).limit(100),
+  scoped(supabase.from("messages").select("*").eq("company_id", companyId)).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
   }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">

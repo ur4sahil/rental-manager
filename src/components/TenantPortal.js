@@ -240,7 +240,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   ? supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant_id", tid).is("archived_at", null).order("date", { ascending: false })
   : supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tname)).eq("property", tenant.property).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tenant.property).is("archived_at", null).order("created", { ascending: false }),
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tname).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false }),
+  // By id, not name. RLS already restricts this to the caller's own
+  // documents via tenant_id, so a client-side NAME filter could only
+  // ever hide a row that is legitimately theirs -- e.g. after a rename.
+  tid
+  ? supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant_id", tid).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false })
+  : supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tname).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);
   setLedger(l.data || []);
   setMessages(m.data || []);

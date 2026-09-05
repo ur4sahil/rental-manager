@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:undef && npm run test:routes && npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:qbimport && npm run test:palette && npm run test:shortcuts && npm run test:classint && npm run test:propimport && npm run test:financial && npm run test:refactor && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls",
+    "test:unit": "npm run test:undef && npm run test:routes && npm run test:pgrest && npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:qbimport && npm run test:palette && npm run test:shortcuts && npm run test:classint && npm run test:propimport && npm run test:financial && npm run test:refactor && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -55,7 +55,8 @@
     "test:classint": "node class-integrity.test.js",
     "test:propimport": "node property-import.test.js",
     "test:undef": "node undefined-identifiers.test.js",
-    "test:routes": "node route-integrity.test.js"
+    "test:routes": "node route-integrity.test.js",
+    "test:pgrest": "node pgrest-filters.test.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

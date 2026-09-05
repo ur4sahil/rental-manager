@@ -156,8 +156,12 @@ export async function recomputeTenantDocStatus(companyId, tenantOrOpts) {
   const { data: rows } = await tRowsQ;
   const targets = (rows || []).filter(r => r.doc_status !== "exception_approved");
   if (targets.length === 0) return;
+  // documents.tenant_id is authoritative where present. Without it, a
+  // name-only match counted a NAMESAKE's uploads toward this tenant's
+  // document checklist, marking them "complete" on someone else's files.
   let docsQ = supabase.from("documents").select("name, type").eq("company_id", companyId).is("archived_at", null);
-  if (tenantName) docsQ = docsQ.eq("tenant", tenantName);
+  if (tenantId) docsQ = docsQ.eq("tenant_id", tenantId);
+  else if (tenantName) docsQ = docsQ.eq("tenant", tenantName);
   if (property) docsQ = docsQ.eq("property", property);
   const { data: docs } = await docsQ;
   const nextStatus = hasAllRequiredTenantDocs(docs) ? "complete" : "pending_docs";
@@ -212,6 +216,22 @@ export function escapeHtml(str) {
 export function escapeFilterValue(val) {
   if (!val) return "";
   return String(val).replace(/[%_\\]/g, c => "\\" + c);
+}
+
+// Quote a value for PostgREST's or=/and() filter grammar.
+//
+// escapeFilterValue() escapes LIKE wildcards; it does NOT make a value
+// safe inside or=(...) or and(...). There, a comma ends the argument and
+// parentheses nest, so an unquoted value containing either produces a
+// malformed filter and PostgREST answers 400 — which the app's
+// try/catch turns into an empty result rather than an error.
+//
+// This bites constantly now that property addresses carry city, state
+// and zip: "7200 Bogley, District Heights, MD 20747" has two commas.
+// Values are double-quoted, with embedded quotes and backslashes
+// escaped, which is exactly what PostgREST expects.
+export function pgrestQuote(val) {
+  return '"' + String(val ?? "").replace(/(["\\])/g, "\\$1") + '"';
 }
 
 // Case-insensitive email equality. `_` in a raw .ilike pattern is a SQL
