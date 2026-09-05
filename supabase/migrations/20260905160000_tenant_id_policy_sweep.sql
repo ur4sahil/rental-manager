@@ -218,3 +218,80 @@ CREATE POLICY payments_tenant_insert ON public.payments
 DROP POLICY IF EXISTS autopay_tenant_write ON public.autopay_schedules;
 CREATE POLICY autopay_tenant_write ON public.autopay_schedules
   FOR INSERT WITH CHECK (tenant_id = public.get_tenant_id(company_id));
+
+-- ---------------------------------------------------------------
+-- 5. Disambiguate namesakes by property before giving up
+-- ---------------------------------------------------------------
+-- Name-only matching resolved to NULL whenever two active tenants share
+-- a name -- which is exactly the 5 same-name groups in production, and
+-- the portals E2E fixture. Fail-closed is right, but it made those
+-- tenants' documents invisible to THEMSELVES, not just to each other.
+--
+-- Same-name tenants virtually always live at different properties, and
+-- documents / payments / work_orders all carry the property. So: try
+-- (name, property) first, fall back to name alone, and only then give
+-- up. Still fail-closed -- a genuinely ambiguous row resolves to NULL.
+CREATE OR REPLACE FUNCTION public.derive_tenant_id_from_name()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_count int; v_id bigint;
+BEGIN
+  IF NEW.tenant_id IS NOT NULL OR coalesce(btrim(NEW.tenant),'') = '' THEN
+    RETURN NEW;
+  END IF;
+
+  -- name + property
+  SELECT count(*), min(t.id) INTO v_count, v_id
+    FROM tenants t
+   WHERE t.company_id = NEW.company_id
+     AND lower(t.name) = lower(btrim(NEW.tenant))
+     AND t.archived_at IS NULL
+     AND coalesce(lower(btrim(t.property)),'') = coalesce(lower(btrim(NEW.property)),'');
+  IF v_count = 1 THEN NEW.tenant_id := v_id; RETURN NEW; END IF;
+
+  -- name alone
+  SELECT count(*), min(t.id) INTO v_count, v_id
+    FROM tenants t
+   WHERE t.company_id = NEW.company_id
+     AND lower(t.name) = lower(btrim(NEW.tenant))
+     AND t.archived_at IS NULL;
+  NEW.tenant_id := CASE WHEN v_count = 1 THEN v_id ELSE NULL END;
+  RETURN NEW;
+END;
+$function$;
+
+-- Re-run the backfills now that namesakes can be resolved by property.
+UPDATE public.documents d SET tenant_id = t.id
+  FROM tenants t
+ WHERE d.tenant_id IS NULL AND coalesce(btrim(d.tenant),'') <> ''
+   AND t.company_id = d.company_id AND lower(t.name) = lower(btrim(d.tenant))
+   AND t.archived_at IS NULL
+   AND coalesce(lower(btrim(t.property)),'') = coalesce(lower(btrim(d.property)),'')
+   AND (SELECT count(*) FROM tenants t2
+         WHERE t2.company_id = d.company_id AND lower(t2.name) = lower(btrim(d.tenant))
+           AND t2.archived_at IS NULL
+           AND coalesce(lower(btrim(t2.property)),'') = coalesce(lower(btrim(d.property)),'')) = 1;
+
+UPDATE public.payments p SET tenant_id = t.id
+  FROM tenants t
+ WHERE p.tenant_id IS NULL AND coalesce(btrim(p.tenant),'') <> ''
+   AND t.company_id = p.company_id AND lower(t.name) = lower(btrim(p.tenant))
+   AND t.archived_at IS NULL
+   AND coalesce(lower(btrim(t.property)),'') = coalesce(lower(btrim(p.property)),'')
+   AND (SELECT count(*) FROM tenants t2
+         WHERE t2.company_id = p.company_id AND lower(t2.name) = lower(btrim(p.tenant))
+           AND t2.archived_at IS NULL
+           AND coalesce(lower(btrim(t2.property)),'') = coalesce(lower(btrim(p.property)),'')) = 1;
+
+UPDATE public.work_orders w SET tenant_id = t.id
+  FROM tenants t
+ WHERE w.tenant_id IS NULL AND coalesce(btrim(w.tenant),'') <> ''
+   AND t.company_id = w.company_id AND lower(t.name) = lower(btrim(w.tenant))
+   AND t.archived_at IS NULL
+   AND coalesce(lower(btrim(t.property)),'') = coalesce(lower(btrim(w.property)),'')
+   AND (SELECT count(*) FROM tenants t2
+         WHERE t2.company_id = w.company_id AND lower(t2.name) = lower(btrim(w.tenant))
+           AND t2.archived_at IS NULL
+           AND coalesce(lower(btrim(t2.property)),'') = coalesce(lower(btrim(w.property)),'')) = 1;

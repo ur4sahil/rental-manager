@@ -912,15 +912,34 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     // Compute running balance forward (oldest → newest) so we can
     // display each row's balance-after-this-entry. ledgerLines comes
     // pre-sorted newest-first; reverse to walk forward.
-    const forward = [...ledgerLines].reverse();
-    let bal = 0;
-    const withBal = forward.map(l => {
-      const d = safeNum(l.debit) || 0;
-      const c = safeNum(l.credit) || 0;
-      bal += d - c;
-      return { ...l, _balance: bal };
-    });
-    const rows = withBal.reverse(); // back to newest-first for render
+    // Prefer the per-tenant AR sub-account lines, but fall back to the
+    // ledger_entries view when the tenant has no sub-account. Not every
+    // tenant does -- older tenants sit on the shared 1100 Accounts
+    // Receivable -- and rendering only ledgerLines meant those tenants
+    // saw "No ledger entries yet" while `ledger` already held their
+    // transactions. The view is tenant-scoped in SQL and carries its own
+    // running balance, so the fallback is safe and needs no recompute.
+    const useFallback = ledgerLines.length === 0 && ledger.length > 0;
+    const rows = useFallback
+      ? ledger.map(e => ({
+          id: e.id,
+          debit:  e.type === "payment" || e.type === "credit" ? 0 : safeNum(e.amount),
+          credit: e.type === "payment" || e.type === "credit" ? safeNum(e.amount) : 0,
+          memo: e.description,
+          acct_journal_entries: { date: e.date, description: e.description },
+          _balance: safeNum(e.balance),
+        }))
+      : (() => {
+          const forward = [...ledgerLines].reverse();
+          let bal = 0;
+          const withBal = forward.map(l => {
+            const d = safeNum(l.debit) || 0;
+            const c = safeNum(l.credit) || 0;
+            bal += d - c;
+            return { ...l, _balance: bal };
+          });
+          return withBal.reverse(); // back to newest-first for render
+        })();
     return (
     <div>
     <div className="flex justify-between items-center mb-3">
