@@ -808,13 +808,16 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
     }
   });
 
-  // Not a hole — the opposite. Accounting.js shows the "Re-open"
-  // button to admin, owner AND manager, but bank_reconciliations is
-  // gated by has_write_access(), whose role list is
-  // (admin, office_assistant, accountant, maintenance) — manager is
-  // absent. A manager clicks Re-open and gets an RLS error. Pinned so
-  // whoever reconciles the two lists sees both halves.
-  test('a manager is refused writes to bank_reconciliations despite the UI offering Re-open', async () => {
+  // This pinned a mismatch, now resolved in the UI's favour.
+  // Accounting.js shows "Re-open" to admin, owner AND manager, but
+  // has_write_access() listed (admin, office_assistant, accountant,
+  // maintenance) — manager was missing, so the click returned RLS
+  // 42501. On most tables a parallel is_company_staff policy hid the
+  // gap; on the five where has_write_access is the only gate it bit,
+  // including property_change_requests, which managers exist to
+  // approve. 'manager' was added to the function, so the assertion
+  // flips: the backend must now agree with the button.
+  test('a manager can write bank_reconciliations, matching the UI that offers Re-open', async () => {
     const c = await apiAs('manager');
     await assertSessionAlive(c, 'manager');
     const { error } = await c.from('bank_reconciliations').insert({
@@ -822,8 +825,20 @@ test.describe('83.3 — privileged actions (backend enforcement)', () => {
       bank_ending_balance: 0, book_balance: 0, difference: 0,
     });
     sql(`DELETE FROM bank_reconciliations WHERE company_id='${SANDBOX}' AND period='2026-01';`);
-    expect(error, 'manager unexpectedly gained bank_reconciliations write access').not.toBeNull();
-    expect(error.code).toBe('42501');
+    expect(error, 'manager should be able to re-open a reconciliation').toBeNull();
+  });
+
+  // The same gate that blocked Re-open also blocked the manager's
+  // actual job: approving a property change request filed by staff.
+  test('a manager can approve a property change request', async () => {
+    const c = await apiAs('manager');
+    await assertSessionAlive(c, 'manager');
+    const { error } = await c.from('property_change_requests').insert({
+      company_id: SANDBOX, address: 'E2E83 Approval Probe',
+      request_type: 'delete', status: 'pending', requested_by: 'probe@example.test',
+    });
+    sql(`DELETE FROM property_change_requests WHERE company_id='${SANDBOX}' AND address='E2E83 Approval Probe';`);
+    expect(error, 'manager should be able to file/approve property change requests').toBeNull();
   });
 
   test('an office_assistant cannot read the error log of a company it does not belong to', async () => {
