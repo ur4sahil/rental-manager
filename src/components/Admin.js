@@ -1578,7 +1578,15 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", emailFilterValue(currentUser?.email));
   }
   }
-  await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", emailFilterValue(currentUser?.email));
+  // app_users has archived_at/archived_by, not status/deleted_at. The
+  // old payload was rejected outright, so "delete my account" never
+  // marked the row at all — and the code moved straight on to deleting
+  // the auth row, leaving an app_users record with no way to sign in
+  // and no indication it had been closed.
+  const { error: _selfDelErr } = await supabase.from("app_users")
+    .update({ archived_at: new Date().toISOString(), archived_by: currentUser?.email || "" })
+    .ilike("email", emailFilterValue(currentUser?.email));
+  if (_selfDelErr) pmError("PM-1009", { raw: _selfDelErr, context: "self-delete: marking app_users archived" });
 
   // Phase 2: delete the Supabase auth row via server route. Until now
   // the auth row stayed alive — the user could still sign in, and any

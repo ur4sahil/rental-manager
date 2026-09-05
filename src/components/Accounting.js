@@ -884,7 +884,10 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
         });
         if (lockOk) {
           await supabase.from("accounting_period_lock").upsert([{
-            company_id: companyId, locked_through_date: asOf, locked_by: userProfile?.email || "",
+            // lock_date, not locked_through_date — the latter has never
+            // existed, so PostgREST rejected the whole upsert and closing
+            // an accounting period silently did nothing.
+            company_id: companyId, lock_date: asOf, locked_by: userProfile?.email || "",
           }], { onConflict: "company_id" });
         }
       } else {
@@ -4242,7 +4245,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   async function updateClass(cls) {
   const { id } = cls;
   const { error } = await supabase.from("acct_classes").update({
-  name: cls.name, type: cls.type, is_active: cls.is_active,
+  // `type` is not a column on acct_classes (id, name, description,
+  // color, is_active, created_at, company_id). Including it made
+  // PostgREST reject the update, so editing a class silently changed
+  // nothing at all.
+  name: cls.name, is_active: cls.is_active,
   description: cls.description || "", color: cls.color || "#3B82F6"
   }).eq("company_id", companyId).eq("id", id);
   if (error) { pmError("PM-4010", { raw: error, context: "update accounting class" }); return; }

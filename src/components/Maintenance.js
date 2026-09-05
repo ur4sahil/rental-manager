@@ -283,7 +283,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (uploadError) { pmError("PM-7006", { raw: uploadError, context: "uploading work order photo" }); setUploadingPhoto(false); return; }
   // Store file path (not public URL) — signed URLs generated on display
   const storagePath = fileName;
-  const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
+  const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId }]);
   if (_photoErr) { pmError("PM-7007", { raw: _photoErr, context: "saving work order photo record" }); setUploadingPhoto(false); return; }
   addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
   setUploadingPhoto(false);

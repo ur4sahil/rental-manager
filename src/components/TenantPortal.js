@@ -537,7 +537,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   await supabase.from("work_order_photos").insert([{
   work_order_id: newWO[0].id, property: tenantData.property,
   url: fileName, caption: photo.name,
-  company_id: companyId, storage_bucket: "maintenance-photos"
+  company_id: companyId
   }]);
   }
   }
