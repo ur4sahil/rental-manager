@@ -26,13 +26,23 @@ console.log('================================');
 
 // ─── 1. Fan-out source-level checks ─────────────────────────
 console.log('\n1. TenantPortal fan-out');
-assert(/staffEmails/.test(tenantPortalJs), 'Uses staffEmails array (not single adminEmail)');
-assert(/from\("company_members"\)[\s\S]{0,200}neq\("role", "tenant"\)/.test(tenantPortalJs),
-  'Fetches all non-tenant active company_members');
+// The fan-out still reaches EVERY non-tenant member -- that part of the
+// original intent stands, and the single-admin lookup must stay gone.
+// What changed is where it happens. Reading the roster in the browser
+// meant any tenant could pull every staff email out of company_members
+// with their own JWT, so the loop moved into notify_company_staff():
+// SECURITY DEFINER, verifies the caller belongs to the company, and
+// inserts one notification_queue row per active non-tenant member.
+// cm_read is now self-or-staff, so the old query would return nothing
+// anyway.
+assert(!/staffEmails/.test(tenantPortalJs),
+  'No client-side staff email list (roster is not readable by tenants)');
+assert(!/from\("company_members"\)[\s\S]{0,200}neq\("role", "tenant"\)/.test(tenantPortalJs),
+  'Does not fetch the membership roster from the browser');
 assert(!/\.limit\(1\)\.maybeSingle\(\)[\s\S]{0,400}role.*admin/.test(tenantPortalJs),
   'No single-admin .limit(1) lookup left');
-assert(/staffEmails\.map\(e =>\s*queueNotification/.test(tenantPortalJs),
-  'Loops staffEmails to queueNotification each');
+assert(/rpc\("notify_company_staff"/.test(tenantPortalJs),
+  'Fans out via the notify_company_staff RPC instead');
 assert(/in_app: true, email: true, push: true/.test(notificationsJs),
   'queueNotification default channels: push:true (was push:false)');
 
