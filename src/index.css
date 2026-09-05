@@ -42,7 +42,13 @@
   --color-neutral-100: #f1f5f9;
   --color-neutral-200: #e2e8f0;
   --color-neutral-300: #cbd5e1;
-  --color-neutral-400: #94a3b8;
+  /* Darkened from #94a3b8, which was 2.56:1 against white and used for
+     secondary text in 981 places -- below the 4.5:1 WCAG AA needs for
+     normal text, so muted labels, table meta and helper text were hard
+     to read. #67768d is 4.61:1 and keeps a visible step above
+     neutral-500 (#64748b, 4.76:1). Only 6 sites use it as a border
+     colour, where the small darkening is immaterial. */
+  --color-neutral-400: #67768d;
   --color-neutral-500: #64748b;
   --color-neutral-600: #475569;
   --color-neutral-700: #334155;
