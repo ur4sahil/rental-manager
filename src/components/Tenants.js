@@ -6,7 +6,7 @@ import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -14,6 +14,33 @@ import { LeaseManagement } from "./Leases";
 import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 
 const acctToday = () => formatLocalDate(new Date());
+
+// Resolve every bare chart-of-accounts code on a set of JE lines to the
+// real acct_accounts UUID.
+//
+// post_je_and_ledger() casts each line's account_id to ::uuid, so a bare
+// code like "4100" makes the RPC fail with 22P02 — PostgREST turns that
+// into an HTTP 400 and atomicPostJEAndLedger swallows it as PM-4002 and
+// silently drops to the non-atomic postAccountingTransaction fallback.
+// The post still lands (autoPostJournalEntry resolves codes itself), so
+// nothing looks broken — but the atomic guarantee is gone on EVERY post
+// and a 400 is logged every time. Resolving client-side keeps us on the
+// RPC.
+//
+// Returns { lines } on success or { missing } naming the first code that
+// could not be resolved. Callers must abort on `missing`: a line with a
+// null account_id posts money to nowhere, which is strictly worse than
+// not posting at all.
+async function resolveJELineAccounts(lines, companyId) {
+  const out = [];
+  for (const l of lines || []) {
+    let id = l.account_id;
+    if (typeof id === "string" && /^\d{4}$/.test(id)) id = await resolveAccountId(id, companyId);
+    if (!id) return { lines: null, missing: l.account_id || "(unset)" };
+    out.push({ ...l, account_id: id });
+  }
+  return { lines: out, missing: null };
+}
 
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, initialAction, showToast, showConfirm, activeCompany, companySettings = {} }) {
@@ -178,14 +205,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Security deposit + rent charges in parallel
   if (_secDep > 0 && tenantId) {
   const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), getOrCreateTenantAR(companyId, _name, tenantId)]);
-  const _depResult = await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
-  lines: [
+  // "2100" is a bare code and post_je_and_ledger casts account_id to
+  // ::uuid, so leaving it bare 400s the RPC and drops the deposit onto
+  // the non-atomic fallback. Resolve both legs up front; refuse to
+  // post if either is unresolvable rather than writing a null
+  // account_id. (The AR leg is already the per-tenant sub-account and
+  // deliberately passes no balanceUpdate — the balance trigger owns it.)
+  const _depResolved = await resolveJELineAccounts([
   { account_id: tenantArId, account_name: "AR - " + _name, debit: _secDep, credit: 0, class_id: classId, memo: "Security deposit from " + _name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
-  ],
+  ], companyId);
+  if (!_depResolved.lines) { showToast("Security deposit accounting entry failed — could not resolve account " + _depResolved.missing + ".", "error"); }
+  const _depResult = _depResolved.lines ? await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
+  lines: _depResolved.lines,
   ledgerEntry: { tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit" }
-  });
-  if (!_depResult?.jeId) showToast("Security deposit accounting entry failed.", "error");
+  }) : null;
+  if (_depResolved.lines && !_depResult?.jeId) showToast("Security deposit accounting entry failed.", "error");
   }
   // Rent charges — fire and forget (don't block the popup)
   autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charge posting", silent: true }));
@@ -453,17 +488,29 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
       const today = formatLocalDate(new Date());
       const classId = await getPropertyClassId(t.property, companyId);
+      // Same two fixes as addLedgerEntry: the AR leg goes to the
+      // tenant's own sub-account (bare 1100 is invisible in
+      // ledger_entries), and once it does the balance trigger owns
+      // tenants.balance so balanceUpdate must not also run.
+      const lfArId = await getOrCreateTenantAR(companyId, t.name, t.id) || await resolveAccountId("1100", companyId);
+      if (!lfArId) { showToast("Could not resolve the Accounts Receivable account. Nothing was posted.", "error"); return; }
+      let lfArName = "Accounts Receivable", lfArIsPerTenant = false;
+      { const { data: lfAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", lfArId).maybeSingle();
+        if (lfAcct?.name) lfArName = lfAcct.name;
+        lfArIsPerTenant = !!lfAcct?.tenant_id && String(lfAcct.tenant_id) === String(t.id); }
+      const lfResolved = await resolveJELineAccounts([
+        { account_id: lfArId, account_name: lfArName, debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + t.name },
+        { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: monthName + " late fee" },
+      ], companyId);
+      if (!lfResolved.lines) { showToast("Chart of accounts is missing account " + lfResolved.missing + ". Nothing was posted.", "error"); return; }
       const result = await atomicPostJEAndLedger({ companyId,
         date: today,
         description: "Late fee \u2014 " + t.name + " \u2014 " + t.property,
         reference: "LATEFEE-" + t.id + "-" + thisMonth.replace("-", ""),
         property: t.property,
-        lines: [
-          { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + t.name },
-          { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: monthName + " late fee" },
-        ],
+        lines: lfResolved.lines,
         ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: today, description: `Late fee \u2014 ${monthName}`, amount: feeAmount, type: "late_fee", balance: 0 },
-        balanceUpdate: { tenantId: t.id, amount: feeAmount },
+        balanceUpdate: lfArIsPerTenant ? null : { tenantId: t.id, amount: feeAmount },
       });
       if (!result.jeId) return;
       showToast(`Late fee ${formatCurrency(feeAmount)} applied to ${t.name}.`, "success");
@@ -662,11 +709,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // the line carries that account's real name either way ("AR - Name"
   // for a sub-account, "Accounts Receivable" for the parent fallback),
   // and so we know whether the DB balance trigger will fire for it.
-  const arAccountId = tenantArId || "1100";
+  const arAccountId = tenantArId || await resolveAccountId("1100", companyId);
+  if (!arAccountId) { showToast("Could not resolve the Accounts Receivable account. Nothing was posted.", "error"); return; }
   let arAccountName = "Accounts Receivable";
   let arIsPerTenant = false;
-  if (tenantArId) {
-  const { data: arAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", tenantArId).maybeSingle();
+  {
+  const { data: arAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", arAccountId).maybeSingle();
   if (arAcct?.name) arAccountName = arAcct.name;
   arIsPerTenant = !!arAcct?.tenant_id && String(arAcct.tenant_id) === String(selectedTenant.id);
   }
@@ -691,21 +739,36 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   jeDesc = "Manual " + newCharge.type + " \u2014 " + selectedTenant.name + " \u2014 " + newCharge.description;
   jeLines = [
   { account_id: "1000", account_name: "Checking Account", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
+  // Same rule as the charge branch: the receivable leg has to relieve
+  // the tenant's OWN AR sub-account. Credited to the bare 1100 parent
+  // the payment was real in the GL but invisible in ledger_entries
+  // (the view only surfaces lines on accounts carrying a tenant_id),
+  // so a tenant who paid still showed the full balance on their ledger.
+  { account_id: arAccountId, account_name: arAccountName, debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
   ];
   }
   // When the receivable leg lands on the per-tenant AR sub-account the
   // sync_tenant_balance_lines trigger recomputes tenants.balance from
   // the GL on line insert. Passing balanceUpdate as well would apply
   // the amount a second time (see 20260430000003_post_je_drop_manual_
-  // balance.sql — same double-count that drifted 14 tenants). The
-  // payment/credit branch still posts to the bare parent, so it keeps
-  // the manual balance update.
-  const arLegIsPerTenant = arIsPerTenant && (newCharge.type === "charge" || newCharge.type === "late_fee");
+  // balance.sql — same double-count that drifted 14 tenants).
+  //
+  // Every branch now posts its receivable leg to the per-tenant AR
+  // sub-account, so the gate is simply "did the AR leg land on a
+  // per-tenant account". It is NOT specific to charges. A payment is
+  // the mirror image of the same hazard, not an exception to it: its
+  // AR leg is a CREDIT, so double-applying would drive the balance
+  // DOWN by twice what the tenant actually paid. The manual update
+  // survives only for the degraded case where getOrCreateTenantAR fell
+  // back to the bare 1100 parent — no tenant_id, so the trigger never
+  // fires and nothing else would move the balance.
+  const arLegIsPerTenant = arIsPerTenant;
   // Unified: JE first → ledger → balance (all gated on JE success)
+  const resolved = await resolveJELineAccounts(jeLines, companyId);
+  if (!resolved.lines) { showToast("Chart of accounts is missing account " + resolved.missing + ". Nothing was posted.", "error"); return; }
   const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
-  lines: jeLines,
+  lines: resolved.lines,
   ledgerEntry: ledgerData,
   balanceUpdate: arLegIsPerTenant ? null : balData,
   });
@@ -1640,15 +1703,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const t = tenants.find(x => x.id === tid);
   if (!t) continue;
   const classId = await getPropertyClassId(t.property, companyId);
+  // Same two fixes as addLedgerEntry: AR leg onto the tenant's own
+  // sub-account so the charge is visible in the tenant ledger, and no
+  // manual balanceUpdate once the balance trigger owns it. Revenue leg
+  // is a bare code straight off the <Select>, so it needs resolving
+  // too or every bulk charge 400s onto the non-atomic fallback.
+  const bcArId = await getOrCreateTenantAR(companyId, t.name, t.id) || await resolveAccountId("1100", companyId);
+  if (!bcArId) { showToast("Could not resolve the Accounts Receivable account for " + t.name + ".", "error"); continue; }
+  let bcArName = "Accounts Receivable", bcArIsPerTenant = false;
+  { const { data: bcAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", bcArId).maybeSingle();
+    if (bcAcct?.name) bcArName = bcAcct.name;
+    bcArIsPerTenant = !!bcAcct?.tenant_id && String(bcAcct.tenant_id) === String(t.id); }
+  const bcResolved = await resolveJELineAccounts([
+  { account_id: bcArId, account_name: bcArName, debit: amt, credit: 0, class_id: classId, memo: t.name + ": " + desc },
+  { account_id: acctCode, account_name: acctNames[acctCode] || "Other Income", debit: 0, credit: amt, class_id: classId, memo: desc },
+  ], companyId);
+  if (!bcResolved.lines) { showToast("Chart of accounts is missing account " + bcResolved.missing + ". Nothing was posted.", "error"); break; }
   const result = await atomicPostJEAndLedger({ companyId,
   date: formatLocalDate(new Date()), description: "Bulk charge \u2014 " + t.name + " \u2014 " + desc,
   reference: "BULK-" + shortId(), property: t.property || "",
-  lines: [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: amt, credit: 0, class_id: classId, memo: t.name + ": " + desc },
-  { account_id: acctCode, account_name: acctNames[acctCode] || "Other Income", debit: 0, credit: amt, class_id: classId, memo: desc },
-  ],
-  ledgerEntry: { tenant: t.name, property: t.property, date: formatLocalDate(new Date()), description: desc, amount: amt, type: "charge", balance: 0 },
-  balanceUpdate: { tenantId: tid, amount: amt },
+  lines: bcResolved.lines,
+  ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: formatLocalDate(new Date()), description: desc, amount: amt, type: "charge", balance: 0 },
+  balanceUpdate: bcArIsPerTenant ? null : { tenantId: tid, amount: amt },
   silent: true,
   });
   if (result.jeId) count++;
