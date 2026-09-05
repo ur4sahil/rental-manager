@@ -616,8 +616,20 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           if (parsed.headers.length === 0) { showToast("Could not parse CSV — no headers found.", "error"); return; }
           const detected = csvDetectFormat(parsed.headers);
           const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" };
-          if (detected) { Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
-          else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&hl.includes("date"))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;if(!m.payee&&hl==="payee")m.payee=h;}); }
+          // Only accept a detected mapping for columns the file actually
+          // has. csvDetectFormat takes the FIRST format sharing two or
+          // more headers, so a Bank of America export ("Date",
+          // "Description", "Amount", "Running Bal.") matches Chase on
+          // Description + Amount and was mapped to Chase's "Posting
+          // Date" — a column that isn't in the file. wizMapping.date was
+          // then truthy, so Preview stayed enabled, every row parsed with
+          // an empty date, every row came out invalid, and the wizard
+          // cheerfully offered to "Import 0 Transactions".
+          if (detected) { Object.entries(detected.mapping).forEach(([k,v])=>{ if (parsed.headers.includes(v)) m[k]=v; }); }
+          // Fill anything still unmapped (no format matched, or the
+          // matched format named columns this file doesn't carry) from
+          // the header names themselves.
+          parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&hl.includes("date"))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;if(!m.payee&&hl==="payee")m.payee=h;});
           setWizMapping(m);
           setWizParsed(parsed);
           setWizDetected(detected);
@@ -1383,7 +1395,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       bank_account_feed_id: ruleForm.bankAccountFeedId || null
     };
     if (editingRule) {
-      const { error } = await supabase.from("bank_transaction_rule").update(payload).eq("id", editingRule.id);
+      // Scope the update to the company as every other write here does —
+      // RLS already blocks a cross-company id, but relying on that alone
+      // is the one write in this file that could not say why it is safe.
+      const { error } = await supabase.from("bank_transaction_rule").update(payload).eq("id", editingRule.id).eq("company_id", companyId);
       if (error) { pmError("PM-5008", { raw: error, context: "update bank rule" }); return; }
       showToast("Rule updated.", "success");
     } else {

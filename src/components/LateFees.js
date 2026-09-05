@@ -35,7 +35,11 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // to act on. AR balance > 0 after the grace period past the lease's
   // due day is the real "overdue rent" signal.
   const [r, t, lRes] = await Promise.all([
-  supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null),
+  // Ordered. applyAllFees and the per-row Apply button both take
+  // rules[0], and without an ORDER BY the row Postgres happens to return
+  // first decides which fee every overdue tenant is charged. Oldest rule
+  // first makes the choice deterministic and explicable.
+  supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }),
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
   supabase.from("leases").select("tenant_id, tenant_name, payment_due_day, status, property").eq("company_id", companyId).eq("status", "active"),
   ]);
@@ -123,6 +127,14 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   }
   const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(payment.property, companyId);
+  // The AR leg below is the SHARED 1100 account, whose tenant_id is NULL,
+  // so the sync_tenant_balance_lines trigger never fires for it and the
+  // balanceUpdate passed to atomicPostJEAndLedger is what actually moves
+  // tenants.balance. post_je_and_ledger applies p_balance_change only
+  // when no line landed on a per-tenant AR sub-account, precisely so the
+  // two mechanisms cannot both fire and double-count. Keep this leg on
+  // 1100, or move it to getOrCreateTenantAR and drop balanceUpdate — but
+  // not one without the other. Covered by spec 93.
   // Unified: JE first → ledger → balance (all gated on JE success)
   if (feeAmount > 0) {
   // Deterministic reference so a cron re-run can't double-charge.
@@ -138,7 +150,12 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },
   { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
   ],
-  ledgerEntry: { tenant: payment.tenant, property: payment.property, date: today, description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 },
+  // tenant_id is load-bearing, not decoration: atomicPostJEAndLedger
+  // forwards it as p_ledger_tenant_id, and post_je_and_ledger applies
+  // p_balance_change only WHERE id = p_ledger_tenant_id. Without it the
+  // fee posts to the GL and the tenant's balance never moves. Every
+  // ledgerEntry in Lifecycle.js carries it; this one did not.
+  ledgerEntry: { tenant: payment.tenant, tenant_id: tenant?.id, property: payment.property, date: today, description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 },
   balanceUpdate: tenant ? { tenantId: tenant.id, amount: feeAmount } : null,
   });
   if (!result.jeId) { fetchData(); return; } // toast already shown
@@ -156,6 +173,20 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   if (!rule) { showToast("Create a late fee rule first.", "error"); return; }
   if (!await showConfirm({ message: `Apply late fees to all ${flagged.filter(p => p.daysLate > rule.grace_days).length} overdue tenants?` })) return;
   for (const p of flagged.filter(p => p.daysLate > rule.grace_days)) await applyLateFee(p, rule);
+  }
+
+  // What the Apply button promises must be what applyLateFee charges.
+  // A percent rule is a percentage of the tenant's RENT (see the rentBase
+  // branch above); previewing it off the outstanding BALANCE showed a
+  // different number on the button than the one that got posted for any
+  // tenant who was not exactly one month behind.
+  function previewFee(row, rule) {
+  if (!rule) return "0.00";
+  if (rule.fee_type === "flat") return safeNum(rule.fee_amount).toFixed(2);
+  const tenant = tenants.find(t => t.name === row.tenant);
+  const rentBase = safeNum(tenant?.rent);
+  if (rentBase <= 0) return "—";
+  return (Math.round(rentBase * safeNum(rule.fee_amount)) / 100).toFixed(2);
   }
 
   if (loading) return <Spinner />;
@@ -218,7 +249,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   <div className="text-right"><div className="font-bold text-danger-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-danger-500" : "text-notice-500"}`}>{p.daysLate} days late</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {pastGrace && rules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, rules[0])}>Apply ${rules[0].fee_type === "flat" ? rules[0].fee_amount : Math.round(p.amount * rules[0].fee_amount / 100)} Late Fee</Btn>}
+  {pastGrace && rules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, rules[0])}>Apply ${previewFee(p, rules[0])} Late Fee</Btn>}
   {!pastGrace && <span className="text-xs text-notice-500 bg-notice-50 px-3 py-1 rounded-lg">Within grace period</span>}
   </div>
   </div>

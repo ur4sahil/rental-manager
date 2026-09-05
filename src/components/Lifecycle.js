@@ -90,7 +90,11 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   }
 
   function addDeduction() {
-  if (!newDeductionDesc.trim() || !newDeductionAmt || isNaN(Number(newDeductionAmt))) return;
+  // A silent `return` on bad input looks identical to a dead button.
+  // Say what is wrong instead.
+  if (!newDeductionDesc.trim()) { showToast("Enter a description for the deduction.", "error"); return; }
+  if (!newDeductionAmt || isNaN(Number(newDeductionAmt))) { showToast("Enter the deduction amount as a number.", "error"); return; }
+  if (Number(newDeductionAmt) <= 0) { showToast("Deduction amount must be greater than zero.", "error"); return; }
   setDeductions([...deductions, { desc: newDeductionDesc.trim(), amount: Number(newDeductionAmt) }]);
   setNewDeductionDesc(""); setNewDeductionAmt("");
   }
@@ -136,6 +140,19 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     return;
   }
 
+  // move_out_commit_state flips autopay_schedules.active, but the Stripe
+  // autopay charger (api/stripe.js, charge-autopay-due) selects on
+  // `enabled`, which the RPC never touches — a moved-out tenant kept
+  // getting charged. Every other teardown path in the app (Tenants.js
+  // archive, Properties.js, the eviction close below) sets `enabled`.
+  // Do the same here. The RPC should be amended to match.
+  {
+  const { error: apErr } = await supabase.from("autopay_schedules")
+    .update({ enabled: false })
+    .eq("company_id", cid).eq("tenant", tName).eq("property", selectedLease.property);
+  if (apErr) pmError("PM-3004", { raw: apErr, context: "disable autopay at move-out", silent: true });
+  }
+
   // Reconcile the stored tenants.balance column against the GL before
   // any downstream logic consumes it. Both the waive path below and
   // the ledger-trail refetch at the end apply deltas relative to the
@@ -171,6 +188,15 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const unifiedArId = (depositAmount > 0 || totalDeductions > 0 || arAction === "waive")
     ? await getOrCreateTenantAR(cid, tName, selectedTenant.id)
     : null;
+  // Balances on this path are moved by the sync_tenant_balance_lines
+  // trigger, not by the balanceUpdate below: every leg here debits or
+  // credits the tenant's OWN AR sub-account (unifiedArId), which carries
+  // a tenant_id, and the trigger recomputes tenants.balance as
+  // SUM(debit) - SUM(credit) over that account. post_je_and_ledger
+  // applies p_balance_change only when NO line hit a per-tenant AR, so
+  // the two cannot both fire and double-count. If a leg is ever moved
+  // off the per-tenant account, its balanceUpdate becomes load-bearing.
+  // Covered by spec 93.
 
   // A. Deposit → tenant AR credit. Always runs if a deposit exists,
   //    regardless of deductions / arAction, because the 2100 liability
@@ -262,7 +288,13 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   //  ledger rows for the transfer, deductions, and write-off.)
 
   // 8. Save inspection checklist
-  await supabase.from("inspections").insert([{ company_id: cid, property: selectedLease.property, type: "Move-Out", date: moveOutDate, inspector: userProfile?.name || "Admin", items: JSON.stringify(checklist), notes: `Move-out inspection for ${tName}` }]);
+  // The column is `checklist` (jsonb). This used to write `items`, which
+  // does not exist on inspections — PostgREST 400'd, the result was never
+  // checked, and every move-out inspection was silently thrown away.
+  {
+  const { error: inspErr } = await supabase.from("inspections").insert([{ company_id: cid, property: selectedLease.property, type: "Move-Out", date: moveOutDate, inspector: userProfile?.name || "Admin", checklist, notes: `Move-out inspection for ${tName}` }]);
+  if (inspErr) { pmError("PM-3004", { raw: inspErr, context: "save move-out inspection" }); showToast("Warning: the move-out inspection could not be saved.", "error"); }
+  }
 
   // 9. Audit + notifications
   logAudit("update", "tenants", `Move-out completed: ${tName} from ${selectedLease.property}`, selectedTenant.id, userProfile?.email, userRole, cid);

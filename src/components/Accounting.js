@@ -4671,7 +4671,9 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   status: status,
   reconciled_items: JSON.stringify(reconItems.filter(i => i.reconciled)),
   unreconciled_items: JSON.stringify(reconItems.filter(i => !i.reconciled)),
-  reconciled_by: "",
+  // userProfile.email is in scope; this was hard-coded empty, so no
+  // reconciliation ever recorded who performed it.
+  reconciled_by: userProfile?.email || "",
   }]);
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
 
@@ -4683,14 +4685,26 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const validJeIds = new Set((journalEntries || []).map(j => j.id));
   const { data: checkLines } = await supabase.from("acct_journal_lines").select("id, journal_entry_id").in("id", reconIds);
   const safeIds = (checkLines || []).filter(l => validJeIds.has(l.journal_entry_id)).map(l => l.id);
-  // Double-scope: filter by safe IDs AND by this company's JE IDs
+  // Scoped by safeIds only. safeIds was ALREADY filtered against
+  // validJeIds one statement above, so re-sending every JE id in the
+  // company was redundant -- and fatal: with 16,000+ entries that is
+  // ~300KB of query string and the edge answers 414 Request-URI Too
+  // Large. The code then returned early, so the bank-transaction
+  // locking and period auto-lock below never ran -- while the
+  // bank_reconciliations row had already been written. The result was a
+  // reconciliation record that reconciled nothing.
+  //
+  // Chunked because .in() is still a URL parameter: 500 uuids per
+  // request keeps it well inside the limit.
   if (safeIds.length > 0) {
-  const validJeIdArr = Array.from(validJeIds);
-  const { error: reconErr } = await supabase.from("acct_journal_lines")
-  .update({ reconciled: true, reconciled_date: today })
-  .in("id", safeIds)
-  .in("journal_entry_id", validJeIdArr);
-  if (reconErr) { showToast("Reconciliation update failed: " + reconErr.message, "error"); return; }
+  for (let i = 0; i < safeIds.length; i += 500) {
+    const chunk = safeIds.slice(i, i + 500);
+    const { error: reconErr } = await supabase.from("acct_journal_lines")
+      .update({ reconciled: true, reconciled_date: today })
+      .in("id", chunk)
+      .eq("company_id", companyId);
+    if (reconErr) { showToast("Reconciliation update failed: " + reconErr.message, "error"); return; }
+  }
   }
   }
 

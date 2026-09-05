@@ -367,7 +367,16 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   }
 
   async function updateDaysBefore(setting, days) {
-    const { error } = await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
+    // The control is only rendered while days_before > 0, so writing the
+    // 0 that a cleared field produces would make the field vanish with no
+    // way to get it back — and a typed "-5" was being persisted verbatim
+    // as "notify -5 days early". Refuse both, out loud, and write nothing.
+    const n = Number(days);
+    if (days === "" || days == null || !Number.isFinite(n) || n < 1) {
+      showToast?.("Enter how many days early to notify (1 or more).", "error");
+      return;
+    }
+    const { error } = await supabase.from("notification_settings").update({ days_before: Math.round(n) }).eq("company_id", companyId).eq("id", setting.id);
     if (error) pmError("PM-8006", { raw: error, context: "notification_settings days_before", silent: true });
     fetchData();
   }
