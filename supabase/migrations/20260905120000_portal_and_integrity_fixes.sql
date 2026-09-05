@@ -244,3 +244,50 @@ CREATE POLICY cm_read ON public.company_members
     OR public.is_company_staff(company_id)
     OR (public.is_member_of_company(company_id) AND role NOT IN ('tenant', 'owner'))
   );
+
+-- ---------------------------------------------------------------
+-- 10. Keep tenant_id populated on NEW rows, not just backfilled ones
+-- ---------------------------------------------------------------
+-- The backfill above fixes history. Without this, every NEW row stays
+-- null and is therefore invisible to the tenant under the id-keyed
+-- policies -- documents especially: all three upload paths
+-- (Documents.js, shared.js DocUploadModal, the property wizard) write
+-- `tenant` as a NAME from a form and have no id to hand. Caught by the
+-- portal E2E: "documents tab lists this tenant's visible documents
+-- only" went red because a freshly uploaded document vanished.
+--
+-- Doing it in a trigger rather than at the three call sites means any
+-- other writer -- an importer, a backfill script, a route added later --
+-- gets it too. Ambiguous names resolve to NULL, preserving fail-closed.
+CREATE OR REPLACE FUNCTION public.derive_tenant_id_from_name()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_count int;
+BEGIN
+  IF NEW.tenant_id IS NOT NULL OR coalesce(btrim(NEW.tenant),'') = '' THEN
+    RETURN NEW;
+  END IF;
+  -- count and id in one pass; a window function is not legal in HAVING,
+  -- and an ambiguous name must resolve to NULL rather than to whichever
+  -- row sorted first.
+  SELECT count(*), min(t.id) INTO v_count, NEW.tenant_id
+    FROM tenants t
+   WHERE t.company_id = NEW.company_id
+     AND lower(t.name) = lower(btrim(NEW.tenant))
+     AND t.archived_at IS NULL;
+  IF v_count <> 1 THEN NEW.tenant_id := NULL; END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS documents_derive_tenant_id ON public.documents;
+CREATE TRIGGER documents_derive_tenant_id
+  BEFORE INSERT OR UPDATE OF tenant ON public.documents
+  FOR EACH ROW EXECUTE FUNCTION public.derive_tenant_id_from_name();
+
+DROP TRIGGER IF EXISTS payments_derive_tenant_id ON public.payments;
+CREATE TRIGGER payments_derive_tenant_id
+  BEFORE INSERT OR UPDATE OF tenant ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.derive_tenant_id_from_name();

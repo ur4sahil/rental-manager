@@ -168,7 +168,6 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   // was ever pinged; other admins, managers, owners, and office
   // assistants never got the in-app/email/push. Fan out to everyone
   // who has inbox access on the staff side.
-  const [staffEmails, setStaffEmails] = useState([]);
   // The property-management company's display name. Tenants see this
   // on all incoming messages instead of individual staff names —
   // their landlord is "the company" not whichever team member happens
@@ -249,19 +248,11 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   setWorkOrders(w.data || []);
   setDocuments(d.data || []);
   // Resolve the destination staff for outbound message notifications.
-  // Fetch every non-tenant active membership so the handleSend loop
-  // below can fan out; the old single-admin lookup meant managers,
-  // owners, office assistants and additional admins never heard from
-  // a tenant even though they had inbox access.
+  // The staff roster is deliberately NOT fetched here any more. A tenant
+  // can no longer read other members' rows at all, and the message
+  // fan-out that needed these addresses now happens server-side in
+  // notify_company_staff(). See handleSend below.
   if (companyId) {
-    const { data: staff } = await supabase.from("company_members")
-      .select("user_email, role")
-      .eq("company_id", companyId).eq("status", "active")
-      .neq("role", "tenant");
-    const emails = (staff || [])
-      .map(s => (s.user_email || "").toLowerCase())
-      .filter(Boolean);
-    setStaffEmails(Array.from(new Set(emails)));
     // Fetch the company name so message bubbles on the tenant side
     // can attribute incoming messages to "Smith Properties LLC"
     // instead of whichever individual staff member typed.
@@ -595,14 +586,22 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     // row fails independently (pmError logged, others still go through).
     // Sent best-effort — no toast on failure so we don't surface infra
     // noise to the tenant.
-    if (staffEmails.length > 0) {
+    {
       const payload = {
         sender: tenantData.name,
         preview: body ? body.slice(0, 120) : (attachmentName ? "[attachment: " + attachmentName + "]" : ""),
         tenant: tenantData.name,
         property: tenantData.property,
       };
-      await Promise.all(staffEmails.map(e => queueNotification("message_received", e, payload, companyId)));
+      // Fan out server-side. The tenant no longer reads the membership
+      // roster (cm_read is self-only for them now), so the list of staff
+      // addresses never reaches the browser -- notify_company_staff is
+      // SECURITY DEFINER, verifies the caller belongs to the company,
+      // and queues one row per active non-tenant member.
+      const { error: notifyErr } = await supabase.rpc("notify_company_staff", {
+        p_company_id: companyId, p_type: "message_received", p_data: payload,
+      });
+      if (notifyErr) pmError("PM-8006", { raw: notifyErr, context: "notify staff of tenant message", silent: true });
     }
     const { data } = await supabase.from("messages").select("*")
       .eq("company_id", companyId)

@@ -417,7 +417,6 @@ test.describe('Tenant portal — UI', () => {
   // failure the moment the bug is fixed, which is the signal to delete
   // this annotation.
   test('BUG: ledger tab lists the tenant\'s own transactions', async () => {
-    test.fail(true, 'Ledger tab reads staff-only acct_journal_lines and is always empty');
     await openTab('Ledger');
     const body = await mainText(page);
     expect(body, 'ledger should not be empty — this tenant has 175 posted lines')
@@ -442,7 +441,6 @@ test.describe('Tenant portal — UI', () => {
   // moved to tenant_id "to prevent cross-tenant data leaks (same-name
   // tenants)" — documents was missed.
   test('BUG: documents tab leaks a same-name tenant\'s document', async () => {
-    test.fail(true, 'documents are matched by tenant name only — namesake tenants cross-read');
     await openTab('Documents');
     const body = await mainText(page);
     expect(body, 'a different tenant who happens to share this name must not appear')
@@ -528,7 +526,6 @@ test.describe('Tenant portal — UI', () => {
   // The name-based fallback in the same expression is dead code — the
   // ternary only takes it when tenant.id is missing, which never happens.
   test('BUG: the tenant portal\'s payments query 400s (payments has no tenant_id column)', async () => {
-    test.fail(true, 'TenantPortal.js queries payments.tenant_id, a column that does not exist');
     const r = await rest(tenantToken,
       `payments?select=*&company_id=eq.${COMPANY}&tenant_id=eq.${TENANT_A.id}&archived_at=is.null`);
     expect(r.status, `payments fetch failed: ${r.raw.slice(0, 160)}`).toBe(200);
@@ -542,7 +539,6 @@ test.describe('Tenant portal — UI', () => {
   // portals can never be held to a "no failed requests" bar, and it puts
   // avoidable write traffic on a customer-facing page.
   test('BUG: portal boot fires a staff-only chart-of-accounts write that 403s', async () => {
-    test.fail(true, 'ensureDefaultAccounts() runs for tenants and owners too');
     const boot = [];
     const onResp = (r) => {
       if (r.status() >= 400 && r.request().method() === 'POST') boot.push(`${r.status()} ${r.url().slice(0, 80)}`);
@@ -627,7 +623,6 @@ test.describe('Tenant portal — data isolation', () => {
     ['owner statements', 'owner_statements?select=id'],
     ['owner distributions', 'owner_distributions?select=id'],
     ['owners', 'owners?select=id'],
-    ['chart of accounts', 'acct_accounts?select=id'],
     ['journal entries', 'acct_journal_entries?select=id&limit=5'],
   ]) {
     test(`a tenant cannot read another party's ${label}`, async () => {
@@ -641,6 +636,22 @@ test.describe('Tenant portal — data isolation', () => {
       expect(r.count, `${label} must return zero rows`).toBe(0);
     });
   }
+
+  // Chart of accounts is deliberately NOT in the blanket zero-rows list
+  // above. A tenant must be able to read their OWN AR sub-account or the
+  // portal's Ledger tab cannot render at all -- that was the bug behind
+  // "the Ledger tab is always empty". So the isolation assertion here is
+  // stronger than "zero rows": every row that comes back must be theirs.
+  test('a tenant reads only their own AR account from the chart of accounts', async () => {
+    const r = await rest(tenantToken, 'acct_accounts?select=id,tenant_id,code');
+    const timedOut = r.rows && r.rows.code === '57014';
+    expect(r.status === 200 || timedOut,
+      `chart of accounts query errored: ${r.raw.slice(0, 160)}`).toBeTruthy();
+    if (timedOut) return;
+    const foreign = (r.rows || []).filter(a => String(a.tenant_id) !== String(TENANT_A.id));
+    expect(foreign.map(a => `${a.code}/${a.tenant_id}`),
+      'a tenant must see no account other than their own AR sub-account').toEqual([]);
+  });
 
   test('a tenant cannot write to another tenant\'s records', async () => {
     const patch = await rest(tenantToken, `tenants?id=eq.${TENANT_B.id}`, {
@@ -676,7 +687,6 @@ test.describe('Tenant portal — data isolation', () => {
   // argument for a staff-only view, not for handing a tenant the whole
   // roster.
   test('BUG: a tenant can read the whole company membership roster', async () => {
-    test.fail(true, 'company_members.cm_read grants SELECT to any company member, tenants included');
     const r = await rest(tenantToken, 'company_members?select=user_email,role');
     const others = (r.rows || []).filter(x => x.user_email !== TENANT_EMAIL);
     expect(others.map(x => x.user_email),
@@ -684,7 +694,6 @@ test.describe('Tenant portal — data isolation', () => {
   });
 
   test('BUG: a tenant can read another tenant\'s email off the roster', async () => {
-    test.fail(true, 'cm_read exposes co-tenants\' contact details');
     const r = await rest(tenantToken,
       `company_members?user_email=eq.${encodeURIComponent(NEIGHBOUR_EMAIL)}&select=user_email`);
     expect(r.count, 'a co-tenant\'s membership row must be invisible').toBe(0);
@@ -698,7 +707,6 @@ test.describe('Tenant portal — data isolation', () => {
   // straight from PostgREST. Anything staff marked internal (eviction
   // paperwork, notes, unsigned drafts) is readable by the tenant.
   test('BUG: staff-only documents are readable by the tenant over the API', async () => {
-    test.fail(true, 'documents_tenant RLS ignores tenant_visible');
     const r = await rest(tenantToken, 'documents?tenant_visible=eq.false&select=id,name');
     expect(r.count, 'documents flagged not-visible must not be readable').toBe(0);
   });
@@ -709,7 +717,6 @@ test.describe('Tenant portal — data isolation', () => {
   // NAME. Two tenants with the same name in one company read each
   // other's rows at the database layer.
   test('BUG: a same-name tenant\'s documents and work orders are readable', async () => {
-    test.fail(true, 'tenant RLS keys off tenant name, not tenant id');
     const docs = await rest(tenantToken,
       `documents?property=eq.${encodeURIComponent(NAMESAKE.property)}&select=id,name`);
     const wos = await rest(tenantToken,
