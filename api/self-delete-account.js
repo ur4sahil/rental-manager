@@ -62,16 +62,25 @@ module.exports = async function handler(req, res) {
   });
 
   // Enforce the soft-delete-first protocol. If the caller's app_users
-  // row isn't status=deleted yet, refuse — a stray call to this
-  // endpoint must not delete a live account. The client flips
-  // app_users.status right before calling us.
-  const { data: appUser } = await admin
+  // row isn't archived yet, refuse — a stray call to this endpoint must
+  // not delete a live account. The client archives the row right before
+  // calling us.
+  //
+  // This used to select app_users.status, a column that does not exist.
+  // PostgREST rejected the select, appUser came back null, and the guard
+  // below refused EVERY request — so account deletion never worked at
+  // this layer either, on top of the client-side write being rejected
+  // for the same reason.
+  const { data: appUser, error: appUserErr } = await admin
     .from("app_users")
-    .select("status")
+    .select("archived_at")
     .ilike("email", emailFilterValue(userEmail))
     .maybeSingle();
-  if (!appUser || appUser.status !== "deleted") {
-    return res.status(409).json({ error: "app_users row is not in deleted state yet" });
+  if (appUserErr) {
+    return res.status(500).json({ error: "Could not read the account row: " + appUserErr.message });
+  }
+  if (!appUser || !appUser.archived_at) {
+    return res.status(409).json({ error: "app_users row is not archived yet" });
   }
 
   // Also enforce that every membership is non-active. Prevents the

@@ -33,17 +33,23 @@ function assert(name, cond, detail) {
 // Top-level keys of the object literal starting at `start` (index of "{").
 function topLevelKeys(src, start) {
   const keys = [];
-  let depth = 0, i = start, inStr = null;
+  let depth = 0, i = start, inStr = null, lastSig = null;
   for (; i < src.length; i++) {
     const c = src[i], prev = src[i - 1];
     if (inStr) { if (c === inStr && prev !== "\\") inStr = null; continue; }
     if (c === '"' || c === "'" || c === "`") { inStr = c; continue; }
-    if (c === "{" || c === "[" || c === "(") depth++;
-    else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) break; }
+    if (c === "{" || c === "[" || c === "(") { depth++; lastSig = c; continue; }
+    else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) break; lastSig = c; continue; }
     else if (depth === 1) {
+      // A key must be the FIRST thing after "{" or ",". Testing only
+      // that the previous char is whitespace let a ternary's colon look
+      // like a key: `error_message: messageId ? x : null` reported a
+      // `messageId` column that does not exist. Track the last
+      // significant character instead.
       const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*:/.exec(src.slice(i));
-      if (m && /[{,\s]/.test(prev || "{")) { keys.push(m[1]); i += m[0].length - 1; }
+      if (m && (lastSig === "{" || lastSig === ",")) { keys.push(m[1]); i += m[0].length - 1; lastSig = ":"; continue; }
     }
+    if (!/\s/.test(c)) lastSig = c;
   }
   return keys;
 }
@@ -61,23 +67,26 @@ function stripComments(src) {
 function scanFile(file) {
   const src = stripComments(fs.readFileSync(file, "utf8"));
   const writes = [];
-  // The gap between .from("table") and the write must contain ONLY
-  // chainable calls. Without this the regex happily matched a .from()
-  // belonging to a SELECT and then latched onto the next .insert() in
-  // the file, which belongs to a different table -- it reported
-  // company_members.tenant_name for what is really a
-  // doc_exception_requests insert. A guard that cries wolf gets muted,
-  // so the association has to be exact.
-  const re = /\.from\(\s*["'`]([a-z_]+)["'`]\s*\)([\s\S]{0,400}?)\.(insert|update|upsert)\(\s*(\[\s*)?\{/g;
-  let m;
-  while ((m = re.exec(src)) !== null) {
-    const gap = m[2];
+  // Index-based, not one big regex. A single lazy regex matched
+  // `supabase.storage.from("documents")` -- a storage BUCKET, not a
+  // table -- and its upload options contain `upsert:`, which swallowed
+  // the region and pushed the scan past the real .insert() below it. The
+  // genuine write site was then never seen, which is how the guard came
+  // to report "clean" while a deliberately injected bad column sat in
+  // the file. Verified by injection afterwards; see the self-test.
+  const fromRe = /(^|[^\w.])(?:supabase|sb|admin|client)?\s*\.?\s*(storage\s*\.\s*)?from\(\s*["'`]([a-z_]+)["'`]\s*\)/g;
+  let f;
+  while ((f = fromRe.exec(src)) !== null) {
+    if (f[2]) continue;                       // storage.from(bucket)
+    const table = f[3];
+    const rest = src.slice(f.index + f[0].length, f.index + f[0].length + 400);
+    const opM = /^([\s\S]*?)\.(insert|update|upsert)\(\s*(\[\s*)?\{/.exec(rest);
+    if (!opM) continue;
+    const gap = opM[1];
     if (/;|\bawait\b|\.from\(|=>|\bconst\b|\blet\b/.test(gap)) continue;
-    const table = m[1];
-    const braceIdx = src.indexOf("{", m.index + m[0].length - 1);
-    if (braceIdx === -1) continue;
-    const line = src.slice(0, m.index).split("\n").length;
-    writes.push({ table, op: m[3], keys: topLevelKeys(src, braceIdx), file, line });
+    const braceIdx = f.index + f[0].length + opM[0].length - 1;
+    const line = src.slice(0, f.index).split("\n").length;
+    writes.push({ table, op: opM[2], keys: topLevelKeys(src, braceIdx), file, line });
   }
   return writes;
 }
@@ -95,15 +104,20 @@ function scanFile(file) {
   }
   const sb = createClient(url, key, { auth: { persistSession: false } });
 
-  const srcDir = path.join(__dirname, "..", "src");
+  // api/ is scanned too. The self-delete route selected app_users.status
+  // — a column that does not exist — so its guard refused every request,
+  // and scanning only src/ would have missed it.
+  const srcDir = path.join(__dirname, "..");
+  const roots = [path.join(srcDir, "src"), path.join(srcDir, "api")];
   const files = [];
-  (function walk(d) {
+  (function walkAll() { for (const r of roots) if (fs.existsSync(r)) walk(r); })();
+  function walk(d) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
       if (e.isDirectory()) walk(p);
       else if (e.name.endsWith(".js")) files.push(p);
     }
-  })(srcDir);
+  }
 
   const writes = files.flatMap(scanFile);
   const tables = [...new Set(writes.map(w => w.table))];
