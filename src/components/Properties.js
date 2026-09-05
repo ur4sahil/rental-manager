@@ -7,7 +7,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 
@@ -3501,7 +3501,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transaction history</div> : (
   <div className="space-y-1">
   {historicalTenantDetail.ledger.map((e, i) => (
-  <div key={item.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
+  <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
   <div>
   <div className="font-medium text-neutral-700">{e.description}</div>
   <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>

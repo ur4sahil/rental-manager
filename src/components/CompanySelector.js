@@ -616,7 +616,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
 }
 
 // ============ PM ASSIGNMENT REQUESTS PANEL ============
-function PendingPMAssignments({ companyId, addNotification }) {
+function PendingPMAssignments({ companyId, addNotification, showToast }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 

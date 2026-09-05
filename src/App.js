@@ -1467,7 +1467,7 @@ function AppInner() {
   </div>
   )}
   {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
-  {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
+  {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} showToast={showToast} />}
   <ShortcutsHelp open={!!shortcuts} onClose={closeShortcuts} scope={shortcuts?.scope} />
   <CommandPalette
   open={paletteOpen}
