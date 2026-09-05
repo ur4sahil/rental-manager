@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
@@ -1159,62 +1159,29 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
 }
 
 // --- Journal Entries Sub-Page ---
-export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, onReverse, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
-  const [modal, setModal] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [searchProperty, setSearchProperty] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [properties, setProperties] = useState([]);
-  const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+// A blank journal-entry line. Module scope so both the list and the
+// form modal below can seed from the same shape.
+const EMPTY_JE_LINE = { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"", entity_type:"", entity_id:"", entity_name:"" };
+const blankJEForm = () => ({ date: acctToday(), description: "", reference: "", property: "", lines: [{ ...EMPTY_JE_LINE }, { ...EMPTY_JE_LINE }] });
+
+// --- New / Edit Journal Entry form ----------------------------------
+//
+// Lifted out of AcctJournalEntries. The form's state used to live in
+// the list component, so React re-rendered the entry table on every
+// keystroke — and on a real company that table is 7,722 <tr>s with no
+// windowing. Typing a description cost minutes.
+//
+// The form now owns `form`, `showNewAcct` and `newAcctForm`, plus every
+// derived value and the keyboard-shortcut effect that reads them. The
+// list knows only *that* a form is open and what seeded it, so typing
+// re-renders this subtree alone.
+//
+// The parent remounts this via `key` on each open, so `seed` is only
+// ever read as the initial state — no sync effect needed.
+function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vendors = [], companyId, showToast, onClose, onSave }) {
+  const [form, setForm] = useState(() => seed || blankJEForm());
   const [showNewAcct, setShowNewAcct] = useState(null); // line index that triggered it
   const [newAcctForm, setNewAcctForm] = useState({ code: "", name: "", type: "Expense" });
-
-  useEffect(() => { if (!companyId) return; supabase.from("properties").select("address").eq("company_id", companyId).is("archived_at", null).then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
-
-  // Auto-open a specific JE when navigating from ledger drill-down
-  useEffect(() => {
-  if (initialViewJEId && journalEntries.length > 0) {
-  const je = journalEntries.find(j => j.id === initialViewJEId);
-  if (je) setModal({ mode: "view", je });
-  }
-  }, [initialViewJEId, journalEntries.length]);
-
-  // Auto-open "New JE" modal when navigated from Record Payment
-  useEffect(() => { if (autoOpenAdd) openAdd(); }, [autoOpenAdd]);
-
-  const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
-  .filter(je => filterStatus === "all" || je.status === filterStatus)
-  .filter(je => !searchProperty || (je.property || "").toLowerCase().includes(searchProperty.toLowerCase()))
-  .filter(je => !dateFrom || je.date >= dateFrom)
-  .filter(je => !dateTo || je.date <= dateTo);
-  const counts = { all: journalEntries.length, posted: journalEntries.filter(j=>j.status==="posted").length, draft: journalEntries.filter(j=>j.status==="draft").length, voided: journalEntries.filter(j=>j.status==="voided").length };
-
-  // Get unique properties from existing JEs for the filter dropdown
-  const jeProperties = [...new Set(journalEntries.map(je => je.property).filter(Boolean))].sort();
-
-  const EMPTY_JE_LINE = { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"", entity_type:"", entity_id:"", entity_name:"" };
-  const openAdd = () => {
-  setForm({ date: acctToday(), description: "", reference: "", property: "", lines: [{ ...EMPTY_JE_LINE }, { ...EMPTY_JE_LINE }] });
-  setModal("add");
-  };
-
-  const openEdit = (je) => {
-  setForm({ date: je.date, description: je.description, reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ ...l, debit: l.debit || "", credit: l.credit || "" })) });
-  setModal({ mode: "edit", je });
-  };
-
-  const openView = (je) => setModal({ mode: "view", je });
-
-  const openDuplicate = (je) => {
-  // Clear reference on duplicate. idx_je_company_reference_unique is a
-  // partial index on (company_id, reference) WHERE reference != '' —
-  // copying the source reference verbatim always collides. The user
-  // can type a fresh reference before saving; empty "" bypasses the
-  // uniqueness check entirely.
-  setForm({ date: acctToday(), description: je.description || "", reference: "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "", entity_type: l.entity_type || "", entity_id: l.entity_id || "", entity_name: l.entity_name || "" })) });
-  setModal("add");
-  };
 
   const setLine = (i, k, v) => {
   if (k === "account_id" && v === "__new__") { setShowNewAcct(i); setNewAcctForm({ code: "", name: "", type: "Expense" }); return; }
@@ -1239,8 +1206,6 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
     }
     showToast(`Account "${newAcctForm.name}" created.`, "success");
     setShowNewAcct(null);
-    // Trigger parent refresh to pick up new account
-    if (typeof onAdd === "function") { /* onAdd is for JE, not account creation */ }
   }
 
   const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { ...EMPTY_JE_LINE }] }));
@@ -1253,12 +1218,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   const saveEntry = async (status) => {
   if (!form.description.trim() || !validation.isValid) return;
   const lines = form.lines.filter(l => l.account_id).map(l => ({ ...l, debit: parseFloat(l.debit) || 0, credit: parseFloat(l.credit) || 0 }));
-  if (modal === "add") {
-  await onAdd({ ...form, lines, status });
-  } else if (modal?.mode === "edit") {
-  await onUpdate({ ...modal.je, ...form, lines, status: status || modal.je.status });
-  }
-  setModal(null);
+  await onSave(form, lines, status);
   };
 
   // --- Journal entry keyboard shortcuts --------------------------------
@@ -1275,8 +1235,6 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   };
 
   useEffect(() => {
-    if (!modal) return;
-
     const focusRow = (i) => {
       // Defer past the render that creates the row.
       requestAnimationFrame(() => {
@@ -1347,9 +1305,11 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
 
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [modal, form, validation.isValid, totalDebit, totalCredit]);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [form, validation.isValid, totalDebit, totalCredit]);
 
-  const JEFormUI = () => (
+  return (
+  <AcctModal isOpen={true} onClose={onClose} title={mode === "add" ? "New Journal Entry" : `Edit: ${je?.number}`} size="xl">
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
@@ -1398,13 +1358,82 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
   {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
-  <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
+  <Btn variant="slate" onClick={onClose}>Cancel</Btn>
   <div className="flex gap-2">
   <Btn variant="success-fill" onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid}>Post Entry</Btn>
   </div>
   </div>
   </div>
+  </AcctModal>
   );
+}
+
+export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, onReverse, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
+  const [modal, setModal] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [searchProperty, setSearchProperty] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [properties, setProperties] = useState([]);
+  // Seed for the add/edit form modal. Held here (not inside the modal)
+  // only so the open handlers can build it; `formNonce` keys the modal
+  // so each open remounts with fresh state instead of syncing props.
+  const [formSeed, setFormSeed] = useState(null);
+  const [formNonce, setFormNonce] = useState(0);
+  // Pagination — same shape as BankTransactions in Banking.js. Without
+  // it this table renders one <tr> per entry, and a real company has
+  // thousands.
+  const [jePage, setJePage] = useState(0);
+  const [jePageSize, setJePageSize] = useState(50);
+
+  useEffect(() => { if (!companyId) return; supabase.from("properties").select("address").eq("company_id", companyId).is("archived_at", null).then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
+
+  // Auto-open a specific JE when navigating from ledger drill-down
+  useEffect(() => {
+  if (initialViewJEId && journalEntries.length > 0) {
+  const je = journalEntries.find(j => j.id === initialViewJEId);
+  if (je) setModal({ mode: "view", je });
+  }
+  }, [initialViewJEId, journalEntries.length]);
+
+  // Auto-open "New JE" modal when navigated from Record Payment
+  useEffect(() => { if (autoOpenAdd) openAdd(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [autoOpenAdd]);
+
+  // Sorting + filtering 7,722 entries is not free either — memoise so a
+  // page change or a modal open doesn't redo it.
+  const filtered = useMemo(() => [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
+  .filter(je => filterStatus === "all" || je.status === filterStatus)
+  .filter(je => !searchProperty || (je.property || "").toLowerCase().includes(searchProperty.toLowerCase()))
+  .filter(je => !dateFrom || je.date >= dateFrom)
+  .filter(je => !dateTo || je.date <= dateTo), [journalEntries, filterStatus, searchProperty, dateFrom, dateTo]);
+  const counts = useMemo(() => ({ all: journalEntries.length, posted: journalEntries.filter(j=>j.status==="posted").length, draft: journalEntries.filter(j=>j.status==="draft").length, voided: journalEntries.filter(j=>j.status==="voided").length }), [journalEntries]);
+
+  // Get unique properties from existing JEs for the filter dropdown
+  const jeProperties = useMemo(() => [...new Set(journalEntries.map(je => je.property).filter(Boolean))].sort(), [journalEntries]);
+
+  // Any filter change (or a page-size change) invalidates the current
+  // page number — go back to the first page rather than stranding the
+  // user on a page that no longer exists.
+  useEffect(() => { setJePage(0); }, [filterStatus, searchProperty, dateFrom, dateTo, jePageSize]);
+  const jeTotalPages = Math.max(1, Math.ceil(filtered.length / jePageSize));
+  const safeJePage = Math.min(jePage, jeTotalPages - 1);
+  const pagedEntries = filtered.slice(safeJePage * jePageSize, (safeJePage + 1) * jePageSize);
+
+  const openForm = (seed, target) => { setFormSeed(seed); setFormNonce(n => n + 1); setModal(target); };
+  const openAdd = () => openForm(blankJEForm(), "add");
+
+  const openEdit = (je) => openForm({ date: je.date, description: je.description, reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ ...l, debit: l.debit || "", credit: l.credit || "" })) }, { mode: "edit", je });
+
+  const openView = (je) => setModal({ mode: "view", je });
+
+  const openDuplicate = (je) => {
+  // Clear reference on duplicate. idx_je_company_reference_unique is a
+  // partial index on (company_id, reference) WHERE reference != '' —
+  // copying the source reference verbatim always collides. The user
+  // can type a fresh reference before saving; empty "" bypasses the
+  // uniqueness check entirely.
+  openForm({ date: acctToday(), description: je.description || "", reference: "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "", entity_type: l.entity_type || "", entity_id: l.entity_id || "", entity_name: l.entity_name || "" })) }, "add");
+  };
 
   return (
   <div className="space-y-4">
@@ -1430,11 +1459,33 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="To date" />
   {(dateFrom || dateTo) && <TextLink tone="danger" size="xs" underline={false} onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</TextLink>}
   </div>
+  {/* Counter + Pagination */}
+  <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="text-xs text-neutral-500">{filtered.length} of {journalEntries.length} entries{filtered.length !== journalEntries.length ? " (filtered)" : ""}</div>
+    <div className="flex items-center gap-3">
+      <label className="text-xs text-neutral-500 flex items-center gap-1.5">
+        Per page
+        <Select value={jePageSize} onChange={e => setJePageSize(Number(e.target.value))} size="sm" className="w-20">
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+          <option value={250}>250</option>
+        </Select>
+      </label>
+      {jeTotalPages > 1 && (
+      <div className="flex items-center gap-2">
+        <Btn variant="secondary" size="sm" onClick={() => setJePage(Math.max(0, safeJePage - 1))} disabled={safeJePage === 0}>← Prev</Btn>
+        <span className="text-xs text-neutral-500">Page {safeJePage + 1} of {jeTotalPages}</span>
+        <Btn variant="secondary" size="sm" onClick={() => setJePage(Math.min(jeTotalPages - 1, safeJePage + 1))} disabled={safeJePage >= jeTotalPages - 1}>Next →</Btn>
+      </div>
+      )}
+    </div>
+  </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Source</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
   <tbody>
-  {filtered.map(je => {
+  {pagedEntries.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
   <tr key={je.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
@@ -1461,10 +1512,42 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   </tbody>
   </table>
   </div>
-  {/* Add/Edit Modal */}
-  <AcctModal isOpen={modal === "add" || modal?.mode === "edit"} onClose={() => setModal(null)} title={modal === "add" ? "New Journal Entry" : `Edit: ${modal?.je?.number}`} size="xl">
-  {JEFormUI()}
-  </AcctModal>
+  {/* Bottom Pagination */}
+  {jeTotalPages > 1 && (
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-neutral-400">Showing {safeJePage * jePageSize + 1}–{Math.min((safeJePage + 1) * jePageSize, filtered.length)} of {filtered.length}</div>
+    <div className="flex items-center gap-2">
+      <Btn variant="secondary" size="sm" onClick={() => setJePage(Math.max(0, safeJePage - 1))} disabled={safeJePage === 0}>← Prev</Btn>
+      <span className="text-xs text-neutral-500">Page {safeJePage + 1} of {jeTotalPages}</span>
+      <Btn variant="secondary" size="sm" onClick={() => setJePage(Math.min(jeTotalPages - 1, safeJePage + 1))} disabled={safeJePage >= jeTotalPages - 1}>Next →</Btn>
+    </div>
+  </div>
+  )}
+  {/* Add/Edit Modal — its own component so typing in it re-renders the
+      form alone, not the entry table above. */}
+  {(modal === "add" || modal?.mode === "edit") && (
+  <AcctJEFormModal
+  key={formNonce}
+  mode={modal === "add" ? "add" : "edit"}
+  je={modal === "add" ? null : modal.je}
+  seed={formSeed}
+  accounts={accounts}
+  classes={classes}
+  tenants={tenants}
+  vendors={vendors}
+  companyId={companyId}
+  showToast={showToast}
+  onClose={() => setModal(null)}
+  onSave={async (formData, lines, status) => {
+  if (modal === "add") {
+  await onAdd({ ...formData, lines, status });
+  } else if (modal?.mode === "edit") {
+  await onUpdate({ ...modal.je, ...formData, lines, status: status || modal.je.status });
+  }
+  setModal(null);
+  }}
+  />
+  )}
   {/* View Modal */}
   {modal?.mode === "view" && (
   <AcctModal isOpen={true} onClose={() => { setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }} title={`Journal Entry: ${modal.je.number}`} size="xl">

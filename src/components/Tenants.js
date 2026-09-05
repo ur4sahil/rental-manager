@@ -378,19 +378,62 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name).eq("property", tenantProperty);
-  // Settle outstanding AR on tenant sub-accounts (write off remaining balance)
+  // NOTE: this block is currently UNREACHABLE. The guard at the top of
+  // deleteTenant returns early whenever balance > 0 ("Cannot delete
+  // tenant ... with an outstanding balance"), which is the same condition
+  // this block requires. A negative balance fails the > 0 test and zero
+  // has nothing to write off, so no value can reach here. Verified by
+  // seeding a tenant at $250 and archiving: the guard fires, no journal
+  // entry is written.
+  //
+  // Left in place, and corrected, so that if the guard is ever relaxed to
+  // let an admin archive a debtor, the accounting beneath it is right:
+  // the credit relieves the tenant's OWN AR sub-account and the manual
+  // balance update is skipped when the DB trigger will recompute.
+  // Removing the guard without this would post to the bare 1100 parent.
   const tenantBal = safeNum(tenantDetail?.balance);
   if (tenantBal > 0 && id) {
   const classId = tenantProperty ? await getPropertyClassId(tenantProperty, companyId) : null;
-  await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "AR write-off — tenant deleted — " + name, reference: "WOFF-" + shortId(), property: tenantProperty || "",
+  // Same rule as addLedgerEntry: the receivable leg has to relieve the
+  // tenant's OWN AR sub-account (1100-NNN), not the bare 1100 parent.
+  // ledger_entries only surfaces journal lines whose account carries a
+  // tenant_id, so a write-off credited to the company-wide parent was real
+  // in the GL but never appeared on that tenant's ledger — the ledger went
+  // on showing a debt the books had already written off.
+  const woArId = await getOrCreateTenantAR(companyId, name, id) || await resolveAccountId("1100", companyId);
+  let woArName = "Accounts Receivable", woArIsPerTenant = false;
+  if (woArId) {
+  const { data: woAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", woArId).maybeSingle();
+  if (woAcct?.name) woArName = woAcct.name;
+  woArIsPerTenant = !!woAcct?.tenant_id && String(woAcct.tenant_id) === String(id);
+  }
+  if (!woArId) {
+  // No receivable account resolvable at all. Post nothing rather than a
+  // null account_id, and leave tenants.balance alone so the debt stays
+  // visible. The tenant is already archived by this point, so the rest of
+  // the cleanup below still has to run — don't bail out of the function.
+  showToast("Could not resolve the Accounts Receivable account — the outstanding balance for \"" + name + "\" was not written off.", "error");
+  } else {
+  const woffJeId = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "AR write-off — tenant deleted — " + name, reference: "WOFF-" + shortId(), property: tenantProperty || "",
   lines: [
   { account_id: "5500", account_name: "Bad Debt Expense", debit: tenantBal, credit: 0, class_id: classId, memo: "Write-off at deletion — " + name },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: tenantBal, class_id: classId, memo: "AR write-off — " + name },
+  { account_id: woArId, account_name: woArName, debit: 0, credit: tenantBal, class_id: classId, memo: "AR write-off — " + name },
   ]
   });
-  // Zero out tenant balance
-  { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal });
-    if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance zero-out on archive", silent: true }); }
+  // Zero out tenant balance — but ONLY when the credit leg missed the
+  // per-tenant sub-account. When it lands there, inserting the line fires
+  // sync_tenant_balance_lines → recompute_tenant_balance(), which rebuilds
+  // tenants.balance as SUM(debit)-SUM(credit) over that tenant's accounts
+  // and has therefore ALREADY taken it to 0. Applying -tenantBal on top
+  // would leave a phantom credit of the same size on an archived tenant.
+  // This is the identical gate addLedgerEntry uses for its balanceUpdate.
+  // Also gated on the JE actually posting: if it failed there is nothing
+  // to offset, and zeroing anyway would hide a live receivable.
+  if (woffJeId && !woArIsPerTenant) {
+  const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal });
+  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance zero-out on archive", silent: true });
+  }
+  }
   }
   // Deactivate tenant AR sub-accounts
   await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);
@@ -517,7 +560,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       addNotification("\u26A0\uFE0F", `Late fee ${formatCurrency(feeAmount)} \u2014 ${t.name}`);
       logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} for ${t.name}`, t.id, userProfile?.email, userRole, companyId);
       fetchTenants();
-      if (selectedTenant?.id === t.id) openLedger(t);
+      // Refetch before reopening the drawer. openLedger() does
+      // setSelectedTenant(tenant), so handing it the stale list-row `t`
+      // pushed the PRE-fee balance straight back into the drawer's Balance
+      // tile — the DB was already right, the tile just kept the old number
+      // until the page was re-entered. Same refetch addLedgerEntry does.
+      if (selectedTenant?.id === t.id) {
+        const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", t.id).eq("company_id", companyId).maybeSingle();
+        openLedger(freshTenant || t);
+      }
     } finally { guardRelease("lateFee", t.id); }
   }
 
@@ -1699,6 +1750,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const acctNames = { "4100": "Other Income", "4000": "Rental Income", "4010": "Late Fee Income", "4200": "Management Fee Income" };
   if (!desc || !amt) { showToast("Description and amount required.", "error"); return; }
   let count = 0;
+  // Ids that actually got a posted charge — used below to decide whether the
+  // open ledger drawer is now showing a stale balance.
+  const bcCharged = new Set();
   for (const tid of selectedTenants) {
   const t = tenants.find(x => x.id === tid);
   if (!t) continue;
@@ -1727,11 +1781,26 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   balanceUpdate: bcArIsPerTenant ? null : { tenantId: tid, amount: amt },
   silent: true,
   });
-  if (result.jeId) count++;
+  if (result.jeId) { count++; bcCharged.add(t.id); }
   }
   if (count > 0) addNotification("\u{1F4B0}", `Charge of ${formatCurrency(amt)} added to ${count} tenant(s)`);
   if (count < selectedTenants.size) showToast((selectedTenants.size - count) + " charge(s) failed \u2014 check the Accounting module.", "error");
   logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants (acct ${acctCode})`, "", userProfile?.email, userRole, companyId);
+  // Same staleness as applyLateFeeForTenant: the ledger drawer keeps its own
+  // copy of the tenant row in selectedTenant, and fetchTenants() only
+  // refreshes the list behind it. Charging the tenant whose drawer is open
+  // left the Balance tile on the pre-charge figure. Refetch that one row and
+  // reopen the ledger on it, exactly as addLedgerEntry does.
+  if (selectedTenant?.id && bcCharged.has(selectedTenant.id)) {
+  const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", selectedTenant.id).eq("company_id", companyId).maybeSingle();
+  // Refresh the ledger too when that panel is the one on screen; otherwise
+  // just swap in the fresh row, because openLedger() also forces the panel
+  // back to the ledger tab and a bulk charge has no business yanking the
+  // user off Documents/Messages — or popping the drawer open again when it
+  // was closed with selectedTenant still set.
+  if (freshTenant && (activePanel === "detail" || activePanel === "ledger")) openLedger(freshTenant);
+  else if (freshTenant) setSelectedTenant(freshTenant);
+  }
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkCharge"); }
   }}>Add Charges</Btn>
