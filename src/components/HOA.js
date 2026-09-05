@@ -82,10 +82,24 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   companyId,
   date: today,
   description: `HOA payment: ${h.hoa_name} — ${h.property}`,
-  reference: `HOA-${h.id}`,
+  // The date is part of the reference because
+  // idx_je_company_reference_unique is unique on (company_id, reference).
+  // Without it the SECOND payment against the same row collides, 409s,
+  // autoPostJournalEntry returns null, and the payment is refused
+  // forever. Keeping the date preserves the double-press protection the
+  // unique index exists for, per day.
+  reference: `HOA-${h.id}-${today}`,
   property: h.property,
   lines: [
-  { account_id: "5500", account_name: "HOA Fees", debit: safeNum(h.amount), credit: 0, class_id: classId, memo: `HOA: ${h.hoa_name}` },
+  // 5450, not 5500. Code 5500 is "Bad Debt Expense" in _acctCodeToName,
+  // so this line was LABELLED "HOA Fees" while account_id resolved to
+  // Bad Debt Expense -- and in a company with no 5500 yet,
+  // resolveAccountId would create a Bad Debt Expense account to receive
+  // HOA payments. Production already has code 5500 meaning three
+  // different things across companies (Bad Debt Expense, HOA Fees,
+  // Property Management Fees). No HOA line has actually landed in Bad
+  // Debt Expense yet -- this was latent, not yet realised.
+  { account_id: "5450", account_name: "HOA Fees", debit: safeNum(h.amount), credit: 0, class_id: classId, memo: `HOA: ${h.hoa_name}` },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
   ]
   });
@@ -175,7 +189,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
-  <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+  <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
   </td>
   </tr>

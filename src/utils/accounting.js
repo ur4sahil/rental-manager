@@ -22,11 +22,33 @@ export async function safeLedgerInsert(_entry) {
 export async function atomicPostJEAndLedger({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, companyId }) {
   const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
   try {
-    const rpcLines = (lines || []).map(l => ({
-      account_id: l.account_id, account_name: l.account_name || "",
-      debit: safeNum(l.debit), credit: safeNum(l.credit),
-      class_id: l.class_id || null, memo: l.memo || ""
-    }));
+    // Resolve bare GL CODES to real account UUIDs before handing them to
+    // the RPC. post_je_and_ledger casts account_id to uuid, but most
+    // callers pass a code -- Leases, LateFees, Lifecycle, Owners and
+    // Maintenance all post lines like { account_id: "1000" }. Every one
+    // of those 400'd with `invalid input syntax for type uuid: "1000"`,
+    // the error was swallowed (silent PM-4002), and the helper fell
+    // through to the NON-ATOMIC sequential writer. The entry still
+    // landed, so nothing looked wrong -- but the atomicity this function
+    // exists to provide was never actually in effect for those callers.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rpcLines = [];
+    for (const l of (lines || [])) {
+      let accountId = l.account_id;
+      if (accountId && !UUID_RE.test(String(accountId))) {
+        accountId = await resolveAccountId(String(accountId), companyId);
+        if (!accountId) {
+          // Fail loudly here rather than posting a line with no account.
+          result.error = `Could not resolve account "${l.account_id}"`;
+          return result;
+        }
+      }
+      rpcLines.push({
+        account_id: accountId, account_name: l.account_name || "",
+        debit: safeNum(l.debit), credit: safeNum(l.credit),
+        class_id: l.class_id || null, memo: l.memo || ""
+      });
+    }
     const { data: jeId, error: rpcErr } = await supabase.rpc("post_je_and_ledger", {
       p_company_id: companyId,
       p_date: date,
@@ -334,7 +356,7 @@ export async function getPropertyClassId(propertyAddress, companyId) {
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
 // Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 export const _acctIdCache = {};
-export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2110": "Accounts Payable", "2200": "Owner Distributions Payable", "3000": "Opening Balance Equity", "3100": "Owner's Equity", "3200": "Retained Earnings", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
+export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2110": "Accounts Payable", "2200": "Owner Distributions Payable", "3000": "Opening Balance Equity", "3100": "Owner's Equity", "3200": "Retained Earnings", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5450": "HOA Fees", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
 export async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return null;
   const cid = companyId;

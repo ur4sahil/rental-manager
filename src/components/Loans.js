@@ -91,7 +91,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   companyId,
   date: today,
   description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
-  reference: `LOAN-${loan.id}`,
+  // Date-qualified: idx_je_company_reference_unique made `LOAN-<id>`
+  // single-use, so a loan could only ever have ONE payment recorded.
+  // Every subsequent month 409'd and the balance was never updated.
+  reference: `LOAN-${loan.id}-${today}`,
   property: loan.property,
   lines: [
   { account_id: "5600", account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
@@ -121,7 +124,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const totalBalance = activeLoans.reduce((s, l) => s + safeNum(l.current_balance), 0);
   const uniqueProperties = [...new Set(loans.map(l => l.property).filter(Boolean))];
 
-  const emptyForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" };
+  const emptyForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active", website: "", username: "", password: "" };
 
   return (
   <div>
@@ -208,7 +211,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
-  <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+  <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
   </td>
   </tr>

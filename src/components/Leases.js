@@ -219,7 +219,13 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const { error: _err4668 } = await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
   if (_err4668) { showToast("Error updating autopay_schedules: " + _err4668.message, "error"); return; }
   // Update property status back to vacant
-  const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: "" }).eq("company_id", companyId).eq("address", lease.property);
+  // lease_end is a DATE column: "" is not an empty date, it is a syntax
+  // error. PostgREST answered 400 ("invalid input syntax for type date")
+  // and the guard below returned, so terminating a lease left the lease
+  // terminated, the tenant inactive, and the PROPERTY still occupied and
+  // still showing the departed tenant — with the audit entry never
+  // written either, since it came after this line. Clear it with null.
+  const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", companyId).eq("address", lease.property);
   if (_err4670) { showToast("Error updating properties: " + _err4670.message, "error"); return; }
   // Lease termination is audit-only — recorded via logAudit below.
   // Removed the zero-amount safeLedgerInsert that used to live here:
@@ -231,11 +237,21 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   fetchData();
   }
 
+  // move_in_checklist / move_out_checklist are jsonb columns that saveLease
+  // fills with a JSON *string*, while the column default and any row
+  // written server-side hold a real array. Accept either shape — reading
+  // an array with JSON.parse threw, and the catch left the checklist empty,
+  // so those leases showed a checklist with no items at all.
+  function parseChecklist(raw) {
+  if (Array.isArray(raw)) return raw;
+  try { return JSON.parse(raw || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse move checklist JSON", silent: true }); return []; }
+  }
+
   async function toggleChecklistItem(lease, type, index) {
   const field = type === "in" ? "move_in_checklist" : "move_out_checklist";
-  let checklist = []; try { checklist = JSON.parse(lease[field] || "[]"); } catch { checklist = []; }
+  const checklist = parseChecklist(lease[field]);
   if (checklist[index]) checklist[index].checked = !checklist[index].checked;
-  const allDone = checklist.every(c => c.checked);
+  const allDone = checklist.length > 0 && checklist.every(c => c.checked);
   const update = { [field]: JSON.stringify(checklist) };
   if (type === "in") update.move_in_completed = allDone;
   if (type === "out") update.move_out_completed = allDone;
@@ -394,18 +410,29 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </Modal>
   )}
 
-  {showChecklist && (
-  <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
+  {showChecklist && (() => {
+  // showChecklist holds the lease as it was when the modal opened.
+  // toggleChecklistItem writes and then calls fetchData(), which refreshes
+  // `leases` but NOT this snapshot — so every tick was computed from the
+  // original array. Ticking a second item silently un-ticked the first,
+  // no checkmark ever appeared, and move_in/out_completed could never go
+  // true. Re-resolve the lease from state on each render instead.
+  const live = leases.find(l => l.id === showChecklist.lease.id) || showChecklist.lease;
+  const items = parseChecklist(live[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"]);
+  return (
+  <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + live.tenant_name} onClose={() => setShowChecklist(null)}>
   <div className="space-y-2">
-  {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse move checklist JSON", silent: true }); } return items.map((item, i) => (
-  <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
+  {items.map((item, i) => (
+  <div key={i} onClick={() => toggleChecklistItem(live, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
   <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-positive-500 border-positive-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
   <span className={"text-sm " + (item.checked ? "line-through text-neutral-400" : "text-neutral-700")}>{item.item}</span>
   </div>
-  )); })()}
+  ))}
+  {items.length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No checklist items on this lease.</div>}
   </div>
   </Modal>
-  )}
+  );
+  })()}
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">

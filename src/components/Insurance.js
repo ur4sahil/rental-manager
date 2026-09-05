@@ -96,7 +96,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   }).length;
   const uniqueProperties = [...new Set(policies.map(p => p.property).filter(Boolean))];
 
-  const emptyForm = { property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" };
+  const emptyForm = { property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" };
 
   function expiryClass(expDate) {
   if (!expDate) return "";

@@ -175,8 +175,14 @@ BEGIN
     RAISE EXCEPTION 'Not a member of %', p_company_id;
   END IF;
 
+  -- p_data goes in as jsonb, NOT p_data::text. notification_queue.data
+  -- is jsonb, so the explicit ::text cast made every call fail with
+  -- 42804 "column data is of type jsonb but expression is of type text".
+  -- TenantPortal swallows the error (pmError silent:true), so the
+  -- symptom was that a tenant's message notified nobody, with no error
+  -- anywhere the user could see.
   INSERT INTO notification_queue (company_id, type, recipient_email, data, status, cc, bcc)
-  SELECT p_company_id, p_type, lower(cm.user_email), p_data::text, 'pending', '{}', '{}'
+  SELECT p_company_id, p_type, lower(cm.user_email), p_data, 'pending', '[]'::jsonb, '[]'::jsonb
     FROM company_members cm
    WHERE cm.company_id = p_company_id
      AND cm.status = 'active'
