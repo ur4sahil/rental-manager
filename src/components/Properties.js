@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1385,7 +1385,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             ))}
             {hoas.length < 5 && (
-            <div {...clickable(addHoa, { label: "Add HOA" })} className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center cursor-pointer hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
+            <div {...keyboardActivate} aria-label="Add HOA" onClick={addHoa} className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center cursor-pointer hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
               <span className="text-sm text-neutral-400">+ Add {hoas.length === 0 ? "an" : "Another"} HOA</span>
             </div>
             )}
@@ -1574,7 +1574,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <Input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               )}
-              <div {...clickable(() => fileInputRef.current?.click(), { label: "Choose a file to upload" })} className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-positive-300 transition-colors cursor-pointer">
+              <div {...keyboardActivate} aria-label="Choose a file to upload" onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-positive-300 transition-colors cursor-pointer">
                 <span className="material-icons-outlined text-3xl text-neutral-300 mb-2">cloud_upload</span>
                 <p className="text-sm text-neutral-500">Click to upload files</p>
                 <p className="text-xs text-neutral-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
@@ -2982,28 +2982,28 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   <div className="flex items-center gap-2 mb-4 flex-wrap">
   <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="w-64" />
-  <Select filter value={filter} onChange={e => setFilter(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter properties by status" value={filter} onChange={e => setFilter(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
   </Select>
-  <Select filter value={filterType} onChange={e => setFilterType(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter properties by type" value={filterType} onChange={e => setFilterType(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Types</option>
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </Select>
   {hasManagedProps && (
-  <Select filter value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter properties by ownership" value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Properties</option>
   <option value="owned">Owned by Us</option>
   <option value="managed">PM-Managed</option>
   </Select>
   )}
   {propertyOwners.length > 1 && (
-  <Select filter value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter properties by owner" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Owners</option>
   {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
   </Select>
   )}
   {propertyCities.length > 1 && (
-  <Select filter value={filterCity} onChange={e => setFilterCity(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter properties by city" value={filterCity} onChange={e => setFilterCity(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Cities</option>
   {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
   </Select>
@@ -3439,7 +3439,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} {...keyboardActivate} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
+  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
   <div className="flex items-center justify-between mb-2">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
@@ -3607,7 +3607,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
-  <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}{p.county && <span className="ml-1 text-neutral-500">· {p.county}</span>}</div>}
+  <h3 className="font-semibold text-neutral-800 text-sm"><CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</CardOpenButton></h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}{p.county && <span className="ml-1 text-neutral-500">· {p.county}</span>}</div>}
   <p className="text-xs text-neutral-400">{p.type}</p>
   </div>
   <div className="flex flex-col items-end gap-1">
@@ -3658,7 +3658,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <tbody>
   {filtered.map(p => (
   <tr key={p.id} {...clickable(() => openPropertyDetail(p))} className="border-t border-brand-50/50 hover:bg-brand-50/30/50 cursor-pointer">
-  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800">{p.address}</td>}
+  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800"><CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="font-medium text-neutral-800">{p.address}</CardOpenButton></td>}
   {visibleCols.includes("type") && <td className="px-4 py-2.5 text-neutral-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
   {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
@@ -3690,7 +3690,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 cursor-pointer ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-success-500" : p.status === "vacant" ? "bg-warn-500" : "bg-danger-500"}`} />
   <div className="flex-1 min-w-0">
-  <span className="text-sm font-medium text-neutral-800">{p.address}</span>
+  <CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="text-sm font-medium text-neutral-800">{p.address}</CardOpenButton>
   <span className="text-xs text-neutral-400 ml-2">{p.type}</span>
   {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
   </div>

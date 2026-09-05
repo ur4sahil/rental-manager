@@ -468,36 +468,40 @@ export function Chip({ tone = "neutral", className = "", children, ...props }) {
   );
 }
 
-// Makes a non-semantic clickable element (a card, a row) reachable and
-// operable by keyboard. Tenant and property cards were plain divs with
-// onClick and cursor-pointer: the primary way into every record was
-// mouse-only, so a keyboard or screen-reader user could not open a
-// single tenant or property.
+// Mouse affordance for a whole card or row. Returns ONLY onClick --
+// deliberately no role and no tabIndex.
 //
-// Spread onto the element and keep the existing onClick:
-//   <div {...clickable(() => open(t))} className="...">
-export function clickable(onActivate, { label } = {}) {
-  return {
-    role: "button",
-    tabIndex: 0,
-    "aria-label": label,
-    onClick: onActivate,
-    onKeyDown: (e) => {
-      // Enter and Space are what a real <button> responds to. Space is
-      // preventDefault'd so the page does not scroll underneath.
-      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        if (e.target !== e.currentTarget) return; // let inner controls handle their own keys
-        e.preventDefault();
-        onActivate(e);
-      }
-    },
-  };
+// The first version of this added role="button" + tabIndex to the card
+// container. That is invalid when the card contains its own buttons,
+// links or checkboxes: a widget role may not contain other widgets, and
+// screen readers stop exposing the inner controls. axe caught it as
+// nested-interactive across 73 tenant cards. The keyboard path belongs
+// on ONE real control inside the card -- see CardOpenButton.
+export function clickable(onActivate) {
+  return { onClick: onActivate };
 }
 
-// Same purpose as clickable(), for elements whose onClick is a long
-// inline handler that would be awkward to wrap. Spread it alongside the
-// existing onClick; it forwards Enter/Space to the element's own click.
-//   <div {...keyboardActivate} onClick={async () => { ... }}>
+// The real, focusable control inside a clickable card or row. Render the
+// record's primary label through this so keyboard and screen-reader
+// users get exactly one correctly-named way in, without the container
+// swallowing everything else.
+export function CardOpenButton({ onActivate, label, className = "", children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(e) => { e.stopPropagation(); onActivate(e); }}
+      className={"text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 " + className}
+    >{children}</button>
+  );
+}
+
+// For LEAF clickable elements only -- a drop zone, an "add" tile, a
+// badge -- i.e. ones with no interactive descendants. Do NOT put this on
+// a card or row that contains buttons or links; role="button" there is
+// nested-interactive and hides the inner controls from assistive tech.
+// Spread alongside the existing onClick; it forwards Enter/Space.
+//   <div {...keyboardActivate} onClick={() => ...}>
 export const keyboardActivate = {
   role: "button",
   tabIndex: 0,

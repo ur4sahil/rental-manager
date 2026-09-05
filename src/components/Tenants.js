@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -1384,7 +1384,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {archivedTenants.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} {...keyboardActivate} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
     // Fan-out fetch for the full tenant history so the detail panel
     // renders in one shot. Scope each query by tenant_id where the
     // table has it, falling back to escaped name ilike otherwise —
@@ -1970,7 +1970,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
-  <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-warn-600 font-medium">Pending documents</div>}</div>
+  <div><CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-semibold text-neutral-800">{t.name}</CardOpenButton><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-warn-600 font-medium">Pending documents</div>}</div>
   </div>
   <div className="flex items-center gap-1">
   <Badge status={t.lease_status} />
@@ -2017,7 +2017,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => (
   <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
   <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
-  <td className="px-4 py-2.5 font-medium text-brand-600" {...keyboardActivate} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
+  <td className="px-4 py-2.5 font-medium text-brand-600"><CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-medium text-brand-600">{t.name}</CardOpenButton></td>
   <td className="px-4 py-2.5 text-neutral-500">{t.property}</td>
   <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
