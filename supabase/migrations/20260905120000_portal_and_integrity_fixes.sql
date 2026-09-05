@@ -224,3 +224,23 @@ CREATE POLICY payments_tenant_read ON public.payments
   FOR SELECT USING (
     tenant_id IS NOT NULL AND tenant_id = public.get_tenant_id(company_id)
   );
+
+-- ---------------------------------------------------------------
+-- 9. Tenants could read the whole membership list
+-- ---------------------------------------------------------------
+-- cm_read's second branch was is_member_of_company(), which is true for
+-- tenants and owners as well as staff -- so any tenant could read every
+-- company_members row, including other TENANTS' email addresses.
+-- Verified before this change: a seeded tenant read 5 rows, one of them
+-- a co-tenant's contact details.
+--
+-- Tenants still need to see STAFF rows: TenantPortal fans a new message
+-- out to every non-tenant member, and without that the message reaches
+-- nobody. So the third branch grants exactly that and nothing more.
+DROP POLICY IF EXISTS cm_read ON public.company_members;
+CREATE POLICY cm_read ON public.company_members
+  FOR SELECT USING (
+    lower(user_email) = lower(auth.jwt() ->> 'email')
+    OR public.is_company_staff(company_id)
+    OR (public.is_member_of_company(company_id) AND role NOT IN ('tenant', 'owner'))
+  );

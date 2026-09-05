@@ -837,15 +837,20 @@ function AppInner() {
   registerPushNotifications();
   // Auto-run daily notification check (rent reminders, lease expiry)
   autoNotificationCheck(company.id);
-  // Ensure default chart of accounts exists BEFORE any accounting operations
-  ensureDefaultAccounts(company.id).then(() => {
+  // Ensure default chart of accounts exists BEFORE any accounting
+  // operations. Staff only: the role guard used to wrap just the
+  // auto-posting below, so every tenant and owner login also attempted
+  // to seed the chart of accounts. They have no write access to
+  // acct_accounts, so that was 11 RLS-refused inserts and 11 silent
+  // PM-4006 errors on every single portal load.
   if (role !== "tenant" && role !== "owner") {
+  ensureDefaultAccounts(company.id).then(() => {
   // Auto-post rent accruals (idempotent — skips already posted months)
   autoPostRentCharges(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charges on login", silent: true }));
   // Auto-post recurring journal entries (idempotent — skips already posted months)
   autoPostRecurringEntries(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto recurring entries on login", silent: true }));
-  }
   }).catch(e => pmError("PM-4006", { raw: e, context: "chart of accounts seed", silent: true }));
+  }
   setCompanyRole(role);
   setUserRole(role);
   setRoleLoaded(true);
