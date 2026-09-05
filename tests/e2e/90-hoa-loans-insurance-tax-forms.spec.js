@@ -512,13 +512,16 @@ test('HOA: the form refuses to write a row when a required field is blank or the
   await expect(toast(page, 'Property, HOA name, and amount are required')).toBeVisible({ timeout: 15000 });
   expect(await rowCount(), 'a non-numeric amount produced a row').toBe(0);
 
-  // 3 — a valid amount but no due date. The module does not reject this
-  // outright: it back-fills today and asks for a second press. Whatever
-  // one thinks of that, it must not write a row on the first press.
+  // 3 — a valid amount but no due date. Deliberately a two-press flow:
+  // the first press fills today's date into the FIELD and stops, so the
+  // user can see and correct the guessed date before a payment record is
+  // committed against it. It must not write a row on the first press.
+  // (The toast used to be error-styled for what is a prompt, not a
+  // failure; that part was fixed, the two-press behaviour was kept.)
   await clearToasts(page);
   await field(form, 'Amount ($)').fill('99');
   await form.locator('button:text-is("Save")').click();
-  await expect(toast(page, 'Due date was not set')).toBeVisible({ timeout: 15000 });
+  await expect(toast(page, "today's date has been filled in")).toBeVisible({ timeout: 15000 });
   expect(await rowCount(), 'the missing-due-date path wrote a row anyway').toBe(0);
   await expect(field(form, 'Due Date'), 'the due date was not defaulted to today').toHaveValue(today());
 
@@ -1001,7 +1004,11 @@ test('Tax bills: generation, Mark paid, Undo, Edit, Skip and Delete each reach t
   await openRoute(page, 'tax_bills', /^Property Tax Bills$/);
 
   // ── generate ──
+  // The company-wide write now asks first, naming how many properties it
+  // will touch. Deleting one bill already confirmed; a bulk write across
+  // every property did not, which was the wrong way round.
   await page.locator('main button:has-text("Regenerate for current year")').click();
+  await confirmDialog(page, 'Generate');
   await expect(toast(page, 'Generated'), 'the generator reported nothing').toBeVisible({ timeout: 90000 });
 
   await expect.poll(async () => (await bills()).length,
@@ -1018,6 +1025,7 @@ test('Tax bills: generation, Mark paid, Undo, Edit, Skip and Delete each reach t
 
   // Re-running must be idempotent — the module's headline promise.
   await page.locator('main button:has-text("Regenerate for current year")').click();
+  await confirmDialog(page, 'Generate');
   await expect(toast(page, 'Generated')).toBeVisible({ timeout: 90000 });
   await page.waitForTimeout(2000);
   expect((await bills()).length, 'regenerating duplicated the bills').toBe(2);

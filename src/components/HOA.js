@@ -30,7 +30,19 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   if (!guardSubmit("saveHOA")) return;
   try {
   if (!form.property || !form.hoa_name || !form.amount) { showToast("Property, HOA name, and amount are required.", "error"); return; }
-  if (!form.due_date) { setForm({...form, due_date: formatLocalDate(new Date())}); showToast("Due date was not set — defaulting to today. Please verify and save again.", "error"); return; }
+  // Deliberately a two-press flow, not an oversight. The first press
+  // fills today's date INTO THE FIELD and stops, so the user sees the
+  // date the app guessed and can change it before a payment record is
+  // committed against it. Auto-saving with a silently defaulted due date
+  // would be worse, not better.
+  //
+  // What was wrong was the styling: this is a prompt, not a failure, and
+  // dressing it as an error toast made a normal path look broken.
+  if (!form.due_date) {
+    setForm({ ...form, due_date: formatLocalDate(new Date()) });
+    showToast("No due date was set — today's date has been filled in. Check it, then save.", "warning");
+    return;
+  }
   const payload = { ...form, amount: Number(form.amount) };
   delete payload.username; delete payload.password;
   payload.website = form.website || "";

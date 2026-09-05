@@ -64,6 +64,25 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
   // new counties to the schedule constant or a new year rolled over.
   async function regenerateAll() {
     if (!guardSubmit("regenerateTaxBills")) return;
+    // This writes bills for EVERY property in the company. Deleting a
+    // single bill asks for confirmation; a company-wide bulk write did
+    // not, which is the wrong way round -- on a large portfolio one
+    // click generates hundreds of rows across properties the user was
+    // not looking at. Say how many will be touched before doing it.
+    const eligible = (properties || []).filter(p => p.county).length;
+    const missing = (properties || []).length - eligible;
+    if (eligible === 0) {
+      showToast("No properties have a county set, so no tax bills can be generated.", "error");
+      guardRelease("regenerateTaxBills");
+      return;
+    }
+    const ok = await showConfirm({
+      message: `Generate ${new Date().getFullYear()} tax bills for all ${eligible} propert${eligible === 1 ? "y" : "ies"} with a county set` +
+        (missing > 0 ? `, skipping ${missing} without one` : "") +
+        `?\n\nExisting bills are left alone; this only fills gaps.`,
+      confirmText: "Generate",
+    });
+    if (!ok) { guardRelease("regenerateTaxBills"); return; }
     try {
       setGenerating(true);
       let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0 };
