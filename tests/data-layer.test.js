@@ -991,7 +991,16 @@ async function testMessages() {
 
   // ---- Messaging UI overhaul (20260421 migration) ----
   // New columns + read_at semantics + (company,tenant,created_at) index.
-  const tenantId = 999999001; // synthetic id — we only probe the insert path
+  // A REAL tenant id, not a synthetic one. messages.tenant_id now has a
+  // foreign key to tenants(id) (added 20260905190000 — eleven of thirteen
+  // tenant_id columns had none, which is how acct_classes orphaned 13,947
+  // journal lines). Inserting 999999001 wrote a dangling reference that
+  // the FK now correctly rejects, so the test was depending on the very
+  // hole the FK closed. Null is also acceptable here: what this case
+  // probes is the v2 columns (sender_role, read_at, attachment_*).
+  const { data: realTenant } = await supabase.from('tenants')
+    .select('id').eq('company_id', cid).is('archived_at', null).limit(1).maybeSingle();
+  const tenantId = realTenant?.id ?? null;
   const { data: upgraded, error: upErr } = await supabase.from('messages').insert({
     company_id: cid,
     tenant_id: tenantId,
@@ -1018,10 +1027,12 @@ async function testMessages() {
     const { data: reread } = await supabase.from('messages').select('read_at,read').eq('id', upgraded.id).single();
     assert(reread?.read_at && reread?.read === true, 'Messages v2: read_at + legacy bool both persisted');
     // Query by (company_id, tenant_id) — new composite index path.
-    const { data: byTenant } = await supabase.from('messages')
-      .select('id, created_at')
-      .eq('company_id', cid)
-      .eq('tenant_id', tenantId)
+    // .eq(col, null) does not match NULL in PostgREST — it needs .is().
+    // tenantId is null when the probe company has no active tenant to
+    // borrow, which is legitimate now that a real id is required.
+    let byTenantQ = supabase.from('messages').select('id, created_at').eq('company_id', cid);
+    byTenantQ = tenantId === null ? byTenantQ.is('tenant_id', null) : byTenantQ.eq('tenant_id', tenantId);
+    const { data: byTenant } = await byTenantQ
       .order('created_at', { ascending: true })
       .limit(10);
     assert(Array.isArray(byTenant) && byTenant.find(r => r.id === upgraded.id), 'Messages v2: queryable by (company,tenant_id)');

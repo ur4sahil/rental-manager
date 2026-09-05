@@ -37,10 +37,20 @@ const { error: e1a } = await sb.from('recurring_journal_entries').insert([{
 assert(e1a && /recurring_je_tenant_pair_check|check constraint/i.test(e1a.message),
   'Reject: tenant_name set, tenant_id null', e1a?.message?.slice(0, 80));
 
+// recurring_journal_entries.tenant_id now has a foreign key to
+// tenants(id) (added 20260905190000). These cases exercise the
+// tenant_name/tenant_id PAIRING check constraint, so they need a REAL
+// tenant id -- with a synthetic one the FK fires first and the cases
+// pass or fail for the wrong reason. Created here and removed below.
+const { data: probeTenant } = await sb.from('tenants').insert([{
+  company_id: PROBE_CO, name: 'Probe Pairing Tenant', property: 'Probe',
+}]).select('id').maybeSingle();
+const PROBE_TENANT_ID = probeTenant?.id ?? null;
+
 // 1b. tenant_name null, tenant_id set → should fail
 const { error: e1b } = await sb.from('recurring_journal_entries').insert([{
   company_id: PROBE_CO, description: 'probe', frequency: 'monthly', day_of_month: 1, amount: 0,
-  tenant_name: null, tenant_id: 999999999, property: 'Probe', status: 'active',
+  tenant_name: null, tenant_id: PROBE_TENANT_ID, property: 'Probe', status: 'active',
 }]);
 assert(e1b && /recurring_je_tenant_pair_check|check constraint/i.test(e1b.message),
   'Reject: tenant_name null, tenant_id set');
@@ -56,10 +66,12 @@ if (ok1c?.id) await sb.from('recurring_journal_entries').delete().eq('id', ok1c.
 // 1d. both set → should succeed (tenant rent)
 const { data: ok1d, error: e1d } = await sb.from('recurring_journal_entries').insert([{
   company_id: PROBE_CO, description: 'probe tenant', frequency: 'monthly', day_of_month: 1, amount: 0,
-  tenant_name: 'Probe', tenant_id: 999999998, property: 'Probe', status: 'active',
+  tenant_name: 'Probe', tenant_id: PROBE_TENANT_ID, property: 'Probe', status: 'active',
 }]).select('id').maybeSingle();
 assert(!e1d && ok1d?.id, 'Accept: both set (tenant rent)', e1d?.message);
 if (ok1d?.id) await sb.from('recurring_journal_entries').delete().eq('id', ok1d.id);
+
+if (PROBE_TENANT_ID) await sb.from('tenants').delete().eq('id', PROBE_TENANT_ID);
 
 // 1e. empty-string tenant_name + null tenant_id → should succeed
 //     (constraint treats '' as null-equivalent)
