@@ -535,7 +535,13 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   useEffect(() => { fetchInspections(); }, [companyId]);
 
   async function fetchInspections() {
-  const { data } = await supabase.from("inspections").select("*").eq("company_id", companyId).order("date", { ascending: false });
+  // Archived rows are excluded. The property-delete cascade archives
+  // inspections correctly, but this list ignored archived_at, so a
+  // deleted property's inspections stayed on screen -- contradicting the
+  // delete dialog's promise that inspections are removed from active
+  // views.
+  const { data } = await supabase.from("inspections").select("*").eq("company_id", companyId)
+    .is("archived_at", null).order("date", { ascending: false });
   setInspections(data || []);
   setLoading(false);
   }
@@ -665,7 +671,20 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {insp.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={async () => {
   if (!guardSubmit("woFromInsp", insp.id)) return;
   try {
-  const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
+  // `checklist`, not `items`. saveInspection writes the checklist to
+  // inspections.checklist; there is no `items` column on the table, so
+  // this always parsed undefined -> {} and every inspection reported
+  // "No failed items", making it impossible to raise a work order from
+  // a failed inspection at all.
+  //
+  // The column is jsonb, so it arrives already parsed as an object;
+  // older rows written by the UI hold a JSON *string*. Handle both.
+  const items = (() => {
+    const raw = insp.checklist;
+    if (!raw) return {};
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(raw); } catch { return {}; }
+  })();
   const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
   if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;

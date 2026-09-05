@@ -168,18 +168,26 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   items: [{ date: endDate, description: `${feePct}% of $${totalIncome.toLocaleString()}`, amount: -mgmtFee }],
   });
 
+  // NOTE: owner_statements has no `properties` column (verified against
+  // the test and production schemas). Sending one made PostgREST reject
+  // the insert with PGRST204, so "Generate Statement" never produced a
+  // statement — it only raised PM-8006. The covered properties are named
+  // in every line item's description, and the period the statement spans
+  // goes in start_date/end_date, which are real columns and were being
+  // left null.
   const { error } = await supabase.from("owner_statements").insert([{
   company_id: companyId,
   owner_id: owner.id,
   owner_name: owner.name,
   period: statementPeriod,
+  start_date: startDate,
+  end_date: endDate,
   total_income: totalIncome,
   total_expenses: totalExpenses,
   management_fee: mgmtFee,
   net_to_owner: netToOwner,
   line_items: JSON.stringify(lineItems),
   status: "draft",
-  properties: propAddresses,
   }]);
   if (error) { pmError("PM-8006", { raw: error, context: "generate owner statement" }); return; }
 
@@ -193,7 +201,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   async function sendStatement(statement) {
   if (!guardSubmit("sendStatement")) return;
   try {
-  await supabase.from("owner_statements").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", statement.id).eq("company_id", companyId);
+  // The column is sent_date (a date), not sent_at — writing sent_at made
+  // PostgREST reject the update, and because nothing checked `error` the
+  // UI still claimed the statement had been sent while it stayed a draft.
+  const { error: sendErr } = await supabase.from("owner_statements")
+  .update({ status: "sent", sent_date: formatLocalDate(new Date()) })
+  .eq("id", statement.id).eq("company_id", companyId);
+  if (sendErr) { pmError("PM-8006", { raw: sendErr, context: "send owner statement" }); return; }
   const owner = owners.find(o => String(o.id) === String(statement.owner_id));
   if (owner?.email) {
   queueNotification("owner_statement", owner.email, { owner: statement.owner_name, period: statement.period, net: statement.net_to_owner }, companyId);
@@ -217,16 +231,21 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   // dist-first-then-JE-with-rollback pattern already used by
   // autoOwnerDistribution in utils/accounting.js.
   const distRef = distForm.reference || "DIST-" + shortId();
+  // owner_distributions has neither an owner_name nor a status column
+  // (utils/accounting.js#autoOwnerDistribution already writes the real
+  // schema). Sending them made PostgREST reject the insert with
+  // PGRST204, so "Process Distribution" never recorded anything — it
+  // raised PM-8006 and returned before the GL entry was even attempted.
+  // The owner is identified by owner_id; the tab resolves the name from
+  // the owners list.
   const { data: distRow, error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId,
   owner_id: owner.id,
-  owner_name: owner.name,
   amount: amt,
   method: distForm.method,
   reference: distRef,
   date: formatLocalDate(new Date()),
   notes: distForm.notes,
-  status: "paid",
   }]).select("id").maybeSingle();
   if (distErr) { pmError("PM-8006", { raw: distErr, context: "save owner distribution" }); return; }
 
@@ -453,7 +472,9 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {distributions.map(d => (
   <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="text-sm font-medium text-neutral-800">{d.owner_name} — ${safeNum(d.amount).toLocaleString()}</div>
+  {/* owner_distributions stores only owner_id — resolve the display
+      name from the owners list rather than a non-existent column. */}
+  <div className="text-sm font-medium text-neutral-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown owner"} — ${safeNum(d.amount).toLocaleString()}</div>
   <div className="text-xs text-neutral-400">{d.reference} · {d.date}{d.notes ? " · " + d.notes : ""}</div>
   </div>
   <div className="flex items-center gap-2">

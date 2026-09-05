@@ -213,7 +213,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   try {
   if (u.status === "paid") { showToast("This utility is already marked as paid.", "error"); return; }
   const now = new Date().toISOString();
-  const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("company_id", companyId).eq("id", u.id);
+  // `utilities` has no paid_at column (checked against both the test and
+  // production schemas). Writing one made PostgREST reject the whole
+  // update with PGRST204, so `status` never flipped to paid, the
+  // utility_audit row was never written and the journal entry never
+  // posted — the "✓ Pay" button did nothing but raise PM-6002. The paid
+  // timestamp lives on utility_audit.paid_at, which does exist.
+  const { error } = await supabase.from("utilities").update({ status: "paid" }).eq("company_id", companyId).eq("id", u.id);
   if (error) { pmError("PM-6002", { raw: error, context: "approving utility payment" }); return; }
   await supabase.from("utility_audit").insert([{ company_id: companyId,
   utility_id: u.id,
