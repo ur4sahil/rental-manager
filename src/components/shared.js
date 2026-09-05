@@ -81,13 +81,57 @@ export function Spinner() {
   );
 }
 
-export function Modal({ title, onClose, children }) {
+// Every dialog in the app renders through this, so the dialog contract
+// lives here rather than in 23 call sites. Previously it was a bare
+// div: no role, no labelling, Escape did nothing, and Tab walked
+// straight out of the dialog into the page behind it.
+export function Modal({ title, onClose, children, labelledBy }) {
+  const panelRef = React.useRef(null);
+  const titleId = React.useRef("modal-title-" + Math.random().toString(36).slice(2, 9)).current;
+
+  React.useEffect(() => {
+    // Remember where focus was so it can be restored on close --
+    // otherwise focus falls back to <body> and keyboard users lose
+    // their place in the page.
+    const restoreTo = document.activeElement;
+    const panel = panelRef.current;
+    if (panel) {
+      const first = panel.querySelector(
+        'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      );
+      (first || panel).focus({ preventScroll: true });
+    }
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") { e.stopPropagation(); onClose && onClose(); return; }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      // Focus trap. Without it Tab leaves the dialog and lands on the
+      // page behind, which is both an accessibility failure and a way
+      // to edit the record the dialog is asking about.
+      const items = Array.from(panelRef.current.querySelectorAll(
+        'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      )).filter(el => el.offsetParent !== null || el === document.activeElement);
+      if (!items.length) return;
+      const firstEl = items[0], lastEl = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === firstEl) { e.preventDefault(); lastEl.focus(); }
+      else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); firstEl.focus(); }
+    }
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (restoreTo && typeof restoreTo.focus === "function") restoreTo.focus({ preventScroll: true });
+    };
+  }, [onClose]);
+
   return (
-  <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+  <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
+       onMouseDown={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>
+  <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy || titleId} tabIndex={-1}
+       className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
-  <h3 className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
-  <IconBtn icon="close" onClick={onClose} />
+  <h3 id={titleId} className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
+  <IconBtn icon="close" onClick={onClose} aria-label="Close dialog" />
   </div>
   <div className="p-6">{children}</div>
   </div>

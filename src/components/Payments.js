@@ -129,7 +129,11 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
-  <table className="w-full text-sm">
+  {/* The table is wider than a phone. Without its own scroll container
+      the outer overflow-hidden simply cut ~223px of columns off at
+      390px wide, with no way to reach them. */}
+  <div className="overflow-x-auto">
+  <table className="w-full min-w-[640px] text-sm">
   <thead className="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wider">
   <tr>
   <th className="px-4 py-3 text-left">Date</th>
@@ -159,6 +163,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   ))}
   </tbody>
   </table>
+  </div>
   {payments.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No payment transactions found</div>}
   </div>
   </>)}

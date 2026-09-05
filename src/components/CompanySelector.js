@@ -14,6 +14,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const [invites, setInvites] = useState([]);
   const [acceptingInvite, setAcceptingInvite] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -32,7 +33,19 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const email = currentUser?.email;
   if (!email) { setLoading(false); return; }
   // Get all companies this user is an active member of
-  const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", emailFilterValue(email));
+  // The error is load-bearing. Discarding it made a failed request
+  // indistinguishable from "you are a member of nothing", so a user on
+  // a flaky connection -- or during an outage -- was shown the
+  // no-companies empty state and invited to create or join one.
+  const { data: memberships, error: memErr } = await supabase.from("company_members")
+    .select("company_id, role, status").ilike("user_email", emailFilterValue(email));
+  if (memErr) {
+    pmError("PM-8001", { raw: memErr, context: "CompanySelector membership fetch", silent: true });
+    setLoadError(memErr.message || "Could not reach the server.");
+    setLoading(false);
+    return;
+  }
+  setLoadError(null);
   const active = (memberships || []).filter(m => m.status === "active");
   const pending = (memberships || []).filter(m => m.status === "pending");
   const invited = (memberships || []).filter(m => m.status === "invited");
@@ -361,6 +374,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
 
   {/* Your Companies */}
+  {loadError && (
+  <div className="mb-4 rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800">
+  <div className="font-semibold mb-1">Couldn't load your companies</div>
+  <div className="text-danger-700 mb-2">{loadError}</div>
+  <Btn size="sm" variant="secondary" onClick={() => fetchCompanies()}>Try again</Btn>
+  </div>
+  )}
+
   {companies.length > 0 && (
   <div className="mb-6">
   <div className="flex items-center justify-between mb-3">

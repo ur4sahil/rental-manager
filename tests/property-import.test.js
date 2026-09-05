@@ -68,9 +68,28 @@ assert("no duplicate column keys",
     process.exit(fail ? 1 : 0);
   }
 
+  // Scoped to ONE company and to ACTIVE rows, because that is exactly what
+  // the importer operates on. Without both filters this pulled every
+  // property the test user can see across every company, archived rows
+  // included -- and archived duplicates are legitimate (you may archive
+  // "100 Oak Street" and then create a new one). The workbook then
+  // contained 6 addresses twice, so the "unchanged file" plan reported
+  // duplicate-address errors and three assertions that require
+  // summary.errors === 0 failed. The importer was right; the fixture was
+  // not a fixture of anything a user could produce.
+  const COMPANY_ID = process.env.IMPORT_TEST_COMPANY_ID || "f56be35c-c80d-4f47-8624-cbb317f85461"; // Sahil LLC
   const { data: props } = await sb.from("properties")
-    .select("id,address,address_line_1,address_line_2,city,state,zip");
+    .select("id,address,address_line_1,address_line_2,city,state,zip")
+    .eq("company_id", COMPANY_ID)
+    .is("archived_at", null);
   assert("read real properties", (props || []).length > 0, `${(props || []).length}`);
+
+  const dupAddrs = Object.entries(
+    (props || []).reduce((m, p) => { m[p.address] = (m[p.address] || 0) + 1; return m; }, {})
+  ).filter(([, n]) => n > 1);
+  assert("no duplicate addresses among active properties",
+    dupAddrs.length === 0,
+    dupAddrs.map(([a, n]) => `${a} x${n}`).join(" ; "));
 
   // The load-bearing agreement: our JS must reproduce the trigger's output.
   const mismatches = (props || []).filter(p => computeAddress(p) !== (p.address || ""));
@@ -83,7 +102,10 @@ assert("no duplicate column keys",
   const { buildTemplate, parseWorkbook, buildImportPlan } =
     await import(path.join(__dirname, "..", "src", "utils", "propertyImport.js"));
 
-  const { data: tRows } = await sb.from("tenants").select("id,name,property,balance");
+  const { data: tRows } = await sb.from("tenants")
+    .select("id,name,property,balance")
+    .eq("company_id", COMPANY_ID)
+    .is("archived_at", null);
   const existingProperties = props.map(p => ({ ...p, short_name: p.address }));
   const existingTenants = (tRows || []).map(t => ({ ...t, tenant_status: "Current" }));
 

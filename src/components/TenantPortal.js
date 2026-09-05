@@ -296,10 +296,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     setStripeAutopay(apRow || null);
     setAutopayEnabled(!!apRow?.enabled);
 
-    // Pick the per-tenant AR sub-account if one exists; fall back to
-    // the bare AR. Ledger reads lines for that account_id.
-    const arAcct = (arAccts || []).find(a => String(a.tenant_id) === String(tid))
-      || (arAccts || []).find(a => a.code === "1100" || a.name === "Accounts Receivable");
+    // The per-tenant AR sub-account ONLY. The old fallback to the shared
+    // 1100 Accounts Receivable account was unsafe: its lines carry every
+    // tenant's activity, so reading them would have shown this tenant
+    // the whole company's receivables. RLS now refuses that account to
+    // tenants anyway (acct_accounts_tenant), so the fallback could only
+    // ever produce an empty result or a leak.
+    const arAcct = (arAccts || []).find(a => String(a.tenant_id) === String(tid));
     if (arAcct) {
       const { data: lines } = await supabase.from("acct_journal_lines")
         .select("id, debit, credit, memo, journal_entry_id, acct_journal_entries(date, description, reference, status)")

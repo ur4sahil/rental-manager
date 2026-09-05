@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -246,8 +246,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     review: "Review"
   };
 
-  // Wizard persistence — upsert on mount
+  // Wizard persistence — upsert on mount.
+  //
+  // The ref guard is not decoration. React 18 StrictMode (enabled in
+  // index.js) mounts, unmounts and remounts every component in
+  // development, so this effect fired twice concurrently: both runs
+  // found no in_progress row and both INSERTed, leaving duplicate
+  // property_setup_wizard rows for the same address. There is no unique
+  // index on (company_id, property_address) to catch it.
+  const didInitWizard = useRef(false);
   useEffect(() => {
+    if (didInitWizard.current) return;
+    didInitWizard.current = true;
     async function initWizard() {
       try {
         const addr = savedAddress || wizardData.address || "NEW";
@@ -1375,7 +1385,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             ))}
             {hoas.length < 5 && (
-            <div onClick={addHoa} className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center cursor-pointer hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
+            <div {...clickable(addHoa, { label: "Add HOA" })} className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center cursor-pointer hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
               <span className="text-sm text-neutral-400">+ Add {hoas.length === 0 ? "an" : "Another"} HOA</span>
             </div>
             )}
@@ -1564,7 +1574,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <Input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               )}
-              <div className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-positive-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+              <div {...clickable(() => fileInputRef.current?.click(), { label: "Choose a file to upload" })} className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-positive-300 transition-colors cursor-pointer">
                 <span className="material-icons-outlined text-3xl text-neutral-300 mb-2">cloud_upload</span>
                 <p className="text-sm text-neutral-500">Click to upload files</p>
                 <p className="text-xs text-neutral-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
@@ -3429,7 +3439,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
+  }} {...keyboardActivate} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
   <div className="flex items-center justify-between mb-2">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
@@ -3594,7 +3604,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {filtered.map(p => (
-  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
+  <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
   <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}{p.county && <span className="ml-1 text-neutral-500">· {p.county}</span>}</div>}
@@ -3612,7 +3622,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   {isReadOnly(p) && <div className="mt-2 text-xs text-highlight-600 bg-highlight-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
   {p.status === "inactive" && <div className="mt-2 text-xs text-warn-600 bg-warn-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
-  {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
+  {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} {...keyboardActivate} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }}>Edit</TextLink>}
   {!isReadOnly(p) && p.status === "vacant" && <TextLink tone="positive" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }}>Add Tenant</TextLink>}
@@ -3647,7 +3657,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </thead>
   <tbody>
   {filtered.map(p => (
-  <tr key={p.id} onClick={() => openPropertyDetail(p)} className="border-t border-brand-50/50 hover:bg-brand-50/30/50 cursor-pointer">
+  <tr key={p.id} {...clickable(() => openPropertyDetail(p))} className="border-t border-brand-50/50 hover:bg-brand-50/30/50 cursor-pointer">
   {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800">{p.address}</td>}
   {visibleCols.includes("type") && <td className="px-4 py-2.5 text-neutral-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
@@ -3677,7 +3687,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "compact" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {filtered.map(p => (
-  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 cursor-pointer ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
+  <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 cursor-pointer ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-success-500" : p.status === "vacant" ? "bg-warn-500" : "bg-danger-500"}`} />
   <div className="flex-1 min-w-0">
   <span className="text-sm font-medium text-neutral-800">{p.address}</span>

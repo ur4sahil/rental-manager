@@ -467,3 +467,44 @@ export function Chip({ tone = "neutral", className = "", children, ...props }) {
     </button>
   );
 }
+
+// Makes a non-semantic clickable element (a card, a row) reachable and
+// operable by keyboard. Tenant and property cards were plain divs with
+// onClick and cursor-pointer: the primary way into every record was
+// mouse-only, so a keyboard or screen-reader user could not open a
+// single tenant or property.
+//
+// Spread onto the element and keep the existing onClick:
+//   <div {...clickable(() => open(t))} className="...">
+export function clickable(onActivate, { label } = {}) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    "aria-label": label,
+    onClick: onActivate,
+    onKeyDown: (e) => {
+      // Enter and Space are what a real <button> responds to. Space is
+      // preventDefault'd so the page does not scroll underneath.
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        if (e.target !== e.currentTarget) return; // let inner controls handle their own keys
+        e.preventDefault();
+        onActivate(e);
+      }
+    },
+  };
+}
+
+// Same purpose as clickable(), for elements whose onClick is a long
+// inline handler that would be awkward to wrap. Spread it alongside the
+// existing onClick; it forwards Enter/Space to the element's own click.
+//   <div {...keyboardActivate} onClick={async () => { ... }}>
+export const keyboardActivate = {
+  role: "button",
+  tabIndex: 0,
+  onKeyDown: (e) => {
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+    if (e.target !== e.currentTarget) return; // inner controls keep their own keys
+    e.preventDefault();
+    e.currentTarget.click();
+  },
+};

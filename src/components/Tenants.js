@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -1384,7 +1384,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {archivedTenants.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+  <div key={t.id} {...keyboardActivate} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
     // Fan-out fetch for the full tenant history so the detail panel
     // renders in one shot. Scope each query by tenant_id where the
     // table has it, falling back to escaped name ilike otherwise —
@@ -1666,17 +1666,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Filters */}
   <div className="flex items-center gap-2 mb-4 flex-wrap">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="w-64" />
-  <Select filter value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter tenants by status" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
   {/* Must cover every lease_status the app can write. PropertyImport
       stores "current"/"past" for imported tenants; omitting those made
       the filter silently return zero rows on any imported portfolio. */}
   <option value="all">All Status</option><option value="active">Active</option><option value="current">Current</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
-  <Select filter value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter tenants by property" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Properties</option>
   {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </Select>
-  <Select filter value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="w-auto text-sm" >
+  <Select filter aria-label="Filter tenants by balance" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
   </Select>
   <Select filter value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} className="w-auto text-sm" >
@@ -1966,7 +1966,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => {
   const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
   return (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-warn-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-warn-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
@@ -2017,7 +2017,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => (
   <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
   <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
-  <td className="px-4 py-2.5 font-medium text-brand-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
+  <td className="px-4 py-2.5 font-medium text-brand-600" {...keyboardActivate} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
   <td className="px-4 py-2.5 text-neutral-500">{t.property}</td>
   <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
@@ -2033,7 +2033,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "compact" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/50 cursor-pointer">
+  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/50 cursor-pointer">
   <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>
   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-neutral-800">{t.name}</span><span className="text-xs text-neutral-400 ml-2">{t.property}</span></div>
   <span className="text-sm font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>

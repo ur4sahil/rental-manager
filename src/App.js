@@ -158,7 +158,7 @@ let _toastIdCounter = 0;
 const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_qbimport","acct_reconcile","acct_classes","acct_reports"];
 
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees"] },
   // Manager sits between admin and the customizable staff roles. Can
   // review / approve requests submitted by staff who've been explicitly
   // assigned to them via manager_email. Can't administer the company

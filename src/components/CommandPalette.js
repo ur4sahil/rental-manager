@@ -116,8 +116,11 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
   useEffect(() => {
     if (!open) return;
     setQuery(""); setActive(0);
-    const t = setTimeout(() => inputRef.current && inputRef.current.focus(), 20);
-    return () => clearTimeout(t);
+    // Focus synchronously on the same frame the palette mounts. The
+    // old 20ms setTimeout left a window in which keystrokes went to
+    // whatever was focused behind the palette -- typing immediately
+    // after the shortcut could edit the page underneath.
+    if (inputRef.current) inputRef.current.focus({ preventScroll: true });
   }, [open]);
 
   useEffect(() => { setActive(0); }, [query]);
