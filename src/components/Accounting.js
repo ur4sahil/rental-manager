@@ -1668,7 +1668,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 }
 
 // --- Reports Center (QuickBooks-style) ---
-export function AcctReports({ accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
+export function AcctReports({ linesLoaded = true, accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
   const [activeView, setActiveView] = useState("catalog"); // catalog | viewer
   const [currentReport, setCurrentReport] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1689,6 +1689,16 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   // ("Sigma Housing LLC - 6027", 2,903 lines) holds nothing -- so the
   // General Ledger opened on an empty account and read "No transactions",
   // which looks like a broken report rather than an unused account.
+  const [rpcTb, setRpcTb] = useState(null);
+  // True while a report aggregate is in flight. Without it the viewer
+  // fell back to the in-browser computation for the split second before
+  // the RPC answered -- and since the lines have not loaded by then,
+  // that computation returns ZERO. Trial Balance rendered
+  // "TOTALS 0.00 / 0.00" for a moment, which is the exact failure this
+  // whole change is meant to avoid: a wrong number presented as an
+  // answer. Measured before this guard existed.
+  const [rpcPending, setRpcPending] = useState(false);
+  const [rpcGl, setRpcGl] = useState(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   useEffect(() => {
     if (selectedAccountId) return;
@@ -1743,6 +1753,55 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   const computedDates = period === "Custom" ? customDates : getPeriodDates(period);
   const start = computedDates.start;
   const end = computedDates.end;
+
+  // Fetch the aggregate from the database when a report that has one is
+  // open. Only fires for the report actually being viewed, so opening
+  // the catalogue costs nothing.
+  //
+  // Every failure path falls back to the in-browser computation by
+  // leaving the rpc state null -- a missing migration, a network error,
+  // or an older database all degrade to the previous behaviour rather
+  // than to a blank report.
+  useEffect(() => {
+    let cancelled = false;
+    const id = currentReport?.id;
+    if (activeView !== "viewer" || !id || !companyId) { setRpcTb(null); setRpcGl(null); setRpcPending(false); return; }
+
+    const usesRpc = id === "tb" || id === "gl";
+    if (usesRpc) setRpcPending(true);
+    (async () => {
+      try {
+        if (id === "tb") {
+          const { data, error } = await supabase.rpc("report_trial_balance",
+            { p_company_id: companyId, p_end: asOfDate });
+          if (cancelled) return;
+          setRpcTb(error || !data ? null : data.map(r => ({
+            id: r.account_id, code: r.code, name: r.name, type: r.type,
+            debitBalance: safeNum(r.debit_balance), creditBalance: safeNum(r.credit_balance),
+            is_active: true,
+          })));
+          if (error) pmError("PM-4009", { raw: error, context: "report_trial_balance RPC, using client fallback", silent: true });
+        } else setRpcTb(null);
+
+        if (id === "gl" && selectedAccountId) {
+          const { data, error } = await supabase.rpc("report_general_ledger",
+            { p_company_id: companyId, p_account_id: selectedAccountId, p_start: start, p_end: end });
+          if (cancelled) return;
+          setRpcGl(error || !data ? null : data.map(r => ({
+            date: r.entry_date, jeId: r.entry_id, jeNumber: r.entry_number || "",
+            description: r.description, reference: r.reference, memo: r.memo,
+            debit: safeNum(r.debit), credit: safeNum(r.credit), balance: safeNum(r.running_balance),
+          })));
+          if (error) pmError("PM-4009", { raw: error, context: "report_general_ledger RPC, using client fallback", silent: true });
+        } else setRpcGl(null);
+      } catch (e) {
+        if (!cancelled) { setRpcTb(null); setRpcGl(null); }
+      } finally {
+        if (!cancelled) setRpcPending(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeView, currentReport, companyId, asOfDate, start, end, selectedAccountId]);
 
   // Toggle favorite
   function toggleFavorite(reportId) {
@@ -2898,14 +2957,40 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   const reportId = currentReport?.id;
 
   // Compute data based on report type
+  // Which reports read the raw ledger from the browser, and therefore
+  // cannot be trusted until the lines have arrived. Trial Balance and
+  // General Ledger are excluded: they come from a database aggregate and
+  // are correct the moment the page opens.
+  const RPC_BACKED = ["tb", "gl"];
+  const needsClientLedger = !RPC_BACKED.includes(reportId);
+  // For an RPC-backed report: wait while the aggregate is in flight, and
+  // if it failed, wait for the lines so the fallback has something real
+  // to add up. Either way, never render figures derived from an empty
+  // ledger.
+  const rpcResult = reportId === "tb" ? rpcTb : reportId === "gl" ? rpcGl : null;
+  const ledgerPending = needsClientLedger
+    ? !linesLoaded
+    : (rpcPending || (!rpcResult && !linesLoaded));
+
   const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
   let compareData = null;
   if (compareTo === "prior_period") { const ms = new Date(end).getTime() - new Date(start).getTime(); compareData = getPLData(accounts, journalEntries, formatLocalDate(new Date(new Date(start).getTime() - ms)), formatLocalDate(new Date(new Date(end).getTime() - ms)), classFilter || null); }
   if (compareTo === "prior_year") { const y = new Date(start).getFullYear(); compareData = getPLData(accounts, journalEntries, start.replace(String(y), String(y-1)), end.replace(String(y), String(y-1)), classFilter || null); }
   const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
   const bsBalanced = Math.abs(bsData.totalAssets - (bsData.totalLiabilities + bsData.totalEquity)) < 0.01;
-  const tbData = getTrialBalance(accounts, journalEntries, asOfDate);
-  const allGlLines = getGeneralLedger(selectedAccountId, accounts, journalEntries);
+  // Trial Balance and General Ledger come from the DATABASE where the
+  // aggregate is available, falling back to the in-browser computation
+  // if the call fails. The fallback matters: it means a network blip
+  // degrades to the old behaviour rather than to an empty report, and it
+  // keeps this working against a database that has not had the
+  // 20260906150000 migration applied yet.
+  //
+  // The RPCs mirror getTrialBalance/getGeneralLedger exactly -- posted
+  // only, active accounts, date <= asOf, half-cent tolerance -- and were
+  // verified to reproduce these same figures to the penny before being
+  // wired in (11,796,148.81 both sides; P&L net 754,003.14).
+  const tbData = rpcTb || getTrialBalance(accounts, journalEntries, asOfDate);
+  const allGlLines = rpcGl || getGeneralLedger(selectedAccountId, accounts, journalEntries);
   const glLines = allGlLines.filter(l => l.date >= start && l.date <= end);
   const glAccount = accounts.find(a => a.id === selectedAccountId);
 
@@ -2973,6 +3058,21 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
     {/* Report Content */}
     <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6" data-report-content>
+
+    {/* The ledger is still arriving. Reports that add it up in the
+        browser would otherwise render a confident $0.00 -- a wrong
+        number that looks like an answer -- for as long as the fetch
+        takes. Trial Balance and General Ledger skip this: they come
+        from a database aggregate and are already correct. */}
+    {ledgerPending && (
+    <div className="py-16 text-center">
+      <Spinner />
+      <p className="text-sm text-neutral-500 mt-3">Loading the ledger for this report…</p>
+      <p className="text-xs text-neutral-400 mt-1">Figures are withheld until it has all arrived.</p>
+    </div>
+    )}
+
+    {!ledgerPending && (<>
 
     {/* P&L */}
     {reportId === "pl" && (
@@ -3500,6 +3600,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-success-600" : "text-danger-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-success-600" : "text-danger-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
     </div>)}
 
+    </>)}
     </div>
   </div>
   );
@@ -3597,6 +3698,11 @@ export function invalidateAccountingCache(companyId) {
 export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction, initialTab }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
+  // Distinguishes "the ledger has not arrived yet" from "the ledger is
+  // empty". Without it a client-computed report renders a confident
+  // $0.00 during the ~17s the lines take to load, which is worse than
+  // showing nothing -- a wrong number that looks like an answer.
+  const [linesLoaded, setLinesLoaded] = useState(false);
   const [acctClasses, setAcctClasses] = useState([]);
   const [acctTenants, setAcctTenants] = useState([]);
   const [acctVendors, setAcctVendors] = useState([]);
@@ -3789,6 +3895,22 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // — reports, ledger, reconciliation, class tracking — read zero with
   // nothing on screen to say why. Filtering on company_id keeps the URL
   // a fixed ~200 bytes at any book size; idx_acct_jl_company covers it.
+  // Publish accounts, classes and entry HEADERS now, and drop the
+  // spinner, so the page is usable while the lines load behind it.
+  // Previously setLoading(false) ran only after everything -- including
+  // 19 pages of journal lines -- so the Reports catalogue sat behind a
+  // spinner for 17.8s waiting on data it never reads. The catalogue is
+  // a list of report names; a report backed by a database aggregate
+  // needs nothing from this fetch either.
+  //
+  // linesLoaded stays false until the lines land, and any report that
+  // adds them up in the browser shows a spinner rather than a $0.00 it
+  // cannot yet justify.
+  setAcctAccounts(accounts);
+  setAcctClasses(classes);
+  setJournalEntries(jeHeaders);
+  setLoading(false);
+
   if (jeHeaders.length > 0) {
   // Same concurrent paging as the headers above. A failed or partial
   // load raises PM-4013 loudly — the old silent fallback to [] is what
@@ -3811,6 +3933,9 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   });
   jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
   if (linesFailed) console.warn("[accounting] journal lines incomplete — balances understated");
+  setLinesLoaded(true);
+  } else {
+  setLinesLoaded(true);
   }
 
   // Auto-sync property classes (only on first load, not every re-fetch)
@@ -4461,7 +4586,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
+  {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
   {/* Account Ledger Drill-Down */}
   {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
