@@ -152,6 +152,38 @@ function SetupCardForm({ clientSecret, onSuccess, onError, busy, setBusy }) {
   );
 }
 
+// What a TENANT should read on their own ledger.
+//
+// Two things were leaking through from the accounting side:
+//
+// 1. Internal entry numbers. Rows read "Journal Entry #2402 Rent",
+//    which means nothing to a tenant and looks like a system fault.
+//
+// 2. Raw bank-feed descriptors, which is the serious one. A payment row
+//    rendered as:
+//      Deposit Cash App DES:Anish Gupt ID:T3WCMB89V3K0H6N
+//      INDN:Anish Gupt CO ID:XXXXX29876 PPD
+//    That is the LANDLORD's bank descriptor -- an account holder's name
+//    and part of an account number -- shown to a tenant. The tenant has
+//    no business seeing it, and it is not information the ledger needs
+//    to convey; the amount and date already do that.
+//
+// Staff keep the full description on the accounting side. This only
+// changes what the portal displays.
+function tenantLedgerLabel(description, memo, isPayment) {
+  const raw = String(description || memo || "").trim();
+  // ACH/card descriptors: DES:, INDN:, CO ID:, trailing PPD/CCD/WEB,
+  // and masked account digits are all giveaways.
+  if (/\b(DES:|INDN:|CO\s*ID:|\bPPD\b|\bCCD\b|X{4,}\d)/i.test(raw)) {
+    return isPayment ? "Payment received" : "Bank transaction";
+  }
+  // "Journal Entry #2402 Rent" -> "Rent"
+  const m = raw.match(/^Journal\s+Entry\s*#?\s*\d+\s*[-–—:]?\s*(.*)$/i);
+  const cleaned = (m ? m[1] : raw).trim();
+  if (cleaned) return cleaned;
+  return isPayment ? "Payment received" : "Charge";
+}
+
 function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotification, initialTab, setPage }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
@@ -277,6 +309,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   // Stripe-autopay row + ledger hydration. Both are read here so the
   // Autopay and Ledger tabs render without an extra round-trip when
   // the tenant clicks them.
+  // These two used to be a SECOND wave, fired only after the batch above
+  // had returned, and the journal-line fetch below is a THIRD. Three
+  // sequential round trips is why the Ledger tab sat on a spinner long
+  // enough for a screenshot to catch nothing else. Neither of these
+  // depends on the batch above, so they belong in it; only the
+  // journal-line fetch genuinely has to wait, since it needs the AR
+  // account id.
   if (tid) {
     const [{ data: apRow }, { data: arAccts }] = await Promise.all([
       supabase.from("autopay_schedules")
@@ -284,10 +323,14 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
         .eq("company_id", companyId).eq("tenant_id", tid)
         .eq("provider", "stripe").is("archived_at", null)
         .maybeSingle(),
+      // Just the tenant's own AR sub-account. The old three-way .or()
+      // also asked for the shared 1100 by code and by name, which RLS
+      // now refuses to tenants anyway (acct_accounts_tenant) -- so it
+      // widened the query for rows that could never come back.
       supabase.from("acct_accounts")
         .select("id, code, name, tenant_id")
         .eq("company_id", companyId)
-        .or(`tenant_id.eq.${tid},code.eq.1100,name.eq.Accounts Receivable`),
+        .eq("tenant_id", tid),
     ]);
     setStripeAutopay(apRow || null);
     setAutopayEnabled(!!apRow?.enabled);
@@ -932,6 +975,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
           credit: e.type === "payment" || e.type === "credit" ? safeNum(e.amount) : 0,
           memo: e.description,
           acct_journal_entries: { date: e.date, description: e.description },
+          // label computed at render time by tenantLedgerLabel
           _balance: safeNum(e.balance),
         }))
       : (() => {
@@ -980,9 +1024,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       return (
       <div key={l.id} className="md:grid md:grid-cols-[1fr_2fr_auto_auto_auto] md:gap-4 flex flex-col px-4 py-3 border-b border-brand-50/50 last:border-0 text-sm">
       <div className="text-neutral-500 text-xs md:text-sm">{je.date || "—"}</div>
-      <div className="text-neutral-800 font-medium">{je.description || l.memo || "—"}</div>
-      <div className="md:text-right text-danger-600 font-semibold">{isCharge ? formatCurrency(safeNum(l.debit)) : <span className="text-neutral-200">—</span>}</div>
-      <div className="md:text-right text-positive-600 font-semibold">{isPayment ? formatCurrency(safeNum(l.credit)) : <span className="text-neutral-200">—</span>}</div>
+      <div className="text-neutral-800 font-medium">{tenantLedgerLabel(je.description, l.memo, isPayment)}</div>
+      <div className="md:text-right text-danger-600 font-semibold">{isCharge ? formatCurrency(safeNum(l.debit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
+      <div className="md:text-right text-positive-600 font-semibold">{isPayment ? formatCurrency(safeNum(l.credit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
       <div className="md:text-right font-mono font-bold text-neutral-800">{formatCurrency(l._balance)}</div>
       </div>
       );

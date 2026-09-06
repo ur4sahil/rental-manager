@@ -130,7 +130,14 @@ async function axeOn(page, label, problems) {
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   for (const v of violations.filter(v => v.impact === 'critical' || v.impact === 'serious')) {
-    problems.push(`${label}: ${v.impact}/${v.id} x${v.nodes.length} — ${v.help}`);
+    // Name the offending element and its colours. "color-contrast x10"
+    // on its own sent me to fix the wrong element -- the count did not
+    // move, because the dash I darkened was never what axe was flagging.
+    const where = v.nodes.slice(0, 3).map(n => {
+      const msg = (n.any || []).map(a => a.message).join(' ').replace(/\s+/g, ' ');
+      return `${n.target.join(' ')} :: ${msg.slice(0, 170)}`;
+    });
+    problems.push(`${label}: ${v.impact}/${v.id} x${v.nodes.length} — ${v.help}\n      ${where.join('\n      ')}`);
   }
 }
 

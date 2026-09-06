@@ -46,9 +46,16 @@
      secondary text in 981 places -- below the 4.5:1 WCAG AA needs for
      normal text, so muted labels, table meta and helper text were hard
      to read. #67768d is 4.61:1 and keeps a visible step above
-     neutral-500 (#64748b, 4.76:1). Only 6 sites use it as a border
-     colour, where the small darkening is immaterial. */
-  --color-neutral-400: #67768d;
+     neutral-500. Only 6 sites use it as a border colour, where the
+     small darkening is immaterial.
+
+     Adjusted again from #67768d, which cleared 4.5:1 against pure WHITE
+     but not against the app's real backgrounds: axe measured 4.39 on
+     the tenant portal's tinted #fcf8ff and 4.49 on the #fcfcfd card.
+     Calculating against white alone was the mistake -- almost nothing
+     in this app sits on pure white. #637188 is 4.71:1 on the worst of
+     them. */
+  --color-neutral-400: #637188;
   --color-neutral-500: #64748b;
   --color-neutral-600: #475569;
   --color-neutral-700: #334155;
@@ -62,8 +69,13 @@
   --color-danger-200: #fecaca;
   --color-danger-300: #fca5a5;
   --color-danger-400: #f87171;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
+  /* Darkened for contrast: #ef4444 is 3.76:1 on white, and this is used
+     at 12px where AA needs 4.5. #dc2626 is 4.83:1. */
+  --color-danger-500: #dc2626;
+  /* #dc2626 measured 4.41:1 against the red-50 alert panel (#fef2f2) it
+     is most often shown on -- close, but under. #b91c1c is 5.91:1
+     there. */
+  --color-danger-600: #b91c1c;
   --color-danger-700: #b91c1c;
   --color-danger-800: #991b1b;
 
@@ -151,7 +163,10 @@
   --color-positive-300: #86efac;
   --color-positive-400: #4ade80;
   --color-positive-500: #22c55e;
-  --color-positive-600: #16a34a;
+  /* Payment amounts on the tenant ledger use this at 12px. #16a34a is
+     only 3.30:1 on white; green is the worst offender for contrast at
+     small sizes. #15803d is 5.02:1 and still reads as green. */
+  --color-positive-600: #15803d;
   --color-positive-700: #15803d;
   --color-positive-800: #166534;
 
