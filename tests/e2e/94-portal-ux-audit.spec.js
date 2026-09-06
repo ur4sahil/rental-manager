@@ -25,6 +25,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 const COMPANY = process.env.E2E_COMPANY || 'e2e-sandbox';
 const PW = 'E2E94!portal';
 const T_EMAIL = 'e2e94-tenant@example.test';
+const O_EMAIL = 'e2e94-owner@example.test';
 const SHOTS = path.join(__dirname, '..', 'screenshots', 'portal-audit');
 const DB = process.env.TEST_DB_URL ||
   'postgresql://postgres.vpeewlplgxthckpidhxo:Sheebasoin1%23@aws-0-us-east-1.pooler.supabase.com:5432/postgres';
@@ -80,6 +81,56 @@ BEGIN
 END $$;
 
 UPDATE tenants SET email='${T_EMAIL}' WHERE id=${TENANT_ID};`);
+
+  // Owner fixture: an auth user, an owners row carrying the same email
+  // (get_owner_id maps the JWT email to it), two properties, two
+  // statements and a distribution -- enough for every owner tab to show
+  // real content rather than an empty state.
+  sql(`
+DELETE FROM owner_distributions WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+DELETE FROM owner_statements   WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+UPDATE properties SET owner_id=NULL WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+DELETE FROM owners WHERE email='${O_EMAIL}';
+DELETE FROM company_members WHERE company_id='${COMPANY}' AND user_email='${O_EMAIL}';
+DELETE FROM app_users WHERE email='${O_EMAIL}';
+DELETE FROM auth.users WHERE email='${O_EMAIL}';
+
+DO $$
+DECLARE uid uuid := gen_random_uuid();
+BEGIN
+  INSERT INTO auth.users (
+    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change,
+    email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES ('00000000-0000-0000-0000-000000000000', uid, 'authenticated', 'authenticated',
+    '${O_EMAIL}', extensions.crypt('${PW}', extensions.gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now(),
+    '', '', '', '', '', '', '', '');
+  INSERT INTO auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
+  VALUES (uid::text, uid, json_build_object('sub', uid::text, 'email', '${O_EMAIL}', 'email_verified', true)::jsonb,
+    'email', now(), now());
+  INSERT INTO app_users (email, name, role, user_type, company_id, password_set_at)
+  VALUES ('${O_EMAIL}', 'E2E94 Portal Owner', 'owner', 'owner', '${COMPANY}', now());
+  INSERT INTO company_members (company_id, user_email, user_name, role, status, auth_user_id, invited_by)
+  VALUES ('${COMPANY}', '${O_EMAIL}', 'E2E94 Portal Owner', 'owner', 'active', uid, 'e2e94-setup');
+END $$;
+
+INSERT INTO owners (name, email, company_id, status, portal_enabled, management_fee_pct, company)
+VALUES ('E2E94 Portal Owner','${O_EMAIL}','${COMPANY}','active',true,10,'E2E94 Holdings');
+
+UPDATE properties SET owner_id=(SELECT id FROM owners WHERE email='${O_EMAIL}')
+ WHERE company_id='${COMPANY}' AND id IN (
+   SELECT id FROM properties WHERE company_id='${COMPANY}' AND archived_at IS NULL ORDER BY id LIMIT 2);
+
+INSERT INTO owner_statements (owner_id, owner_name, period, start_date, end_date,
+        total_income, total_expenses, management_fee, net_to_owner, status, company_id)
+SELECT id,'E2E94 Portal Owner','2026-07',DATE '2026-07-01',DATE '2026-07-31',5000,1200,500,3300,'sent','${COMPANY}' FROM owners WHERE email='${O_EMAIL}'
+UNION ALL
+SELECT id,'E2E94 Portal Owner','2026-08',DATE '2026-08-01',DATE '2026-08-31',5100,900,510,3690,'draft','${COMPANY}' FROM owners WHERE email='${O_EMAIL}';
+
+INSERT INTO owner_distributions (owner_id, amount, method, reference, date, company_id)
+SELECT id, 3300,'ach','E2E94-DIST-1',DATE '2026-08-05','${COMPANY}' FROM owners WHERE email='${O_EMAIL}';`);
 });
 
 test.afterAll(() => {
@@ -88,7 +139,14 @@ DELETE FROM messages WHERE company_id='${COMPANY}' AND message LIKE 'E2E94%';
 DELETE FROM company_members WHERE company_id='${COMPANY}' AND user_email='${T_EMAIL}';
 DELETE FROM app_users WHERE email='${T_EMAIL}';
 DELETE FROM auth.users WHERE email='${T_EMAIL}';
-UPDATE tenants SET email=NULL WHERE id=${TENANT_ID};`);
+UPDATE tenants SET email=NULL WHERE id=${TENANT_ID};
+DELETE FROM owner_distributions WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+DELETE FROM owner_statements   WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+UPDATE properties SET owner_id=NULL WHERE company_id='${COMPANY}' AND owner_id IN (SELECT id FROM owners WHERE email='${O_EMAIL}');
+DELETE FROM owners WHERE email='${O_EMAIL}';
+DELETE FROM company_members WHERE company_id='${COMPANY}' AND user_email='${O_EMAIL}';
+DELETE FROM app_users WHERE email='${O_EMAIL}';
+DELETE FROM auth.users WHERE email='${O_EMAIL}';`);
 });
 
 async function loginAs(page, email, pw) {
@@ -261,4 +319,71 @@ test('a tenant messages staff, staff reply, and the tenant sees the reply', asyn
   console.log('\n--- MESSAGING ROUND TRIP FINDINGS ---');
   for (const p of problems) console.log('  ' + p);
   expect(problems, problems.join('\n')).toEqual([]);
+});
+
+
+test('owner portal: every tab captured at desktop and phone, with an accessibility scan', async ({ browser }) => {
+  test.setTimeout(600000);
+  const problems = [];
+  const tabs = ['Overview', 'Properties', 'Statements', 'Distributions'];
+
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  await loginAs(page, O_EMAIL, PW);
+  await shoot(page, 'owner-00-company-picker');
+  // An owner is dropped on the company PICKER, unlike a tenant who goes
+  // straight into their portal. Select the company explicitly.
+  await page.goto(`${process.env.APP_URL || 'http://localhost:3000'}/?company=${COMPANY}`);
+  await page.waitForTimeout(7000);
+  await shoot(page, 'owner-01-landing-desktop');
+  await axeOn(page, 'owner landing', problems);
+
+  for (const tab of tabs) {
+    // Scoped to the TAB BAR. A bare button:has-text("Properties") also
+    // matches the sidebar's own Properties item -- an owner has two
+    // different destinations with the same name -- and on mobile that
+    // one is hidden, so the click timed out on an invisible element.
+    const link = page.locator('div.overflow-x-auto').locator('button', { hasText: tab }).first();
+    if (await link.count() === 0) { problems.push(`owner: no way to reach "${tab}"`); continue; }
+    await link.click();
+    await page.waitForTimeout(2500);
+    await shoot(page, `owner-${tab.toLowerCase()}-desktop`);
+    await axeOn(page, `owner ${tab}`, problems);
+  }
+  await ctx.close();
+
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const mpage = await mctx.newPage();
+  await loginAs(mpage, O_EMAIL, PW);
+  await mpage.goto(`${process.env.APP_URL || 'http://localhost:3000'}/?company=${COMPANY}`);
+  await mpage.waitForTimeout(7000);
+  await shoot(mpage, 'owner-01-landing-mobile');
+  for (const tab of tabs) {
+    const link = mpage.locator('div.overflow-x-auto').locator('button', { hasText: tab }).first();
+    if (await link.count() === 0) continue;
+    await link.click();
+    await mpage.waitForTimeout(2500);
+    await shoot(mpage, `owner-${tab.toLowerCase()}-mobile`);
+    // The tab bar clips INTERNALLY rather than widening the page, so a
+    // document-level overflow check misses it entirely -- which is how
+    // "Maintenance" sat unreachable off the right edge unnoticed.
+    const barClipped = await mpage.evaluate(() => {
+      const bar = [...document.querySelectorAll('div')].find(d =>
+        d.className && String(d.className).includes('border-b') && d.querySelectorAll('button').length >= 4);
+      return bar ? bar.scrollWidth - bar.clientWidth : 0;
+    });
+    if (barClipped > 4 && !(await mpage.evaluate(() => {
+      const bar = [...document.querySelectorAll('div')].find(d =>
+        d.className && String(d.className).includes('overflow-x-auto') && d.querySelectorAll('button').length >= 4);
+      return !!bar;
+    }))) problems.push(`owner tab bar (390px): ${barClipped}px of tabs unreachable, and the bar does not scroll`);
+    const overflow = await mpage.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    if (overflow > 4) problems.push(`owner ${tab} (390px): page scrolls sideways by ${overflow}px`);
+  }
+  await mctx.close();
+
+  console.log('\n--- OWNER PORTAL FINDINGS ---');
+  for (const p of problems) console.log('  ' + p);
+  console.log(`(${problems.length} findings; screenshots in screenshots/portal-audit)`);
 });

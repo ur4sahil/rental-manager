@@ -608,9 +608,14 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
 
   {/* Tabs */}
-  <div className="flex gap-1 mb-5 border-b border-brand-50">
+  {/* Scrolls horizontally instead of crushing five tabs into a phone
+      width. At 390px the labels collided -- "Distributions" ran into
+      "Properties" -- and "Maintenance" was clipped off the right edge
+      entirely, so the tab existed but could not be read or reached.
+      whitespace-nowrap on the buttons stops the labels wrapping mid-word. */}
+  <div className="flex gap-1 mb-5 border-b border-brand-50 overflow-x-auto">
   {[["overview","🏠 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
+  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
   ))}
   </div>
 
