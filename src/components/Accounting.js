@@ -4450,6 +4450,17 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 }
 export function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile, userRole }) {
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
+  // Which bank account is being reconciled. This used to be hard-coded to
+  // the literal account NAME "Checking Account", so a company whose
+  // accounts are named for the real bank -- "Sigma Housing LLC - 6027",
+  // "Sigma ACH - 0822", "Sigma Cap Imp - 1402" -- reconciled a month of
+  // genuine activity to "no transactions found", with no way to pick the
+  // account it should have been looking at.
+  const bankAccounts = (accounts || [])
+    .filter(a => a.type === "Asset" && /^1[0-6]/.test(String(a.code || "")) && a.is_active !== false)
+    .sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const [reconAccountId, setReconAccountId] = useState("");
+  const activeReconAccount = bankAccounts.find(a => String(a.id) === String(reconAccountId)) || bankAccounts[0] || null;
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
   const [reconciliations, setReconciliations] = useState([]);
@@ -4580,7 +4591,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   if (!entries || entries.length === 0) { showToast("No posted journal entries found for " + reconPeriod, "error"); return; }
 
   const entryIds = entries.map(e => e.id);
-  const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_name", "Checking Account");
+  const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_id", activeReconAccount?.id || "");
   if (!lines || lines.length === 0) { showToast("No checking account transactions found for " + reconPeriod, "error"); return; }
 
   // Build reconciliation items
@@ -4647,7 +4658,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   // Calculate book balance from all checking account entries (scoped to this company)
   const cJeIds = journalEntries.filter(j => j.status === "posted").map(j => j.id);
   const { data: allLines } = cJeIds.length > 0
-  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_name", "Checking Account").in("journal_entry_id", cJeIds)
+  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_id", activeReconAccount?.id || "").in("journal_entry_id", cJeIds)
   : { data: [] };
   // Also include lines matched by checking account UUID (in case account was renamed)
   const checkingAcctId = await resolveAccountId("1000", companyId);
@@ -4801,7 +4812,12 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div>
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-manrope font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
-  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+  <div><label className="text-xs text-neutral-400 mb-1 block">Bank Account</label>
+  <Select aria-label="Bank account to reconcile" value={activeReconAccount?.id || ""} onChange={e => setReconAccountId(e.target.value)}>
+  {bankAccounts.length === 0 && <option value="">No bank accounts found</option>}
+  {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+  </Select></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><Btn className="w-full whitespace-nowrap" onClick={startReconciliation}>Begin Reconciliation</Btn></div>

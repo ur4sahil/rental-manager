@@ -603,9 +603,16 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const { error: tErr } = await supabase.from("tenants").update({ lease_status: "notice", move_out: formatLocalDate(noticeDate) }).eq("id", form.tenant_id).eq("company_id", companyId);
   if (tErr) pmError("PM-3002", { raw: tErr, context: "update tenant status to notice for eviction", silent: true });
   }
-  // Also update lease status to notice
-  const { error: lErr } = await supabase.from("leases").update({ status: "notice" }).eq("company_id", companyId).eq("tenant_name", form.tenant_name).eq("status", "active");
-  if (lErr) pmError("PM-3004", { raw: lErr, context: "update lease status to notice for eviction", silent: true });
+  // The LEASE is deliberately left "active" when an eviction is filed.
+  // Filing a case does not end the tenancy -- the lease ends only when
+  // the eviction completes -- so the tenant carries the "notice" status
+  // and the lease does not.
+  //
+  // This used to write status:"notice" to leases, which leases_status_check
+  // forbids (draft|active|expired|renewed|terminated). Postgres rejected
+  // it and the only handling was a silent pmError, so the tenant read
+  // "notice" while their lease still read "active" and the two
+  // disagreed after every filing.
   addNotification("⚖️", `Eviction case started for ${form.tenant_name}`);
   logAudit("create", "evictions", `Eviction case: ${form.tenant_name} at ${form.property} — ${form.reason}`, "", userProfile?.email, userRole, companyId);
   setShowForm(false);
@@ -745,7 +752,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   if (evCase.tenant_id) {
   await supabase.from("tenants").update({ lease_status: "active" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
   }
-  await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("tenant_name", evCase.tenant_name).eq("status", "notice");
+  // No lease write here either. Filing never moved the lease off
+  // "active", so there is nothing to restore -- and this update could
+  // never match anything, because it looked for status "notice" which
+  // the constraint does not permit and which was therefore never set.
   }
   // settled/dismissed: no cascade — user handles manually
 
