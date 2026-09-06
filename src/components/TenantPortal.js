@@ -693,7 +693,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
   {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.lease_start || tenantData.move_in || "—"], ["Lease End", tenantData.lease_end_date || tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
-  <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className="font-medium text-neutral-800 capitalize">{v}</span></div>
+  <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className={"font-medium text-neutral-800" + (l === "Status" ? " capitalize" : "")}>{v}</span></div>
   ))}
   </div>
   {safeNum(tenantData.balance) > 0 && (
