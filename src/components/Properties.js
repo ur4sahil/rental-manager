@@ -1406,7 +1406,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
+                <div role="switch" tabIndex={0} aria-checked={!!loan.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLoan({ ...loan, enabled: !loan.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have a loan?</span>
@@ -1676,7 +1676,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
+                <div role="switch" tabIndex={0} aria-checked={!!insurance.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setInsurance({ ...insurance, enabled: !insurance.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${insurance.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have insurance?</span>
@@ -1752,7 +1752,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${taxes.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setTaxes({ ...taxes, enabled: !taxes.enabled })}>
+                <div role="switch" tabIndex={0} aria-checked={!!taxes.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTaxes({ ...taxes, enabled: !taxes.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${taxes.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setTaxes({ ...taxes, enabled: !taxes.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${taxes.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Track property tax for this property?</span>
