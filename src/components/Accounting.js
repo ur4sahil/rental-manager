@@ -1683,7 +1683,28 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   const [refreshing, setRefreshing] = useState(false);
   const [compareTo, setCompareTo] = useState("");
   const [classFilter, setClassFilter] = useState("");
-  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
+  // Default to an account that actually HAS transactions, not simply the
+  // first one in the chart. accounts[0] is "1000 Checking Account",
+  // which in a company whose banks are named for the real institution
+  // ("Sigma Housing LLC - 6027", 2,903 lines) holds nothing -- so the
+  // General Ledger opened on an empty account and read "No transactions",
+  // which looks like a broken report rather than an unused account.
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  useEffect(() => {
+    if (selectedAccountId) return;
+    const counts = new Map();
+    for (const je of (journalEntries || [])) {
+      for (const l of (je.lines || je.acct_journal_lines || [])) {
+        if (l.account_id) counts.set(l.account_id, (counts.get(l.account_id) || 0) + 1);
+      }
+    }
+    let best = null, bestN = 0;
+    for (const a of (accounts || [])) {
+      const n = counts.get(a.id) || 0;
+      if (n > bestN) { best = a.id; bestN = n; }
+    }
+    setSelectedAccountId(best || accounts[0]?.id || "");
+  }, [accounts, journalEntries, selectedAccountId]);
   const [showIncome, setShowIncome] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showAssets, setShowAssets] = useState(true);
