@@ -1452,7 +1452,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {archivedTenants.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
     // Fan-out fetch for the full tenant history so the detail panel
     // renders in one shot. Scope each query by tenant_id where the
     // table has it, falling back to escaped name ilike otherwise —
@@ -2037,7 +2037,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => {
   const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
   return (
-  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-warn-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-warn-50/60 border-warn-200" /* tinted, not faded: opacity-60 on the whole card dragged every colour inside it below contrast -- 24 failures on this page alone -- because opacity blends the TEXT too, not just the background */ : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>

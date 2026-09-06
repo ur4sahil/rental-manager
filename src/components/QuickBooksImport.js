@@ -376,7 +376,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           Also add <strong>Reports → Account List</strong> if you have it: it states every account's type, so nothing has to be guessed.
         </p>
       </div>
-      <FileInput key={pickerKey} accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
+      <FileInput key={pickerKey} aria-label="Choose QuickBooks .xlsx export files" accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
 
       {files.length > 0 && (
       <table className="w-full text-xs">

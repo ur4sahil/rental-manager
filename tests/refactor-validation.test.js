@@ -121,7 +121,19 @@ function testFileStructure() {
   // twenty-odd files (largest single file +140) rather than concentrated
   // in one, which is the drift this bound exists to catch. If a single
   // file starts carrying the increase, extract instead.
-  assert(totalLines <= 38700, `Total src lines <= 38700 (${totalLines})`);
+  // Raised to 38900 on 2026-09-06. Net +287 from the reporting rework
+  // (three database aggregates plus the period-snapshot path), the
+  // wizard fixes, and the accessibility pass across all 34 routes. 132
+  // of the 323 added lines are comments -- the contrast values in
+  // index.css each carry the measured ratio and the background they were
+  // measured against, because the previous round was set against pure
+  // white and failed on the tinted panels almost everything actually
+  // sits on.
+  //
+  // Still spread across many files rather than concentrated, which is
+  // the drift this bound exists to catch. If one file starts carrying
+  // the growth, extract instead of raising again.
+  assert(totalLines <= 38900, `Total src lines <= 38900 (${totalLines})`);
 }
 
 // ───────────────────────────────────────────

@@ -109,8 +109,19 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
     if (!companyId) return;
     setLoading(true);
     try {
-      const { data } = await supabase.from("notification_settings")
+      const { data, error: readErr } = await supabase.from("notification_settings")
         .select("*").eq("company_id", companyId);
+      // If the READ failed we know nothing about what exists, and
+      // seeding on that basis tries to insert all 27 event types. Every
+      // one conflicts with a row that is already there, so a single
+      // visit to the admin page fired 27 failed writes -- 54 were
+      // observed across two loads during the route sweep, all silent.
+      if (readErr) {
+        pmError("PM-8006", { raw: readErr, context: "read notification_settings; skipping seed", silent: true });
+        setSettings([]);
+        setLoading(false);
+        return;
+      }
       const byType = new Map((data || []).map(r => [r.event_type, r]));
 
       // Seed missing rows one at a time. A batched upsert is
@@ -123,8 +134,13 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
       const missing = Object.keys(eventLabels).filter(t => !byType.has(t));
       for (const type of missing) {
         const row = { company_id: companyId, event_type: type, ...defaultsForType(type) };
+        // ignoreDuplicates so a race -- two tabs, or a re-render while
+        // the first read was still in flight -- cannot turn into a
+        // conflict storm. Seeding a row that already exists is a no-op,
+        // which is what it should always have been.
         const { data: inserted } = await supabase.from("notification_settings")
-          .insert(row).select().maybeSingle();
+          .upsert(row, { onConflict: "company_id,event_type", ignoreDuplicates: true })
+          .select().maybeSingle();
         if (inserted) byType.set(type, inserted);
       }
       setSettings(Array.from(byType.values()));

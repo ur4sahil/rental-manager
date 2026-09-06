@@ -101,7 +101,26 @@ export function Input({ className = "", size = "md", ...props }) {
 export function Select({ className = "", filter, size = "md", children, ...props }) {
   const base = inputBase(size, filter || /\bw-/.test(className));
   const widthCls = filter ? " w-auto" : "";
-  return <select className={`${base}${widthCls} ${className}`} {...props}>{children}</select>;
+  // Fall back to the first option's text as the accessible name.
+  //
+  // axe reported critical select-name failures on ten routes: filter
+  // dropdowns are rendered bare, with their meaning carried only by the
+  // selected option, so a screen reader announces "combo box" and
+  // nothing else. The first option is almost always the "All …" label
+  // that names the filter ("All Status", "All Types", "All Cities"),
+  // which is exactly the name a user needs. An explicit aria-label
+  // always wins.
+  let derived;
+  if (!props["aria-label"] && !props["aria-labelledby"]) {
+    const first = React.Children.toArray(children).find(c => c && c.type === "option");
+    const txt = first && typeof first.props?.children === "string" ? first.props.children.trim() : "";
+    if (txt) derived = txt;
+  }
+  return (
+    <select className={`${base}${widthCls} ${className}`} aria-label={derived} {...props}>
+      {children}
+    </select>
+  );
 }
 
 export function Textarea({ className = "", rows = 3, size = "md", ...props }) {

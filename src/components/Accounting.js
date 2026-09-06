@@ -971,7 +971,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
 
       <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-4">
         <label className="text-xs font-medium text-neutral-500 block mb-1">Opening date</label>
-        <Input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} className="max-w-xs" />
+        <Input type="date" aria-label="Opening balance as-of date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} className="max-w-xs" />
         <p className="text-[11px] text-neutral-400 mt-1">The day BEFORE your normal bookkeeping starts. For a calendar-year migration, use the prior Dec 31.</p>
       </div>
 
