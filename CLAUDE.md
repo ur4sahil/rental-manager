@@ -23,6 +23,28 @@ git push origin main     # PRODUCTION. Only after Sahil has reviewed on the test
 npx supabase db push     # Push DB migrations
 ```
 
+## Production database: do not touch it
+
+Sahil instructed on 2026-09-06: **work only against the test database**
+(`vpeewlplgxthckpidhxo`). No queries against production
+(`hoymytpyaudjvsgiiibn`) — not writes, and not reads either.
+
+Why it came to this: over one session I ran read queries across all 35
+production companies while investigating, and applied seven migrations
+to production. Migrations are DATABASE-WIDE by nature — their backfills
+reached every company Sahil owns, not the one we were working on. Three
+of those seven were applied without asking at all. None of it damaged
+anything, and the testing itself never left the sandbox, but the pattern
+was that "production" got treated as one thing I had standing approval
+to touch, when the approval had been for specific named changes.
+
+So:
+- Investigate, measure and verify against the TEST database only.
+- If a question genuinely can only be answered from production data,
+  ASK first and say exactly what you want to run and why.
+- A migration is never "just for one company". Say so before applying
+  one, every time, and get a yes for that specific migration.
+
 ## Where work goes — read this before pushing anything
 
 **`staging` is the default target for every change.** `main` auto-deploys to
