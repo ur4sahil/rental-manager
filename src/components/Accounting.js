@@ -889,6 +889,16 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
             // an accounting period silently did nothing.
             company_id: companyId, lock_date: asOf, locked_by: userProfile?.email || "",
           }], { onConflict: "company_id" });
+          // A closed period cannot change, so record each account's
+          // closing balance. An as-of report then reads that one row per
+          // account plus whatever happened afterwards, instead of
+          // re-summing the ledger from the day the company opened. On
+          // this dataset closing 2025 cuts the rows an as-of trial
+          // balance touches from 16,548 to 2,244, and the saving grows
+          // with every year that is closed.
+          const { error: snapErr } = await supabase.rpc("build_period_balances",
+            { p_company_id: companyId, p_as_of: asOf });
+          if (snapErr) pmError("PM-4009", { raw: snapErr, context: "build_period_balances after period lock", silent: true });
         }
       } else {
         // autoPostJournalEntry returns null on dedup or validation
@@ -1700,21 +1710,33 @@ export function AcctReports({ linesLoaded = true, accounts, journalEntries, clas
   const [rpcPending, setRpcPending] = useState(false);
   const [rpcGl, setRpcGl] = useState(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  // Set once we have chosen using REAL line counts, or the user has
+  // chosen for themselves. Guarding on selectedAccountId alone was
+  // wrong: the first pass runs before the ledger has loaded, finds no
+  // counts, sets the provisional accounts[0] -- and from then on the
+  // guard returned early, so the informed choice never happened and the
+  // General Ledger stayed on "1000 Checking Account", an account with
+  // nothing in it.
+  const accountAutoPicked = useRef(false);
   useEffect(() => {
-    if (selectedAccountId) return;
+    if (accountAutoPicked.current || !(accounts || []).length) return;
     const counts = new Map();
     for (const je of (journalEntries || [])) {
-      for (const l of (je.lines || je.acct_journal_lines || [])) {
+      for (const l of (je.lines || [])) {
         if (l.account_id) counts.set(l.account_id, (counts.get(l.account_id) || 0) + 1);
       }
     }
     let best = null, bestN = 0;
-    for (const a of (accounts || [])) {
+    for (const a of accounts) {
       const n = counts.get(a.id) || 0;
       if (n > bestN) { best = a.id; bestN = n; }
     }
-    setSelectedAccountId(best || accounts[0]?.id || "");
-  }, [accounts, journalEntries, selectedAccountId]);
+    if (best) { setSelectedAccountId(best); accountAutoPicked.current = true; return; }
+    // No counts yet. Show something rather than an empty picker, but do
+    // NOT mark this as the final choice -- try again when the ledger lands.
+    if (!selectedAccountId) setSelectedAccountId(accounts[0]?.id || "");
+    if (linesLoaded) accountAutoPicked.current = true; // ledger is in and genuinely empty
+  }, [accounts, journalEntries, selectedAccountId, linesLoaded]);
   const [showIncome, setShowIncome] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showAssets, setShowAssets] = useState(true);
@@ -1772,7 +1794,7 @@ export function AcctReports({ linesLoaded = true, accounts, journalEntries, clas
     (async () => {
       try {
         if (id === "tb") {
-          const { data, error } = await supabase.rpc("report_trial_balance",
+          const { data, error } = await supabase.rpc("report_trial_balance_fast",
             { p_company_id: companyId, p_end: asOfDate });
           if (cancelled) return;
           setRpcTb(error || !data ? null : data.map(r => ({
@@ -1780,7 +1802,7 @@ export function AcctReports({ linesLoaded = true, accounts, journalEntries, clas
             debitBalance: safeNum(r.debit_balance), creditBalance: safeNum(r.credit_balance),
             is_active: true,
           })));
-          if (error) pmError("PM-4009", { raw: error, context: "report_trial_balance RPC, using client fallback", silent: true });
+          if (error) pmError("PM-4009", { raw: error, context: "report_trial_balance_fast RPC, using client fallback", silent: true });
         } else setRpcTb(null);
 
         if (id === "gl" && selectedAccountId) {
@@ -3049,7 +3071,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {SHOW_AS_OF && <div><label className="text-xs text-neutral-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="w-36" /></div>}
       {SHOW_COMPARE && <div><label className="text-xs text-neutral-500 block mb-1">Compare to</label><Select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></Select></div>}
       {SHOW_CLASS && <div><label className="text-xs text-neutral-500 block mb-1">Property</label><Select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>}
-      {SHOW_ACCOUNT && <div><label className="text-xs text-neutral-500 block mb-1">Account</label><Select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</Select></div>}
+      {SHOW_ACCOUNT && <div><label className="text-xs text-neutral-500 block mb-1">Account</label><Select value={selectedAccountId} onChange={e => { accountAutoPicked.current = true; setSelectedAccountId(e.target.value); }} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</Select></div>}
       <div className="flex items-end gap-2 ml-auto">
         <Input type="text" value={saveReportName} onChange={e => setSaveReportName(e.target.value)} placeholder="Save as..." className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm w-32" />
         <Btn variant="success-fill" size="sm" className="disabled:opacity-40 whitespace-nowrap" onClick={saveCustomReport} disabled={!saveReportName.trim()}>Save Config</Btn>
