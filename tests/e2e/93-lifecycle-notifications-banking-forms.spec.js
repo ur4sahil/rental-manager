@@ -67,6 +67,24 @@ const ADMIN_EMAIL = (process.env.TEST_EMAIL || '').toLowerCase();
 // Ids of rows created outside the tag-able namespace, cleaned by id.
 const created = { notifSettings: [], reconciliations: [], jeIds: [], feedIds: [], hadPeriodLock: null };
 
+// The app writes dates with formatLocalDate (utils/helpers.js), which
+// reads getFullYear/getMonth/getDate — i.e. the LOCAL calendar day.
+// toISOString() is UTC, so between local midnight and UTC midnight the
+// two disagree by a day and every date assertion built on toISOString
+// silently starts failing. Match the app.
+function localDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function localDatePlusDays(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return localDate(d);
+}
+function localMonthCompact() { return localDate().slice(0, 7).replace('-', ''); }
+
 // ── UI helpers ────────────────────────────────────────────────────────
 async function openRoute(page, routeId, marker) {
   const loc = typeof marker === 'function'
@@ -486,7 +504,7 @@ test.describe('Late fees', () => {
     await applyBtn.click();
     // The page confirms via the header bell (addNotification), not a
     // toast, so wait on the consequence in the GL instead.
-    const month = new Date().toISOString().slice(0, 7).replace('-', '');
+    const month = localMonthCompact();
     const ref = `LATE-${tenant.id}-${month}`;
     await expect.poll(async () => {
       const { data } = await sb.from('acct_journal_entries').select('id')
@@ -583,7 +601,7 @@ test.describe('Late fees', () => {
     await card.locator('button:has-text("Late Fee")').first().click();
 
     // The fee reaches the general ledger...
-    const month = new Date().toISOString().slice(0, 7).replace('-', '');
+    const month = localMonthCompact();
     const ref = `LATE-${tenant.id}-${month}`;
     await expect.poll(async () => ((await sb.from('acct_journal_entries').select('id')
       .eq('company_id', COMPANY).eq('reference', ref)).data || []).length,
@@ -647,7 +665,7 @@ test.describe('Late fees', () => {
     const promised = Number(label.replace(/[^0-9.]/g, ''));
 
     await applyBtn.click();
-    const month = new Date().toISOString().slice(0, 7).replace('-', '');
+    const month = localMonthCompact();
     const ref = `LATE-${tenant.id}-${month}`;
     await expect.poll(async () => {
       const { data } = await sb.from('acct_journal_entries').select('id')
@@ -880,7 +898,7 @@ test.describe('Notifications', () => {
     await cardOff.locator('button:has-text("Late Fee")').first().click();
     // Wait for the fee itself to land, so "no queue row" is a real
     // absence and not just an unfinished request.
-    const month = new Date().toISOString().slice(0, 7).replace('-', '');
+    const month = localMonthCompact();
     await expect.poll(async () => (await sb.from('acct_journal_entries').select('id')
       .eq('company_id', COMPANY).eq('reference', `LATE-${tOff.id}-${month}`)).data.length,
       { timeout: 45000 }).toBe(1);
@@ -915,7 +933,7 @@ test.describe('Move-out wizard', () => {
     await page.locator('main select').first().selectOption(String(tenant.id));
     const dateInput = page.locator('main input[type="date"]').first();
     await expect(dateInput).toBeVisible({ timeout: 20000 });
-    const moveOutDate = new Date().toISOString().slice(0, 10);
+    const moveOutDate = localDate();
     await dateInput.fill(moveOutDate);
     // The summary must show the lease we seeded, not a neighbouring one.
     await expect(page.getByText('$1500.00', { exact: false }).first()).toBeVisible({ timeout: 20000 });
@@ -1100,7 +1118,7 @@ const evictionsPage = (page) => openRoute(page, 'evictions', 'Eviction Tracker')
 
 async function seedEvictionCase(tenant, address, patch = {}) {
   const sb = await db();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   // stage_history is written by the app as JSON.stringify(...) into a
   // jsonb column and read back with JSON.parse, so it has to be seeded as
   // a JSON *string* or the detail panel throws on mount.
@@ -1135,43 +1153,84 @@ test.describe('Evictions', () => {
     expect(after).toBe(before);
   });
 
-  // KNOWN BROKEN — see the report. eviction_cases.tenant_id is `uuid`
-  // while tenants.id is `integer`, and createCase() writes the tenant id
-  // straight in, so every Start Case is rejected by Postgres with
-  //   invalid input syntax for type uuid: "1234"
-  // No eviction case can be opened from the UI at all. This test pins the
-  // CURRENT contract — a visible refusal and no row — so that fixing the
-  // column type makes it fail loudly and someone rewrites it into the
-  // happy-path test it should be.
-  test('KNOWN BROKEN: Start Case is rejected by the database (eviction_cases.tenant_id is uuid, tenants.id is integer)', async ({ page }) => {
+  // This was a KNOWN BROKEN test until migration
+  // 20260906120000_eviction_cases_tenant_id_type: eviction_cases.tenant_id
+  // was `uuid` while tenants.id is `integer`, so createCase() writing the
+  // tenant id straight in made Postgres reject every insert with
+  // `invalid input syntax for type uuid` — no eviction case could be
+  // opened from the UI at all, and never could. The column is now bigint
+  // with an FK, so this is the happy path it always should have been.
+  test('starting a case saves every field entered and puts the tenant on notice', async ({ page }) => {
     const sb = await db();
     const prop = await seedProperty('EV');
     const tenant = await seedTenant('EV', prop.address, { balance: 3200 });
-    await seedLease(tenant, prop.address);
+    const lease = await seedLease(tenant, prop.address);
 
     await evictionsPage(page);
     await page.locator('main button:has-text("+ New Case")').click();
     await expect(page.getByText('Start Eviction Case').first()).toBeVisible({ timeout: 20000 });
-    const selects = page.locator('main form select, main select');
     await page.locator('main select').first().selectOption(String(tenant.id));
     await page.locator('main select').nth(1).selectOption('lease_violation');
     await page.locator('main select').nth(2).selectOption('cure_or_quit');
     await page.locator('main select').nth(3).selectOption('14');
-    await page.locator('main textarea').fill(`${TAG} unauthorised pet`);
+    const notes = `${TAG} unauthorised pet, third notice`;
+    await page.locator('main textarea').fill(notes);
     await page.locator('main button:text-is("Start Case")').click();
 
-    // The failure is surfaced (a PM-coded error toast), not swallowed.
-    await expect(toasts(page).locator('text=/PM-\\d{4}/').first())
-      .toBeVisible({ timeout: 15000 });
+    await expect.poll(async () => ((await sb.from('eviction_cases').select('id')
+      .eq('company_id', COMPANY).eq('tenant_name', tenant.name)).data || []).length,
+      { timeout: 30000, message: 'Start Case wrote no eviction case' }).toBe(1);
 
-    const { data: rows } = await sb.from('eviction_cases').select('id')
-      .eq('company_id', COMPANY).eq('tenant_name', tenant.name);
-    expect(rows, 'the insert is rejected outright — nothing is written').toHaveLength(0);
+    const { data: kase } = await sb.from('eviction_cases').select('*')
+      .eq('company_id', COMPANY).eq('tenant_name', tenant.name).single();
+    expect(kase.tenant_id, 'the case must be linked to the tenant by id').toBe(tenant.id);
+    expect(kase.property).toBe(prop.address);
+    expect(kase.reason, 'reason').toBe('lease_violation');
+    expect(kase.notice_type, 'notice type').toBe('cure_or_quit');
+    expect(kase.notice_days, 'cure period is stored as a number').toBe(14);
+    expect(kase.notes).toBe(notes);
+    expect(kase.current_stage).toBe('notice');
+    expect(kase.status).toBe('active');
+    expect(Number(kase.total_costs)).toBe(0);
 
-    // ...and nothing downstream was half-applied either.
-    const { data: t2 } = await sb.from('tenants').select('lease_status').eq('id', tenant.id).single();
-    expect(t2.lease_status, 'the tenant must not be flipped to notice by a failed insert').toBe('active');
-    expect(selects).toBeTruthy();
+    // The cure deadline is the notice date plus the cure period.
+    expect(kase.notice_date, 'the notice is dated today, in local time').toBe(localDate());
+    expect(kase.cure_deadline, 'cure deadline = notice date + cure period')
+      .toBe(localDatePlusDays(14));
+
+    const history = typeof kase.stage_history === 'string' ? JSON.parse(kase.stage_history) : kase.stage_history;
+    expect(history).toHaveLength(1);
+    expect(history[0].stage).toBe('notice');
+    expect(history[0].note, 'the opening entry records the notice served').toContain('cure or quit');
+    expect(history[0].note).toContain('14');
+    expect(history[0].by).toBe(ADMIN_EMAIL);
+
+    // ── The cascade the form promises ────────────────────────────────
+    await expect.poll(async () => (await sb.from('tenants')
+      .select('lease_status').eq('id', tenant.id).single()).data.lease_status,
+      { timeout: 30000, message: 'the tenant must be put on notice' }).toBe('notice');
+    const { data: t2 } = await sb.from('tenants').select('move_out').eq('id', tenant.id).single();
+    expect(t2.move_out, 'the tenant move-out date is set to the cure deadline').toBe(kase.cure_deadline);
+
+    // KNOWN BROKEN — the lease is NOT put on notice, and cannot be.
+    // createCase() runs
+    //     leases.update({ status: "notice" }).eq("status", "active")
+    // but leases_status_check permits only
+    //     draft | active | expired | renewed | terminated
+    // so Postgres rejects the write, and the only handling is
+    //     if (lErr) pmError("PM-3004", { ..., silent: true })
+    // which swallows it. The tenant ends up on `notice` while their
+    // lease is still `active` — the two disagree after every eviction
+    // filing. Either 'notice' belongs in the constraint or the app
+    // should stop writing it; see the report. Pinned so a fix fails here.
+    await page.waitForTimeout(3000);
+    const { data: l2 } = await sb.from('leases').select('status').eq('id', lease.id).single();
+    expect(l2.status, 'the lease status write is silently rejected by leases_status_check')
+      .toBe('active');
+
+    // ...and the case is on screen without a reload.
+    await expect(page.locator('main').getByText(tenant.name, { exact: false }).first())
+      .toBeVisible({ timeout: 20000 });
   });
 
   test('advancing a stage records the note, date and cost, and posts the cost to the GL', async ({ page }) => {
@@ -1788,56 +1847,60 @@ test.describe('Reconcile', () => {
     expect(await jeIdsIn201901(), 'a repeat reconciliation still must not post anything').toEqual(before);
   });
 
-  // KNOWN BROKEN — see the report. saveReconciliation() scopes the
-  // "mark these lines reconciled" update with
-  //     .in("journal_entry_id", <every journal entry id in the company>)
-  // which on this ledger is 7,700+ uuids, ~300KB of query string. The
-  // edge rejects it with 414 Request-URI Too Large, so:
-  //   • not one journal line is flagged reconciled
-  //   • the code returns early, so the bank-transaction locking and the
-  //     period auto-lock that follow it never run
-  //   • but the bank_reconciliations row was inserted BEFORE all that,
-  //     so the history shows a reconciliation that did nothing.
-  // The scope is already redundant — the ids were filtered against the
-  // company's own JEs one statement earlier.
-  test('KNOWN BROKEN: the reconciled flags are never written — the update filters on every journal entry id in the company (414)', async ({ page }) => {
+  // This was a KNOWN BROKEN test until saveReconciliation stopped scoping
+  // its update with `.in("journal_entry_id", <every JE id in the
+  // company>)`. That was ~300KB of query string on this ledger, the edge
+  // answered 414 Request-URI Too Large, and the code returned early — so
+  // no line was ever flagged, the bank-transaction locking and period
+  // auto-lock never ran, and yet the bank_reconciliations row had already
+  // been written. A reconciliation that reconciled nothing. The update is
+  // now chunked and company-scoped, so this is the real behaviour test.
+  test('the ticked lines are flagged reconciled, the unticked are not, and the period is locked', async ({ page }) => {
     const sb = await db();
-    const { a, n } = await seedCheckingActivity();
+    const { a, b, n } = await seedCheckingActivity();
     const aLineId = a.lines.find(l => l.account_name === 'Checking Account').id;
+    const bLineId = b.lines.find(l => l.account_name === 'Checking Account').id;
     const descA = `${TAG} Recon deposit A${n}`;
-
-    // How big the filter this screen builds actually is.
-    const { count: jeCount } = await sb.from('acct_journal_entries')
-      .select('id', { count: 'exact', head: true }).eq('company_id', COMPANY);
-    expect(jeCount, 'the filter carries one uuid per company journal entry').toBeGreaterThan(1000);
 
     await reconcilePage(page);
     await page.locator('main input[type="month"]').fill('2019-01');
     await page.locator('main input[type="number"]').first().fill('800');
     await page.locator('main button:has-text("Begin Reconciliation")').click();
     await expect(page.getByText(descA).first()).toBeVisible({ timeout: 40000 });
-    await page.locator('main button:has-text("Check All")').click();
+
+    // Tick exactly one line, leaving the other deliberately open.
+    await page.locator('main div.cursor-pointer').filter({ hasText: descA }).first().click();
+    await expect(page.getByText('Reconciled (1)').first()).toBeVisible({ timeout: 10000 });
     await page.locator('main button:has-text("Save Reconciliation")').click();
 
-    // The failure IS surfaced to the user...
-    await expect(toast(page, 'Reconciliation update failed')).toBeVisible({ timeout: 30000 });
+    // The flag lands on the ledger line itself, dated today.
+    await expect.poll(async () => (await sb.from('acct_journal_lines')
+      .select('reconciled').eq('id', aLineId).single()).data.reconciled,
+      { timeout: 30000, message: 'the ticked line must be marked reconciled' }).toBe(true);
+    const { data: aLine } = await sb.from('acct_journal_lines')
+      .select('reconciled, reconciled_date').eq('id', aLineId).single();
+    expect(aLine.reconciled_date, 'the reconciled date is stamped').toBe(localDate());
 
-    // ...but only after the reconciliation row has already been written.
-    await expect.poll(async () => ((await sb.from('bank_reconciliations').select('id')
-      .eq('company_id', COMPANY).eq('period', '2019-01')).data || []).length,
-      { timeout: 30000 }).toBeGreaterThan(0);
-    const { data: recs } = await sb.from('bank_reconciliations').select('id')
-      .eq('company_id', COMPANY).eq('period', '2019-01');
+    // ...and only on that line.
+    const { data: bLine } = await sb.from('acct_journal_lines')
+      .select('reconciled, reconciled_date').eq('id', bLineId).single();
+    expect(bLine.reconciled, 'an unticked line must stay unreconciled').toBe(false);
+    expect(bLine.reconciled_date).toBeNull();
+
+    // The record names who did it — this used to be written as "".
+    const { data: recs } = await sb.from('bank_reconciliations').select('*')
+      .eq('company_id', COMPANY).eq('period', '2019-01').order('created_at', { ascending: false });
     recs.forEach(r => { if (!created.reconciliations.includes(r.id)) created.reconciliations.push(r.id); });
+    expect(recs[0].reconciled_by, 'the reconciliation must record who reconciled it').toBe(ADMIN_EMAIL);
 
-    // ...and the flags the whole exercise is for were never written.
-    // saveReconciliation returns as soon as the update errors, so the
-    // bank-transaction locking and the period auto-lock below it are
-    // skipped too — leaving a reconciliation record that changed nothing.
-    const { data: line } = await sb.from('acct_journal_lines').select('reconciled, reconciled_date')
-      .eq('id', aLineId).single();
-    expect(line.reconciled, 'the line the user ticked is still unreconciled').toBe(false);
-    expect(line.reconciled_date).toBeNull();
+    // Reaching the end of saveReconciliation means the period auto-lock
+    // ran — the step that the early return used to skip.
+    await expect.poll(async () => {
+      const { data } = await sb.from('accounting_period_lock').select('lock_date')
+        .eq('company_id', COMPANY).maybeSingle();
+      return data?.lock_date || null;
+    }, { timeout: 30000, message: 'reconciling must auto-lock the period it closed' })
+      .toBe('2019-01-31');
   });
 });
 
