@@ -158,12 +158,12 @@ let _toastIdCounter = 0;
 const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_qbimport","acct_reconcile","acct_classes","acct_reports"];
 
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees"] },
   // Manager sits between admin and the customizable staff roles. Can
   // review / approve requests submitted by staff who've been explicitly
   // assigned to them via manager_email. Can't administer the company
   // (no members page, no role edits).
-  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting",...ACCT_SUB_PAGES,"payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
@@ -178,7 +178,6 @@ const ROLES = {
 const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "properties", label: "Properties", icon: "apartment", children: [
-    { id: "property_import", label: "Import from Excel", icon: "upload_file" },
     { id: "maintenance", label: "Maintenance", icon: "build" },
     { id: "inspections", label: "Inspections", icon: "checklist" },
     { id: "utilities", label: "Utilities", icon: "bolt" },
@@ -252,7 +251,9 @@ const pageComponents = {
   acct_recurring:  (p) => <Accounting {...p} initialTab="recurring" />,
   acct_bankimport: (p) => <Accounting {...p} initialTab="bankimport" />,
   acct_qbimport:   (p) => <Accounting {...p} initialTab="qbimport" />,
-  property_import: (p) => <PropertyImport {...p} />,
+  property_import:     (p) => <PropertyImport {...p} mode="edit" />,
+  property_import_add: (p) => <PropertyImport {...p} mode="add" />,
+  property_import_edit:(p) => <PropertyImport {...p} mode="edit" />,
   acct_reconcile:  (p) => <Accounting {...p} initialTab="reconcile" />,
   acct_classes:    (p) => <Accounting {...p} initialTab="classes" />,
   acct_reports:    (p) => <Accounting {...p} initialTab="reports" />,

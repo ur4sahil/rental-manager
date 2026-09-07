@@ -119,7 +119,14 @@ async function testJournalEntryIntegrity() {
   console.log('\n📒 JOURNAL ENTRY INTEGRITY');
 
   // DB: insert a balanced JE (DR 100 / CR 100)
-  const { data: companies } = await supabase.from('acct_accounts').select('company_id').limit(1);
+  // Pinned to the sandbox company. This used to take whatever
+  // `select company_id from acct_accounts limit 1` returned -- an
+  // unordered pick with no guarantee -- and then INSERT a journal entry
+  // into it. It has always happened to return sandbox-llc, so nothing
+  // has landed in real books, but a plan change or a vacuum is all it
+  // would take for this to post a test entry into a live company.
+  const { data: companies } = await supabase.from('acct_accounts')
+    .select('company_id').eq('company_id', 'sandbox-llc').limit(1);
   const companyId = companies?.[0]?.company_id;
   if (companyId) {
     const { data: accounts } = await supabase.from('acct_accounts').select('id, code').eq('company_id', companyId).limit(2);

@@ -133,7 +133,18 @@ function testFileStructure() {
   // Still spread across many files rather than concentrated, which is
   // the drift this bound exists to catch. If one file starts carrying
   // the growth, extract instead of raising again.
-  assert(totalLines <= 38900, `Total src lines <= 38900 (${totalLines})`);
+  // Raised to 39500 on 2026-09-07. Net +397 for the comprehensive
+  // property import: six new optional sheets (Utilities, HOA, Loans,
+  // Insurance, Property Tax, Recurring Rent) covering the wizard steps
+  // the two-sheet template never reached, plus separate Add and Edit
+  // modes so a bulk-entry file has no ID column to mis-key on.
+  //
+  // The schema went into its own module rather than onto the end of
+  // propertyImport.js: the first cut put +281 lines in that one file,
+  // which is precisely the concentration this bound exists to catch.
+  // After extraction the growth is +163 / +124 / +13 / +1 across four
+  // files plus a 120-line data-only module. Spread, not concentrated.
+  assert(totalLines <= 39500, `Total src lines <= 39500 (${totalLines})`);
 }
 
 // ───────────────────────────────────────────

@@ -13,6 +13,23 @@
 // on that string would create a duplicate property, a second accounting
 // class, and strand the whole ledger on the old one.
 
+import {
+  EXTRA_SHEETS, UTILITY_RESPONSIBILITY, HOA_FREQUENCY, LOAN_TYPES,
+  PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
+} from "./propertyImportSheets.js";   // .js required: the unit tests load
+                                     // this module through Node's ESM
+                                     // loader, which does not resolve
+                                     // extensionless paths the way
+                                     // webpack does.
+
+// Re-exported so callers have one import for the whole import schema.
+export {
+  SHEET_UTILITIES, SHEET_HOA, SHEET_LOANS, SHEET_INSURANCE, SHEET_TAXES, SHEET_RECURRING,
+  UTILITY_COLUMNS, HOA_COLUMNS, LOAN_COLUMNS, INSURANCE_COLUMNS, TAX_COLUMNS, RECURRING_COLUMNS,
+  EXTRA_SHEETS, UTILITY_RESPONSIBILITY, HOA_FREQUENCY, LOAN_TYPES,
+  PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
+} from "./propertyImportSheets.js";
+
 export const SHEET_PROPERTIES = "Properties";
 export const SHEET_TENANTS = "Tenants";
 export const SHEET_REFERENCE = "Instructions";
@@ -209,26 +226,36 @@ function addListValidation(ws, colIdx, rowCount, values) {
   }
 }
 
+// mode "edit" is the round trip: pre-filled, ID columns present so a row
+// still matches its record after its address changes. mode "add" is a
+// blank book -- the ID columns are removed entirely, which is what makes
+// "No property with id TEST-1001" impossible rather than merely unlikely.
 export async function buildTemplate(ExcelJS, {
   companyName = "", properties = [], tenants = [], owners = [], blankRows = 25,
+  mode = "edit",
 } = {}) {
+  const isAdd = mode === "add";
+  const dropId = (cols) => isAdd ? cols.filter(c => c.key !== "id") : cols;
+  const propertyColumns = dropId(PROPERTY_COLUMNS);
+  const tenantColumns = dropId(TENANT_COLUMNS);
+  if (isAdd) { properties = []; tenants = []; blankRows = Math.max(blankRows, 40); }
   const wb = new ExcelJS.Workbook();
   wb.creator = "Housify";
   wb.created = new Date();
 
   // --- Properties -----------------------------------------------------
   const wsP = wb.addWorksheet(SHEET_PROPERTIES, { views: [{ state: "frozen", ySplit: 1 }] });
-  writeHeader(wsP, PROPERTY_COLUMNS);
+  writeHeader(wsP, propertyColumns);
   properties.forEach((p, i) => {
     const row = wsP.getRow(i + 2);
-    PROPERTY_COLUMNS.forEach((c, ci) => { row.getCell(ci + 1).value = p[c.key] ?? null; });
-    styleRow(wsP, i + 2, PROPERTY_COLUMNS, p);
+    propertyColumns.forEach((c, ci) => { row.getCell(ci + 1).value = p[c.key] ?? null; });
+    styleRow(wsP, i + 2, propertyColumns, p);
   });
-  for (let i = 0; i < blankRows; i++) styleRow(wsP, properties.length + 2 + i, PROPERTY_COLUMNS, null);
+  for (let i = 0; i < blankRows; i++) styleRow(wsP, properties.length + 2 + i, propertyColumns, null);
 
-  const pTypeIdx   = PROPERTY_COLUMNS.findIndex(c => c.key === "type") + 1;
-  const pStatusIdx = PROPERTY_COLUMNS.findIndex(c => c.key === "status") + 1;
-  const pOwnerIdx  = PROPERTY_COLUMNS.findIndex(c => c.key === "owner_name") + 1;
+  const pTypeIdx   = propertyColumns.findIndex(c => c.key === "type") + 1;
+  const pStatusIdx = propertyColumns.findIndex(c => c.key === "status") + 1;
+  const pOwnerIdx  = propertyColumns.findIndex(c => c.key === "owner_name") + 1;
   const pRows = properties.length + blankRows;
   addListValidation(wsP, pTypeIdx, pRows, PROPERTY_TYPES);
   addListValidation(wsP, pStatusIdx, pRows, PROPERTY_STATUSES);
@@ -236,33 +263,75 @@ export async function buildTemplate(ExcelJS, {
 
   // --- Tenants --------------------------------------------------------
   const wsT = wb.addWorksheet(SHEET_TENANTS, { views: [{ state: "frozen", ySplit: 1 }] });
-  writeHeader(wsT, TENANT_COLUMNS);
+  writeHeader(wsT, tenantColumns);
   tenants.forEach((t, i) => {
     const row = wsT.getRow(i + 2);
-    TENANT_COLUMNS.forEach((c, ci) => { row.getCell(ci + 1).value = t[c.key] ?? null; });
-    styleRow(wsT, i + 2, TENANT_COLUMNS, t);
+    tenantColumns.forEach((c, ci) => { row.getCell(ci + 1).value = t[c.key] ?? null; });
+    styleRow(wsT, i + 2, tenantColumns, t);
   });
-  for (let i = 0; i < blankRows; i++) styleRow(wsT, tenants.length + 2 + i, TENANT_COLUMNS, null);
+  for (let i = 0; i < blankRows; i++) styleRow(wsT, tenants.length + 2 + i, tenantColumns, null);
 
-  const tStatusIdx = TENANT_COLUMNS.findIndex(c => c.key === "tenant_status") + 1;
-  const tVoucherIdx = TENANT_COLUMNS.findIndex(c => c.key === "is_voucher") + 1;
+  const tStatusIdx = tenantColumns.findIndex(c => c.key === "tenant_status") + 1;
+  const tVoucherIdx = tenantColumns.findIndex(c => c.key === "is_voucher") + 1;
   const tRows = tenants.length + blankRows;
   addListValidation(wsT, tStatusIdx, tRows, TENANT_STATUSES);
   addListValidation(wsT, tVoucherIdx, tRows, ["Yes", "No"]);
+
+  // --- The six optional sheets ----------------------------------------
+  // Always blank: these are things you are telling the app, never things
+  // it is asking you to confirm.
+  const LISTS = {
+    properties: properties.map(p => p.address).filter(Boolean),
+    utilityResponsibility: UTILITY_RESPONSIBILITY, hoaFrequency: HOA_FREQUENCY,
+    loanTypes: LOAN_TYPES, premiumFrequency: PREMIUM_FREQUENCY,
+    taxFrequency: TAX_FREQUENCY, recurringFrequency: RECURRING_FREQUENCY,
+    yesNo: ["Yes", "No"],
+  };
+  for (const { sheet, columns } of EXTRA_SHEETS) {
+    const ws = wb.addWorksheet(sheet, { views: [{ state: "frozen", ySplit: 1 }] });
+    writeHeader(ws, columns);
+    for (let i = 0; i < blankRows; i++) styleRow(ws, i + 2, columns, null);
+    columns.forEach((c, ci) => {
+      const opts = c.list ? LISTS[c.list] : null;
+      if (opts && opts.length) addListValidation(ws, ci + 1, blankRows, opts);
+    });
+  }
 
   // --- Instructions ---------------------------------------------------
   const wsI = wb.addWorksheet(SHEET_REFERENCE);
   wsI.columns = [{ width: 4 }, { width: 30 }, { width: 78 }];
   const lines = [
-    ["", `Property import — ${companyName}`, ""],
+    ["", `${isAdd ? "Add properties" : "Edit properties"} — ${companyName}`, ""],
     ["", "", ""],
     ["", "How this works", ""],
-    ["", "1.", "Rows already filled in are your existing records. Fill the yellow gaps."],
-    ["", "2.", "Add new properties or tenants in the blank rows at the bottom."],
-    ["", "3.", "Upload the file back. You will see exactly what will change before anything is saved."],
+    ...(isAdd ? [
+      ["", "1.", "Type your new properties into the Properties sheet, one per row."],
+      ["", "2.", "Fill in any of the other sheets you have details for. All optional."],
+      ["", "3.", "Upload the file back. You will see what will be created before anything is saved."],
+      ["", "", ""],
+      ["", "This file only creates", "There is no ID column, so nothing here can overwrite a property you"],
+      ["", "", "already have. To change existing records, use Edit properties instead."],
+    ] : [
+      ["", "1.", "Rows already filled in are your existing records. Fill the yellow gaps."],
+      ["", "2.", "Add new properties or tenants in the blank rows at the bottom."],
+      ["", "3.", "Upload the file back. You will see exactly what will change before anything is saved."],
+      ["", "", ""],
+      ["", "Do not edit grey columns", "Property ID and Tenant ID identify the record being updated."],
+      ["", "", "Changing one retargets the row at a different record. Leave blank to create."],
+    ]),
     ["", "", ""],
-    ["", "Do not edit grey columns", "Property ID and Tenant ID identify the record being updated."],
-    ["", "", "Changing one retargets the row at a different record. Leave blank to create."],
+    ["", "The other six sheets", "Utilities, HOA, Loans, Insurance, Property Tax and Recurring Rent."],
+    ["", "", "Every one is optional — leave a sheet empty and nothing is created for it."],
+    ["", "", "Each row names its property in the Property column. Utilities and HOA take"],
+    ["", "", "as many rows per property as you need; the other four take one each."],
+    ["", "", ""],
+    ["", "PASSWORDS IN THIS FILE", "The Username and Password columns hold real logins in plain text."],
+    ["", "", "They are encrypted when you upload — the database never stores plaintext —"],
+    ["", "", "but this FILE does. Do not email it or leave it in Downloads. Delete it once"],
+    ["", "", "the import is done. Leave both blank to set logins in the app instead."],
+    ["", "", ""],
+    ["", "Documents", "Cannot be imported from a spreadsheet — a file cannot hold files."],
+    ["", "", "Attach them on the property once it exists."],
     ["", "", ""],
     ["", "Short Name", "What reports and dropdowns display. Pre-filled with your QuickBooks naming,"],
     ["", "", "so reports keep reading the way they do today even after you add city and ZIP."],
@@ -339,7 +408,19 @@ export async function parseWorkbook(ExcelJS, data) {
   const fatal = [];
   if (!wsP) fatal.push(`The workbook has no "${SHEET_PROPERTIES}" sheet. Use the downloaded template.`);
   if (p.missingHeaders.length) fatal.push(`Properties sheet is missing: ${p.missingHeaders.join(", ")}`);
-  return { properties: p.rows, tenants: t.rows, fatal };
+  // The six optional sheets. A missing sheet contributes nothing -- an
+  // older template, or a tab someone deleted, is not an error. A sheet
+  // that IS present but has lost its headers is worth saying out loud,
+  // because importing none of its rows silently is what nobody notices.
+  const extras = {};
+  for (const { sheet, columns, key } of EXTRA_SHEETS) {
+    const ws = wb.getWorksheet(sheet);
+    if (!ws) { extras[key] = []; continue; }
+    const r = readSheet(ws, columns);
+    if (r.missingHeaders.length) fatal.push(`${sheet} sheet is missing: ${r.missingHeaders.join(", ")}`);
+    extras[key] = r.rows;
+  }
+  return { properties: p.rows, tenants: t.rows, ...extras, fatal };
 }
 
 // ---- planning -------------------------------------------------------
@@ -347,7 +428,10 @@ export async function parseWorkbook(ExcelJS, data) {
 // Produces exactly what will happen, so the preview is the truth rather
 // than a summary of it. Nothing here writes.
 
-export function buildImportPlan({ properties = [], tenants = [], existingProperties = [], existingTenants = [] }) {
+export function buildImportPlan({
+  properties = [], tenants = [], existingProperties = [], existingTenants = [],
+  utilities = [], hoas = [], loan = [], insurance = [], taxes = [], recurring = [],
+}) {
   const byId = new Map(existingProperties.map(p => [String(p.id), p]));
   const tById = new Map(existingTenants.map(t => [String(t.id), t]));
   const errors = [], warnings = [], creates = [], updates = [], renames = [];
@@ -492,14 +576,93 @@ export function buildImportPlan({ properties = [], tenants = [], existingPropert
       message: `${cellString(t.record.name)}: status left as Review — please confirm current or past` });
   }
 
+  // ---- the six optional sheets ---------------------------------------
+  //
+  // Each row names its property by address, the only handle someone
+  // filling in a spreadsheet has. That address must resolve to a property
+  // this import is creating or one that already exists; anything else is
+  // a typo the user must see, since the alternative is a row that
+  // vanishes without trace. Matching forgives case and spacing and
+  // nothing else -- a silent near-miss is worse than a named one.
+  const norm = (v) => cellString(v).trim().toLowerCase().replace(/\s+/g, " ");
+  const addressTargets = new Map();
+  creates.forEach(c => addressTargets.set(norm(c.newAddress), { address: c.newAddress, creating: true }));
+  updates.forEach(u => addressTargets.set(norm(u.newAddress), { address: u.newAddress, id: u.id }));
+  existingProperties.forEach(p => {
+    const k = norm(p.address);
+    if (!addressTargets.has(k)) addressTargets.set(k, { address: p.address, id: String(p.id) });
+  });
+
+  const attached = { utilities: [], hoas: [], loan: [], insurance: [], taxes: [], recurring: [] };
+  const singleSeen = new Map();
+  const bySheet = { utilities, hoas, loan, insurance, taxes, recurring };
+
+  for (const { sheet, key, many, columns } of EXTRA_SHEETS) {
+    for (const r of (bySheet[key] || [])) {
+      const where = `${sheet} row ${r._row}`;
+      const target = addressTargets.get(norm(r.property));
+      if (!target) {
+        errors.push({ sheet, row: r._row, field: "Property",
+          message: `${where}: no property called "${cellString(r.property)}". It must match a property on the Properties sheet, or one you already have.` });
+        continue;
+      }
+      const missing = columns
+        .filter(c => c.required && c.key !== "property" && !cellString(r[c.key]))
+        .map(c => c.header);
+      if (missing.length) {
+        errors.push({ sheet, row: r._row, field: missing[0],
+          message: `${where}: ${missing.join(", ")} ${missing.length > 1 ? "are" : "is"} required.` });
+        continue;
+      }
+      if (!many) {
+        const k = `${sheet}|${norm(r.property)}`;
+        if (singleSeen.has(k)) {
+          errors.push({ sheet, row: r._row, field: "Property",
+            message: `${where}: ${sheet} takes one row per property, and row ${singleSeen.get(k)} already covers "${cellString(r.property)}".` });
+          continue;
+        }
+        singleSeen.set(k, r._row);
+      }
+      // Half a credential signs in to nothing.
+      if (columns.some(c => c.credential)) {
+        const u = cellString(r.username), pw = cellString(r.password);
+        if ((u && !pw) || (pw && !u)) {
+          warnings.push({ sheet, row: r._row, kind: "pendency",
+            message: `${where}: ${u ? "username with no password" : "password with no username"} — the login will not be usable.` });
+        }
+      }
+      attached[key].push({ ...r, _address: target.address, _propertyId: target.id || null,
+                           _creating: !!target.creating });
+    }
+  }
+
+  // Only the create path runs through commit_property_wizard, so a row
+  // aimed at a property that already exists is called out rather than
+  // dropped without comment.
+  for (const { sheet, key } of EXTRA_SHEETS) {
+    for (const r of attached[key]) {
+      if (!r._creating) {
+        warnings.push({ sheet, row: r._row, kind: "pendency",
+          message: `${r._address} already exists — this row will be added to it.` });
+      }
+    }
+  }
+
+  const extraRecords = Object.values(attached).reduce((n, a) => n + a.length, 0);
+
   return {
     creates, updates, renames, tenantCreates, tenantUpdates, errors, warnings,
+    extras: attached,
     summary: {
       propertiesToCreate: creates.length,
       propertiesToUpdate: updates.length,
       addressChanges: renames.length,
       tenantsToCreate: tenantCreates.length,
       tenantsToUpdate: tenantUpdates.length,
+      utilities: attached.utilities.length, hoas: attached.hoas.length,
+      loans: attached.loan.length, insurance: attached.insurance.length,
+      taxes: attached.taxes.length, recurring: attached.recurring.length,
+      extraRecords,
       errors: errors.length,
       pendencies: warnings.length,
     },

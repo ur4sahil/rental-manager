@@ -3028,9 +3028,22 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   </div>
   )}
+  <div className="flex flex-wrap items-center gap-2">
   <Btn onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} >
   + Add
   </Btn>
+  {/* Bulk entry and bulk editing are two different jobs and now two
+      different buttons. They live here, next to the properties they act
+      on, rather than in the sidebar. */}
+  <Btn variant="secondary" onClick={() => setPage("property_import_add")}
+       title="Add many properties at once from a spreadsheet">
+  <span className="material-icons-outlined text-sm">upload_file</span>Add in bulk
+  </Btn>
+  <Btn variant="secondary" onClick={() => setPage("property_import_edit")}
+       title="Download your properties, edit them in Excel, upload the changes">
+  <span className="material-icons-outlined text-sm">edit_note</span>Edit in bulk
+  </Btn>
+  </div>
   </div>
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}

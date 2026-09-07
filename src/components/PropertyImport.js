@@ -17,9 +17,11 @@ import { Spinner } from "./shared";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
 import { guardSubmit, guardRelease } from "../utils/guards";
+import { encryptCredential } from "../utils/encryption";
 import {
   PROPERTY_COLUMNS, TENANT_COLUMNS, SHEET_PROPERTIES, SHEET_TENANTS,
   buildTemplate, parseWorkbook, buildImportPlan, inferTenantStatus, computeAddress,
+  cellString,
 } from "../utils/propertyImport";
 
 const STEPS = [
@@ -29,7 +31,10 @@ const STEPS = [
   { id: "done",     label: "Done" },
 ];
 
-export default function PropertyImport({ companyId, companyName, properties = [], showToast, onImported }) {
+// mode "add" creates only: the template carries no ID column, so a row
+// cannot be aimed at an existing record. mode "edit" is the round trip.
+export default function PropertyImport({ companyId, companyName, properties = [], showToast, onImported, mode = "edit" }) {
+  const isAdd = mode === "add";
   const [step, setStep] = useState("download");
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState(null);
@@ -102,6 +107,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       setExisting(data);
       const wb = await buildTemplate(ExcelJS, {
         companyName, properties: data.properties, tenants: data.tenants, owners: data.owners,
+        mode,
       });
       const buf = await wb.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buf], {
@@ -109,7 +115,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${(companyName || "properties").replace(/[^\w-]+/g, "_")}-properties.xlsx`;
+      a.download = `${(companyName || "properties").replace(/[^\w-]+/g, "_")}-${isAdd ? "new-properties" : "edit-properties"}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setStep("upload");
@@ -133,12 +139,93 @@ export default function PropertyImport({ companyId, companyName, properties = []
       setPlan(buildImportPlan({
         properties: p.properties, tenants: p.tenants,
         existingProperties: data.properties, existingTenants: data.tenants,
+        utilities: p.utilities, hoas: p.hoas, loan: p.loan,
+        insurance: p.insurance, taxes: p.taxes, recurring: p.recurring,
       }));
       setStep("preview");
     } catch (e) {
       pmError("PM-2011", { raw: e, context: "parse property import workbook" });
       showToast("Could not read that file. Is it the downloaded template?", "error");
     } finally { setBusy(false); }
+  }
+
+  // The spreadsheet carries logins in plaintext; the database has no
+  // plaintext column for them. Encrypt on the way in, exactly as the
+  // wizard does -- same helper, same shape -- so a row typed into Excel
+  // is stored no differently from one typed into the app.
+  async function encryptCreds(row) {
+    const username = cellString(row.username), password = cellString(row.password);
+    if (!username && !password) {
+      return { username_encrypted: null, password_encrypted: null,
+               encryption_iv: null, encryption_salt: null, encryption_iv_username: null };
+    }
+    const u = await encryptCredential(username, companyId);
+    const pw = await encryptCredential(password, companyId, u.salt);
+    return {
+      username_encrypted: u.encrypted, password_encrypted: pw.encrypted,
+      encryption_iv: pw.iv || null, encryption_salt: u.salt || null,
+      encryption_iv_username: u.iv || null,
+    };
+  }
+
+  // Rows for one property, in the shape commit_property_wizard expects.
+  async function subRecordsFor(address) {
+    const ex = plan.extras || {};
+    const mine = (list) => (list || []).filter(r => r._address === address);
+    const yes = (v) => /^(y|yes|true|1)$/i.test(cellString(v));
+
+    const utilities = [];
+    for (const u of mine(ex.utilities)) {
+      utilities.push({
+        provider: cellString(u.provider), responsibility: cellString(u.responsibility) || null,
+        amount: u.amount ?? null, due_date: u.due_date || null,
+        website: cellString(u.website) || null, ...(await encryptCreds(u)),
+      });
+    }
+    const hoas = [];
+    for (const h of mine(ex.hoas)) {
+      hoas.push({
+        hoa_name: cellString(h.hoa_name), amount: h.amount ?? null,
+        frequency: cellString(h.frequency) || null, due_date: cellString(h.due_date) || null,
+        notes: cellString(h.notes) || null,
+        website: cellString(h.website) || null, ...(await encryptCreds(h)),
+      });
+    }
+    const l = mine(ex.loan)[0];
+    const loan = !l ? null : {
+      lender_name: cellString(l.lender_name), loan_type: cellString(l.loan_type) || null,
+      account_number: cellString(l.account_number) || null,
+      original_amount: l.original_amount ?? null, current_balance: l.current_balance ?? null,
+      interest_rate: l.interest_rate ?? null, monthly_payment: l.monthly_payment ?? null,
+      escrow_included: yes(l.escrow_included), escrow_amount: l.escrow_amount ?? null,
+      loan_start_date: l.loan_start_date || null, maturity_date: l.maturity_date || null,
+      website: cellString(l.website) || null, ...(await encryptCreds(l)),
+    };
+    const i = mine(ex.insurance)[0];
+    const insurance = !i ? null : {
+      provider: cellString(i.provider), policy_number: cellString(i.policy_number) || null,
+      coverage_amount: i.coverage_amount ?? null, premium_amount: i.premium_amount ?? null,
+      premium_frequency: cellString(i.premium_frequency) || null,
+      expiration_date: i.expiration_date || null, notes: cellString(i.notes) || null,
+      website: cellString(i.website) || null, ...(await encryptCreds(i)),
+    };
+    const tx = mine(ex.taxes)[0];
+    const taxes = !tx ? null : {
+      county: cellString(tx.county) || null, jurisdiction: cellString(tx.jurisdiction) || null,
+      parcel_id: cellString(tx.parcel_id) || null, tax_year: tx.tax_year ?? null,
+      annual_tax_amount: tx.annual_tax_amount ?? null, assessed_value: tx.assessed_value ?? null,
+      billing_frequency: cellString(tx.billing_frequency) || null,
+      next_due_date: tx.next_due_date || null,
+      escrow_paid_by_lender: yes(tx.escrow_paid_by_lender),
+      records_url: cellString(tx.records_url) || null,
+    };
+    const rc = mine(ex.recurring)[0];
+    const recurring = !rc ? null : {
+      tenant_name: cellString(rc.tenant_name), amount: rc.amount ?? null,
+      frequency: cellString(rc.frequency) || "Monthly",
+      day_of_month: rc.day_of_month ?? null, start_date: rc.start_date || null,
+    };
+    return { utilities, hoas, loan, insurance, taxes, recurring };
   }
 
   async function handleCommit() {
@@ -170,8 +257,9 @@ export default function PropertyImport({ companyId, companyName, properties = []
             // the RPC, so they must be arrays -- null makes them scalars and
             // the call fails with "cannot extract elements from a scalar".
             // The object-shaped fields take null quite happily.
-            tenant: null, utilities: [], hoas: [], loan: null, insurance: null,
-            taxes: null, recurring: null,
+            // Tenants still come from their own sheet. Everything else
+            // comes from the six optional sheets, already encrypted.
+            tenant: null, ...(await subRecordsFor(c.newAddress)),
           },
         });
         if (error) { done.failed.push({ what: c.newAddress, why: error.message }); continue; }
@@ -307,9 +395,13 @@ export default function PropertyImport({ companyId, companyName, properties = []
   return (
   <div className="space-y-5">
     <div>
-      <h3 className="text-lg font-semibold text-neutral-900">Import properties from Excel</h3>
+      <h3 className="text-lg font-semibold text-neutral-900">
+        {isAdd ? "Add properties in bulk" : "Edit properties in bulk"}
+      </h3>
       <p className="text-sm text-neutral-400">
-        Set up many properties at once instead of one at a time in the wizard.
+        {isAdd
+          ? "Set up many new properties at once instead of one at a time in the wizard."
+          : "Download what you already have, change it in Excel, and upload the changes back."}
       </p>
     </div>
 
@@ -330,12 +422,26 @@ export default function PropertyImport({ companyId, companyName, properties = []
     {step === "download" && (
       <div className="rounded-2xl border border-brand-100 bg-brand-50/30 p-5 space-y-3">
         <p className="text-sm text-neutral-700">
-          The file comes pre-filled with your <strong>{properties.length} existing properties</strong> and their
-          tenants. Fill in the highlighted gaps, add new rows at the bottom, then upload it back.
+          {isAdd
+            ? <>An empty workbook for properties you don't have yet. Type them in, fill in whichever
+               of the other sheets you have details for, then upload it back.</>
+            : <>The file comes pre-filled with your <strong>{properties.length} existing properties</strong> and
+               their tenants. Fill in the highlighted gaps, add new rows at the bottom, then upload it back.</>}
         </p>
         <ul className="text-xs text-neutral-500 space-y-1 list-disc pl-5">
-          <li>Grey columns hold the record IDs — leave them alone.</li>
-          <li>Tenant status is pre-filled from ledger activity, with balances shown so you can check it.</li>
+          {isAdd
+            ? <li>No ID column, so nothing here can overwrite a property you already have.</li>
+            : <li>Grey columns hold the record IDs — leave them alone.</li>}
+          <li>
+            Eight sheets: Properties, Tenants, Utilities, HOA, Loans, Insurance, Property Tax and
+            Recurring Rent. Only Properties is required — leave any other sheet empty and it is skipped.
+          </li>
+          <li>
+            The Username and Password columns hold real logins in plain text. They are encrypted when
+            you upload, but the file itself is not — delete it once you're done.
+          </li>
+          <li>Documents can't travel in a spreadsheet; attach those on the property afterwards.</li>
+          {!isAdd && <li>Tenant status is pre-filled from ledger activity, with balances shown so you can check it.</li>}
           <li>Nothing is posted to your books.</li>
         </ul>
         <Btn variant="primary" icon="download" onClick={handleDownload} disabled={busy}>
@@ -391,6 +497,24 @@ function PreviewStep({ plan, busy, progress, onBack, onCommit }) {
       <Stat label="Tenants updated" value={s.tenantsToUpdate} />
       <Stat label="Problems" value={s.errors} tone={s.errors ? "bad" : "good"} />
     </div>
+
+    {/* The six optional sheets. Hidden entirely when none were filled in,
+        so a plain property import looks exactly as it always did. */}
+    {s.extraRecords > 0 && (
+      <div>
+        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">
+          Also being set up
+        </div>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          <Stat label="Utilities"      value={s.utilities} tone={s.utilities ? "good" : "neutral"} />
+          <Stat label="HOA"            value={s.hoas}      tone={s.hoas ? "good" : "neutral"} />
+          <Stat label="Loans"          value={s.loans}     tone={s.loans ? "good" : "neutral"} />
+          <Stat label="Insurance"      value={s.insurance} tone={s.insurance ? "good" : "neutral"} />
+          <Stat label="Property tax"   value={s.taxes}     tone={s.taxes ? "good" : "neutral"} />
+          <Stat label="Recurring rent" value={s.recurring} tone={s.recurring ? "good" : "neutral"} />
+        </div>
+      </div>
+    )}
 
     {plan.renames.length > 0 && (
       <div className="rounded-2xl border-2 border-warning-300 bg-warning-50/50 p-4">
