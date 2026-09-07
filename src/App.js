@@ -616,12 +616,15 @@ function AppInner() {
       return false;
     }
   }
-  async function routeSignedIn(user) {
+  // resumed=true means the session already existed when this page loaded
+  // (a refresh or a return visit). false means credentials were just
+  // entered, and a login must always land on the company selector.
+  async function routeSignedIn(user, resumed) {
     setCurrentUser(user);
     const mustPrompt = await needsPasswordSetup(user);
     if (mustPrompt) { setScreen("set_password"); return; }
     setScreen("company_select");
-    autoSelectCompany(user);
+    autoSelectCompany(user, resumed);
   }
   // Recovery flow: Supabase's detectSessionInUrl runs at client init,
   // exchanges the recovery hash for a session, and clears the hash.
@@ -637,7 +640,7 @@ function AppInner() {
     setScreen("reset_password");
     return;
   }
-  if (session) { routeSignedIn(session.user); }
+  if (session) { routeSignedIn(session.user, true); }
   else { setScreen("landing"); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -662,7 +665,9 @@ function AppInner() {
     // we're already inside the app or on a post-landing screen.
     const onEntryScreen = screenRef.current === "loading" || screenRef.current === "landing" || screenRef.current === "login";
     if ((_event === "SIGNED_IN" || _event === "INITIAL_SESSION") && onEntryScreen) {
-      routeSignedIn(session.user);
+      // INITIAL_SESSION is emitted while restoring a stored session at
+      // boot; SIGNED_IN means credentials were just submitted.
+      routeSignedIn(session.user, _event === "INITIAL_SESSION");
     } else {
       setCurrentUser(session.user);
     }
@@ -716,7 +721,7 @@ function AppInner() {
   }, [currentUser]);
 
   // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
-  async function autoSelectCompany(user) {
+  async function autoSelectCompany(user, resumed) {
   if (!user?.email) return;
   // Prefer UID-based lookup (faster, not email-dependent), fall back to email
   let memberships;
@@ -758,16 +763,22 @@ function AppInner() {
   // still an active membership, restore it on reload. Without this,
   // Ctrl-R on any module dumps the admin back to the Company Selector
   // and loses their current page — surprising for a browser refresh.
-  try {
-    const lastCompanyId = localStorage.getItem("lastCompanyId");
-    if (lastCompanyId) {
-      const lastMatch = memberships.find(m => m.company_id === lastCompanyId);
-      if (lastMatch) {
-        const { data: company } = await supabase.from("companies").select("*").eq("id", lastCompanyId).maybeSingle();
-        if (company) { handleSelectCompany(company, lastMatch.role, user); return; }
+  // Only on a resumed session, and only for the account that saved it.
+  // A bare string is a pre-fix value belonging to no known user: ignore
+  // it, so the first login after this ships gets a clean selector.
+  if (resumed) {
+    try {
+      const raw = localStorage.getItem("lastCompanyId");
+      const saved = raw && raw.startsWith("{") ? JSON.parse(raw) : null;
+      if (saved && saved.u && user.id && saved.u === user.id && saved.c) {
+        const lastMatch = memberships.find(m => m.company_id === saved.c);
+        if (lastMatch) {
+          const { data: company } = await supabase.from("companies").select("*").eq("id", saved.c).maybeSingle();
+          if (company) { handleSelectCompany(company, lastMatch.role, user); return; }
+        }
       }
-    }
-  } catch (_e) { /* localStorage unavailable — fall through to selector */ }
+    } catch (_e) { /* unreadable or unparseable — fall through to selector */ }
+  }
   // Default: show selector (first login, multi-company, or stale lastCompanyId)
   setScreen("company_select");
   }
@@ -824,7 +835,10 @@ function AppInner() {
   window._classIdBackfilled = false;
   setActiveErrorContext(company.id, currentUser?.email || "", role || "");
   setActiveCompany(company);
-  try { localStorage.setItem("lastCompanyId", company.id); } catch (_e) { pmError("PM-8006", { raw: _e, context: "save lastCompanyId to localStorage", silent: true }); }
+  // Stamped with the user id. A bare company id is browser-global, so
+  // signing in as a second account on the same device inherited the
+  // first account's company and skipped the selector entirely.
+  try { localStorage.setItem("lastCompanyId", JSON.stringify({ u: userForProfile?.id || "", c: company.id })); } catch (_e) { pmError("PM-8006", { raw: _e, context: "save lastCompanyId to localStorage", silent: true }); }
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
   loadCompanySettings(company.id).then(s => {
     setCompanySettings(s);
