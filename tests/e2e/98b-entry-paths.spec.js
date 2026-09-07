@@ -18,8 +18,7 @@ const inApp = (page) =>
 // "Inside a company" independent of page and viewport: the app shell's
 // header buttons only exist once a company is open.
 const inShell = (page) =>
-  page.getByRole('button', { name: 'notifications' })
-    .or(page.getByRole('button', { name: 'menu' })).first();
+  page.locator('button:has(span:text-is("notifications")), button:has(span:text-is("menu"))').first();
 const onAccounting = (page) =>
   page.locator('h3:has-text("Account Summary"), h3:has-text("Recent Journal Entries")').first();
 
@@ -98,7 +97,7 @@ test.describe('Entry paths', () => {
     // a blank page is not.
     const reachedSomething = page.locator('h2:has-text("Your Companies")')
       .or(page.locator('input[type="email"]'))
-      .or(page.getByText(/error|unable|try again/i))
+      .or(page.locator('text=/error|unable|try again/i'))
       .first();
     await expect(reachedSomething).toBeVisible({ timeout: 30000 });
   });
