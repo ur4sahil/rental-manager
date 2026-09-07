@@ -389,7 +389,7 @@ export function buildImportPlan({ properties = [], tenants = [], existingPropert
       const existing = byId.get(id);
       if (!existing) {
         errors.push({ sheet: SHEET_PROPERTIES, row: r._row, field: "Property ID",
-          message: `No property with id ${id}. Do not edit the ID column.` });
+          message: `No property with id ${id}. Leave Property ID blank to create a new property; only fill it in to update one that already exists.` });
         continue;
       }
       const addressChanged = newAddress !== (existing.address || "");
@@ -451,7 +451,7 @@ export function buildImportPlan({ properties = [], tenants = [], existingPropert
       const existing = tById.get(id);
       if (!existing) {
         errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Tenant ID",
-          message: `No tenant with id ${id}. Do not edit the ID column.` });
+          message: `No tenant with id ${id}. Leave Tenant ID blank to create a new tenant; only fill it in to update one that already exists.` });
         continue;
       }
       tenantUpdates.push({ id, row: r._row, record: r, existing, status });
