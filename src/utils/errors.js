@@ -84,6 +84,7 @@ export const PM_ERRORS = {
   "PM-8005": { message: "A database permission error occurred. Your access may need to be updated.", action: "contact", severity: "error", module: "infrastructure" },
   "PM-8006": { message: "Could not save your changes. The server returned an unexpected response.", action: "retry", severity: "error", module: "infrastructure" },
   "PM-8007": { message: "An internal validation check failed. The action was not performed.", action: "contact", severity: "warning", module: "infrastructure" },
+  "PM-8008": { message: "This feature is out of step with the database — it referenced a column that no longer exists. Please contact support.", action: "contact", severity: "critical", module: "infrastructure" },
   "PM-8009": { message: "Something went wrong. Please reload the page.", action: "reload", severity: "error", module: "infrastructure" },
   // PM-9xxx: DATA INTEGRITY
   "PM-9001": { message: "A journal entry was found with unbalanced debits and credits.", action: "contact", severity: "critical", module: "data_integrity" },
@@ -115,6 +116,7 @@ export function setActiveErrorContext(companyId, email, role) {
 // parameter through every caller.
 const SQLSTATE_MAP = {
   "42P01": "PM-8002", // undefined_table (relation does not exist)
+  "42703": "PM-8008", // undefined_column
   "42883": "PM-8003", // undefined_function
   "42501": "PM-8005", // insufficient_privilege
   "23505": "PM-9005", // unique_violation
@@ -129,6 +131,13 @@ export function detectInfrastructureCode(errOrMessage, fallbackCode) {
   if (!rawMessage) return fallbackCode;
   const msg = rawMessage.toLowerCase();
   if (msg.includes("fetch") && msg.includes("failed") || msg.includes("networkerror") || msg.includes("failed to fetch")) return "PM-8001";
+  // Must precede the "relation" check below. Postgres phrases a missing
+  // COLUMN as: column "x" of relation "y" does not exist -- which contains
+  // both "relation" and "does not exist", so the table rule swallowed it
+  // and reported a missing TABLE. That is what the property wizard's
+  // account_number_encrypted failure looked like in Sentry for a day:
+  // every table existed, and the real fault was three phantom columns.
+  if (msg.includes("column") && msg.includes("does not exist")) return "PM-8008";
   if (msg.includes("relation") && msg.includes("does not exist")) return "PM-8002";
   if (msg.includes("function") && msg.includes("does not exist")) return "PM-8003";
   if (msg.includes("timeout") || msg.includes("aborted")) return "PM-8004";

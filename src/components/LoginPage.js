@@ -144,12 +144,27 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   // would need a "self-insert at status=active" policy -- precisely the
   // hole that let any authenticated user join any company as admin.
 
-  // Save user_type to app_users
+  // Save user_type to app_users -- but only when a session exists whose
+  // email matches this row. app_users_safe_insert requires exactly that
+  // (or a company you already belong to), so every other case is a write
+  // the policy is certain to reject: signing up while email confirmation
+  // is pending leaves no session at all, and signing someone up while a
+  // different account is signed in fails the email comparison. Both
+  // reached nobody but Sentry, four times since April.
+  //
+  // Skipping loses nothing. user_type is already written to the auth
+  // user's metadata by signUp above, no code reads app_users.user_type,
+  // and the row itself is created with its company_id once a company is
+  // selected.
+  const { data: { session: signupSession } } = await supabase.auth.getSession();
+  const signupSessionEmail = (signupSession?.user?.email || "").toLowerCase();
+  if (signupSessionEmail && signupSessionEmail === email.toLowerCase()) {
   const { error: appUserErr } = await supabase.from("app_users").insert([{
   email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
   user_type: userType,
   }]).select();
   if (appUserErr && !appUserErr.message.includes("duplicate")) { pmError("PM-1009", { raw: appUserErr, context: "app_users write", silent: true }); }
+  }
 
   resetCaptcha();
   setSignupSuccess(true);
