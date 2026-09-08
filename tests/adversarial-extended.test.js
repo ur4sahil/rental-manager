@@ -9,6 +9,7 @@
 //
 // Run: cd tests && node adversarial-extended.test.js
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const { createClient } = require('@supabase/supabase-js');
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 const SMITH = 'dce4974d-afa9-4e65-afdf-1189b815195d';

@@ -5,6 +5,7 @@
 // Run: cd tests && node error-management.test.js
 // ═══════════════════════════════════════════════════════════════
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');

@@ -9,6 +9,7 @@
 // Two layers are tested: the source may not send `id` on such an upsert,
 // and the database must make it harmless if some future code does.
 require("dotenv").config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const fs = require("fs");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");

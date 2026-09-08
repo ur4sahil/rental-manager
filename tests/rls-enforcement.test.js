@@ -16,6 +16,7 @@
 // Run: cd tests && node rls-enforcement.test.js
 // ═══════════════════════════════════════════════════════════════
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const { createClient } = require('@supabase/supabase-js');
 
 const URL = process.env.SUPABASE_URL;

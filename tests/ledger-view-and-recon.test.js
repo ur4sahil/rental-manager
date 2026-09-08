@@ -13,6 +13,7 @@
 //   6. Bank reconciliation panel helper computeFeedRecon ties out
 //      math against synthetic data
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');

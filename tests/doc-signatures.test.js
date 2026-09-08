@@ -10,6 +10,7 @@
 // sequential envelope advancement + envelope completion.
 // ═══════════════════════════════════════════════════════════════
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const { createClient } = require('@supabase/supabase-js');
 
 const SERVICE_URL = process.env.SUPABASE_URL;

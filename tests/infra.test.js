@@ -5,6 +5,7 @@
 // Run: cd tests && node infra.test.js
 // ═══════════════════════════════════════════════════════════════
 require('dotenv').config();
+require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const fs = require('fs');
 const path = require('path');
 
