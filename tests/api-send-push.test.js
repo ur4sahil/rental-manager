@@ -64,7 +64,23 @@ if (TEST_EMAIL && TEST_PW) {
   const anon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
   const { data: sess } = await anon.auth.signInWithPassword({ email: TEST_EMAIL, password: TEST_PW });
   const jwt = sess?.session?.access_token;
-  if (jwt) {
+  // ENDPOINT is production. Since sandbox-env repointed the suite at the
+  // TEST project, the token is minted by a different Supabase project
+  // and production rightly rejects it with 401 -- so the two
+  // authenticated checks below can only pass by talking to production,
+  // which is what we stopped doing. Skip them, loudly, rather than
+  // leaving two permanent red assertions that mean nothing.
+  const tokenProject = (() => {
+    try { return JSON.parse(Buffer.from(jwt.split(".")[1], "base64").toString()).iss || ""; }
+    catch (_) { return ""; }
+  })();
+  const endpointIsProd = ENDPOINT.includes("housify365.com");
+  const tokenIsTest = tokenProject.includes("vpeewlplgxthckpidhxo");
+  if (jwt && endpointIsProd && tokenIsTest) {
+    console.log('   ⏭️  authenticated checks skipped: the endpoint is production and');
+    console.log('       the token is from the test project, so 401 is the correct answer.');
+    console.log('       They need a deployment that trusts test-project tokens.');
+  } else if (jwt) {
     const r400 = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt },

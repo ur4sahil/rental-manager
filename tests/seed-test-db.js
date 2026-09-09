@@ -35,29 +35,77 @@ const test = createClient(testUrl, testKey, { auth: { persistSession: false } })
 
 const COMPANIES = ["sandbox-llc", "dce4974d-afa9-4e65-afdf-1189b815195d"];
 
-// Roughly FK order -- owners before properties, parents before children.
-// It cannot be exactly right, because acct_accounts references itself
-// (a sub-account's parent may sort after it) and several tables point at
-// each other. The convergence rounds below clean up whatever this order
-// misses, so this list only has to be close.
+// EVERY base table carrying a company_id, so the fixture is complete
+// rather than whatever a hand-written list happened to remember. The
+// first version listed 19 tables and the suites then failed on a
+// missing lease_templates row; there were 41 more where that came from.
+//
+// Order is roughly FK order -- owners and accounts before the things
+// that point at them -- but it cannot be exactly right: acct_accounts
+// references itself, and several tables reference each other. The
+// convergence rounds below clean up whatever this order misses, so this
+// only has to be close.
 const TABLES = [
-  "owners", "acct_accounts", "acct_classes", "properties", "tenants",
-  "leases", "acct_journal_entries", "acct_journal_lines", "payments",
-  "company_members", "company_settings", "utilities", "hoa_payments",
+  // parents first
+  "owners", "vendors", "app_users", "company_members", "company_settings",
+  "acct_accounts", "acct_classes", "doc_templates", "lease_templates",
+  "utility_providers", "utility_accounts",
+  // core records
+  "properties", "tenants", "leases", "lease_signatures",
+  // accounting
+  "acct_journal_entries", "acct_journal_lines", "acct_period_balances",
+  "accounting_period_lock", "payments", "ledger_entries_legacy_table",
+  "budgets", "recurring_journal_entries", "late_fee_rules",
+  "owner_statements", "owner_distributions",
+  // property detail
+  "utilities", "utility_bills", "utility_audit", "hoa_payments",
   "property_loans", "property_insurance", "property_taxes",
-  "recurring_journal_entries", "work_orders", "documents",
+  "property_tax_bills", "property_licenses", "property_setup_wizard",
+  "property_change_requests", "inspections",
+  // operations
+  "work_orders", "work_order_photos", "vendor_invoices", "eviction_cases",
+  "documents", "doc_generated", "doc_signatures", "doc_signature_audit_log",
+  "doc_exception_requests", "tenant_invite_codes", "autopay_schedules",
+  // banking
+  "bank_connection", "bank_account_feed", "bank_import_batch",
+  "bank_import_mapping_profile", "bank_feed_transaction",
+  "bank_feed_transaction_link", "bank_posting_decision",
+  "bank_posting_decision_line", "bank_reconciliations",
+  "bank_transaction_rule", "plaid_sync_event",
+  // messaging and logs
+  "messages", "notification_settings", "notification_templates",
+  "notification_inbox", "notification_queue", "notification_log",
+  "push_subscriptions", "push_attempts", "automation_jobs",
+  "audit_trail", "error_log",
 ];
 
 // PostgREST caps a response at 1000 rows, so page rather than trusting
 // a single select to return everything.
+//
+// Ordered, because range() without an ORDER BY is not stable: Postgres
+// may return rows in a different order per page, so a row can appear
+// twice and another never. That produced 6,919 duplicate-key rejections
+// on error_log, the only table here big enough to page.
 async function pageAll(client, table) {
   const out = [];
+  const seen = new Set();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await client.from(table).select("*")
-      .in("company_id", COMPANIES).range(from, from + 999);
-    if (error) return { rows: null, error };
-    out.push(...(data || []));
-    if (!data || data.length < 1000) break;
+    let q = client.from(table).select("*").in("company_id", COMPANIES);
+    // Not every table has an id to sort on; fall back to unordered and
+    // let the id de-dupe below catch the overlap.
+    const { data, error } = await q.order("id", { ascending: true }).range(from, from + 999);
+    let rows = data, err = error;
+    if (err && /column .*id.* does not exist|order/i.test(err.message)) {
+      const retry = await client.from(table).select("*")
+        .in("company_id", COMPANIES).range(from, from + 999);
+      rows = retry.data; err = retry.error;
+    }
+    if (err) return { rows: null, error: err };
+    for (const r of rows || []) {
+      const k = r.id === undefined || r.id === null ? JSON.stringify(r) : String(r.id);
+      if (!seen.has(k)) { seen.add(k); out.push(r); }
+    }
+    if (!rows || rows.length < 1000) break;
   }
   return { rows: out };
 }

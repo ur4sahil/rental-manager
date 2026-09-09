@@ -53,7 +53,12 @@ assert("migration gives acct_classes.id a default",
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_ANON_KEY);
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const { data, error } = await sb.rpc("exec_sql", { q: "select 1" }).catch(() => ({ error: 1 }));
+    // No .catch here: supabase-js returns { data, error } and its query
+    // builder has no .catch, so calling one threw "sb.rpc(...).catch is
+    // not a function" and killed the run. This block had never executed
+    // before -- SUPABASE_SERVICE_ROLE_KEY was only ever set once
+    // sandbox-env began populating it -- so the bug sat dormant.
+    const { data, error } = await sb.rpc("exec_sql", { q: "select 1" });
     void data; void error; // rpc may not exist; the checks below use plain reads
   }
 

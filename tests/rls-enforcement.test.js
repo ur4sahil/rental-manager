@@ -96,9 +96,35 @@ async function run() {
       const { data: tn } = await admin.from('tenants').select('id, company_id');
       const seen = new Set((tn || []).map(t => t.company_id));
       assert((tn || []).length > 0, 'staff user CAN read its own tenants (policies not over-blocking)');
-      assert(seen.size < (totalCompanies || Infinity),
-        'staff user does NOT see all companies (scoped, not always-true)',
-        `saw ${seen.size}/${totalCompanies} companies`);
+      // Counting companies only proves scoping while the user is a
+      // member of fewer than all of them. In production that holds (4 of
+      // 36); in the test project the user belongs to all 4, so the old
+      // count assertion failed while RLS was working perfectly.
+      //
+      // Prove it directly instead: stand up a company the user is NOT a
+      // member of, put a tenant in it, and assert neither is visible.
+      // That holds no matter how many companies exist.
+      const CONTROL = 'rls-control-' + Date.now();
+      const { error: mkErr } = await svc.from('companies').insert({
+        id: CONTROL, name: 'RLS Control (not a member)', type: 'LLC',
+      });
+      if (mkErr) {
+        assert(false, 'could stand up a control company for the scoping check', mkErr.message);
+      } else {
+        await svc.from('tenants').insert({
+          company_id: CONTROL, name: 'Control Tenant', property: 'Nowhere',
+        });
+        const { data: leak } = await admin.from('companies').select('id').eq('id', CONTROL);
+        assert((leak || []).length === 0,
+          'staff user cannot see a company they are not a member of',
+          `saw ${(leak || []).length} row(s) for ${CONTROL}`);
+        const { data: tleak } = await admin.from('tenants').select('id').eq('company_id', CONTROL);
+        assert((tleak || []).length === 0,
+          'staff user cannot see tenants of a company they are not a member of',
+          `saw ${(tleak || []).length} tenant(s)`);
+        await svc.from('tenants').delete().eq('company_id', CONTROL);
+        await svc.from('companies').delete().eq('id', CONTROL);
+      }
       assert([...seen].every(c => staffCompanies.has(c)),
         'every tenant the staff user reads belongs to a company they staff',
         `member of ${staffCompanies.size}, saw ${seen.size}`);
