@@ -57,15 +57,31 @@ if (!serviceKey) {
     "run against production without saying so.",
   ]);
 }
-if (!serviceKey.includes(TEST_REF)) {
-  // A JWT carries its project ref in the payload, so a production key
-  // pasted into the test slot is caught here rather than at write time.
+// Two key formats are in circulation. The legacy service_role key is a
+// JWT carrying its project ref in the payload, so a production key
+// pasted into the test slot is caught here rather than at write time.
+// The newer `sb_secret_...` keys are opaque and carry no ref, so there
+// is nothing to compare -- the URL guard above is what protects those,
+// and it is the URL that decides which project is actually reached.
+if (serviceKey.startsWith("eyJ")) {
   try {
     const body = JSON.parse(Buffer.from(serviceKey.split(".")[1], "base64").toString());
     if (body.ref && body.ref !== TEST_REF) {
-      die([`TEST_SUPABASE_SERVICE_KEY belongs to project "${body.ref}", not the test project (${TEST_REF}).`]);
+      die([`TEST_SUPABASE_SERVICE_KEY belongs to project "${body.ref}", not the test project (${TEST_REF}).`,
+           "This is the production key. Use the test project's key instead."]);
     }
-  } catch (_) { /* not a JWT we can read — the URL guard above still holds */ }
+    if (body.role && body.role !== "service_role") {
+      die([`TEST_SUPABASE_SERVICE_KEY has role "${body.role}", not service_role.`,
+           "The anon/publishable key cannot bypass RLS, which these tests need."]);
+    }
+  } catch (_) { /* unreadable payload — the URL guard still holds */ }
+} else if (serviceKey.startsWith("sb_publishable_")) {
+  die(["TEST_SUPABASE_SERVICE_KEY is a PUBLISHABLE key.",
+       "That is the public one; it cannot bypass RLS.",
+       "Copy SUPABASE_SECRET_KEY (sb_secret_...) instead."]);
+} else if (!serviceKey.startsWith("sb_secret_")) {
+  die([`TEST_SUPABASE_SERVICE_KEY is not a recognised key format.`,
+       "Expected a legacy service_role JWT (eyJ...) or sb_secret_..."]);
 }
 
 // Every test reads these names. Redirect them at the source.
