@@ -35,13 +35,17 @@ const test = createClient(testUrl, testKey, { auth: { persistSession: false } })
 
 const COMPANIES = ["sandbox-llc", "dce4974d-afa9-4e65-afdf-1189b815195d"];
 
-// FK order: a child is never copied before its parent.
+// Roughly FK order -- owners before properties, parents before children.
+// It cannot be exactly right, because acct_accounts references itself
+// (a sub-account's parent may sort after it) and several tables point at
+// each other. The convergence rounds below clean up whatever this order
+// misses, so this list only has to be close.
 const TABLES = [
-  "acct_accounts", "acct_classes", "properties", "tenants", "leases",
-  "acct_journal_entries", "acct_journal_lines", "payments",
+  "owners", "acct_accounts", "acct_classes", "properties", "tenants",
+  "leases", "acct_journal_entries", "acct_journal_lines", "payments",
   "company_members", "company_settings", "utilities", "hoa_payments",
   "property_loans", "property_insurance", "property_taxes",
-  "recurring_journal_entries", "work_orders", "documents", "owners",
+  "recurring_journal_entries", "work_orders", "documents",
 ];
 
 // PostgREST caps a response at 1000 rows, so page rather than trusting
@@ -57,6 +61,8 @@ async function pageAll(client, table) {
   }
   return { rows: out };
 }
+
+const pending = [];   // rows a foreign key rejected, retried below
 
 (async () => {
   const { data: comps, error: cErr } = await prod.from("companies").select("*").in("id", COMPANIES);
@@ -87,20 +93,53 @@ async function pageAll(client, table) {
     const fresh = rows.filter(r => !have.has(String(r.id)));
     if (!fresh.length) { console.log(`${table.padEnd(26)}all ${rows.length} already present`); continue; }
 
-    let written = 0, failed = 0, firstErr = "";
+    let written = 0, deferred = 0;
     for (let i = 0; i < fresh.length; i += 200) {
       const chunk = fresh.slice(i, i + 200);
       const { error: wErr } = await test.from(table).insert(chunk);
       if (wErr) {
-        // One bad row must not cost the whole batch — retry singly so as
-        // much of the fixture lands as can.
+        // One bad row must not cost the whole batch — retry singly, and
+        // hand anything still failing to the convergence rounds rather
+        // than giving up on it here. Most of these are a parent that has
+        // not been copied yet.
         for (const row of chunk) {
           const { error: rErr } = await test.from(table).insert([row]);
-          if (rErr) { failed++; if (!firstErr) firstErr = rErr.message; } else written++;
+          if (rErr) { pending.push({ table, row, err: rErr.message }); deferred++; }
+          else written++;
         }
       } else written += chunk.length;
     }
-    console.log(`${table.padEnd(26)}${written} copied${failed ? `, ${failed} failed (${firstErr.slice(0, 60)})` : ""}`);
+    console.log(`${table.padEnd(26)}${written} copied${deferred ? `, ${deferred} deferred` : ""}`);
+  }
+
+  // ---- convergence ---------------------------------------------------
+  // A row rejected on a foreign key is usually waiting on a parent that
+  // sorts later -- acct_accounts references itself, and several tables
+  // reference each other. Retry the whole backlog until a full round
+  // adds nothing, which is the point at which the remainder is genuinely
+  // unresolvable rather than merely out of order.
+  for (let round = 1; round <= 8 && pending.length; round++) {
+    const still = [];
+    let recovered = 0;
+    for (const item of pending) {
+      const { error } = await test.from(item.table).insert([item.row]);
+      if (error) { item.err = error.message; still.push(item); } else recovered++;
+    }
+    console.log(`round ${round}: ${recovered} recovered, ${still.length} still pending`);
+    pending.length = 0;
+    pending.push(...still);
+    if (!recovered) break;
+  }
+
+  if (pending.length) {
+    console.log("\nunresolved:");
+    const byTable = {};
+    for (const p of pending) (byTable[p.table] = byTable[p.table] || []).push(p);
+    for (const [t, rows] of Object.entries(byTable)) {
+      console.log(`  ${t.padEnd(24)} ${rows.length}  — ${rows[0].err.slice(0, 90)}`);
+    }
+  } else {
+    console.log("\neverything copied");
   }
 
   console.log("\ndone — production was only read from");
