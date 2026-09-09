@@ -13,6 +13,7 @@
 // on that string would create a duplicate property, a second accounting
 // class, and strand the whole ledger on the old one.
 
+import JSZip from "jszip";
 import {
   EXTRA_SHEETS, UTILITY_RESPONSIBILITY, HOA_FREQUENCY, LOAN_TYPES,
   PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
@@ -398,9 +399,46 @@ function readSheet(ws, columns) {
   return { rows, missingHeaders };
 }
 
-export async function parseWorkbook(ExcelJS, data) {
+// Excel rewrites the workbook's comment links with ABSOLUTE targets
+// ("/xl/comments/comment1.xml") where ExcelJS writes relative ones.
+// ExcelJS looks the target up in a map it built from the relative form,
+// gets undefined, and dereferences it:
+//
+//   TypeError: Cannot read properties of undefined (reading 'comments')
+//     at worksheet-xform.js:453
+//
+// Our own template puts a help note on several columns, so every file
+// that has been opened and saved in Excel comes back unreadable -- the
+// app could not read its own template. The comments are decorative and
+// carry no data we parse, so strip them and try again.
+async function loadWorkbookTolerantly(ExcelJS, data) {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(data);
+  try {
+    await wb.xlsx.load(data);
+    return wb;
+  } catch (e) {
+    if (!/reading 'comments'|reading 'vmlDrawings'|comments/i.test(String(e && e.message))) throw e;
+  }
+  const zip = await JSZip.loadAsync(data);
+  for (const name of Object.keys(zip.files)) {
+    if (/^xl\/comments\//i.test(name) || /vml/i.test(name)) zip.remove(name);
+  }
+  for (const name of Object.keys(zip.files)) {
+    if (!/\.rels$/i.test(name) && name !== "[Content_Types].xml") continue;
+    const xml = await zip.file(name).async("string");
+    const cleaned = xml
+      .replace(/<Relationship\b[^>]*?(?:comments|vmlDrawing)[^>]*?\/>/gi, "")
+      .replace(/<Override\b[^>]*?(?:comments|vmlDrawing)[^>]*?\/>/gi, "");
+    if (cleaned !== xml) zip.file(name, cleaned);
+  }
+  const rebuilt = await zip.generateAsync({ type: "arraybuffer" });
+  const wb2 = new ExcelJS.Workbook();
+  await wb2.xlsx.load(rebuilt);
+  return wb2;
+}
+
+export async function parseWorkbook(ExcelJS, data) {
+  const wb = await loadWorkbookTolerantly(ExcelJS, data);
   const wsP = wb.getWorksheet(SHEET_PROPERTIES);
   const wsT = wb.getWorksheet(SHEET_TENANTS);
   const p = readSheet(wsP, PROPERTY_COLUMNS);

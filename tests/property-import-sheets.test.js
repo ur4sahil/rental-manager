@@ -171,6 +171,52 @@ function fill(ws, rowIdx, values) {
     casePlan.summary.utilities === 1 && casePlan.summary.errors === 0,
     JSON.stringify(casePlan.errors));
 
+  // ---- survives a round trip through Excel ------------------------
+  //
+  // Our template puts a help note on several columns. Excel rewrites the
+  // resulting comment relationships with ABSOLUTE targets
+  // ("/xl/comments/comment1.xml") where ExcelJS writes relative ones;
+  // ExcelJS then looks the target up in a map keyed by the relative form
+  // and dereferences undefined:
+  //
+  //   TypeError: Cannot read properties of undefined (reading 'comments')
+  //
+  // Every file a user opened and saved came back unreadable -- the app
+  // could not read its own template. This rebuilds that exact damage.
+  const JSZip = require(path.join(__dirname, "..", "node_modules", "jszip"));
+  const clean = await pi.buildTemplate(ExcelJS, {
+    companyName: "T", properties: EXISTING, tenants: [], owners: [], mode: "edit",
+  });
+  const cleanBuf = await clean.xlsx.writeBuffer();
+
+  const zip = await JSZip.loadAsync(cleanBuf);
+  let rewritten = 0;
+  for (const name of Object.keys(zip.files)) {
+    if (!/^xl\/worksheets\/_rels\/.*\.rels$/i.test(name)) continue;
+    const xml = await zip.file(name).async("string");
+    // Relative -> absolute, which is what Excel writes on save.
+    const mangled = xml.replace(/Target="\.\.\/(comments\/[^"]+|drawings\/[^"]*vml[^"]*)"/gi,
+                                'Target="/xl/$1"');
+    if (mangled !== xml) { zip.file(name, mangled); rewritten++; }
+  }
+  assert("the template does carry cell comments (otherwise this proves nothing)",
+    rewritten > 0, "no comment relationships found to mangle");
+
+  const excelSaved = await zip.generateAsync({ type: "nodebuffer" });
+
+  let rawThrew = false;
+  try { await new ExcelJS.Workbook().xlsx.load(excelSaved); }
+  catch (e) { rawThrew = /comments/i.test(String(e.message)); }
+  assert("plain ExcelJS still chokes on an Excel-saved file — the bug is real",
+    rawThrew, "if this fails, ExcelJS fixed it and the workaround can go");
+
+  const recovered = await pi.parseWorkbook(ExcelJS, excelSaved);
+  assert("parseWorkbook reads an Excel-saved workbook anyway",
+    recovered.fatal.length === 0, JSON.stringify(recovered.fatal));
+  assert("and the rows survive the repair",
+    recovered.properties.length >= 1,
+    `got ${recovered.properties.length} property rows`);
+
   console.log(`\n✅ Passed: ${passed}   ❌ Failed: ${failed}`);
   console.log(`Total: ${passed + failed} | Pass rate: ${Math.round(passed / (passed + failed) * 100)}%`);
   process.exit(failed ? 1 : 0);
