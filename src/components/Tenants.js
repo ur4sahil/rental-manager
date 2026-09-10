@@ -125,6 +125,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // tenant so saving can hand back to that panel instead of dumping the
   // user on the bare list.
   const [editReturnTo, setEditReturnTo] = useState(null);
+  const [showAddTxn, setShowAddTxn] = useState(false);
+  const [ledgerShowAll, setLedgerShowAll] = useState(false);
   const [archivedTenants, setArchivedTenants] = useState([]);
   // Detail panel for a single archived/moved-out tenant.
   // { tenant, ledger, docs, messages, leases, payments, workOrders, activeTab }
@@ -1229,7 +1231,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "\u2014"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "Current"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : formatCurrency(0)}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "\u2014"}</div></div>
   </div>
@@ -1281,16 +1283,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <h3 className="text-sm font-semibold text-neutral-700">Transaction History</h3>
   <div className="flex gap-2">
   <Btn variant="danger" size="sm" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
-  <Btn variant="primary" size="sm" onClick={() => setPage("accounting", "newJE")}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
+  <Btn variant="primary" size="sm" onClick={() => setShowAddTxn(v => !v)}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
+  <Btn variant="ghost" size="sm" onClick={() => setPage("accounting", "newJE")} title="Open the full journal entry form in Accounting">Full entry</Btn>
   </div>
   </div>
   {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
   <Btn variant="danger" size="sm" className="mb-3 w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
   )}
+  {/* The add form used to sit open permanently, taking the top of the
+      panel and duplicating the New Entry button beside it. Behind a
+      toggle now. */}
+  {showAddTxn && (
   <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
   <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
   <div className="grid grid-cols-3 gap-2">
-  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })}>
+  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} aria-label="Transaction type">
   <option value="charge">Charge</option>
   <option value="payment">Payment</option>
   <option value="credit">Credit</option>
@@ -1299,21 +1306,80 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
   <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
   </div>
-  <Btn size="sm" className="mt-2 w-full" onClick={addLedgerEntry}>Add Transaction</Btn>
+  <div className="flex gap-2 mt-2">
+  <Btn size="sm" className="flex-1" onClick={addLedgerEntry}>Add Transaction</Btn>
+  <Btn size="sm" variant="slate" onClick={() => setShowAddTxn(false)}>Cancel</Btn>
   </div>
-  {ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transactions yet</div> : (
-  <div className="space-y-1">
-  {ledger.slice(0, 20).map((e, i) => (
-  <div key={e.id || i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
-  <div><div className="font-medium text-neutral-700">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
-  <div className="text-right">
-  <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
-  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
-  </div>
-  </div>
-  ))}
   </div>
   )}
+  {ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transactions yet</div> : (() => {
+  // A charge raises what is owed, a payment or credit lowers it.
+  // Everything else -- a write-off, an adjustment -- is a charge-side
+  // movement, which is why "Bad debt" used to show as green money in.
+  const isCredit = (e) => e.type === "payment" || e.type === "credit";
+  const charged = ledger.reduce((n, e) => n + (isCredit(e) ? 0 : Math.abs(safeNum(e.amount))), 0);
+  const paid = ledger.reduce((n, e) => n + (isCredit(e) ? Math.abs(safeNum(e.amount)) : 0), 0);
+  const rows = ledgerShowAll ? ledger : ledger.slice(0, 20);
+  return (
+  <>
+  {/* Totals, so the panel answers "what happened here" without adding up
+      forty rows by eye. */}
+  <div className="grid grid-cols-3 gap-2 mb-3">
+  <div className="bg-danger-50 rounded-xl px-3 py-2 text-center">
+  <div className="text-[11px] text-danger-600">Charged</div>
+  <div className="text-sm font-bold text-danger-700 font-mono">{formatCurrency(charged)}</div>
+  </div>
+  <div className="bg-positive-50 rounded-xl px-3 py-2 text-center">
+  <div className="text-[11px] text-positive-700">Paid / credited</div>
+  <div className="text-sm font-bold text-positive-700 font-mono">{formatCurrency(paid)}</div>
+  </div>
+  <div className="bg-neutral-100 rounded-xl px-3 py-2 text-center">
+  <div className="text-[11px] text-neutral-500">Balance</div>
+  <div className={"text-sm font-bold font-mono " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-700" : "text-neutral-700")}>{formatCurrency(safeNum(selectedTenant.balance))}</div>
+  </div>
+  </div>
+
+  {/* Aligned columns. The amount and the running balance used to be
+      stacked in one right-hand block, which made a column of figures
+      impossible to scan. */}
+  <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 pb-1 border-b border-brand-50">
+  <div>Transaction</div><div className="text-right w-24">Amount</div><div className="text-right w-24">Balance</div>
+  </div>
+  <div>
+  {rows.map((e, i) => {
+    // "Journal Entry #1478 Bad debt" leads with an internal number.
+    // Show the number quietly and let the description read first.
+    const m = String(e.description || "").match(/^Journal Entry #(\d+)\s*(.*)$/i);
+    const ref = m ? m[1] : null;
+    const label = m && m[2] ? m[2] : e.description;
+    const credit = isCredit(e);
+    return (
+    <div key={e.id || i} className="grid grid-cols-[1fr_auto_auto] gap-x-3 items-center py-2 border-b border-brand-50/50 text-sm">
+    <div className="min-w-0">
+    <div className="font-medium text-neutral-700 truncate">{label}</div>
+    <div className="text-xs text-neutral-400">{e.date}{ref ? ` · JE #${ref}` : ""}</div>
+    </div>
+    <div className={"text-right w-24 font-semibold font-mono " + (credit ? "text-positive-600" : "text-danger-600")}>
+    {credit ? "+" : "\u2212"}{formatCurrency(Math.abs(safeNum(e.amount)))}
+    </div>
+    <div className="text-right w-24 text-xs text-neutral-500 font-mono">
+    {e.balance != null ? formatCurrency(e.balance) : "\u2014"}
+    </div>
+    </div>
+    );
+  })}
+  </div>
+  {/* It used to cut off at 20 with nothing to say so. */}
+  {ledger.length > 20 && (
+  <div className="text-center pt-3">
+  <TextLink tone="brand" size="sm" onClick={() => setLedgerShowAll(v => !v)}>
+  {ledgerShowAll ? `Show first 20 only` : `Show all ${ledger.length} transactions`}
+  </TextLink>
+  </div>
+  )}
+  </>
+  );
+  })()}
   </div>
   )}
 
@@ -2181,7 +2247,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
   <div><span className="text-neutral-400">Email</span><div className="font-semibold text-neutral-700 truncate">{t.email || "\u2014"}</div></div>
-  <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
+  <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</div></div>
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2">
@@ -2222,7 +2288,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
   <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
-  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
+  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</td>
   <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
   </tr>
   ))}
@@ -2237,7 +2303,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>
   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-neutral-800">{t.name}</span><span className="text-xs text-neutral-400 ml-2">{t.property}</span></div>
   <span className="text-sm font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
-  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
+  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</span>
   <Badge status={t.lease_status} />
   <TextLink tone="brand" size="xs" onClick={() => openLedger(t)}>Ledger</TextLink>
   <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
