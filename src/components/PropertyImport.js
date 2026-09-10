@@ -444,9 +444,18 @@ export default function PropertyImport({ companyId, companyName, properties = []
           {!isAdd && <li>Tenant status is pre-filled from ledger activity, with balances shown so you can check it.</li>}
           <li>Nothing is posted to your books.</li>
         </ul>
-        <Btn variant="primary" icon="download" onClick={handleDownload} disabled={busy}>
-          {busy ? "Preparing…" : "Download template"}
-        </Btn>
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn variant="primary" icon="download" onClick={handleDownload} disabled={busy}>
+            {busy ? "Preparing…" : "Download template"}
+          </Btn>
+          {/* Downloading was the only route to the upload step, so anyone
+              who already had a filled-in file -- the second time they use
+              this, or a file a colleague sent -- had to fetch a blank one
+              first and discard it. */}
+          <TextLink tone="neutral" size="sm" onClick={() => setStep("upload")}>
+            I already have a filled-in file →
+          </TextLink>
+        </div>
       </div>
     )}
 
