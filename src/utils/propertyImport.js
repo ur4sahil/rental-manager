@@ -144,8 +144,21 @@ export function cellDate(v) {
   const s = cellString(v);
   if (!s) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Four-digit year.
   const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  // Two-digit year. Excel shows dates this way by default on a US
+  // locale, and people type them this way, so "1/12/25" arrives as text
+  // and used to be rejected outright -- 36 of one real import's 69
+  // errors were nothing but this. Pivot at 70, the usual convention:
+  // 00-69 is 2000-2069, 70-99 is 1970-1999. A lease is never dated
+  // before 1970, and one dated after 2069 is not a date anyone typed.
+  const m2 = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2})$/);
+  if (m2) {
+    const yy = Number(m2[3]);
+    const year = yy < 70 ? 2000 + yy : 1900 + yy;
+    return `${year}-${m2[1].padStart(2, "0")}-${m2[2].padStart(2, "0")}`;
+  }
   // Excel serial: days since 1899-12-30
   const n = Number(s);
   if (Number.isFinite(n) && n > 20000 && n < 60000) {
