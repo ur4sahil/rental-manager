@@ -1953,7 +1953,12 @@ export function AcctReports({ linesLoaded = true, accounts, journalEntries, clas
 
   function getRentRoll() {
     return properties.map(p => {
-      const t = tenants.find(t => t.property === p.address && t.lease_status === "current");
+      // ACTIVE_LEASE, not === "current". lease_status carries both
+      // spellings of the same concept, and production holds only
+      // 'active' -- so a strict match found no tenant at all and the
+      // whole Rent Roll reported every unit VACANT with $0 rent, in the
+      // report, the Excel export and the PDF.
+      const t = tenants.find(t => t.property === p.address && ACTIVE_LEASE.includes(t.lease_status));
       const l = leases.find(l => l.property === p.address && l.status === "active");
       return { property: p.address, tenant: t?.name || "VACANT", rent: safeNum(p.rent), leaseStart: l?.start_date || p.lease_start || "", leaseEnd: l?.end_date || p.lease_end || "", status: p.status, deposit: safeNum(p.security_deposit) };
     }).sort((a,b) => a.property.localeCompare(b.property));

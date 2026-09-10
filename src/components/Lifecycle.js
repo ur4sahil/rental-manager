@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, ACTIVE_LEASE } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -45,7 +45,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   // the importer and the Tenants page write "current". Filtering on one
   // of them left the move-out list empty for every company whose
   // tenants came in through an import.
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ["active", "current"]),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ACTIVE_LEASE),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   ]);
   if (t.error) pmError("PM-3004", { raw: t.error, context: "move-out tenants fetch", silent: true });

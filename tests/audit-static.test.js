@@ -142,6 +142,35 @@ for (const f of files) {
   }
 }
 
+// ---- lease_status must never be read against one spelling ----------
+// The column carries two words for one concept ('active' and 'current'),
+// and production holds ONLY 'active'. A read matching a single literal
+// therefore finds nothing at all rather than "most rows": getRentRoll
+// compared === "current" and reported every unit VACANT with $0 rent, in
+// the report, the Excel export and the PDF, for every company.
+//
+// Writes are exempt -- settling on one word when writing is the fix, not
+// the bug. Only READS are flagged.
+for (const file of files) {
+  const src = fs.readFileSync(file, "utf8");
+  const lines = src.split("\n");
+  lines.forEach((line, i) => {
+    if (/ACTIVE_LEASE/.test(line)) return;
+    // Skip comments -- helpers.js documents this exact bug, and a rule
+    // that flags its own explanation is noise.
+    if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+    const isWrite = /\.update\(|\.insert\(|\.upsert\(|lease_status:\s*"/.test(line);
+    if (isWrite) return;
+    const strictCompare = /lease_status\s*===?\s*["'](active|current|inactive|past)["']/.test(line)
+                       || /["'](active|current|inactive|past)["']\s*===?\s*[\w.]*lease_status/.test(line);
+    const strictQuery   = /\.eq\(\s*["']lease_status["']\s*,\s*["']/.test(line);
+    if (strictCompare || strictQuery) {
+      finding("lease-status-single-spelling", `${file}:${i + 1}`,
+        `reads lease_status against one literal — use ACTIVE_LEASE. ${line.trim().slice(0, 110)}`);
+    }
+  });
+}
+
 const byKind = {};
 findings.forEach(f => { (byKind[f.kind] = byKind[f.kind] || []).push(f); });
 console.log("\n=== STATIC FUNCTIONAL AUDIT ===\n");
@@ -159,4 +188,4 @@ console.log(`total: ${total} findings across ${files.length} files`);
 // into the void. Anything judged benign belongs in the BENIGN map above
 // with its reason, not silently tolerated here.
 if (total > 0) process.exitCode = 1;
-fs.writeFileSync("/private/tmp/claude-501/-Users-aggar/8a15045e-55e7-45a7-98de-0507f4e462e1/scratchpad/static-audit.json", JSON.stringify(findings, null, 2));
+fs.writeFileSync(process.env.AUDIT_OUT || "./static-audit.json", JSON.stringify(findings, null, 2));
