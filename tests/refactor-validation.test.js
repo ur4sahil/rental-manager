@@ -154,7 +154,7 @@ function testFileStructure() {
   // constraint and "Annually" lost a whole 40-row sheet.
   //
   // +147 / +105 / +3 across three files. Spread, not concentrated.
-  assert(totalLines <= 39700, `Total src lines <= 39700 (${totalLines})`);
+  assert(totalLines <= 39900, `Total src lines <= 39900 (${totalLines})`);   // +Review tab, occupancy, enum mapping
 }
 
 // ───────────────────────────────────────────

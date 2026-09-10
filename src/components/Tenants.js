@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote} from "../utils/helpers";
@@ -120,6 +120,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [leaseModal, setLeaseModal] = useState(null);
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
+  const [reviewBusy, setReviewBusy] = useState(null);
   const [archivedTenants, setArchivedTenants] = useState([]);
   // Detail panel for a single archived/moved-out tenant.
   // { tenant, ledger, docs, messages, leases, payments, workOrders, activeTab }
@@ -163,6 +164,50 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setTenants(data || []);
   setLoading(false);
   }
+  // Tenants a bulk import could not classify. Derived from the tenants
+  // already loaded rather than fetched again, so the tab count updates
+  // the moment one is resolved.
+  const reviewTenants = useMemo(
+    () => (tenants || []).filter(t => String(t.lease_status || "").toLowerCase() === "review"),
+    [tenants]
+  );
+
+  // Answering the question. "Not a tenant" archives rather than deletes:
+  // the QuickBooks import turned lenders and title companies into
+  // tenants, and their ledger history has to survive being told so.
+  async function resolveReview(t, answer) {
+    if (!guardSubmit("resolveReview")) return;
+    setReviewBusy(t.id);
+    try {
+      const patch = answer === "not_a_tenant"
+        ? { archived_at: new Date().toISOString(), archived_by: userProfile?.email || "review",
+            lease_status: "past" }
+        : { lease_status: answer };
+      const { error } = await supabase.from("tenants").update(patch)
+        .eq("id", t.id).eq("company_id", companyId);
+      if (error) { pmError("PM-3007", { raw: error, context: "resolving tenant review status" }); return; }
+
+      // Occupancy follows from the answer, so the Properties page stops
+      // disagreeing with the Tenants page.
+      if (t.property) {
+        if (answer === "current") {
+          await supabase.from("properties").update({ status: "occupied" })
+            .eq("company_id", companyId).eq("address", t.property).neq("status", "occupied");
+        } else {
+          const { data: others } = await supabase.from("tenants").select("id")
+            .eq("company_id", companyId).eq("property", t.property)
+            .eq("lease_status", "current").is("archived_at", null).neq("id", t.id).limit(1);
+          if (!(others || []).length) {
+            await supabase.from("properties").update({ status: "vacant" })
+              .eq("company_id", companyId).eq("address", t.property).neq("status", "vacant");
+          }
+        }
+      }
+      showToast(`${t.name} marked ${answer === "not_a_tenant" ? "not a tenant" : answer}.`, "success");
+      await fetchTenants();
+    } finally { setReviewBusy(null); guardRelease("resolveReview"); }
+  }
+
   async function fetchPortalMembers() {
   const { data } = await supabase.from("company_members").select("user_email, status").eq("company_id", companyId).eq("role", "tenant");
   const map = {};
@@ -614,6 +659,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setEditingTenant(t);
   setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "", late_fee_amount: t.late_fee_amount || "", late_fee_type: t.late_fee_type || "flat", is_voucher: t.is_voucher || false, voucher_number: t.voucher_number || "", reexam_date: t.reexam_date || "", case_manager_name: t.case_manager_name || "", case_manager_email: t.case_manager_email || "", case_manager_phone: t.case_manager_phone || "", voucher_portion: t.voucher_portion || "", tenant_portion: t.tenant_portion || "" });
   setShowForm(true);
+  // Close the detail panel. It is fixed and sits above the page, so
+  // opening the edit form underneath it left the form visible but
+  // unreachable -- you could see your own fields behind the panel and
+  // could not touch them.
+  setSelectedTenant(null);
+  setActivePanel(null);
   }
 
   async function fetchTenantDocs(tenant) {
@@ -1440,11 +1491,46 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-brand-50 pb-3">
   <h2 className="text-xl md:text-2xl font-bold text-subtle-800">Tenants</h2>
   <div className="flex gap-1 overflow-x-auto pb-1">
-  {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
+  {[["tenants", "Tenants"], ["review", reviewTenants.length ? `Review (${reviewTenants.length})` : "Review"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
   <FilterPill key={id} active={tenantTab === id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }}>{label}</FilterPill>
   ))}
   </div>
   </div>
+
+  {/* ---- Review ------------------------------------------------------
+      A bulk import can tell that a tenant needs a decision but not what
+      the decision is. Those land here as a question with the three
+      answers, instead of being written silently as current or past --
+      or, as before, not written at all. */}
+  {tenantTab === "review" && (
+  <div className="space-y-3">
+    <div className="text-sm text-neutral-600">
+      {reviewTenants.length === 0
+        ? "Nothing to review. Tenants a bulk import could not classify appear here."
+        : <>These {reviewTenants.length} tenant{reviewTenants.length === 1 ? " was" : "s were"} imported without a clear status. Pick one for each — the property's occupancy follows from it.</>}
+    </div>
+    {reviewTenants.map(t => (
+      <div key={t.id} className="bg-white rounded-xl border border-brand-50 p-4 flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-neutral-800 truncate">{t.name}</div>
+          <div className="text-xs text-neutral-500 truncate">
+            {t.property || "no property"}
+            {t.lease_end_date ? ` · lease ended ${t.lease_end_date}` : ""}
+            {safeNum(t.balance) ? ` · balance ${formatCurrency(t.balance)}` : ""}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Btn size="sm" variant="success" disabled={reviewBusy === t.id}
+               onClick={() => resolveReview(t, "current")}>Current tenant</Btn>
+          <Btn size="sm" variant="secondary" disabled={reviewBusy === t.id}
+               onClick={() => resolveReview(t, "past")}>Past tenant</Btn>
+          <Btn size="sm" variant="danger" disabled={reviewBusy === t.id}
+               onClick={() => resolveReview(t, "not_a_tenant")}>Not a tenant</Btn>
+        </div>
+      </div>
+    ))}
+  </div>
+  )}
 
   {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
   {tenantTab === "archived" && !archivedDetail && (

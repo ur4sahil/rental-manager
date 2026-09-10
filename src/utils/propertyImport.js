@@ -101,6 +101,18 @@ export const DORMANT_DAYS = 365;
 export function inferTenantStatus(t, asOf = new Date()) {
   const lines = Number(t.ledgerLines || 0);
   const hasAr = !!t.arAccountId;
+
+  // What the app already says wins. This used to re-derive the status
+  // from ledger activity alone and ignore lease_status entirely, so the
+  // sheet would say "Review" for a tenant the Tenants page plainly
+  // showed as Past -- one had an ended lease, a $4,500 balance and
+  // recent collection activity, which the activity rule reads as
+  // "Current" and a human reads as "Past, still owing".
+  //
+  // Only guess when the app has no answer.
+  const known = String(t.lease_status || "").toLowerCase();
+  if (known === "current") return "Current";
+  if (known === "past") return "Past";
   // No AR account and nothing in the ledger: the QuickBooks import turned
   // every customer name into a tenant, including lenders, title companies
   // and one chart-of-accounts line called "Rent receivable".

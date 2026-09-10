@@ -62,18 +62,36 @@ export default function PropertyImport({ companyId, companyName, properties = []
     const arByTenant = new Map((accts || []).map(a => [String(a.tenant_id), a.id]));
     const accountIds = (accts || []).map(a => a.id);
     const activity = new Map();
+    // PostgREST returns at most 1000 rows unless you page. This asked for
+    // every AR journal line at once and silently got the first 1000 of
+    // 4128, so three quarters of the ledger was invisible: tenants with
+    // months of activity looked dormant, and the Status column the sheet
+    // pre-fills put 36 of 73 into "Review" for a human to sort out. One
+    // of them had 103 lines and activity eight days earlier.
+    //
+    // Ordered, because range() without an ORDER BY is not stable -- rows
+    // can repeat across pages and others never appear at all.
     for (let i = 0; i < accountIds.length; i += 100) {
       const chunk = accountIds.slice(i, i + 100);
-      const { data: lines } = await supabase
-        .from("acct_journal_lines")
-        .select("account_id, acct_journal_entries!inner(date)")
-        .eq("company_id", companyId).in("account_id", chunk);
-      for (const l of lines || []) {
-        const d = l.acct_journal_entries?.date;
-        const cur = activity.get(l.account_id) || { last: null, n: 0 };
-        cur.n += 1;
-        if (!cur.last || (d && d > cur.last)) cur.last = d;
-        activity.set(l.account_id, cur);
+      for (let from = 0; ; from += 1000) {
+        const { data: lines, error } = await supabase
+          .from("acct_journal_lines")
+          .select("account_id, acct_journal_entries!inner(date)")
+          .eq("company_id", companyId).in("account_id", chunk)
+          .order("account_id", { ascending: true })
+          .range(from, from + 999);
+        if (error) {
+          pmError("PM-2013", { raw: error, context: "reading tenant ledger activity for import", silent: true });
+          break;
+        }
+        for (const l of lines || []) {
+          const d = l.acct_journal_entries?.date;
+          const cur = activity.get(l.account_id) || { last: null, n: 0 };
+          cur.n += 1;
+          if (!cur.last || (d && d > cur.last)) cur.last = d;
+          activity.set(l.account_id, cur);
+        }
+        if (!lines || lines.length < 1000) break;
       }
     }
 
@@ -451,6 +469,12 @@ export default function PropertyImport({ companyId, companyName, properties = []
         };
         if (t.status === "Current") patch.lease_status = "current";
         else if (t.status === "Past") patch.lease_status = "past";
+        // "Review" used to write nothing at all, so a row the sheet
+        // explicitly flagged for a decision vanished into the import
+        // with no trace and no way to find it again. It now lands in the
+        // Tenants page's Review tab, which asks the question and takes
+        // the answer.
+        else if (t.status === "Review") patch.lease_status = "review";
         // "Not a tenant" is archived rather than deleted: the rows survive
         // and stay reversible, and their ledger history is untouched.
         if (t.status === "Not a tenant") {
