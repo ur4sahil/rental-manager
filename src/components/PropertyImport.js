@@ -159,6 +159,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         existingProperties: data.properties, existingTenants: data.tenants,
         utilities: p.utilities, hoas: p.hoas, loan: p.loan,
         insurance: p.insurance, taxes: p.taxes, recurring: p.recurring,
+        archivedTenantIds: data.archivedTenantIds,
       }));
       setStep("preview");
     } catch (e) {
@@ -171,19 +172,36 @@ export default function PropertyImport({ companyId, companyName, properties = []
   // plaintext column for them. Encrypt on the way in, exactly as the
   // wizard does -- same helper, same shape -- so a row typed into Excel
   // is stored no differently from one typed into the app.
-  async function encryptCreds(row) {
+  const NO_CREDS = { username_encrypted: null, password_encrypted: null,
+                     encryption_iv: null, encryption_salt: null, encryption_iv_username: null };
+
+  // Credentials are encrypted by /api/encrypt. When that call fails --
+  // the endpoint down, a network blip, or a dev server that does not
+  // serve /api at all -- encryptCredential throws, and it used to take
+  // the whole import with it. One real run wrote 18 address changes and
+  // then died on a utility login, showing "Import failed. Nothing
+  // further was written", which was true only of what came after.
+  //
+  // A login is the least important thing in the file. Import the record
+  // without it and collect the names, rather than losing 41 properties
+  // over a password.
+  const credFailures = [];
+  async function encryptCreds(row, whatFor) {
     const username = cellString(row.username), password = cellString(row.password);
-    if (!username && !password) {
-      return { username_encrypted: null, password_encrypted: null,
-               encryption_iv: null, encryption_salt: null, encryption_iv_username: null };
+    if (!username && !password) return NO_CREDS;
+    try {
+      const u = await encryptCredential(username, companyId);
+      const pw = await encryptCredential(password, companyId, u.salt);
+      return {
+        username_encrypted: u.encrypted, password_encrypted: pw.encrypted,
+        encryption_iv: pw.iv || null, encryption_salt: u.salt || null,
+        encryption_iv_username: u.iv || null,
+      };
+    } catch (e) {
+      credFailures.push(whatFor || "a login");
+      pmError("PM-8006", { raw: e, context: "encrypting an imported credential — record saved without it", silent: true });
+      return NO_CREDS;
     }
-    const u = await encryptCredential(username, companyId);
-    const pw = await encryptCredential(password, companyId, u.salt);
-    return {
-      username_encrypted: u.encrypted, password_encrypted: pw.encrypted,
-      encryption_iv: pw.iv || null, encryption_salt: u.salt || null,
-      encryption_iv_username: u.iv || null,
-    };
   }
 
   // The spreadsheet shows friendly labels; the database stores lowercase
@@ -223,7 +241,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       utilities.push({
         provider: cellString(u.provider), responsibility: enumVal("responsibility", u.responsibility),
         amount: u.amount ?? null, due_date: u.due_date || null,
-        website: cellString(u.website) || null, ...(await encryptCreds(u)),
+        website: cellString(u.website) || null, ...(await encryptCreds(u, `${cellString(u.provider)} (utility)`)),
       });
     }
     const hoas = [];
@@ -232,7 +250,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         hoa_name: cellString(h.hoa_name), amount: h.amount ?? null,
         frequency: enumVal("hoaFrequency", h.frequency), due_date: cellString(h.due_date) || null,
         notes: cellString(h.notes) || null,
-        website: cellString(h.website) || null, ...(await encryptCreds(h)),
+        website: cellString(h.website) || null, ...(await encryptCreds(h, `${cellString(h.hoa_name)} (HOA)`)),
       });
     }
     // A property can carry more than one loan -- property_loans has no
@@ -250,7 +268,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     }));
     for (const lr of loanRows) {
       const src = mine(ex.loan).find(x => x._row === lr._row);
-      Object.assign(lr, await encryptCreds(src));
+      Object.assign(lr, await encryptCreds(src, `${cellString(src.lender_name)} (lender)`));
       delete lr._row;
     }
     const loan = loanRows[0] || null;
@@ -260,7 +278,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       coverage_amount: i.coverage_amount ?? null, premium_amount: i.premium_amount ?? null,
       premium_frequency: enumVal("premiumFrequency", i.premium_frequency),
       expiration_date: i.expiration_date || null, notes: cellString(i.notes) || null,
-      website: cellString(i.website) || null, ...(await encryptCreds(i)),
+      website: cellString(i.website) || null, ...(await encryptCreds(i, `${cellString(i.provider)} (insurer)`)),
     };
     const tx = mine(ex.taxes)[0];
     const taxes = !tx ? null : {
@@ -410,6 +428,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       for (const u of plan.updates) {
         tick(u.newAddress);
         const r = u.record;
+        let propertyPatchFailed = false;
         // The address is DERIVED by trigger, so it is changed by writing
         // the component columns and letting the cascade follow -- never by
         // setting `address` directly, which the trigger would overwrite.
@@ -433,9 +452,21 @@ export default function PropertyImport({ companyId, companyName, properties = []
         if (Object.keys(patch).length) {
           const { error } = await supabase.from("properties").update(patch)
             .eq("id", u.id).eq("company_id", companyId);
-          if (error) { done.failed.push({ what: u.newAddress, why: error.message }); continue; }
+          if (error) {
+            done.failed.push({ what: u.newAddress, why: error.message });
+            // Do NOT skip this property's utilities, loan, insurance and
+            // tax rows. One bad value on the property row -- a half-bath
+            // in an integer column, say -- used to take all of them with
+            // it: 10 failed properties cost 39 of 63 utility rows, none
+            // of which had anything wrong.
+            propertyPatchFailed = true;
+          } else {
+            done.updated += 1;
+          }
+        } else {
+          done.updated += 1;
         }
-        done.updated += 1;
+        void propertyPatchFailed;
 
         // Utilities, HOA, loan, insurance and tax rows for a property
         // that already exists. These used to be silently discarded.
@@ -508,6 +539,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       }
 
       // --- occupancy ------------------------------------------------------
+      // (credFailures is reported on the Done step below)
       // The Status column comes back from the sheet pre-filled with what
       // the property is today, so an import that adds tenants left every
       // property reading "Vacant" -- 12 properties with a current tenant,
@@ -573,6 +605,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         `${done.tenantsCreated} tenants created, ${done.tenantsUpdated} updated, ${done.archived} archived`,
         null, undefined, undefined, companyId);
 
+      done.credFailures = [...new Set(credFailures)];
       setResult(done);
       setStep("done");
       if (typeof onImported === "function") onImported();
@@ -807,6 +840,25 @@ function DoneStep({ result, onAgain }) {
       </div>
       <p className="text-xs text-neutral-500 mt-3">No journal entries were posted. Your books are unchanged.</p>
     </div>
+    {/* A login that could not be encrypted. The record itself imported;
+        only the username and password are missing, and saying so beats
+        leaving someone to discover it when a bill is due. */}
+    {(result.credFailures || []).length > 0 && (
+      <div className="rounded-2xl border-2 border-warn-300 bg-warn-50/50 p-4">
+        <div className="text-sm font-semibold text-warn-800 mb-1">
+          {result.credFailures.length} login{result.credFailures.length === 1 ? "" : "s"} could not be saved
+        </div>
+        <div className="text-xs text-warn-700 mb-2">
+          Everything else about {result.credFailures.length === 1 ? "this account" : "these accounts"} imported.
+          Only the username and password are missing — add them on the property.
+        </div>
+        <ul className="text-xs text-warn-800 list-disc pl-5 space-y-0.5">
+          {result.credFailures.slice(0, 12).map((w, i) => <li key={i}>{w}</li>)}
+          {result.credFailures.length > 12 && <li>…and {result.credFailures.length - 12} more</li>}
+        </ul>
+      </div>
+    )}
+
     {result.failed.length > 0 && (
       <div className="rounded-2xl border border-danger-200 bg-danger-50/40 p-4">
         <div className="text-sm font-semibold text-danger-700 mb-1">{result.failed.length} row{result.failed.length === 1 ? "" : "s"} failed</div>

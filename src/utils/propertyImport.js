@@ -494,7 +494,14 @@ export async function parseWorkbook(ExcelJS, data) {
 export function buildImportPlan({
   properties = [], tenants = [], existingProperties = [], existingTenants = [],
   utilities = [], hoas = [], loan = [], insurance = [], taxes = [], recurring = [],
+  archivedTenantIds = [],
 }) {
+  // Tenants this import has already archived as "Not a tenant". They stay
+  // in the sheet, so a second upload of the same file would otherwise
+  // fail on every one of them -- and re-uploading after a fix is the
+  // documented workflow. One real file had 8: Carpenter's Shelter,
+  // District Title, a chart-of-accounts line called "Rent receivable".
+  const archivedIds = new Set((archivedTenantIds || []).map(String));
   const byId = new Map(existingProperties.map(p => [String(p.id), p]));
   const tById = new Map(existingTenants.map(t => [String(t.id), t]));
   const errors = [], warnings = [], creates = [], updates = [], renames = [];
@@ -597,6 +604,13 @@ export function buildImportPlan({
     if (id) {
       const existing = tById.get(id);
       if (!existing) {
+        if (archivedIds.has(id)) {
+          // Already dealt with. Say so and move on rather than blocking
+          // the whole upload on a row whose answer is settled.
+          warnings.push({ sheet: SHEET_TENANTS, row: r._row, kind: "pendency",
+            message: `${cellString(r.name) || "This row"} was archived as "Not a tenant" by an earlier import — left alone. Delete the row, or clear its Tenant ID to add them back.` });
+          continue;
+        }
         errors.push({ sheet: SHEET_TENANTS, row: r._row, field: "Tenant ID",
           message: `No tenant with id ${id}. Leave Tenant ID blank to create a new tenant; only fill it in to update one that already exists.` });
         continue;
