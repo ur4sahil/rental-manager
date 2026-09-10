@@ -36,7 +36,30 @@ async function login(page) {
   await expect(page.locator('h2:visible:has-text("Dashboard")').first()).toBeVisible({ timeout: 60000 });
 }
 
+// A destructive audit that damages real rows is worse than no audit. So
+// take a baseline first and compare, rather than counting totals -- the
+// first version of this guard flagged 8 tenants the IMPORT had archived
+// hours earlier, correctly, as "not a tenant".
+const baseline = {};
+test.beforeAll(async () => {
+  for (const table of ['vendors', 'tenants']) {
+    const { data } = await sb.from(table).select('id')
+      .eq('company_id', CID).not('archived_at', 'is', null);
+    baseline[table] = new Set((data || []).map(r => String(r.id)));
+  }
+});
+
 test.afterAll(async () => {
+  for (const table of ['vendors', 'tenants']) {
+    const { data } = await sb.from(table).select('id, name')
+      .eq('company_id', CID).not('archived_at', 'is', null);
+    const newlyArchived = (data || []).filter(r =>
+      !baseline[table].has(String(r.id)) && !String(r.name || '').startsWith('ZZ-AUDIT'));
+    if (newlyArchived.length) {
+      findings.push(`SAFETY: this run archived ${newlyArchived.length} ${table} row(s) outside its own fixture: ` +
+        newlyArchived.map(r => r.name).join(', ') + ' — restore them');
+    }
+  }
   // Remove anything this spec created, whatever happened.
   await sb.from('tenants').delete().eq('company_id', CID).like('name', 'ZZ-AUDIT%');
   await sb.from('vendors').delete().eq('company_id', CID).like('name', 'ZZ-AUDIT%');
@@ -115,14 +138,19 @@ test('deleting a vendor asks first, then removes only that vendor', async ({ pag
   await page.locator('button:has-text("Vendors")').first().click();
   await page.waitForTimeout(5000);
 
-  const row = page.locator(`text=${name}`).first();
-  if (!(await row.isVisible({ timeout: 6000 }).catch(() => false))) {
-    findings.push('vendor Delete: the vendor just created is not visible on the Vendors page');
+  // Scope the Delete to the row holding OUR vendor. Taking .first()
+  // clicked whatever sat at the top of the list and confirmed it -- that
+  // archived five real sandbox vendors across repeated runs before I
+  // noticed. A destructive audit must only ever touch its own fixture.
+  const row = page.locator(`tr:has-text("${name}"), div:has-text("${name}")`)
+    .filter({ has: page.locator('button:has-text("Delete")') }).last();
+  if (!(await row.isVisible({ timeout: 8000 }).catch(() => false))) {
+    findings.push('vendor Delete: the vendor just created is not visible with a Delete control');
     return;
   }
-  const del = page.locator('button:has-text("Delete"), button:has-text("✕")').first();
+  const del = row.locator('button:has-text("Delete")').first();
   if (!(await del.isVisible({ timeout: 4000 }).catch(() => false))) {
-    findings.push('vendor Delete: no delete control found');
+    findings.push('vendor Delete: no delete control on that vendor row');
     return;
   }
   await del.click();

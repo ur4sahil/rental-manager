@@ -264,10 +264,28 @@ select {
   color: var(--color-brand-700, #4338ca);
   border: 1px solid var(--color-brand-100, #e0e7ff);
   border-radius: 6px;
-  padding: 0.05em 0.3em;
+  padding: 0.05em 0.35em;
   font-family: inherit;
-  font-size: 0.95em;
   white-space: nowrap;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  /* Show the readable name and collapse the braces. "Dear
+     {{recipient_name}}," now reads "Dear Recipient Name,". The text
+     itself is untouched, so the stored body and the merge still work on
+     "{{recipient_name}}". */
+  font-size: 0;
+  letter-spacing: -1em;
 }
+.merge-tag::before {
+  content: attr(data-label);
+  font-size: 14px;
+  letter-spacing: normal;
+  display: inline-block;
+}
+/* Selecting or editing one should show what is really there. */
+.merge-tag:focus-within,
+.ProseMirror-focused .merge-tag:hover {
+  font-size: inherit;
+  letter-spacing: normal;
+}
+.ProseMirror-focused .merge-tag:hover::before { content: none; }

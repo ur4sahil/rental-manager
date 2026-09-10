@@ -28,9 +28,15 @@ const MergeTagHighlight = Extension.create({
               const re = /\{\{\s*([\w.]+)\s*\}\}/g;
               let m;
               while ((m = re.exec(node.text)) !== null) {
+                // The pretty name rides along as an attribute; CSS shows
+                // it and hides the raw braces. Keeping the underlying
+                // text as "{{tag}}" matters -- the body is stored and
+                // merged as a plain string, so nothing downstream changes.
+                const pretty = m[1].replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
                 decos.push(Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
                   class: "merge-tag",
-                  title: `Fills in automatically: ${m[1].replace(/_/g, " ")}`,
+                  "data-label": pretty,
+                  title: `${pretty} — fills in automatically`,
                 }));
               }
             });
