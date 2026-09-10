@@ -14,17 +14,28 @@
 import fs from "fs";
 
 const LOCAL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+// Floor for local models. 256 is what qwen3:30b needs to get past ~513
+// bytes of reasoning and emit a one-word answer.
+const MIN_LOCAL_TOKENS = Number(process.env.MIN_LOCAL_TOKENS || 1024);
+const OUT = process.env.BENCH_OUT || "./model-bench.json";
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 
 // Candidates. Local first, then hosted if a key is present.
+//
+// BENCH_MODELS overrides the local list, so the same script can measure a
+// different box without editing it -- the comparison is only meaningful
+// if both models face an identical harness.
+//   BENCH_MODELS="qwen3:30b" node tools/model-bench.mjs
+const LOCAL_MODELS = process.env.BENCH_MODELS
+  ? process.env.BENCH_MODELS.split(",").map(id => ({ id: id.trim(), where: "local", label: id.trim() + "  (local)" }))
+  : [
+      { id: "gemma4:e2b", where: "local", label: "Gemma 4 5.1B  (local, 7.2 GB)" },
+      { id: "qwen3:14b",  where: "local", label: "Qwen3 14B     (local, 9.3 GB)" },
+    ];
+
 const MODELS = [
-  { id: "gemma4:e2b", where: "local", label: "Gemma 4 5.1B  (local, 7.2 GB)" },
-  { id: "qwen3:14b",  where: "local", label: "Qwen3 14B     (local, 9.3 GB)" },
+  ...LOCAL_MODELS,
   ...(OR_KEY ? [
-    // IDs and prices read from OpenRouter's own /models list, so none of
-    // these 404. Ordered smallest-first: the point of comparison is a
-    // model that could plausibly replace a 5.1B on 4 CPU cores, not
-    // whether an 80B is smarter (it is).
     { id: "qwen/qwen3-8b",                     where: "openrouter", label: "Qwen3 8B          ($0.117/M)" },
     { id: "qwen/qwen3.5-9b",                   where: "openrouter", label: "Qwen3.5 9B        ($0.100/M)" },
     { id: "qwen/qwen3.5-flash-02-23",          where: "openrouter", label: "Qwen3.5 Flash     ($0.065/M)" },
@@ -84,12 +95,24 @@ async function callLocalOnce(model, prompt, maxTok) {
   const r = await fetch(`${LOCAL}/api/chat`, {
     signal: AbortSignal.timeout(180000),
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ model, think: false, stream: false,
+    body: JSON.stringify({ model, stream: false,
       messages: [{ role: "user", content: prompt }],
-      options: { temperature: 0, num_predict: maxTok } }),
+      // Reasoning models spend the budget THINKING before they answer,
+      // and Ollama's think:false does not suppress it for Qwen3 -- it
+      // just relocates the reasoning into content. So the budget has to
+      // cover reasoning + answer, or content comes back empty and the
+      // model scores zero while actually being right. That is exactly
+      // what made qwen3:30b look like 0/12.
+      options: { temperature: 0, num_predict: Math.max(maxTok, MIN_LOCAL_TOKENS) } }),
   });
   const d = await r.json();
-  return { text: (d.message?.content || "").trim(), ms: Math.round((d.total_duration || 0) / 1e6) };
+  // Prefer content (the answer). Fall back to the reasoning only if the
+  // budget ran out before the answer, so a truncated run is visible
+  // rather than silently scoring zero.
+  const content = (d.message?.content || "").trim();
+  const thinking = (d.message?.thinking || "").trim();
+  return { text: content || thinking, truncated: !content && !!thinking,
+           ms: Math.round((d.total_duration || 0) / 1e6) };
 }
 
 async function callOpenRouter(model, prompt, maxTok) {
@@ -117,8 +140,18 @@ for (const m of MODELS) {
     const out = await call(m, CLASSIFY(txn), 12);
     if (out.error) { failed++; process.stdout.write(`  ! ${out.error}\n`); break; }
     total++; ms += out.ms;
-    // Take the first category word it mentions.
-    const said = CATEGORIES.find(c => new RegExp(`\\b${c.replace(/ /g, "\\s*")}\\b`, "i").test(out.text)) || out.text.slice(0, 18);
+    // Take the LAST category word it mentions, not the first. A
+    // reasoning model names candidates while deciding ("could be Rent
+    // ... it is Mortgage"), so the first match is its opening guess and
+    // the last is its conclusion. Scoring the first marked correct
+    // answers wrong.
+    let said = out.text.slice(0, 18), lastAt = -1;
+    for (const c of CATEGORIES) {
+      const re = new RegExp(`\\b${c.replace(/ /g, "\\s*")}\\b`, "gi");
+      let m2, at = -1;
+      while ((m2 = re.exec(out.text)) !== null) at = m2.index;
+      if (at > lastAt) { lastAt = at; said = c; }
+    }
     if (said.toLowerCase() === expected.toLowerCase()) right++;
     else wrong.push(`${txn.slice(0, 28)} → ${said} (want ${expected})`);
     process.stdout.write(said.toLowerCase() === expected.toLowerCase() ? "." : "x");
@@ -141,6 +174,6 @@ for (const r of results) {
   if (r.unavailable) { console.log(r.label.padEnd(34) + "unavailable"); continue; }
   console.log(r.label.padEnd(34) + `${r.right}/${r.total}`.padEnd(10) + String(r.avgMs).padEnd(10) + String(r.invented));
 }
-fs.writeFileSync("/private/tmp/claude-501/-Users-aggar/8a15045e-55e7-45a7-98de-0507f4e462e1/scratchpad/model-bench.json", JSON.stringify(results, null, 2));
-console.log("\nfull output incl. drafts: scratchpad/model-bench.json");
+fs.writeFileSync(OUT, JSON.stringify(results, null, 2));
+console.log(`\nfull output incl. drafts: ${OUT}`);
 if (!OR_KEY) console.log("\nNo OPENROUTER_API_KEY — only your local Gemma was tested.\nGet a key at openrouter.ai/keys, then:  OPENROUTER_API_KEY=sk-... node tools/model-bench.mjs");
