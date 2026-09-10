@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -202,7 +202,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         } else {
           const { data: others } = await supabase.from("tenants").select("id")
             .eq("company_id", companyId).eq("property", t.property)
-            .eq("lease_status", "current").is("archived_at", null).neq("id", t.id).limit(1);
+            .in("lease_status", ACTIVE_LEASE).is("archived_at", null).neq("id", t.id).limit(1);
           if (!(others || []).length) {
             await supabase.from("properties").update({ status: "vacant" })
               .eq("company_id", companyId).eq("address", t.property).neq("status", "vacant");

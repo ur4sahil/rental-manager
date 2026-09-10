@@ -680,7 +680,6 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   }
 
   const [autopayEnabled, setAutopayEnabled] = useState(false);
-  const [autopayLoading, setAutopayLoading] = useState(false);
 
   if (loading) return <Spinner />;
   if (!tenantData) return (

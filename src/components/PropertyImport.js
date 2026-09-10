@@ -23,6 +23,7 @@ import {
   buildTemplate, parseWorkbook, buildImportPlan, inferTenantStatus, computeAddress,
   cellString,
 } from "../utils/propertyImport";
+import { ACTIVE_LEASE } from "../utils/helpers";
 
 const STEPS = [
   { id: "download", label: "Download" },
@@ -548,7 +549,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       try {
         const { data: liveTenants } = await supabase.from("tenants")
           .select("property, lease_status").eq("company_id", companyId)
-          .is("archived_at", null).eq("lease_status", "current");
+          .is("archived_at", null).in("lease_status", ACTIVE_LEASE);
         const occupied = new Set((liveTenants || []).map(t => t.property).filter(Boolean));
         const touched = [...plan.updates, ...plan.creates].map(x => x.newAddress);
         const toOccupy = touched.filter(a => occupied.has(a));

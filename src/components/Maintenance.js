@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -689,7 +689,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
   // Find tenant at this property for the WO
-  const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+  const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
   const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
   if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
   showToast("Work order created. Go to Maintenance to view it.", "success");

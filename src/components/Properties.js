@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -2289,7 +2289,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(form.tenant.trim())).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
   if (byName) { existingTenant = byName; }
   else {
-    const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+    const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
     if (byProp) existingTenant = byProp;
   }
   let tenantId = existingTenant?.id;
@@ -2741,7 +2741,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // gives them a single place to come back and finish (or discard).
   const [showDrafts, setShowDrafts] = useState(false);
   const [setupDrafts, setSetupDrafts] = useState([]);
-  const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
   const [showPropertyWizard, setShowPropertyWizard] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);

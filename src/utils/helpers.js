@@ -621,3 +621,14 @@ export const priorityColors = {
   normal: "bg-info-100 text-info-700",
   low: "bg-neutral-100 text-neutral-500",
 };
+
+// A tenant with a live lease. The column holds TWO spellings for the same
+// thing -- "active" from the tenant form's default, "current" from the
+// Tenants page and the bulk importer -- and 46 rows say one while 28 say
+// the other. Every `.eq("lease_status", "active")` therefore dropped a
+// third of the tenants silently: late fees were never applied to them,
+// rent posting did not list them, inspections could not find them.
+//
+// Use this everywhere instead of a single literal. The real fix is to
+// settle on one word and migrate, which is a data decision.
+export const ACTIVE_LEASE = ["active", "current"];

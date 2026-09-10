@@ -1,6 +1,6 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
-import { safeNum, emailFilterValue, escapeFilterValue , pgrestQuote} from "./helpers";
+import { safeNum, emailFilterValue, escapeFilterValue , pgrestQuote, ACTIVE_LEASE} from "./helpers";
 import { COMPANY_DEFAULTS } from "../config";
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
@@ -128,7 +128,7 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
     // was case-sensitive and reported false positives for any lease whose
     // tenant_name casing drifted from the tenant row.
     if (deep) {
-      const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active").limit(INTEGRITY_MAX_TENANTS);
+      const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).in("lease_status", ACTIVE_LEASE).limit(INTEGRITY_MAX_TENANTS);
       for (const t of (activeTenants || [])) {
         let q = supabase.from("leases").select("id").eq("company_id", companyId).eq("status", "active");
         // The name branch is paired with the property, otherwise a

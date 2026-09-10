@@ -21,6 +21,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ], "utilities_" + new Date().toLocaleDateString(), showToast);
   }
   const [utilities, setUtilities] = useState([]);
+  const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,10 +42,6 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
-  const [show2FAPrompt, setShow2FAPrompt] = useState(null); // job awaiting 2FA
-  const [twoFACode, setTwoFACode] = useState("");
-  const [billViewModal, setBillViewModal] = useState(null); // bill being reviewed
-  const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill for payment auth
 
   useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
 

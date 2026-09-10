@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -3993,7 +3993,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (!window._tenantArBackfilled || window._tenantArBackfilledFor !== companyId) {
   window._tenantArBackfilled = true;
   window._tenantArBackfilledFor = companyId;
-  const { data: activeTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("lease_status", "active").is("archived_at", null);
+  const { data: activeTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).in("lease_status", ACTIVE_LEASE).is("archived_at", null);
   if (activeTenants && activeTenants.length > 0) {
   const existingArNames = new Set(accounts.filter(a => (a.code || "").startsWith("1100-")).map(a => (a.name || "").toLowerCase()));
   const missing = activeTenants.filter(t => !existingArNames.has("ar - " + (t.name || "").toLowerCase()));

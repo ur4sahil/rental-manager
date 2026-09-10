@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -40,7 +40,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // first decides which fee every overdue tenant is charged. Oldest rule
   // first makes the choice deterministic and explicable.
   supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }),
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ACTIVE_LEASE),
   supabase.from("leases").select("tenant_id, tenant_name, payment_due_day, status, property").eq("company_id", companyId).eq("status", "active"),
   ]);
   const leases = lRes.data || [];
