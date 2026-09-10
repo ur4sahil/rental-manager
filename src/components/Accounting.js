@@ -1927,7 +1927,7 @@ export function AcctReports({ linesLoaded = true, accounts, journalEntries, clas
 
   function getRentRoll() {
     return properties.map(p => {
-      const t = tenants.find(t => t.property === p.address && t.lease_status === "active");
+      const t = tenants.find(t => t.property === p.address && t.lease_status === "current");
       const l = leases.find(l => l.property === p.address && l.status === "active");
       return { property: p.address, tenant: t?.name || "VACANT", rent: safeNum(p.rent), leaseStart: l?.start_date || p.lease_start || "", leaseEnd: l?.end_date || p.lease_end || "", status: p.status, deposit: safeNum(p.security_deposit) };
     }).sort((a,b) => a.property.localeCompare(b.property));

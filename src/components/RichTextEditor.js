@@ -6,6 +6,41 @@ import { Link } from "@tiptap/extension-link";
 import { Placeholder } from "@tiptap/extension-placeholder";
 // TipTap v3 consolidates the Table extensions into one package — use named imports.
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
+import { Extension } from "@tiptap/react";
+import { Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+
+// Merge tags used to sit in the page as raw text -- a letter reading
+// "Dear {{recipient_name}}, {{letter_body}}" looks like source code, not
+// a document. This paints each {{tag}} as an inline pill without
+// changing the stored text, so the body is still a plain string with
+// {{tags}} in it and nothing downstream has to know.
+const MergeTagHighlight = Extension.create({
+  name: "mergeTagHighlight",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const decos = [];
+            state.doc.descendants((node, pos) => {
+              if (!node.isText || !node.text) return;
+              const re = /\{\{\s*([\w.]+)\s*\}\}/g;
+              let m;
+              while ((m = re.exec(node.text)) !== null) {
+                decos.push(Decoration.inline(pos + m.index, pos + m.index + m[0].length, {
+                  class: "merge-tag",
+                  title: `Fills in automatically: ${m[1].replace(/_/g, " ")}`,
+                }));
+              }
+            });
+            return DecorationSet.create(state.doc, decos);
+          },
+        },
+      }),
+    ];
+  },
+});
 
 // Conservative paste-cleaner for HTML that came out of Word, Outlook,
 // Google Docs, or Apple Pages. None of those produce HTML the rest of
@@ -129,6 +164,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
       Underline,
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder }),
+      MergeTagHighlight,
       Table.configure({ resizable: false }),
       TableRow,
       TableCell,

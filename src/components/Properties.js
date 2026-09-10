@@ -2118,7 +2118,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const shouldRestore = await showConfirm({ message: `This property has ${archivedTenants.length} archived tenant(s): ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them and their leases?` });
   if (shouldRestore) {
   const tenantIds = archivedTenants.map(t => t.id);
-  await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("company_id", companyId).in("id", tenantIds);
+  await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("company_id", companyId).in("id", tenantIds);
   await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("property", prop.address).eq("status", "terminated");
   }
   }
@@ -2197,7 +2197,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   terminatedLeases.forEach(l => {
   const key = (l.tenant_name || "").toLowerCase();
   if (!tenantMap[key]) {
-  tenantMap[key] = { name: l.tenant_name, property: p.address, company_id: companyId, lease_status: "inactive", _leases: [] };
+  tenantMap[key] = { name: l.tenant_name, property: p.address, company_id: companyId, lease_status: "past", _leases: [] };
   }
   tenantMap[key]._leases.push(l);
   });
@@ -2294,12 +2294,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   let tenantId = existingTenant?.id;
   if (!existingTenant) {
-  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
+  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "current", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
   tenantId = newT?.id;
   // Notify: new tenant move-in
   queueNotification("move_in", (form.tenant_email || "").toLowerCase(), { tenant: form.tenant.trim(), property: compositeAddress, moveInDate: form.lease_start || formatLocalDate(new Date()) }, companyId);
   } else {
-  await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
+  await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "current", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
   }
   // Create tenant AR sub-account (e.g., 1100-001 AR - Alice Johnson)
   await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
@@ -2412,7 +2412,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
   // Mark tenants as inactive
-  await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+  await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
   addNotification("⏸️", `Deactivated property: ${property.address}`);
   logAudit("deactivate", "properties", `Deactivated property: ${property.address}`, property.id, userProfile?.email, userRole, companyId);
   fetchProperties();
@@ -2425,7 +2425,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (error) { pmError("PM-2004", { raw: error, context: "reactivate property " + property.address }); return; }
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
-  await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+  await supabase.from("tenants").update({ lease_status: "current" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
   addNotification("▶️", `Reactivated property: ${property.address}`);
   fetchProperties();
   }
@@ -2562,7 +2562,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   // 8. Archive tenants — set balance to NULL (not 0), lease inactive
   for (const tid of tenantIds) {
-  await supabase.from("tenants").update({ ...arch, balance: null, lease_status: "inactive" }).eq("id", tid).eq("company_id", companyId);
+  await supabase.from("tenants").update({ ...arch, balance: null, lease_status: "past" }).eq("id", tid).eq("company_id", companyId);
   }
 
   // 9. Archive the property

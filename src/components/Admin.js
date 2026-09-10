@@ -546,7 +546,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   const shouldRestore = await showConfirm({ message: `Found ${archivedTenants.length} archived tenant(s) for this property: ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them too?` });
   if (shouldRestore) {
   for (const t of archivedTenants) {
-  const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId);
+  const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", t.id).eq("company_id", companyId);
   if (tErr) pmError("PM-3002", { raw: tErr, context: "restore tenant " + t.name, silent: true });
   }
   // Also restore associated leases

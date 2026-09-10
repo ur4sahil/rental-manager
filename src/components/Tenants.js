@@ -107,7 +107,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [msgAttachment, setMsgAttachment] = useState(null);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -267,7 +267,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const _secDep = Number(form.security_deposit) || 0;
   setShowForm(false);
   setEditingTenant(null);
-  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
   // Hand back to the side panel this edit came from, showing the saved
   // values rather than the stale ones the panel was opened with.
   if (editReturnTo) {
@@ -436,7 +436,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { error: archiveErr } = await supabase.from("tenants").update({
   archived_at: new Date().toISOString(),
   archived_by: userProfile?.email,
-  lease_status: "inactive"
+  lease_status: "past"
   }).eq("id", id).eq("company_id", companyId);
   if (archiveErr) { pmError("PM-3003", { raw: archiveErr, context: "archive tenant" }); return; }
   // Update property when tenant archived. At a multi-unit address we must
@@ -951,7 +951,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   try {
   if (!newMoveOut) return;
   if (!selectedTenant?.id) return;
-  const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
+  const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "current" }).eq("company_id", companyId).eq("id", selectedTenant.id);
   if (error) { pmError("PM-3004", { raw: error, context: "renew lease" }); return; }
   // #4: Update active lease end_date if one exists, or create one
   // Scoped to this tenant, not to their name. Matching on tenant_name
@@ -991,7 +991,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("update", "tenants", `Lease renewed for ${selectedTenant.name} until ${newMoveOut}`, selectedTenant.id, userProfile?.email, userRole, companyId);
   setLeaseModal(null);
   fetchTenants();
-  setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "active" });
+  setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "current" });
   } finally { guardRelease("renewLease"); }
   }
 
@@ -1675,7 +1675,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
   <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}{t.archived_by ? " by " + t.archived_by : ""}</div>
   </div>
-  <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
+  <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
   </div>
   ))}
   </div>
@@ -1695,7 +1695,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-neutral-400">{archivedDetail.tenant.email || ""}{archivedDetail.tenant.phone ? " · " + archivedDetail.tenant.phone : ""}</div>
   <div className="text-xs text-neutral-400">{archivedDetail.tenant.property}</div>
   </div>
-  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", archivedDetail.tenant.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", archivedDetail.tenant.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + archivedDetail.tenant.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); setArchivedDetail(null); fetchTenants(); } finally { guardRelease("restoreTenant", archivedDetail.tenant.id); } }}>♻️ Restore</Btn>
+  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", archivedDetail.tenant.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", archivedDetail.tenant.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + archivedDetail.tenant.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); setArchivedDetail(null); fetchTenants(); } finally { guardRelease("restoreTenant", archivedDetail.tenant.id); } }}>♻️ Restore</Btn>
   </div>
   <div className="flex border-b border-neutral-200 mb-4 overflow-x-auto">
   {[
@@ -2109,7 +2109,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   let count = 0;
   if (eligibleIds.length > 0) {
     const { error: archErr, count: archCount } = await supabase.from("tenants")
-      .update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }, { count: "exact" })
+      .update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "past" }, { count: "exact" })
       .eq("company_id", companyId)
       .in("id", eligibleIds);
     if (archErr) pmError("PM-3003", { raw: archErr, context: "bulk tenant archive" });

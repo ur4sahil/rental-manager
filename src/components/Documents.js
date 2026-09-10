@@ -266,7 +266,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Create document flow
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [mode, setMode] = useState(null); // null | "blank" | "prefill"
+  // Defaulting to "blank" so the template list is visible immediately.
+  // Landing on null showed a single box and acres of white space, with
+  // the templates -- eight of them -- hidden behind a choice nobody knew
+  // they had to make. It read as an unbuilt page.
+  const [mode, setMode] = useState("blank"); // "blank" | "prefill"
   const [prefillProperty, setPrefillProperty] = useState(null);
   const [fieldValues, setFieldValues] = useState({});
   const [step, setStep] = useState("pick"); // pick | fill | preview
@@ -722,7 +726,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }));
   }
 
-  const CATEGORIES = ["notices", "leases", "maintenance", "general"];
+  // Document types, derived from the templates that exist plus the four
+  // built-ins -- not a fixed list.
+  //
+  // Both the chooser and the Templates tab iterate this and filter
+  // templates by it, so a template whose category was not one of the
+  // four hardcoded values was INVISIBLE: an active "Pet Addendum"
+  // (category "addendum") and "Notice of Entry" (category "notice") were
+  // in the database and unreachable from anywhere in the app.
+  const BUILT_IN_CATEGORIES = ["notices", "leases", "maintenance", "general"];
+  const CATEGORIES = React.useMemo(() => {
+    const fromData = (templates || []).map(t => (t.category || "").trim()).filter(Boolean);
+    return [...new Set([...BUILT_IN_CATEGORIES, ...fromData])].sort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates]);
 
   useEffect(() => { fetchAll(); }, [companyId]);
 
@@ -1612,7 +1629,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {!(!editingTemplate && !templateForm.body && !templateForm.pdf_storage_path && !templateLandingSkipped) && (
   <div className="flex-1 flex overflow-hidden">
   {/* LEFT RAIL — Form Fields palette */}
-  <div className="w-[260px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white">
+  {/* 260px held two grid-cols-3 rows, giving each control ~75px: every
+      label truncated to "Recipi", every dropdown to "T...", the default
+      value to "Defaul". Wider rail, and the controls stack instead of
+      fighting for the same row. */}
+  <div className="w-[320px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white">
   <div className="p-3">
   <div className="flex items-center justify-between mb-2 sticky top-0 bg-white pb-2">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Form Fields ({templateForm.fields.length})</h3>
@@ -1621,15 +1642,19 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
   <div key={i} className="border border-neutral-100 rounded-xl p-3 bg-brand-50/20">
-  <div className="grid grid-cols-3 gap-2 mb-2">
-  <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
+  <div className="space-y-1.5 mb-2">
+  <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Field label, e.g. Recipient Name" className="text-xs w-full" />
+  <div className="grid grid-cols-2 gap-1.5">
   <Select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="text-xs">
   {["text","textarea","number","currency","date","checkbox","select","address_block","signature"].map(t => <option key={t} value={t}>{t}</option>)}
   </Select>
-  <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
+  <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Group" className="text-xs" />
   </div>
-  <div className="grid grid-cols-3 gap-2">
-  <Select value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} className="text-xs" aria-label="Fill automatically from">
+  </div>
+  <div className="space-y-1.5">
+  <div>
+  <div className="text-[10px] font-medium text-neutral-500 mb-0.5">Fills itself from</div>
+  <Select value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} className="text-xs w-full" aria-label="Fill automatically from">
   <option value="">Fill manually</option>
   {PREFILL_SOURCES.map(([group, opts]) => (
     <optgroup key={group} label={group}>
@@ -1637,9 +1662,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     </optgroup>
   ))}
   </Select>
-  <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
+  </div>
+  <div className="grid grid-cols-2 gap-1.5 items-center">
+  <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default" className="text-xs" />
   <div className="flex items-center gap-2">
-  <label className="flex items-center gap-1 text-xs"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
+  <label className="flex items-center gap-1.5 text-xs whitespace-nowrap"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
+  </div>
   <TextLink tone="brand" size="xs" onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))}  title="Insert into body">{"{{}}"}</TextLink>
   <TextLink tone="danger" size="xs" underline={false} onClick={() => removeField(i)} className="ml-auto">✕</TextLink>
   </div>
@@ -1685,9 +1713,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div>
   <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
-  <Select size="sm" value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})}>
-  {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-  </Select>
+  {/* A free-text field with the existing types as suggestions, so a new
+      type -- "court filing", "addendum" -- can simply be typed. It was a
+      closed dropdown of four, which is why anything else became
+      unreachable. */}
+  <Input size="sm" list="doc-category-list" value={templateForm.category}
+    onChange={e => setTemplateForm({...templateForm, category: e.target.value})}
+    placeholder="e.g. leases, court filing" />
+  <datalist id="doc-category-list">
+    {CATEGORIES.map(c => <option key={c} value={c} />)}
+  </datalist>
+  <div className="text-[10px] text-neutral-400 mt-0.5">Pick one or type a new type.</div>
   </div>
   <div>
   <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
@@ -2287,7 +2323,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div>
   {/* Mode selection — segmented control */}
   <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 mb-5">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">How do you want to start?</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">
+  How do you want to start?
+  {templates.length > 0 && <span className="ml-2 normal-case tracking-normal font-normal text-neutral-400">{templates.length} template{templates.length === 1 ? "" : "s"} ready</span>}
+  </h3>
   <div className="flex gap-2 flex-wrap">
   <button onClick={() => setMode("blank")} className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors " + (mode === "blank" ? "border-brand-500 bg-brand-50 text-brand-700" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")}>
   <span className="material-icons-outlined text-base">edit_note</span>
@@ -2311,8 +2350,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {mode && (
   <div>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Choose a Template</h3>
-  {CATEGORIES.map(cat => {
-  const catTemplates = templates.filter(t => t.category === cat);
+  {templates.length === 0 && (
+  <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center">
+  <div className="text-sm font-medium text-neutral-700 mb-1">No templates yet</div>
+  <div className="text-xs text-neutral-500 mb-3">Upload a lease or court form as a PDF, or start from a blank one, and place the fields that should fill themselves.</div>
+  <Btn size="sm" onClick={() => setTab("templates")}>Go to Templates</Btn>
+  </div>
+  )}
+  {[...CATEGORIES, "__uncategorised__"].map(cat => {
+  const catTemplates = cat === "__uncategorised__"
+    ? templates.filter(t => !(t.category || "").trim())
+    : templates.filter(t => (t.category || "").trim() === cat);
   if (catTemplates.length === 0) return null;
   return (
   <div key={cat} className="mb-4">
@@ -2354,7 +2402,28 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </span>
   <div className="min-w-0">
   <div className="font-semibold text-neutral-800 text-sm truncate">{t.name}</div>
-  <div className="text-[10px] text-neutral-400 capitalize">{t.category}</div>
+  <div className="flex items-center gap-1.5 flex-wrap">
+  <div className="text-[10px] text-neutral-400 capitalize">{t.category || "uncategorised"}</div>
+  {/* What this template can do, on the card. Signing, PDF overlay and
+      auto-fill were all built and none of it was visible until you
+      opened the editor and scrolled a right-hand rail -- which is why
+      the builder read as "no e-sign". */}
+  {t.template_type === "pdf_overlay" && (
+    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600" title="Fields are placed on an uploaded PDF">PDF</span>
+  )}
+  {t.signing_mode && t.signing_mode !== "none" && (
+    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-positive-50 text-positive-700"
+      title={`Signature required — ${(t.signer_roles || []).map(r => r.label || r.role).join(", ") || "signers not yet defined"}`}>
+      ✍ e-sign{(t.signer_roles || []).length ? ` · ${t.signer_roles.length}` : ""}
+    </span>
+  )}
+  {(t.fields || []).some(f => f.prefill_from) && (
+    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700"
+      title={`${(t.fields || []).filter(f => f.prefill_from).length} field(s) fill themselves from your data`}>
+      auto-fill
+    </span>
+  )}
+  </div>
   </div>
   </div>
   {t.is_system && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full shrink-0">System</span>}

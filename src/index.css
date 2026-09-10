@@ -255,3 +255,19 @@ select {
     max-width: calc(100vw - 1rem);
   }
 }
+
+/* Merge tags inside the document editor. They are stored as plain
+   "{{tag}}" text so nothing downstream changes; this only paints them,
+   so a letter reads as a letter instead of as source code. */
+.merge-tag {
+  background: var(--color-brand-50, #eef2ff);
+  color: var(--color-brand-700, #4338ca);
+  border: 1px solid var(--color-brand-100, #e0e7ff);
+  border-radius: 6px;
+  padding: 0.05em 0.3em;
+  font-family: inherit;
+  font-size: 0.95em;
+  white-space: nowrap;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

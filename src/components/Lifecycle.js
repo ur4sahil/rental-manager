@@ -745,16 +745,16 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   if (outcome === "completed") {
   // Eviction complete — tenant out, property vacant
   if (evCase.tenant_id) {
-  await supabase.from("tenants").update({ lease_status: "inactive" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
+  await supabase.from("tenants").update({ lease_status: "past" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
   }
-  await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).ilike("name", escapeFilterValue(evCase.tenant_name)).eq("property", evCase.property);
+  await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).ilike("name", escapeFilterValue(evCase.tenant_name)).eq("property", evCase.property);
   await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", companyId).eq("address", evCase.property);
   await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("tenant_name", evCase.tenant_name).eq("status", "active");
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", evCase.tenant_name).eq("property", evCase.property);
   } else if (outcome === "tenant_cured") {
   // Tenant cured — restore to active
   if (evCase.tenant_id) {
-  await supabase.from("tenants").update({ lease_status: "active" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
+  await supabase.from("tenants").update({ lease_status: "current" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
   }
   // No lease write here either. Filing never moved the lease off
   // "active", so there is nothing to restore -- and this update could

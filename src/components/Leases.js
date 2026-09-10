@@ -111,7 +111,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   } else {
   ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId }]));
   if (!error && tenant) {
-  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
+  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "current", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
   if (tenantErr) pmError("PM-3002", { raw: tenantErr, context: "tenant status update", silent: true });
   }
   if (!error && Number(form.security_deposit) > 0) {
@@ -213,7 +213,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const { error: termErr } = await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("id", lease.id);
   if (termErr) { showToast("Error terminating lease: " + termErr.message, "error"); return; }
   if (lease.tenant_id) {
-  const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("id", lease.tenant_id);
+  const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("id", lease.tenant_id);
   if (_err4666) { showToast("Error updating tenants: " + _err4666.message, "error"); return; }
   // Deactivate any autopay schedules for this tenant
   const { error: _err4668 } = await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
