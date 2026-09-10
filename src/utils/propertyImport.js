@@ -15,8 +15,8 @@
 
 import JSZip from "jszip";
 import {
-  EXTRA_SHEETS, UTILITY_RESPONSIBILITY, HOA_FREQUENCY, LOAN_TYPES,
-  PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
+  EXTRA_SHEETS, SHEET_RECURRING, UTILITY_RESPONSIBILITY, HOA_FREQUENCY,
+  LOAN_TYPES, PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
 } from "./propertyImportSheets.js";   // .js required: the unit tests load
                                      // this module through Node's ESM
                                      // loader, which does not resolve
@@ -687,15 +687,19 @@ export function buildImportPlan({
     }
   }
 
-  // Only the create path runs through commit_property_wizard, so a row
-  // aimed at a property that already exists is called out rather than
-  // dropped without comment.
-  for (const { sheet, key } of EXTRA_SHEETS) {
-    for (const r of attached[key]) {
-      if (!r._creating) {
-        warnings.push({ sheet, row: r._row, kind: "pendency",
-          message: `${r._address} already exists — this row will be added to it.` });
-      }
+  // Recurring rent for a property that already exists cannot be written
+  // by the import: the entry posts money and needs its debit and credit
+  // accounts resolved, which only the wizard's RPC does. Say so, once
+  // per row, rather than dropping it in silence.
+  //
+  // The other five sheets used to warn here too -- "already exists, this
+  // row will be added to it" -- on every single row. That was 132 of one
+  // real import's 195 approvals, it told the user nothing they did not
+  // already know, and it was false: nothing was being added at all.
+  for (const r of attached.recurring) {
+    if (!r._creating) {
+      warnings.push({ sheet: SHEET_RECURRING, row: r._row, kind: "pendency",
+        message: `${r._address}: recurring rent must be set on the property itself — this row is not imported.` });
     }
   }
 

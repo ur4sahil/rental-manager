@@ -228,10 +228,83 @@ export default function PropertyImport({ companyId, companyName, properties = []
     return { utilities, hoas, loan, insurance, taxes, recurring };
   }
 
+  // Sub-records for a property that ALREADY exists.
+  //
+  // commit_property_wizard only runs on the create path, so until now
+  // every utility, HOA, loan, insurance and tax row in an edit import was
+  // parsed, validated, counted in the preview -- and then dropped. The
+  // preview even said "this row will be added to it", which was untrue.
+  //
+  // Not reusing the RPC in edit mode, tempting as it is: there it
+  // ARCHIVES every utility and HOA row for the property before inserting
+  // whatever the payload carries. A sheet that lists a loan but no
+  // utilities would silently wipe the utilities. Writing directly means
+  // a row absent from the sheet is left alone.
+  //
+  // "Replace what's there" is matched on the natural key -- provider for
+  // a utility, name for an HOA, the property itself for the one-per-
+  // property tables -- so re-uploading a corrected sheet updates rather
+  // than duplicating.
+  async function writeSubRecordsForExisting(address, propertyId, recs) {
+    const idNum = Number(propertyId);
+    const failures = [];
+
+    async function put(table, match, row) {
+      const { data: found } = await supabase.from(table).select("id")
+        .eq("company_id", companyId).eq("property", address)
+        .match(match).is("archived_at", null).limit(1);
+      const hit = (found || [])[0];
+      const { error } = hit
+        ? await supabase.from(table).update(row).eq("id", hit.id).eq("company_id", companyId)
+        : await supabase.from(table).insert([{ ...row, company_id: companyId, property: address, ...match }]);
+      if (error) failures.push(`${table}: ${error.message}`);
+    }
+
+    for (const u of recs.utilities) {
+      await put("utilities", { provider: u.provider }, {
+        property_id: Number.isFinite(idNum) ? idNum : null,
+        amount: u.amount, due: u.due_date || null,   // the app sorts on `due`, not due_date
+        responsibility: u.responsibility, status: "pending", website: u.website,
+        username_encrypted: u.username_encrypted, password_encrypted: u.password_encrypted,
+        encryption_iv: u.encryption_iv, encryption_iv_username: u.encryption_iv_username,
+        encryption_salt: u.encryption_salt,
+      });
+    }
+    for (const h of recs.hoas) {
+      await put("hoa_payments", { hoa_name: h.hoa_name }, {
+        property_id: Number.isFinite(idNum) ? idNum : null,
+        amount: h.amount, frequency: h.frequency, due_date: h.due_date, notes: h.notes,
+        website: h.website, username_encrypted: h.username_encrypted,
+        password_encrypted: h.password_encrypted, encryption_iv: h.encryption_iv,
+        encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt,
+      });
+    }
+    // property_loans.property_id and property_insurance.property_id are
+    // TEXT; property_taxes.property_id is INTEGER. Getting that wrong is
+    // a silent 400 from PostgREST.
+    if (recs.loan) {
+      const { property: _p, ...rest } = recs.loan;
+      await put("property_loans", { lender_name: recs.loan.lender_name },
+        { ...rest, property_id: propertyId == null ? null : String(propertyId) });
+    }
+    if (recs.insurance) {
+      const { property: _p, ...rest } = recs.insurance;
+      await put("property_insurance", { provider: recs.insurance.provider },
+        { ...rest, property_id: propertyId == null ? null : String(propertyId) });
+    }
+    if (recs.taxes) {
+      await put("property_taxes", {}, {
+        ...recs.taxes, property_id: Number.isFinite(idNum) ? idNum : null,
+      });
+    }
+    return failures;
+  }
+
   async function handleCommit() {
     if (!guardSubmit("propImportCommit")) return;
     setBusy(true);
-    const done = { created: 0, updated: 0, renamed: 0, tenantsCreated: 0, tenantsUpdated: 0, archived: 0, failed: [] };
+    const done = { created: 0, updated: 0, renamed: 0, tenantsCreated: 0, tenantsUpdated: 0,
+                   archived: 0, subRecords: 0, recurringSkipped: 0, failed: [] };
     const total = plan.creates.length + plan.updates.length + plan.tenantCreates.length + plan.tenantUpdates.length;
     let n = 0;
     const tick = (label) => { n += 1; setProgress({ done: n, total, label }); };
@@ -296,6 +369,22 @@ export default function PropertyImport({ companyId, companyName, properties = []
           if (error) { done.failed.push({ what: u.newAddress, why: error.message }); continue; }
         }
         done.updated += 1;
+
+        // Utilities, HOA, loan, insurance and tax rows for a property
+        // that already exists. These used to be silently discarded.
+        const recs = await subRecordsFor(u.newAddress);
+        const n = recs.utilities.length + recs.hoas.length +
+                  (recs.loan ? 1 : 0) + (recs.insurance ? 1 : 0) + (recs.taxes ? 1 : 0);
+        if (n) {
+          const subFails = await writeSubRecordsForExisting(u.newAddress, u.id, recs);
+          subFails.forEach(why => done.failed.push({ what: u.newAddress, why }));
+          done.subRecords += n - subFails.length;
+        }
+        // Recurring rent is deliberately not written here. It posts money
+        // and needs its debit and credit accounts resolved, which the
+        // wizard's RPC does and this path cannot do safely. Counted so
+        // the summary can say so rather than dropping it in silence.
+        if (recs.recurring) done.recurringSkipped += 1;
       }
 
       // --- tenants -----------------------------------------------------
