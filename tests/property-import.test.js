@@ -145,14 +145,29 @@ assert("no duplicate column keys",
   const plan = buildImportPlan({ ...edited, existingProperties, existingTenants });
   assert("filling in a city produces exactly one rename", plan.summary.addressChanges === 1,
     `${plan.summary.addressChanges}`);
+  // `from` is whatever the property is called right now, which changes
+  // as real imports fill addresses in; only `to` is predictable.
+  const expectedTo = computeAddress({ ...target, city: "District Heights", state: "MD", zip: "20747" });
   assert("the rename shows old and new", plan.renames[0] &&
-    plan.renames[0].from === "7200 Bogley" &&
-    plan.renames[0].to === "7200 Bogley, District Heights, MD 20747",
-    plan.renames[0] ? `${plan.renames[0].from} -> ${plan.renames[0].to}` : "none");
+    plan.renames[0].from !== plan.renames[0].to &&
+    plan.renames[0].to === expectedTo,
+    plan.renames[0] ? `${plan.renames[0].from} -> ${plan.renames[0].to} (expected to: ${expectedTo})` : "none");
   assert("still creates nothing", plan.summary.propertiesToCreate === 0);
 
   // ---- adversarial: the ways this could silently corrupt data --------
   const mangle = (fn) => { const c = JSON.parse(JSON.stringify(back)); fn(c); return buildImportPlan({ ...c, existingProperties, existingTenants }); };
+
+  // These checks used to hardcode a bare street ("7200 Bogley") as the
+  // address that collides. That only works while the property has no
+  // city or ZIP -- and the whole point of this importer is filling those
+  // in, so the first real import moved the data on and five assertions
+  // started failing on data, not code. Copy the row's ACTUAL components
+  // instead, so a duplicate is a duplicate whatever the address is now.
+  const compsOf = (street) => {
+    const r = back.properties.find(x => x.address_line_1 === street) || {};
+    return { address_line_1: r.address_line_1, address_line_2: r.address_line_2 || "",
+             city: r.city || "", state: r.state || "", zip: r.zip || "" };
+  };
 
   assert("an edited Property ID is rejected, not applied to the wrong property",
     mangle(c => { c.properties[0].id = "999999"; }).errors.some(e => /No property with id/.test(e.message)));
@@ -160,7 +175,7 @@ assert("no duplicate column keys",
   // When the conflicting property is present in the file (the normal case,
   // since the template is pre-filled) the duplicate-row check fires first.
   assert("a new row duplicating an address already in the file is rejected",
-    mangle(c => { c.properties.push({ _row: 999, id: "", address_line_1: "7200 Bogley" }); })
+    mangle(c => { c.properties.push({ _row: 999, id: "", ...compsOf("7200 Bogley") }); })
       .errors.some(e => /Same address as row/.test(e.message)));
 
   // With that row deleted from the sheet, the check against the database
@@ -168,7 +183,7 @@ assert("no duplicate column keys",
   // smuggle a duplicate past validation.
   assert("a new row duplicating an address NOT in the file is still rejected",
     mangle(c => { c.properties = c.properties.filter(r => r.address_line_1 !== "7200 Bogley");
-                  c.properties.push({ _row: 999, id: "", address_line_1: "7200 Bogley" }); })
+                  c.properties.push({ _row: 999, id: "", ...compsOf("7200 Bogley") }); })
       .errors.some(e => /already exists/.test(e.message)));
 
   assert("two rows resolving to the same address are rejected",
@@ -178,13 +193,14 @@ assert("no duplicate column keys",
 
   assert("renaming onto an address already in the file is rejected",
     mangle(c => { const a = c.properties.find(r => r.address_line_1 === "7200 Bogley");
-                  a.address_line_1 = "35 Watkins"; })
+                  Object.assign(a, compsOf("35 Watkins")); })
       .errors.some(e => /Same address as row/.test(e.message)));
 
   assert("renaming onto an address NOT in the file is still rejected",
-    mangle(c => { c.properties = c.properties.filter(r => r.address_line_1 !== "35 Watkins");
+    mangle(c => { const w = compsOf("35 Watkins");
+                  c.properties = c.properties.filter(r => r.address_line_1 !== "35 Watkins");
                   const a = c.properties.find(r => r.address_line_1 === "7200 Bogley");
-                  a.address_line_1 = "35 Watkins"; })
+                  Object.assign(a, w); })
       .errors.some(e => /already belongs to property/.test(e.message)));
 
   // A row simply left out of the sheet must not be treated as a deletion.

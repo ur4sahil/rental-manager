@@ -62,7 +62,8 @@
     "test:qbacctlist": "node qb-account-list.test.js",
     "test:propsheets": "node property-import-sheets.test.js",
     "test:code": "npm run test:undef && npm run test:routes && npm run test:pgrest && npm run test:columns && npm run test:errcodes && npm run test:qbimport && npm run test:qbacctlist && npm run test:palette && npm run test:shortcuts && npm run test:propimport && npm run test:propsheets && npm run test:refactor && npm run test:adversarial",
-    "test:db": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:classint && npm run test:financial && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls"
+    "test:db": "npm run test:enums && npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:classint && npm run test:financial && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls",
+    "test:enums": "node import-enum-values.test.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

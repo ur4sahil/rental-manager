@@ -150,8 +150,23 @@ function fill(ws, rowIdx, values) {
   const msgs = badPlan.errors.map(e => e.message).join(" | ");
   assert("a utility pointing at a property that does not exist is caught",
     /no property called/i.test(msgs), msgs);
-  assert("a second loan for the same property is caught",
-    /one row per property/i.test(msgs), msgs);
+  // A property genuinely can carry two loans -- property_loans has no
+  // unique key on it, and a first and second mortgage are ordinary. The
+  // Loans sheet used to reject the second row; it no longer does.
+  assert("a second loan for the same property is allowed — two mortgages are normal",
+    !/Loans takes one row per property/i.test(msgs), msgs);
+  // The genuinely one-per-property sheets still reject a duplicate.
+  fill(badWb.getWorksheet("Insurance"), 3, { Property: "1 Real Rd, Reston, VA 20190", Provider: "Y" });
+  const dupParsed = await pi.parseWorkbook(ExcelJS, await badWb.xlsx.writeBuffer());
+  const dupPlan = pi.buildImportPlan({
+    properties: dupParsed.properties, tenants: dupParsed.tenants,
+    existingProperties: [], existingTenants: [],
+    utilities: dupParsed.utilities, hoas: dupParsed.hoas, loan: dupParsed.loan,
+    insurance: dupParsed.insurance, taxes: dupParsed.taxes, recurring: dupParsed.recurring,
+  });
+  assert("a second insurance policy for the same property is still caught",
+    /Insurance takes one row per property/i.test(dupPlan.errors.map(e => e.message).join(" | ")),
+    dupPlan.errors.map(e => e.message).join(" | "));
   assert("a username with no password is flagged as a pendency, not silently stored",
     badPlan.warnings.some(w => /no password/i.test(w.message)),
     JSON.stringify(badPlan.warnings.map(w => w.message)));

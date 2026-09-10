@@ -41,7 +41,10 @@ export const UTILITY_COLUMNS = [
 
 export const HOA_COLUMNS = [
   { key: "property",  header: "Property",  width: 30, required: true, list: "properties" },
-  { key: "hoa_name",  header: "HOA Name",  width: 24, required: true },
+  // Not required. 19 rows of one real import carried a property, an
+  // amount, a frequency, a due date and a login, and were thrown away
+  // for want of a label. Defaulted from the property instead.
+  { key: "hoa_name",  header: "HOA Name",  width: 24 },
   { key: "amount",    header: "Amount",    width: 12, numeric: true },
   { key: "frequency", header: "Frequency", width: 12, list: "hoaFrequency" },
   { key: "due_date",  header: "Due Date",  width: 12 },
@@ -83,7 +86,7 @@ export const TAX_COLUMNS = [
   { key: "jurisdiction",          header: "Jurisdiction",     width: 16 },
   { key: "parcel_id",             header: "Parcel ID",        width: 16 },
   { key: "tax_year",              header: "Tax Year",         width: 10, numeric: true, integer: true },
-  { key: "annual_tax_amount",     header: "Annual Amount",    width: 14, numeric: true, required: true },
+  { key: "annual_tax_amount",     header: "Annual Amount",    width: 14, numeric: true },
   { key: "assessed_value",        header: "Assessed Value",   width: 15, numeric: true },
   { key: "billing_frequency",     header: "Billed",           width: 12, list: "taxFrequency" },
   { key: "next_due_date",         header: "Next Due",         width: 12, date: true },
@@ -106,7 +109,7 @@ export const RECURRING_COLUMNS = [
 export const EXTRA_SHEETS = [
   { sheet: SHEET_UTILITIES, columns: UTILITY_COLUMNS,   key: "utilities", many: true },
   { sheet: SHEET_HOA,       columns: HOA_COLUMNS,       key: "hoas",      many: true },
-  { sheet: SHEET_LOANS,     columns: LOAN_COLUMNS,      key: "loan",      many: false },
+  { sheet: SHEET_LOANS,     columns: LOAN_COLUMNS,      key: "loan",      many: true },
   { sheet: SHEET_INSURANCE, columns: INSURANCE_COLUMNS, key: "insurance", many: false },
   { sheet: SHEET_TAXES,     columns: TAX_COLUMNS,       key: "taxes",     many: false },
   { sheet: SHEET_RECURRING, columns: RECURRING_COLUMNS, key: "recurring", many: false },

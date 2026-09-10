@@ -168,6 +168,32 @@ export default function PropertyImport({ companyId, companyName, properties = []
     };
   }
 
+  // The spreadsheet shows friendly labels; the database stores lowercase
+  // tokens. property_taxes.billing_frequency is a CHECK constraint --
+  // 'annual', 'semi_annual', 'quarterly', 'monthly' -- so "Annually"
+  // was rejected outright and every one of a 40-row tax sheet was lost.
+  // The rest have no constraint but do have a house style, and writing
+  // "Monthly" beside "monthly" quietly splits the data in two.
+  const ENUMS = {
+    responsibility:    { owner: "owner", tenant: "tenant" },
+    hoaFrequency:      { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+    premiumFrequency:  { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+    loanType:          { mortgage: "mortgage", heloc: "heloc", private: "private", commercial: "commercial" },
+    taxFrequency:      { annually: "annual", annual: "annual", "semi-annually": "semi_annual",
+                         semi_annual: "semi_annual", quarterly: "quarterly", monthly: "monthly" },
+  };
+  const enumVal = (kind, v) => {
+    const raw = cellString(v).trim();
+    if (!raw) return null;
+    const hit = ENUMS[kind][raw.toLowerCase()];
+    // Unrecognised values are passed through lowercased rather than
+    // dropped: better a value someone can see and correct than a silent
+    // null. The tax one is the exception -- a bad value there is a hard
+    // constraint failure, so fall back to null and let it be blank.
+    if (hit) return hit;
+    return kind === "taxFrequency" ? null : raw.toLowerCase();
+  };
+
   // Rows for one property, in the shape commit_property_wizard expects.
   async function subRecordsFor(address) {
     const ex = plan.extras || {};
@@ -177,7 +203,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     const utilities = [];
     for (const u of mine(ex.utilities)) {
       utilities.push({
-        provider: cellString(u.provider), responsibility: cellString(u.responsibility) || null,
+        provider: cellString(u.provider), responsibility: enumVal("responsibility", u.responsibility),
         amount: u.amount ?? null, due_date: u.due_date || null,
         website: cellString(u.website) || null, ...(await encryptCreds(u)),
       });
@@ -186,26 +212,35 @@ export default function PropertyImport({ companyId, companyName, properties = []
     for (const h of mine(ex.hoas)) {
       hoas.push({
         hoa_name: cellString(h.hoa_name), amount: h.amount ?? null,
-        frequency: cellString(h.frequency) || null, due_date: cellString(h.due_date) || null,
+        frequency: enumVal("hoaFrequency", h.frequency), due_date: cellString(h.due_date) || null,
         notes: cellString(h.notes) || null,
         website: cellString(h.website) || null, ...(await encryptCreds(h)),
       });
     }
-    const l = mine(ex.loan)[0];
-    const loan = !l ? null : {
-      lender_name: cellString(l.lender_name), loan_type: cellString(l.loan_type) || null,
+    // A property can carry more than one loan -- property_loans has no
+    // unique key on it. The RPC's payload takes a single loan, so the
+    // create path still sends the first; the update path writes them all.
+    const loanRows = mine(ex.loan).map(l => ({
+      lender_name: cellString(l.lender_name), loan_type: enumVal("loanType", l.loan_type),
+      status: "active",
       account_number: cellString(l.account_number) || null,
       original_amount: l.original_amount ?? null, current_balance: l.current_balance ?? null,
       interest_rate: l.interest_rate ?? null, monthly_payment: l.monthly_payment ?? null,
       escrow_included: yes(l.escrow_included), escrow_amount: l.escrow_amount ?? null,
       loan_start_date: l.loan_start_date || null, maturity_date: l.maturity_date || null,
-      website: cellString(l.website) || null, ...(await encryptCreds(l)),
-    };
+      website: cellString(l.website) || null, _row: l._row,
+    }));
+    for (const lr of loanRows) {
+      const src = mine(ex.loan).find(x => x._row === lr._row);
+      Object.assign(lr, await encryptCreds(src));
+      delete lr._row;
+    }
+    const loan = loanRows[0] || null;
     const i = mine(ex.insurance)[0];
     const insurance = !i ? null : {
       provider: cellString(i.provider), policy_number: cellString(i.policy_number) || null,
       coverage_amount: i.coverage_amount ?? null, premium_amount: i.premium_amount ?? null,
-      premium_frequency: cellString(i.premium_frequency) || null,
+      premium_frequency: enumVal("premiumFrequency", i.premium_frequency),
       expiration_date: i.expiration_date || null, notes: cellString(i.notes) || null,
       website: cellString(i.website) || null, ...(await encryptCreds(i)),
     };
@@ -214,7 +249,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       county: cellString(tx.county) || null, jurisdiction: cellString(tx.jurisdiction) || null,
       parcel_id: cellString(tx.parcel_id) || null, tax_year: tx.tax_year ?? null,
       annual_tax_amount: tx.annual_tax_amount ?? null, assessed_value: tx.assessed_value ?? null,
-      billing_frequency: cellString(tx.billing_frequency) || null,
+      billing_frequency: enumVal("taxFrequency", tx.billing_frequency),
       next_due_date: tx.next_due_date || null,
       escrow_paid_by_lender: yes(tx.escrow_paid_by_lender),
       records_url: cellString(tx.records_url) || null,
@@ -225,7 +260,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       frequency: cellString(rc.frequency) || "Monthly",
       day_of_month: rc.day_of_month ?? null, start_date: rc.start_date || null,
     };
-    return { utilities, hoas, loan, insurance, taxes, recurring };
+    return { utilities, hoas, loan, loans: loanRows, insurance, taxes, recurring };
   }
 
   // Sub-records for a property that ALREADY exists.
@@ -282,9 +317,9 @@ export default function PropertyImport({ companyId, companyName, properties = []
     // property_loans.property_id and property_insurance.property_id are
     // TEXT; property_taxes.property_id is INTEGER. Getting that wrong is
     // a silent 400 from PostgREST.
-    if (recs.loan) {
-      const { property: _p, ...rest } = recs.loan;
-      await put("property_loans", { lender_name: recs.loan.lender_name },
+    for (const ln of (recs.loans || [])) {
+      const { property: _p, ...rest } = ln;
+      await put("property_loans", { lender_name: ln.lender_name },
         { ...rest, property_id: propertyId == null ? null : String(propertyId) });
     }
     if (recs.insurance) {
@@ -293,9 +328,23 @@ export default function PropertyImport({ companyId, companyName, properties = []
         { ...rest, property_id: propertyId == null ? null : String(propertyId) });
     }
     if (recs.taxes) {
-      await put("property_taxes", {}, {
-        ...recs.taxes, property_id: Number.isFinite(idNum) ? idNum : null,
-      });
+      // annual_tax_amount is NOT NULL. Without one, the row can only
+      // update a tax record that already exists -- so look first, and
+      // skip rather than fail if there is nothing to update.
+      const noAmount = recs.taxes.annual_tax_amount === null ||
+                       recs.taxes.annual_tax_amount === undefined ||
+                       recs.taxes.annual_tax_amount === "";
+      let proceed = true;
+      if (noAmount) {
+        const { data: existingTax } = await supabase.from("property_taxes").select("id")
+          .eq("company_id", companyId).eq("property", address).is("archived_at", null).limit(1);
+        proceed = (existingTax || []).length > 0;
+      }
+      if (proceed) {
+        const row = { ...recs.taxes, property_id: Number.isFinite(idNum) ? idNum : null };
+        if (noAmount) delete row.annual_tax_amount;   // leave what is on file
+        await put("property_taxes", {}, row);
+      }
     }
     return failures;
   }
@@ -304,7 +353,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     if (!guardSubmit("propImportCommit")) return;
     setBusy(true);
     const done = { created: 0, updated: 0, renamed: 0, tenantsCreated: 0, tenantsUpdated: 0,
-                   archived: 0, subRecords: 0, recurringSkipped: 0, failed: [] };
+                   archived: 0, subRecords: 0, recurringSkipped: 0, markedOccupied: 0, failed: [] };
     const total = plan.creates.length + plan.updates.length + plan.tenantCreates.length + plan.tenantUpdates.length;
     let n = 0;
     const tick = (label) => { n += 1; setProgress({ done: n, total, label }); };
@@ -374,7 +423,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         // that already exists. These used to be silently discarded.
         const recs = await subRecordsFor(u.newAddress);
         const n = recs.utilities.length + recs.hoas.length +
-                  (recs.loan ? 1 : 0) + (recs.insurance ? 1 : 0) + (recs.taxes ? 1 : 0);
+                  (recs.loans || []).length + (recs.insurance ? 1 : 0) + (recs.taxes ? 1 : 0);
         if (n) {
           const subFails = await writeSubRecordsForExisting(u.newAddress, u.id, recs);
           subFails.forEach(why => done.failed.push({ what: u.newAddress, why }));
@@ -434,6 +483,30 @@ export default function PropertyImport({ companyId, companyName, properties = []
         done.tenantsCreated += 1;
       }
 
+      // --- occupancy ------------------------------------------------------
+      // The Status column comes back from the sheet pre-filled with what
+      // the property is today, so an import that adds tenants left every
+      // property reading "Vacant" -- 12 properties with a current tenant,
+      // 41 marked vacant, on one real import. Reconcile from the tenants
+      // that actually exist, which is what the wizard does.
+      try {
+        const { data: liveTenants } = await supabase.from("tenants")
+          .select("property, lease_status").eq("company_id", companyId)
+          .is("archived_at", null).eq("lease_status", "current");
+        const occupied = new Set((liveTenants || []).map(t => t.property).filter(Boolean));
+        const touched = [...plan.updates, ...plan.creates].map(x => x.newAddress);
+        const toOccupy = touched.filter(a => occupied.has(a));
+        for (let i = 0; i < toOccupy.length; i += 50) {
+          const slice = toOccupy.slice(i, i + 50);
+          const { error } = await supabase.from("properties").update({ status: "occupied" })
+            .eq("company_id", companyId).in("address", slice).neq("status", "occupied");
+          if (error) { done.failed.push({ what: "occupancy", why: error.message }); break; }
+        }
+        done.markedOccupied = toOccupy.length;
+      } catch (e) {
+        pmError("PM-2012", { raw: e, context: "reconciling property occupancy after import", silent: true });
+      }
+
       // --- pendencies ---------------------------------------------------
       // Gaps become setup rows the wizard already knows how to surface in
       // Tasks & Approvals, rather than a new parallel mechanism.
@@ -442,8 +515,14 @@ export default function PropertyImport({ companyId, companyName, properties = []
         const wanted = plan.updates
           .filter(u => pend.some(p => p.row === u.row))
           .map(u => ({
-            company_id: companyId, property_id: Number(u.id), property_address: u.newAddress,
-            current_step: "property_details", completed_steps: ["property_details"],
+            // current_step is an INTEGER column and property_id is TEXT.
+            // This sent the string "property_details" into the integer and
+            // a number into the text, so every pendency insert failed with
+            // 22P02 and the batch was lost. One real import produced 26
+            // gaps and created zero tasks -- the screen said "imported"
+            // and Tasks & Approvals stayed empty.
+            company_id: companyId, property_id: String(u.id), property_address: u.newAddress,
+            current_step: 1, completed_steps: ["property_details"],
             status: "in_progress", wizard_data: { source: "bulk_import" },
           }));
         // property_setup_wizard has no unique index on

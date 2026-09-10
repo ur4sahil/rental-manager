@@ -636,13 +636,48 @@ export function buildImportPlan({
   // vanishes without trace. Matching forgives case and spacing and
   // nothing else -- a silent near-miss is worse than a named one.
   const norm = (v) => cellString(v).trim().toLowerCase().replace(/\s+/g, " ");
+  // Just the street line: "353 Gatewater Ct" out of
+  // "353 Gatewater Ct, Glen Burnie, MD 21061". People filling in the
+  // Utilities or HOA sheet write the short form, and matching only on
+  // the full address rejected every row whose property already carried
+  // a city and ZIP -- 9 errors on one real import, all of them
+  // properties that existed.
+  const street = (v) => norm(String(cellString(v)).split(",")[0]);
   const addressTargets = new Map();
-  creates.forEach(c => addressTargets.set(norm(c.newAddress), { address: c.newAddress, creating: true }));
-  updates.forEach(u => addressTargets.set(norm(u.newAddress), { address: u.newAddress, id: u.id }));
+  const addStreet = (map, key, val) => { if (key && !map.has(key)) map.set(key, val); };
+  const streetTargets = new Map();
+
+  creates.forEach(c => {
+    addressTargets.set(norm(c.newAddress), { address: c.newAddress, creating: true });
+    addStreet(streetTargets, street(c.newAddress), { address: c.newAddress, creating: true });
+  });
+  updates.forEach(u => {
+    addressTargets.set(norm(u.newAddress), { address: u.newAddress, id: u.id });
+    addStreet(streetTargets, street(u.newAddress), { address: u.newAddress, id: u.id });
+  });
   existingProperties.forEach(p => {
     const k = norm(p.address);
     if (!addressTargets.has(k)) addressTargets.set(k, { address: p.address, id: String(p.id) });
+    addStreet(streetTargets, street(p.address), { address: p.address, id: String(p.id) });
+    // The property may be mid-rename in this very import, in which case
+    // its OLD street line should still resolve.
+    addStreet(streetTargets, street(p.address_line_1), { address: p.address, id: String(p.id) });
   });
+  // Exact address wins; street line is the fallback. A street line that
+  // is ambiguous across two properties is not used at all -- guessing
+  // which one the user meant is worse than saying so.
+  const streetCounts = new Map();
+  const bump = (k) => streetCounts.set(k, (streetCounts.get(k) || 0) + 1);
+  creates.forEach(c => bump(street(c.newAddress)));
+  updates.forEach(u => bump(street(u.newAddress)));
+  existingProperties.forEach(p => { if (!updates.some(u => String(u.id) === String(p.id))) bump(street(p.address)); });
+  const resolveTarget = (v) => {
+    const exact = addressTargets.get(norm(v));
+    if (exact) return exact;
+    const k = street(v);
+    if (streetCounts.get(k) > 1) return null;   // ambiguous: refuse to guess
+    return streetTargets.get(k) || null;
+  };
 
   const attached = { utilities: [], hoas: [], loan: [], insurance: [], taxes: [], recurring: [] };
   const singleSeen = new Map();
@@ -651,7 +686,7 @@ export function buildImportPlan({
   for (const { sheet, key, many, columns } of EXTRA_SHEETS) {
     for (const r of (bySheet[key] || [])) {
       const where = `${sheet} row ${r._row}`;
-      const target = addressTargets.get(norm(r.property));
+      const target = resolveTarget(r.property);
       if (!target) {
         errors.push({ sheet, row: r._row, field: "Property",
           message: `${where}: no property called "${cellString(r.property)}". It must match a property on the Properties sheet, or one you already have.` });
@@ -682,7 +717,22 @@ export function buildImportPlan({
             message: `${where}: ${u ? "username with no password" : "password with no username"} — the login will not be usable.` });
         }
       }
-      attached[key].push({ ...r, _address: target.address, _propertyId: target.id || null,
+      // An HOA with no name is named after its property, so the row
+      // survives and still has a stable key to match on next time.
+      const row = { ...r };
+      if (key === "hoas" && !cellString(row.hoa_name)) {
+        row.hoa_name = `${String(target.address).split(",")[0].trim()} HOA`;
+        warnings.push({ sheet, row: r._row, kind: "pendency",
+          message: `${where}: no HOA name given — saved as "${row.hoa_name}". Rename it on the property if you like.` });
+      }
+      // property_taxes.annual_tax_amount is NOT NULL, so a row without
+      // one can only update a tax record that already exists. Say so
+      // rather than rejecting the county and parcel id outright.
+      if (key === "taxes" && !cellString(row.annual_tax_amount)) {
+        warnings.push({ sheet, row: r._row, kind: "pendency",
+          message: `${where}: no annual amount — the other details are saved only if this property already has a tax record.` });
+      }
+      attached[key].push({ ...row, _address: target.address, _propertyId: target.id || null,
                            _creating: !!target.creating });
     }
   }

@@ -144,7 +144,17 @@ function testFileStructure() {
   // which is precisely the concentration this bound exists to catch.
   // After extraction the growth is +163 / +124 / +13 / +1 across four
   // files plus a 120-line data-only module. Spread, not concentrated.
-  assert(totalLines <= 39500, `Total src lines <= 39500 (${totalLines})`);
+  // Raised to 39700 on 2026-09-09. Net +52 for the import fixes found by
+  // running a real filled-in workbook through it: matching a sub-sheet
+  // row to its property by street line as well as full address, an HOA
+  // name defaulted from the property rather than rejecting the row, tax
+  // rows that carry no amount, more than one loan per property, and
+  // normalising the sheet's display labels to the values the database
+  // actually accepts -- property_taxes.billing_frequency is a CHECK
+  // constraint and "Annually" lost a whole 40-row sheet.
+  //
+  // +147 / +105 / +3 across three files. Spread, not concentrated.
+  assert(totalLines <= 39700, `Total src lines <= 39700 (${totalLines})`);
 }
 
 // ───────────────────────────────────────────
