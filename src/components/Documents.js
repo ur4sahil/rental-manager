@@ -760,6 +760,57 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Prefill logic ----
+  //
+  // One catalogue drives both the field editor's picker and the lookup
+  // below, so a source can never be offered that cannot be filled, or
+  // filled without being offerable. It used to be a free-text box: the
+  // ~20 keys worked, but you had to already know to type "tenant.name",
+  // so in practice nothing beyond today's date ever got wired up.
+  const PREFILL_SOURCES = [
+    ["Property", [
+      ["property.address", "Full address"], ["property.street", "Street line"],
+      ["property.unit", "Unit"], ["property.city", "City"], ["property.state", "State"],
+      ["property.zip", "ZIP"], ["property.county", "County"], ["property.type", "Type"],
+      ["property.bedrooms", "Bedrooms"], ["property.bathrooms", "Bathrooms"],
+      ["property.sqft", "Square feet"], ["property.rent", "Market rent"],
+    ]],
+    ["Tenant", [
+      ["tenant.name", "Full name"], ["tenant.first_name", "First name"],
+      ["tenant.last_name", "Last name"], ["tenant.email", "Email"],
+      ["tenant.phone", "Phone"], ["tenant.balance", "Balance due"],
+      ["tenant.security_deposit", "Security deposit"], ["tenant.status", "Lease status"],
+      ["tenant.move_in", "Move-in date"], ["tenant.move_out", "Move-out date"],
+      ["tenant.voucher_number", "Voucher number"],
+      ["tenant.tenant_portion", "Tenant portion"], ["tenant.voucher_portion", "Voucher portion"],
+    ]],
+    ["Lease", [
+      ["lease.start_date", "Start date"], ["lease.end_date", "End date"],
+      ["lease.rent_amount", "Rent"], ["lease.security_deposit", "Security deposit"],
+    ]],
+    ["Owner", [
+      ["owner.name", "Name"], ["owner.email", "Email"], ["owner.phone", "Phone"],
+    ]],
+    ["Loan", [
+      ["loan.lender", "Lender"], ["loan.account_number", "Account number"],
+      ["loan.balance", "Current balance"], ["loan.monthly_payment", "Monthly payment"],
+    ]],
+    ["Insurance", [
+      ["insurance.provider", "Provider"], ["insurance.policy_number", "Policy number"],
+      ["insurance.coverage", "Coverage amount"], ["insurance.expires", "Expiry date"],
+    ]],
+    ["Property tax", [
+      ["tax.county", "County"], ["tax.parcel_id", "Parcel ID"],
+      ["tax.annual_amount", "Annual amount"],
+    ]],
+    ["HOA", [
+      ["hoa.name", "HOA name"], ["hoa.amount", "Dues"], ["hoa.frequency", "Frequency"],
+    ]],
+    ["Context", [
+      ["today", "Today's date"], ["user.name", "Your name"], ["user.email", "Your email"],
+      ["company.name", "Company name"],
+    ]],
+  ];
+
   async function loadPrefillData(propertyAddress) {
   const result = {};
   // Property
@@ -771,6 +822,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   result["property.bedrooms"] = prop.bedrooms || "";
   result["property.bathrooms"] = prop.bathrooms || "";
   result["property.rent"] = prop.rent || "";
+  result["property.street"] = prop.address_line_1 || "";
+  result["property.city"] = prop.city || "";
+  result["property.state"] = prop.state || "";
+  result["property.zip"] = prop.zip || "";
+  result["property.county"] = prop.county || "";
+  result["property.sqft"] = prop.sqft || "";
+  // Owner comes off the property, so it is only meaningful here.
+  if (prop.owner_name) {
+    const { data: own } = await supabase.from("owners").select("*")
+      .eq("company_id", companyId).eq("name", prop.owner_name)
+      .is("archived_at", null).maybeSingle();
+    result["owner.name"] = prop.owner_name;
+    result["owner.email"] = own?.email || "";
+    result["owner.phone"] = own?.phone || "";
+  }
   }
   // Tenant
   const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", propertyAddress).is("archived_at", null).maybeSingle();
@@ -780,7 +846,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   result["tenant.phone"] = tenant.phone || "";
   result["tenant.balance"] = formatCurrency(tenant.balance || 0);
   result["tenant.security_deposit"] = formatCurrency(tenant.security_deposit || 0);
-  result["tenant.status"] = tenant.status || "";
+  result["tenant.status"] = tenant.lease_status || tenant.status || "";
+  result["tenant.first_name"] = tenant.first_name || "";
+  result["tenant.last_name"] = tenant.last_name || "";
+  result["tenant.move_in"] = tenant.move_in || tenant.lease_start || "";
+  result["tenant.move_out"] = tenant.move_out || tenant.lease_end_date || "";
+  result["tenant.voucher_number"] = tenant.voucher_number || "";
+  result["tenant.tenant_portion"] = tenant.tenant_portion ? formatCurrency(tenant.tenant_portion) : "";
+  result["tenant.voucher_portion"] = tenant.voucher_portion ? formatCurrency(tenant.voucher_portion) : "";
   }
   // Lease
   const { data: lease } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("property", propertyAddress).eq("status", "active").maybeSingle();
@@ -790,6 +863,46 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   result["lease.rent_amount"] = formatCurrency(lease.rent_amount || 0);
   result["lease.security_deposit"] = formatCurrency(lease.security_deposit || 0);
   }
+  // Loan, insurance, property tax and HOA — the things a payoff letter,
+  // a certificate request or a court filing actually needs, and which
+  // nothing could reach before.
+  const [ln, ins, tax, hoa] = await Promise.all([
+    supabase.from("property_loans").select("*").eq("company_id", companyId)
+      .eq("property", propertyAddress).is("archived_at", null).limit(1),
+    supabase.from("property_insurance").select("*").eq("company_id", companyId)
+      .eq("property", propertyAddress).is("archived_at", null).limit(1),
+    supabase.from("property_taxes").select("*").eq("company_id", companyId)
+      .eq("property", propertyAddress).is("archived_at", null).limit(1),
+    supabase.from("hoa_payments").select("*").eq("company_id", companyId)
+      .eq("property", propertyAddress).is("archived_at", null).limit(1),
+  ]);
+  const l0 = (ln.data || [])[0];
+  if (l0) {
+    result["loan.lender"] = l0.lender_name || "";
+    result["loan.account_number"] = l0.account_number || "";
+    result["loan.balance"] = l0.current_balance ? formatCurrency(l0.current_balance) : "";
+    result["loan.monthly_payment"] = l0.monthly_payment ? formatCurrency(l0.monthly_payment) : "";
+  }
+  const i0 = (ins.data || [])[0];
+  if (i0) {
+    result["insurance.provider"] = i0.provider || "";
+    result["insurance.policy_number"] = i0.policy_number || "";
+    result["insurance.coverage"] = i0.coverage_amount ? formatCurrency(i0.coverage_amount) : "";
+    result["insurance.expires"] = i0.expiration_date || "";
+  }
+  const t0 = (tax.data || [])[0];
+  if (t0) {
+    result["tax.county"] = t0.county || "";
+    result["tax.parcel_id"] = t0.parcel_id || "";
+    result["tax.annual_amount"] = t0.annual_tax_amount ? formatCurrency(t0.annual_tax_amount) : "";
+  }
+  const h0 = (hoa.data || [])[0];
+  if (h0) {
+    result["hoa.name"] = h0.hoa_name || "";
+    result["hoa.amount"] = h0.amount ? formatCurrency(h0.amount) : "";
+    result["hoa.frequency"] = h0.frequency || "";
+  }
+
   // Context
   result["today"] = formatLocalDate(new Date());
   result["user.name"] = userProfile?.name || "";
@@ -1516,7 +1629,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
   </div>
   <div className="grid grid-cols-3 gap-2">
-  <Input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="text-xs" />
+  <Select value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} className="text-xs" aria-label="Fill automatically from">
+  <option value="">Fill manually</option>
+  {PREFILL_SOURCES.map(([group, opts]) => (
+    <optgroup key={group} label={group}>
+      {opts.map(([val, lab]) => <option key={val} value={val}>{lab}</option>)}
+    </optgroup>
+  ))}
+  </Select>
   <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1 text-xs"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>

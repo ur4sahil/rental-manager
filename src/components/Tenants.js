@@ -121,6 +121,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [reviewBusy, setReviewBusy] = useState(null);
+  // When editing was launched from the tenant side panel, remember the
+  // tenant so saving can hand back to that panel instead of dumping the
+  // user on the bare list.
+  const [editReturnTo, setEditReturnTo] = useState(null);
   const [archivedTenants, setArchivedTenants] = useState([]);
   // Detail panel for a single archived/moved-out tenant.
   // { tenant, ledger, docs, messages, leases, payments, workOrders, activeTab }
@@ -262,6 +266,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setShowForm(false);
   setEditingTenant(null);
   setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  // Hand back to the side panel this edit came from, showing the saved
+  // values rather than the stale ones the panel was opened with.
+  if (editReturnTo) {
+    const returning = editReturnTo;
+    setEditReturnTo(null);
+    supabase.from("tenants").select("*").eq("company_id", companyId).eq("id", returning.id)
+      .maybeSingle().then(({ data }) => {
+        setSelectedTenant(data || returning);
+        setActivePanel("actions");
+      }, () => { setSelectedTenant(returning); setActivePanel("actions"); });
+  }
   if (_isNew && _property && _leaseStart && _leaseEnd && _rent) setSavingTenant(true);
   // Post-save operations (run while spinner shows)
   if (_isNew) {
@@ -659,10 +674,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setEditingTenant(t);
   setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "", late_fee_amount: t.late_fee_amount || "", late_fee_type: t.late_fee_type || "flat", is_voucher: t.is_voucher || false, voucher_number: t.voucher_number || "", reexam_date: t.reexam_date || "", case_manager_name: t.case_manager_name || "", case_manager_email: t.case_manager_email || "", case_manager_phone: t.case_manager_phone || "", voucher_portion: t.voucher_portion || "", tenant_portion: t.tenant_portion || "" });
   setShowForm(true);
-  // Close the detail panel. It is fixed and sits above the page, so
-  // opening the edit form underneath it left the form visible but
-  // unreachable -- you could see your own fields behind the panel and
-  // could not touch them.
+  // The detail panel is fixed and sits above the page, so the edit form
+  // opened underneath it: visible and untouchable. Close the panel, and
+  // remember where we came from so saving returns there.
+  if (selectedTenant) setEditReturnTo(selectedTenant);
   setSelectedTenant(null);
   setActivePanel(null);
   }
@@ -1471,10 +1486,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-3xl p-4 text-center hover:bg-highlight-100 transition-all">
   <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
   </button>
-  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-positive-50 rounded-3xl p-4 text-center hover:bg-positive-100 transition-all">
+  {/* The renewal form renders inside the Lease panel, so switching to it
+      is what makes this button do anything. Without that the click set
+      the state and nothing appeared. */}
+  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }} className="bg-positive-50 rounded-3xl p-4 text-center hover:bg-positive-100 transition-all">
   <div className="text-2xl mb-1">{"\u{1F504}"}</div><div className="text-sm font-semibold text-positive-700">Renew Lease</div>
   </button>
-  <button onClick={() => setPage("moveout")} className="bg-notice-50 rounded-3xl p-4 text-center hover:bg-notice-100 transition-all">
+  {/* Only a current tenant can be moved out. This used to navigate
+      regardless, so a past tenant landed on the Move-Out wizard and met
+      an error there, having lost the panel they were working in. Say it
+      where the click happened and stay put. */}
+  <button onClick={async () => {
+    const st = String(selectedTenant?.lease_status || "").toLowerCase();
+    if (st !== "current" && st !== "active") {
+      await showConfirm({
+        message: `${selectedTenant?.name} is marked "${st || "unknown"}", so there is no active lease to close.\n\nMove-Out applies to a current tenant. If they are still in the property, set them to Current first — Actions → Edit Tenant, or the Review tab.`,
+        title: "No active lease to close",
+        confirmText: "Got it", cancelText: "Close", variant: "notice",
+      });
+      return;
+    }
+    setPage("moveout");
+  }} className="bg-notice-50 rounded-3xl p-4 text-center hover:bg-notice-100 transition-all">
   <div className="text-2xl mb-1"><span className="material-icons-outlined text-notice-600">exit_to_app</span></div><div className="text-sm font-semibold text-notice-700">Move-Out</div>
   </button>
   <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-danger-50 rounded-3xl p-4 text-center hover:bg-danger-100 transition-all">
@@ -2025,8 +2058,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </Modal>
   )}
 
+  {/* Opened from the tenant panel: its own window over the page, and
+      saving or cancelling hands back to that panel. Opened from the list
+      as before: an inline card. Same fields either way -- only the
+      container differs, so there is one copy of the form. */}
+  {showForm && editingTenant && editReturnTo && (
+  <div className="fixed inset-0 z-[55] bg-black/40"
+       onClick={() => { setShowForm(false); setEditingTenant(null); const r = editReturnTo; setEditReturnTo(null); setSelectedTenant(r); setActivePanel("actions"); }} />
+  )}
   {showForm && editingTenant && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className={editReturnTo
+    ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-2xl shadow-2xl p-4 overflow-y-auto safe-y"
+    : "bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4"}>
   <h3 className="font-semibold text-neutral-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2 grid grid-cols-6 gap-3">
@@ -2079,7 +2122,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveTenant} disabled={_submitGuards["saveTenant"]}>{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</Btn>
-  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingTenant(null); }}>Cancel</Btn>
+  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingTenant(null); if (editReturnTo) { const r = editReturnTo; setEditReturnTo(null); setSelectedTenant(r); setActivePanel("actions"); } }}>Cancel</Btn>
   </div>
   </div>
   )}

@@ -41,7 +41,11 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   async function load() {
   setLoading(true);
   const [t, l] = await Promise.all([
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
+  // Both spellings are in use: the tenant form defaults to "active",
+  // the importer and the Tenants page write "current". Filtering on one
+  // of them left the move-out list empty for every company whose
+  // tenants came in through an import.
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ["active", "current"]),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   ]);
   if (t.error) pmError("PM-3004", { raw: t.error, context: "move-out tenants fetch", silent: true });
