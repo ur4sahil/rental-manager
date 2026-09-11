@@ -813,16 +813,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
 
-    // Validate UUIDs — some IDs may be integers from older data
-    const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-    const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
-
     const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
       journal_entry_id: jeRow.id, company_id: companyId,
       account_id: l.account_id, account_name: l.account_name,
       debit: safeNum(l.debit), credit: safeNum(l.credit),
-      class_id: safeUUID(l.class_id), memo: l.memo || "",
-      entity_type: entityType || null, entity_id: safeUUID(entityId), entity_name: entityName || null,
+      class_id: l.class_id || null, memo: l.memo || "",
+      // entity_id and class_id are TEXT columns. Passing them through a
+      // uuid-shaped guard silently dropped every tenant reference, because
+      // tenants.id is an integer -- which is why no journal line has ever
+      // carried a tenant.
+      entity_type: entityType || null, entity_id: entityId ? String(entityId) : null, entity_name: entityName || null,
       bank_feed_transaction_id: txn.id
     })));
 

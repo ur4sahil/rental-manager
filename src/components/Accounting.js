@@ -4428,7 +4428,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   journal_entry_id: jeRow.id, company_id: companyId,
   account_id: l.account_id, account_name: l.account_name,
   debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "",
-  entity_type: l.entity_type || null, entity_id: l.entity_id || null, entity_name: l.entity_name || null
+  entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null
   })));
   if (linesErr) {
   { const { error: _delErr } = await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId); if (_delErr) pmError("PM-4002", { raw: _delErr, context: "orphaned JE header cleanup", silent: true }); }
@@ -4462,14 +4462,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // tenant from the old integer-id schema). Coerce anything that
   // isn't a real UUID to null — same guard addJournalEntry uses.
   // Without this, editing a JE loaded from a legacy row 500s with
-  // `invalid input syntax for type uuid: "306"` (Sentry PM-4003).
-  const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-  const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: safeUUID(l.class_id), memo: l.memo || "", entity_type: l.entity_type || null, entity_id: safeUUID(l.entity_id), entity_name: l.entity_name || null })));
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "", entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null })));
   if (linesErr) {
   pmError("PM-4003", { raw: linesErr, context: "update journal lines failed, restoring" });
   if (oldLines?.length > 0) {
-  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: safeUUID(l.class_id), memo: l.memo, entity_type: l.entity_type, entity_id: safeUUID(l.entity_id), entity_name: l.entity_name })));
+  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id || null, memo: l.memo, entity_type: l.entity_type, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name })));
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
   fetchAll({ quiet: true });
@@ -4553,11 +4550,34 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (je) {
   const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
   const arAccountIds = new Set(acctAccounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
-  const descParts = (je.description || "").split(" — ");
-  const tenantName = descParts.length >= 2 ? descParts[1] : "";
 
-  if (tenantName.trim()) {
-  const { data: tenantRow } = await supabase.from("tenants").select("id, balance").ilike("name", escapeFilterValue(tenantName.trim())).eq("company_id", companyId).is("archived_at", null).maybeSingle();
+  // Only entries that MOVED accounts receivable have a tenant balance to
+  // reverse. This check used to come after the tenant lookup, so voiding
+  // a bank-import entry -- a transfer, a vendor payment, anything with no
+  // AR line -- still hunted for a tenant and reported PM-6002 at critical
+  // when it failed. There was nothing to reverse in the first place.
+  const arLines = (jeLines || []).filter(l => arAccountIds.has(l.account_id));
+
+  // Identify the tenant by ID from the line, not by parsing the
+  // description. The repo rule is id over name, and this code broke it
+  // out of necessity: entity_id was a uuid column and tenants.id is an
+  // integer, so a tenant could never be stored there (see migration
+  // 20260911020000). Now it can, so prefer it.
+  const customerLine = (jeLines || []).find(l => l.entity_type === "customer" && l.entity_id);
+
+  // Fallback for the ~9,468 historical lines that carry no tenant id:
+  // descriptions of tenant entries are built as "Type — Tenant Name".
+  // Guarded so a bank-import description ("Zelle — Zelle payment from
+  // LOTOYA D YATES for ...") is not mistaken for a tenant name.
+  const descParts = (je.description || "").split(" — ");
+  const parsedName = descParts.length >= 2 ? descParts[1].trim() : "";
+  const looksLikeName = parsedName.length > 0 && parsedName.length <= 60 && !/\d{3}|payment from|conf#|transfer|deposit/i.test(parsedName);
+  const tenantName = customerLine ? "" : (looksLikeName ? parsedName : "");
+
+  if (arLines.length > 0 && (customerLine || tenantName)) {
+  const { data: tenantRow } = customerLine
+    ? await supabase.from("tenants").select("id, balance").eq("id", customerLine.entity_id).eq("company_id", companyId).maybeSingle()
+    : await supabase.from("tenants").select("id, balance").ilike("name", escapeFilterValue(tenantName.trim())).eq("company_id", companyId).is("archived_at", null).maybeSingle();
 
   if (!tenantRow) {
   showToast(`Warning: Tenant "${tenantName}" not found — balance was NOT reversed. Please adjust manually if needed.`, "warning");
@@ -4627,15 +4647,14 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (headerErr || !jeRow) { showToast("Error creating reversal: " + (headerErr?.message || "no id returned"), "error"); return; }
   // class_id / entity_id are uuid columns; legacy rows occasionally
   // carry non-UUID strings. Mirror the guard from updateJournalEntry
-  // so a reversal can't fail with "invalid input syntax for type uuid".
-  const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-  const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
   const revLines = origLines.map(l => ({
     journal_entry_id: jeRow.id, company_id: companyId,
     account_id: l.account_id, account_name: l.account_name,
     debit: safeNum(l.credit), credit: safeNum(l.debit),
-    class_id: safeUUID(l.class_id), memo: "Reversal — " + (l.memo || ""),
-    entity_type: l.entity_type || null, entity_id: safeUUID(l.entity_id),
+    class_id: l.class_id || null, memo: "Reversal — " + (l.memo || ""),
+    // entity_id is TEXT. safeUUID here discarded every tenant id,
+    // because tenants.id is an integer.
+    entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null,
     entity_name: l.entity_name || null
   }));
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(revLines);
