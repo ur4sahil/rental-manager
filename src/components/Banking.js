@@ -1635,6 +1635,100 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
   }
 
+  // Amend already-categorised transactions in place.
+  //
+  // Sahil chose amend-in-place over reverse-and-repost: one journal entry
+  // per bank transaction, with the previous categorisation recorded in
+  // audit_trail rather than as a second GL entry.
+  //
+  // Only the CATEGORY leg is touched. A bank JE has two lines -- the bank
+  // account itself and the category -- and the bank leg is identified by
+  // the feed's gl_account_id. Rewriting that one instead would move money
+  // between bank accounts, which is not what "recategorise" means.
+  // Amounts are never changed: this changes where a figure is classified,
+  // not what it is.
+  async function bulkAmend({ accountId, accountName, classId, entityType, entityId, entityName }) {
+    const selected = transactions.filter(t => selectedTxns.has(t.id)
+      && ["categorized", "matched", "posted"].includes(t.status));
+    if (selected.length === 0) { showToast("Select categorised transactions to re-categorise.", "warning"); return; }
+    setBulkBusy({ done: 0, total: selected.length });
+    let ok = 0; const skipped = []; const failed = [];
+
+    for (const txn of selected) {
+      try {
+        // A posted entry inside a closed period must not be rewritten --
+        // that is the whole purpose of closing a period.
+        if (await checkPeriodLock(companyId, txn.posted_date)) {
+          skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (locked period)`);
+        } else if (!txn.journal_entry_id) {
+          // Categorised without a journal entry: nothing to amend, and
+          // guessing which entry it meant would be worse than saying so.
+          skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (no journal entry)`);
+        } else {
+          const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+          const { data: lines, error: lErr } = await supabase.from("acct_journal_lines")
+            .select("id, account_id, debit, credit")
+            .eq("company_id", companyId).eq("journal_entry_id", txn.journal_entry_id);
+          if (lErr) throw lErr;
+          const categoryLegs = (lines || []).filter(l => l.account_id !== (feed && feed.gl_account_id));
+          if (categoryLegs.length !== 1) {
+            // A split (or an unexpected shape). Amending one leg of a
+            // multi-way split would silently unbalance the entry.
+            skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (split — edit it individually)`);
+          } else {
+            const { error: upErr } = await supabase.from("acct_journal_lines").update({
+              account_id: accountId, account_name: accountName,
+              class_id: classId || null,
+              entity_type: entityType || null,
+              entity_id: entityId ? String(entityId) : null,
+              entity_name: entityName || null,
+            }).eq("id", categoryLegs[0].id).eq("company_id", companyId);
+            if (upErr) throw upErr;
+
+            // The displayed category lives on bank_posting_decision_line,
+            // NOT on bank_feed_transaction -- the transaction stores only
+            // journal_entry_id and posting_decision_id. Writing
+            // gl_account_id to the transaction (as this first did) targets
+            // a column that does not exist: PostgREST returns 400 and the
+            // surrounding try/catch swallows it, so the amend would have
+            // looked successful while the list kept showing the old
+            // category. Caught by tests/column-integrity.test.js.
+            if (txn.posting_decision_id) {
+              const { error: dErr } = await supabase.from("bank_posting_decision_line")
+                .update({ gl_account_id: accountId, gl_account_name: accountName })  // class_id here is uuid; left alone deliberately
+                .eq("bank_posting_decision_id", txn.posting_decision_id)
+                .eq("company_id", companyId);
+              if (dErr) throw dErr;
+            }
+
+            // The old categorisation survives only here, so record what it
+            // was as well as what it became.
+            logAudit("update", "banking",
+              `Re-categorised bank txn: ${txn.bank_description_clean} — ${txn.gl_account_name || "?"} → ${accountName}`,
+              txn.id, userProfile?.email, "", companyId);
+            ok++;
+          }
+        }
+      } catch (e) {
+        failed.push((txn.bank_description_clean || txn.id).slice(0, 24));
+      }
+      setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
+    }
+
+    setBulkBusy(null);
+    setSelectedTxns(new Set());
+    // Deliberately not invalidating the accounting cache from here:
+    // invalidateAccountingCache lives in Accounting.js, which already
+    // imports Banking, so importing it back would make the modules
+    // circular. acceptTransaction has the same property -- reports can
+    // lag a bank change by up to the 5-minute cache TTL. Consistent
+    // with the existing behaviour rather than a new gap.
+    const parts = [`${ok} re-categorised to ${accountName}`];
+    if (skipped.length) parts.push(`${skipped.length} skipped (${skipped.slice(0, 2).join("; ")}${skipped.length > 2 ? "…" : ""})`);
+    if (failed.length) parts.push(`${failed.length} failed`);
+    showToast(parts.join(" · "), skipped.length || failed.length ? "warning" : "success");
+  }
+
   async function bulkExclude(reason) {
     const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
     if (selected.length === 0) return;
@@ -2367,7 +2461,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
   {activeTab !== "rules" && (<>
   {/* Bulk Action Bar */}
-  {selectedTxns.size > 0 && activeTab === "for_review" && (
+  {selectedTxns.size > 0 && (activeTab === "for_review" || activeTab === "categorized") && (
   <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex flex-col gap-3">
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <span className="text-sm font-medium text-brand-800">
@@ -2415,14 +2509,18 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </div>
+      {/* For Review posts a new entry; Categorised amends the existing
+          one. Same pickers, deliberately different verb, so it is clear
+          which of the two is happening. */}
       <Btn variant="success-fill" size="sm" disabled={!bulkForm.accountId || !!bulkBusy}
-        onClick={() => bulkApply(bulkForm)}>
-        {bulkBusy ? "Applying…" : `Categorise ${selectedTxns.size}`}
+        onClick={() => (activeTab === "categorized" ? bulkAmend(bulkForm) : bulkApply(bulkForm))}>
+        {bulkBusy ? "Applying…" : `${activeTab === "categorized" ? "Re-categorise" : "Categorise"} ${selectedTxns.size}`}
       </Btn>
     </div>
 
     {/* Exclude with a stated reason. This used to hardcode "duplicate"
         for everything, so the reason recorded was frequently untrue. */}
+    {activeTab === "for_review" && (
     <div className="flex items-end gap-2 flex-wrap pt-2 border-t border-brand-200/60">
       <div>
         <label className="text-xs font-medium text-neutral-500 block mb-1">Exclude reason</label>
@@ -2439,6 +2537,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         Exclude {selectedTxns.size}
       </Btn>
     </div>
+    )}
   </div>
   )}
 
@@ -2470,7 +2569,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <table className="w-full text-sm">
   <thead className="bg-neutral-50 border-b border-neutral-200">
     <tr>
-      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
+      {(activeTab === "for_review" || activeTab === "categorized") && <th className="px-3 py-2.5 w-8"><Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DATE</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DESCRIPTION</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">PAYEE</th>
@@ -2486,7 +2585,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     return (
     <React.Fragment key={txn.id}>
     <tr data-txn-id={txn.id} aria-selected={selectedTxn === txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""} ${selectedTxn === txn.id ? "ring-2 ring-inset ring-brand-400" : ""}`} onClick={() => { setSelectedTxn(txn.id); setExpandedTxn(isExpanded ? null : txn.id); }}>
-      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
+      {(activeTab === "for_review" || activeTab === "categorized") && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
       <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
