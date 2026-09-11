@@ -146,6 +146,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [txnTruncated, setTxnTruncated] = useState(false);
   const [totalTxnCount, setTotalTxnCount] = useState(0);
   const [selectedTxns, setSelectedTxns] = useState(new Set());
+  // What a bulk action will apply, and how far along it is.
+  const [bulkForm, setBulkForm] = useState({ accountId: "", accountName: "", classId: "", entityType: "", entityId: "", entityName: "", reason: "duplicate" });
+  const [bulkBusy, setBulkBusy] = useState(null); // { done, total } while running
   const [expandedTxn, setExpandedTxn] = useState(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
@@ -1599,20 +1602,53 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   // Bulk actions
-  async function bulkAccept(accountId, accountName) {
+  // Bulk apply. acceptTransaction already takes class and entity; the old
+  // bulkAccept passed "" for both and dropped them, so a bulk categorise
+  // lost the property tagging that makes the figures land in the right
+  // class on reports.
+  //
+  // Sequential on purpose, not Promise.all: each accept posts a journal
+  // entry, and firing dozens concurrently both hammers the database and
+  // makes a partial failure impossible to describe afterwards.
+  async function bulkApply({ accountId, accountName, classId, entityType, entityId, entityName }) {
     const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    if (selected.length === 0) return;
+    setBulkBusy({ done: 0, total: selected.length });
+    let ok = 0; const failed = [];
     for (const txn of selected) {
-      await acceptTransaction(txn, accountId, accountName, "", "");
+      try {
+        await acceptTransaction(txn, accountId, accountName, "", classId || "", entityType || "", entityId || "", entityName || "");
+        ok++;
+      } catch (e) {
+        failed.push((txn.bank_description_clean || txn.payee_normalized || txn.id).slice(0, 30));
+      }
+      setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
     }
+    setBulkBusy(null);
     setSelectedTxns(new Set());
+    // Say what actually happened. A silent finish after a partial failure
+    // leaves the user believing all of them posted.
+    if (failed.length === 0) {
+      showToast(`${ok} transaction${ok === 1 ? "" : "s"} categorised to ${accountName}.`, "success");
+    } else {
+      showToast(`${ok} categorised, ${failed.length} failed (${failed.slice(0, 2).join(", ")}${failed.length > 2 ? "…" : ""}). The failures are still in For Review.`, "warning");
+    }
   }
 
   async function bulkExclude(reason) {
     const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    if (selected.length === 0) return;
+    setBulkBusy({ done: 0, total: selected.length });
+    let ok = 0; const failed = [];
     for (const txn of selected) {
-      await excludeTransaction(txn, reason);
+      try { await excludeTransaction(txn, reason); ok++; }
+      catch (e) { failed.push((txn.bank_description_clean || txn.id).slice(0, 30)); }
+      setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
     }
+    setBulkBusy(null);
     setSelectedTxns(new Set());
+    if (failed.length === 0) showToast(`${ok} transaction${ok === 1 ? "" : "s"} excluded as ${reason}.`, "success");
+    else showToast(`${ok} excluded, ${failed.length} failed.`, "warning");
   }
 
   // --- Filtering ---
@@ -2332,11 +2368,76 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {activeTab !== "rules" && (<>
   {/* Bulk Action Bar */}
   {selectedTxns.size > 0 && activeTab === "for_review" && (
-  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
-    <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
-    <div className="flex gap-2">
-      <Btn variant="danger" size="sm" onClick={() => bulkExclude("duplicate")}>Exclude All</Btn>
+  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex flex-col gap-3">
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <span className="text-sm font-medium text-brand-800">
+        {selectedTxns.size} selected
+        {bulkBusy && <span className="ml-2 font-normal text-brand-600">· applying {bulkBusy.done} of {bulkBusy.total}…</span>}
+      </span>
       <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTxns(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</TextLink>
+    </div>
+
+    {/* Categorise the whole selection. acceptTransaction has always taken
+        a class and an entity; only the bulk path threw them away, so a
+        bulk categorise used to lose the property tagging that decides
+        which class the figures land in on reports. */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
+      <div>
+        <label className="text-xs font-medium text-neutral-500 block mb-1">Category / account</label>
+        <AccountPicker value={bulkForm.accountId}
+          onChange={v => { const a = accounts.find(x => x.id === v); setBulkForm(f => ({ ...f, accountId: v, accountName: a?.name || "" })); }}
+          accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Search account…" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-neutral-500 block mb-1">Tenant / vendor</label>
+        <Select value={bulkForm.entityId ? `${bulkForm.entityType}:${bulkForm.entityId}` : ""}
+          onChange={e => {
+            if (!e.target.value) { setBulkForm(f => ({ ...f, entityType: "", entityId: "", entityName: "" })); return; }
+            const [type, id] = e.target.value.split(":");
+            // String-compared: the select value is text while tenants.id
+            // is a number, so === would never match.
+            const name = type === "customer"
+              ? (tenants.find(t => String(t.id) === String(id))?.name || "")
+              : (vendors.find(v => String(v.id) === String(id))?.name || "");
+            setBulkForm(f => ({ ...f, entityType: type, entityId: id, entityName: name }));
+          }}
+          className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <option value="">None</option>
+          <optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup>
+          <optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
+        </Select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-neutral-500 block mb-1">Property / class</label>
+        <Select value={bulkForm.classId} onChange={e => setBulkForm(f => ({ ...f, classId: e.target.value }))}
+          className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <option value="">No class</option>
+          {classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      </div>
+      <Btn variant="success-fill" size="sm" disabled={!bulkForm.accountId || !!bulkBusy}
+        onClick={() => bulkApply(bulkForm)}>
+        {bulkBusy ? "Applying…" : `Categorise ${selectedTxns.size}`}
+      </Btn>
+    </div>
+
+    {/* Exclude with a stated reason. This used to hardcode "duplicate"
+        for everything, so the reason recorded was frequently untrue. */}
+    <div className="flex items-end gap-2 flex-wrap pt-2 border-t border-brand-200/60">
+      <div>
+        <label className="text-xs font-medium text-neutral-500 block mb-1">Exclude reason</label>
+        <Select value={bulkForm.reason} onChange={e => setBulkForm(f => ({ ...f, reason: e.target.value }))}
+          className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <option value="duplicate">Duplicate</option>
+          <option value="transfer">Internal transfer</option>
+          <option value="personal">Personal / not business</option>
+          <option value="already_recorded">Already recorded</option>
+          <option value="other">Other</option>
+        </Select>
+      </div>
+      <Btn variant="danger" size="sm" disabled={!!bulkBusy} onClick={() => bulkExclude(bulkForm.reason)}>
+        Exclude {selectedTxns.size}
+      </Btn>
     </div>
   </div>
   )}
@@ -2552,7 +2653,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
           <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
-          <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => String(t.id) === String(id))?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
           </Select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
