@@ -1166,7 +1166,7 @@ function ErrorLogDashboard({ companyId, showToast }) {
   <div className="font-semibold text-warning-700 text-sm mb-2">Health Check Results ({violations.length} issues)</div>
   {violations.map((v, i) => (
   <div key={i} className="flex items-start gap-2 text-sm py-1">
-  <span className="font-mono text-xs bg-warning-100 text-warning-700 px-1.5 py-0.5 rounded font-bold shrink-0">{v.code}</span>
+  <span className="tnum text-xs bg-warning-100 text-warning-700 px-1.5 py-0.5 rounded font-bold shrink-0">{v.code}</span>
   <span className="text-neutral-600">{v.details}</span>
   </div>
   ))}
@@ -1207,7 +1207,7 @@ function ErrorLogDashboard({ companyId, showToast }) {
   <div className="flex items-start justify-between gap-2">
   <div className="flex-1 min-w-0">
   <div className="flex items-center gap-2 mb-1 flex-wrap">
-  <span className={"text-xs font-mono px-1.5 py-0.5 rounded font-bold " + (e.severity === "critical" || e.severity === "error" ? "bg-danger-100 text-danger-700" : "bg-warning-100 text-warning-700")}>{e.error_code}</span>
+  <span className={"text-xs tnum px-1.5 py-0.5 rounded font-bold " + (e.severity === "critical" || e.severity === "error" ? "bg-danger-100 text-danger-700" : "bg-warning-100 text-warning-700")}>{e.error_code}</span>
   <span className="text-xs text-neutral-400 capitalize">{e.severity}</span>
   <span className="text-xs text-neutral-300">{new Date(e.created_at).toLocaleString()}</span>
   {e.user_email && <span className="text-xs text-neutral-400">{e.user_email}</span>}
@@ -1215,7 +1215,7 @@ function ErrorLogDashboard({ companyId, showToast }) {
   </div>
   <p className="text-sm font-medium text-neutral-700">{e.message}</p>
   {e.context && <p className="text-xs text-neutral-400 mt-0.5">Context: {e.context}</p>}
-  {e.raw_message && e.raw_message !== e.message && <p className="text-xs text-neutral-300 mt-0.5 font-mono truncate">Raw: {e.raw_message}</p>}
+  {e.raw_message && e.raw_message !== e.message && <p className="text-xs text-neutral-300 mt-0.5 tnum truncate">Raw: {e.raw_message}</p>}
   </div>
   <div className="shrink-0">
   {!e.resolved && <Btn size="xs" variant="ghost" onClick={() => markResolved(e.id)}>Resolve</Btn>}
@@ -1354,7 +1354,7 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   <div className="bg-brand-50/50 border border-brand-100 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
   <div>
   <div className="text-xs font-medium text-neutral-500">Company Join Code</div>
-  <div className="text-lg font-bold font-mono text-brand-700 tracking-wider">{activeCompany.company_code}</div>
+  <div className="text-lg font-bold tnum text-brand-700 tracking-wider">{activeCompany.company_code}</div>
   </div>
   <TextLink tone="brand" size="xs" underline={false} onClick={() => { navigator.clipboard.writeText(activeCompany.company_code); showToast("Code copied!", "success"); }} className="font-medium flex items-center gap-1">
   <span className="material-icons-outlined text-sm">content_copy</span>Copy

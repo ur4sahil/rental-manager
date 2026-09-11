@@ -355,7 +355,7 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
                   <button type="button" key={a.id} data-idx={idx}
                     onMouseDown={(e) => { e.preventDefault(); select(a.id); }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-50 flex items-center gap-1 ${highlighted === idx ? "bg-brand-50 text-brand-700" : "text-neutral-700"} ${a.id === value ? "font-semibold" : ""}`}>
-                    <span className="text-neutral-400 w-10 shrink-0 font-mono">{a.code || "•"}</span>
+                    <span className="text-neutral-400 w-10 shrink-0 tnum">{a.code || "•"}</span>
                     <span className="truncate">{a.name}</span>
                   </button>
                 );

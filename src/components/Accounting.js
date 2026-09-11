@@ -757,14 +757,14 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   </div>
   {/* Summary bar */}
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
-  <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
-  <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
+  <span>DR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
+  <span>CR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
   {/* Only a single-account ledger has a meaningful closing balance.
       Across accounts the figure would sum unlike things, so the count of
       accounts is shown instead of an authoritative-looking nonsense. */}
   {multiAccount
     ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span>
-    : <span>Bal: <strong className={`font-mono ${(groups[0]?.closing || 0) >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(groups[0]?.closing || 0, true)}</strong></span>}
+    : <span>Bal: <strong className={`tnum ${(groups[0]?.closing || 0) >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(groups[0]?.closing || 0, true)}</strong></span>}
   {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
   {/* Mobile: Card view */}
@@ -774,7 +774,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-brand-50/40 transition-colors active:bg-brand-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
   <div className="text-xs text-neutral-500">{l.date}</div>
-  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
+  <div className={`tnum text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
   </div>
   <div className="text-sm text-neutral-700 mb-1 leading-tight">{l.description}</div>
   {l.memo && <div className="text-xs text-neutral-400 mb-1">{l.memo}</div>}
@@ -782,7 +782,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {l.debit > 0 && <span className="text-success-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-danger-500">CR {acctFmt(l.credit)}</span>}
   {l.property && <span className="text-neutral-400">{l.property.split(",")[0]}</span>}
-  <span className="text-brand-600 font-mono ml-auto">{l.number || "—"}</span>
+  <span className="text-brand-600 tnum ml-auto">{l.number || "—"}</span>
   </div>
   </div>
   ))}
@@ -818,22 +818,22 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {g.rows.map((l, i) => (
   <tr key={i} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
-  <td className="px-3 py-2 text-xs text-brand-600 font-mono">{l.number || "—"}</td>
+  <td className="px-3 py-2 text-xs text-brand-600 tnum">{l.number || "—"}</td>
   <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
   <td className="px-3 py-2 text-xs text-neutral-400" title={l.reference || ""}>{refLabel(l.reference)}</td>
   {multiAccount && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
   <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
-  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
+  <td className="px-3 py-2 text-right tnum text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
+  <td className="px-3 py-2 text-right tnum text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
+  <td className={`px-3 py-2 text-right tnum text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
   </tr>
   ))}
   {multiAccount && (
   <tr className="bg-neutral-50 font-semibold">
     <td colSpan={COLS - 3} className="px-4 py-2 text-xs text-neutral-600 border-t border-neutral-300">Total for {g.code ? g.code + " · " : ""}{g.name}</td>
-    <td className="px-3 py-2 text-right font-mono text-xs border-t border-neutral-300">{acctFmt(g.totalDr)}</td>
-    <td className="px-3 py-2 text-right font-mono text-xs border-t border-neutral-300">{acctFmt(g.totalCr)}</td>
-    <td className={`px-3 py-2 text-right font-mono text-xs border-t border-neutral-300 ${g.closing < 0 ? "text-danger-600" : "text-neutral-900"}`}>{acctFmt(g.closing, true)}</td>
+    <td className="px-3 py-2 text-right tnum text-xs border-t border-neutral-300">{acctFmt(g.totalDr)}</td>
+    <td className="px-3 py-2 text-right tnum text-xs border-t border-neutral-300">{acctFmt(g.totalCr)}</td>
+    <td className={`px-3 py-2 text-right tnum text-xs border-t border-neutral-300 ${g.closing < 0 ? "text-danger-600" : "text-neutral-900"}`}>{acctFmt(g.closing, true)}</td>
   </tr>
   )}
   </tbody>
@@ -846,8 +846,8 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {multiAccount && allLines.length > 0 && (
   <tr className="bg-brand-50/60 font-bold">
     <td colSpan={COLS - 3} className="px-4 py-2.5 text-xs text-neutral-800 border-t-2 border-neutral-800">{groups.length} accounts · {allLines.length} entries</td>
-    <td className="px-3 py-2.5 text-right font-mono text-xs border-t-2 border-neutral-800">{acctFmt(grandDr)}</td>
-    <td className="px-3 py-2.5 text-right font-mono text-xs border-t-2 border-neutral-800">{acctFmt(grandCr)}</td>
+    <td className="px-3 py-2.5 text-right tnum text-xs border-t-2 border-neutral-800">{acctFmt(grandDr)}</td>
+    <td className="px-3 py-2.5 text-right tnum text-xs border-t-2 border-neutral-800">{acctFmt(grandCr)}</td>
     <td className="px-3 py-2.5 text-right text-[11px] font-normal text-neutral-400 border-t-2 border-neutral-800">—</td>
   </tr>
   )}
@@ -1050,7 +1050,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
           </div>
         </div>
         <div className="bg-info-50 border border-info-200 rounded-xl p-4 mb-4 text-sm text-info-800">
-          <strong>Next step:</strong> reclassify <code className="font-mono">3000 Opening Balance Equity</code> into <code className="font-mono">3100 Owner's Equity</code> or <code className="font-mono">3200 Retained Earnings</code> via a normal journal entry. OBE should eventually read $0 on your Balance Sheet.
+          <strong>Next step:</strong> reclassify <code className="tnum">3000 Opening Balance Equity</code> into <code className="tnum">3100 Owner's Equity</code> or <code className="tnum">3200 Retained Earnings</code> via a normal journal entry. OBE should eventually read $0 on your Balance Sheet.
         </div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={() => { /* nav handled by parent tab */ }} title="Opens the Journal Entries tab via the usual sidebar click">View journal entry →</Btn>
@@ -1099,7 +1099,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
               <tbody>
                 {rows.map(a => (
                   <tr key={a.id} className="border-b border-neutral-100 last:border-b-0">
-                    <td className="px-4 py-2 text-neutral-600"><span className="font-mono text-xs text-neutral-400 mr-2">{a.code}</span>{a.name}</td>
+                    <td className="px-4 py-2 text-neutral-600"><span className="tnum text-xs text-neutral-400 mr-2">{a.code}</span>{a.name}</td>
                     <td className="px-4 py-2 text-right w-48">
                       <Input
                         inputMode="decimal"
@@ -1120,11 +1120,11 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
       <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4 mb-4">
         <div className="flex justify-between text-sm">
           <span className="text-neutral-500">Total debits (Assets + Expense contras)</span>
-          <span className="font-mono font-semibold text-neutral-800">{formatCurrency(totalDR)}</span>
+          <span className="tnum font-semibold text-neutral-800">{formatCurrency(totalDR)}</span>
         </div>
         <div className="flex justify-between text-sm mt-1">
           <span className="text-neutral-500">Total credits (Liabilities + Equity)</span>
-          <span className="font-mono font-semibold text-neutral-800">{formatCurrency(totalCR)}</span>
+          <span className="tnum font-semibold text-neutral-800">{formatCurrency(totalCR)}</span>
         </div>
         <div className="flex justify-between text-sm mt-2 pt-2 border-t border-neutral-200">
           <span className={Math.abs(plug) < 0.005 ? "text-positive-700" : "text-warn-700"}>
@@ -1224,17 +1224,17 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <div key={type} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto mb-3">
   <div className="px-5 py-3 bg-neutral-50 flex items-center justify-between">
   <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-neutral-400">{accts.length} accounts</span></div>
-  <span className="font-mono text-xs font-semibold text-neutral-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
+  <span className="tnum text-xs font-semibold text-neutral-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
   </div>
   <table className="w-full text-sm">
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
   <tr key={a.id} className={`border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
-  <td className={`py-3 font-mono text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
+  <td className={`py-3 tnum text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}><LedgerLink ids={[a.id]} title={(a.code ? a.code + " " : "") + a.name} onOpenLedger={onOpenLedger} className="">{a.name}</LedgerLink></td>
   <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
-  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+  <td className={`px-5 py-3 text-right tnum text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
   <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openEdit(a); }}  title="Edit account"><span className="material-icons-outlined text-sm">edit</span></TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }}  title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</TextLink>
@@ -1468,13 +1468,13 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select></td>
   <td className="px-2 py-1.5"><Input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="disabled:opacity-20">✕</TextLink></td>
   </tr>
   ))}
   </tbody>
-  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={4} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={4} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs tnum font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs tnum font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
@@ -1611,13 +1611,13 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
   <tr key={je.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
-  <td className="px-5 py-3 font-mono text-xs font-semibold text-neutral-700">{je.number}</td>
+  <td className="px-5 py-3 tnum text-xs font-semibold text-neutral-700">{je.number}</td>
   <td className="px-5 py-3 text-neutral-500">{acctFmtDate(je.date)}</td>
   <td className="px-5 py-3 text-xs text-neutral-500">{je.property || "—"}</td>
   <td className="px-5 py-3 font-medium text-neutral-800">{je.description}</td>
   <td className="px-5 py-3 text-xs text-neutral-400" title={je.reference || ""}>{refLabel(je.reference)}</td>
   <td className="px-5 py-3"><AcctStatusBadge status={je.status} /></td>
-  <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
+  <td className="px-5 py-3 text-right tnum text-sm font-semibold">{acctFmt(total)}</td>
   <td className="px-5 py-3 text-center">
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
   {je.status === "draft" && <Btn onClick={() => onPost(je.id)} variant="success" size="sm">Post</Btn>}
@@ -1675,7 +1675,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <AcctModal isOpen={true} onClose={() => { setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }} title={`Journal Entry: ${modal.je.number}`} size="xl">
   <div className="space-y-4">
   <div className="grid grid-cols-3 gap-3 bg-neutral-50 rounded-xl p-4">
-  <div><p className="text-xs text-neutral-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
+  <div><p className="text-xs text-neutral-400">Entry #</p><p className="tnum font-semibold">{modal.je.number}</p></div>
   <div><p className="text-xs text-neutral-400">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
   <div><p className="text-xs text-neutral-400">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
   <div className="col-span-2"><p className="text-xs text-neutral-400">Description</p><p className="font-semibold">{modal.je.description}</p></div>
@@ -1688,12 +1688,12 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   const cls = classes.find(c => c.id === l.class_id);
   return (
   <tr key={i} className="border-t border-neutral-100">
-  <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-neutral-400 mr-1">{code}</span>}{name}</>; })()}</td>
+  <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="tnum text-xs text-neutral-400 mr-1">{code}</span>}{name}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-neutral-500">{l.entity_name ? <span>{l.entity_type === "vendor" ? "V: " : "C: "}{l.entity_name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-neutral-400">{l.memo || "—"}</td>
-  <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
-  <td className="px-4 py-2 text-right font-mono">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
+  <td className="px-4 py-2 text-right tnum">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
+  <td className="px-4 py-2 text-right tnum">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
   </tr>
   );
   })}
@@ -1750,9 +1750,9 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   {PERIODS.map(p => <FilterPill key={p} tone="positive" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   </div>
   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-  <div className="bg-success-50 border border-success-100 rounded-xl p-4 min-w-0"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 font-mono mt-1 truncate">{acctFmt(totalRev)}</p></div>
-  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4 min-w-0"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 font-mono mt-1 truncate">{acctFmt(totalExp)}</p></div>
-  <div className={`border rounded-xl p-4 min-w-0 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 truncate ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
+  <div className="bg-success-50 border border-success-100 rounded-xl p-4 min-w-0"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 tnum mt-1 truncate">{acctFmt(totalRev)}</p></div>
+  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4 min-w-0"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 tnum mt-1 truncate">{acctFmt(totalExp)}</p></div>
+  <div className={`border rounded-xl p-4 min-w-0 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold tnum mt-1 truncate ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
@@ -1762,9 +1762,9 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <tr key={c.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors">
   <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div></td>
   <td className="px-5 py-3 text-xs text-neutral-400">{c.description}</td>
-  <td className="px-5 py-3 text-right font-mono text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
-  <td className="px-5 py-3 text-right font-mono text-sm text-danger-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
-  <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`}>{acctFmt(c.netIncome, true)}</td>
+  <td className="px-5 py-3 text-right tnum text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
+  <td className="px-5 py-3 text-right tnum text-sm text-danger-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
+  <td className={`px-5 py-3 text-right tnum text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`}>{acctFmt(c.netIncome, true)}</td>
   <td className="px-5 py-3 flex gap-1"><TextLink tone="brand" size="xs" onClick={() => openEdit(c)}>Edit</TextLink><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
   </tr>
   ))}
@@ -2423,7 +2423,7 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
 .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}
 .text-center{text-align:center}.text-right{text-align:right}.text-left{text-align:left}
 .text-xs{font-size:11px}.text-sm{font-size:13px}.text-base{font-size:15px}.text-lg{font-size:17px}
-.font-mono{font-family:ui-monospace,SFMono-Regular,monospace}.font-bold{font-weight:700}.font-black{font-weight:900}.font-semibold{font-weight:600}.font-medium{font-weight:500}
+.tnum{font-family:ui-monospace,SFMono-Regular,monospace}.font-bold{font-weight:700}.font-black{font-weight:900}.font-semibold{font-weight:600}.font-medium{font-weight:500}
 .tabular-nums{font-variant-numeric:tabular-nums}
 .uppercase{text-transform:uppercase}.tracking-widest{letter-spacing:0.1em}.tracking-wider{letter-spacing:0.05em}
 .border-t{border-top:1px solid ${printTheme.borderLight}}.border-b{border-bottom:1px solid ${printTheme.borderLight}}.border-t-2{border-top:2px solid ${printTheme.inkStrong}}.border-b-2{border-bottom:2px solid ${printTheme.inkStrong}}
@@ -3238,21 +3238,21 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-sm">{label}</LedgerLink>
           : <span className="text-sm">{label}</span>}
         {ids && ids.length && onOpenLedger
-          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className={amountClassName || "font-mono text-sm tabular-nums"}>{acctFmt(amount)}</LedgerLink>
-          : <span className={amountClassName || "font-mono text-sm tabular-nums"}>{acctFmt(amount)}</span>}
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className={amountClassName || "tnum text-sm tabular-nums"}>{acctFmt(amount)}</LedgerLink>
+          : <span className={amountClassName || "tnum text-sm tabular-nums"}>{acctFmt(amount)}</span>}
       </div>
     );
     return (
     <div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Profit & Loss</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-neutral-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Income</span></div>
-      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="tnum text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showIncome && <PLTotal label="Total Income" amount={plData.totalRevenue} ids={plIds(plData.revenue)} indent={24} className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" />}
       <PLTotal label="Gross Profit" amount={plData.totalRevenue} ids={plIds(plData.revenue)} className="flex justify-between py-2 border-t-2 border-neutral-800 font-black mt-2" />
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-neutral-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Expenses</span></div>
-      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="tnum text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showExpenses && <PLTotal label="Total Expenses" amount={plData.totalExpenses} ids={plIds(plData.expenses)} indent={24} className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" />}
-      <PLTotal label="NET INCOME" amount={plData.netIncome} ids={[...plIds(plData.revenue), ...plIds(plData.expenses)]} className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3" amountClassName={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`} />
+      <PLTotal label="NET INCOME" amount={plData.netIncome} ids={[...plIds(plData.revenue), ...plIds(plData.expenses)]} className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3" amountClassName={`tnum text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`} />
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>
     );})()}
@@ -3270,13 +3270,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-xs">{label}</LedgerLink>
           : <span className="text-xs text-neutral-700">{label}</span>}
         {ids && ids.length && onOpenLedger
-          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="font-mono text-xs tabular-nums">{acctFmt(amount)}</LedgerLink>
-          : <span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(amount)}</span>}
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="tnum text-xs tabular-nums">{acctFmt(amount)}</LedgerLink>
+          : <span className="tnum text-xs text-neutral-900 tabular-nums">{acctFmt(amount)}</span>}
       </div>
     );
     const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic, ids, onOpenLedger }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-info-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>{ids && onOpenLedger ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className={`text-sm no-underline hover:underline ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</LedgerLink> : <span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span>}{ids && onOpenLedger
-      ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(amount, true)}</LedgerLink>
-      : <span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span>}</div>);
+      ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(amount, true)}</LedgerLink>
+      : <span className={`tnum text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span>}</div>);
     // A subtotal is a question ("what makes up $31,529?"), so it opens a
     // ledger spanning every account beneath it -- the same way the
     // QuickBooks export groups them. Previously the totals were inert
@@ -3284,8 +3284,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     const BSSection = ({ title, children, show, toggle, total, totalLabel, totalIds }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-neutral-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-neutral-300 font-bold mt-1" style={{ paddingLeft: 24 }}>{totalIds && totalIds.length && onOpenLedger
       ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="text-sm">{totalLabel || "Total " + title}</LedgerLink>
       : <span className="text-sm text-neutral-900">{totalLabel || "Total " + title}</span>}{totalIds && totalIds.length && onOpenLedger
-      ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(total)}</LedgerLink>
-      : <span className="font-mono text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span>}</div>)}</div>);
+      ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(total)}</LedgerLink>
+      : <span className="tnum text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span>}</div>)}</div>);
     return (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-success-600 bg-success-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-danger-600 bg-danger-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
       <div className="flex justify-end mb-2 border-b border-neutral-200 pb-1"><span className="text-xs font-semibold text-neutral-500 uppercase">Total</span></div>
@@ -3293,8 +3293,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities" totalIds={bsData.liabilities.map(a=>a.id)} onOpenLedger={onOpenLedger}>{bsData.liabilities.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity" totalIds={bsData.equity.map(a=>a.id)}>{bsData.equity.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
       <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black">{onOpenLedger ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">TOTAL LIABILITIES AND EQUITY</LedgerLink> : <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>}{onOpenLedger
-      ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</LedgerLink>
-      : <span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>}</div>
+      ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</LedgerLink>
+      : <span className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>}</div>
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>);
     })()}
@@ -3303,17 +3303,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "tb" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Trial Balance</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
-      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-brand-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
+      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-brand-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right tnum">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right tnum">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right tnum">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right tnum">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
     </div>)}
 
     {/* General Ledger */}
     {reportId === "gl" && glAccount && (<div>
       <div className="text-center mb-4"><p className="text-xs text-neutral-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-neutral-900 mt-1">{glAccount.name}</h4><p className="text-sm text-neutral-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-neutral-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
+      {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="tnum font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
       <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <table className="w-full text-sm border border-neutral-200 rounded-xl overflow-hidden"><thead className="bg-neutral-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th>}</tr></thead>
-      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-brand-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-brand-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 tnum text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right tnum">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right tnum">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right tnum font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
 
     {/* AR Aging Summary */}
@@ -3322,8 +3322,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {/* 7-column table — wrap in horizontal scroll so it doesn't wrap-stack on mobile (where each cell collapses onto multiple lines and the layout breaks visually). */}
       <div className="overflow-x-auto -mx-4 md:mx-0">
       <table className="w-full text-sm min-w-[680px]"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600 whitespace-nowrap">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600 whitespace-nowrap">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600 whitespace-nowrap">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600 whitespace-nowrap">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800 whitespace-nowrap">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700 whitespace-nowrap">Total</th></tr></thead>
-      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 whitespace-nowrap">{t.tenant}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold whitespace-nowrap">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2 whitespace-nowrap">TOTALS</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono whitespace-nowrap">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
+      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 whitespace-nowrap">{t.tenant}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right tnum font-semibold whitespace-nowrap">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2 whitespace-nowrap">TOTALS</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right tnum whitespace-nowrap">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
       </div>
     </div>)}
 
@@ -3359,16 +3359,16 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
                   <React.Fragment key={tenant}>
                     <tr className="bg-brand-50/40 border-t border-neutral-200">
                       <td colSpan={6} className="px-3 py-2 font-semibold text-neutral-800 whitespace-nowrap">{tenant}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">{acctFmt(tTotal)}</td>
+                      <td className="px-3 py-2 text-right tnum font-semibold whitespace-nowrap">{acctFmt(tTotal)}</td>
                     </tr>
                     {charges.map((c, i) => (
                       <tr key={i} className="border-t border-neutral-100">
                         <td className="px-3 py-1.5 text-xs text-neutral-500 pl-6 whitespace-nowrap">{(c.description || "").slice(0, 50)}</td>
                         <td className="px-3 py-1.5 text-xs text-neutral-400 whitespace-nowrap">{c.date}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap">{acctFmt(c.originalAmount)}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-xs text-neutral-400 whitespace-nowrap">{c.amountPaid > 0 ? acctFmt(c.amountPaid) : ""}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-xs font-semibold whitespace-nowrap">{acctFmt(c.amountDue)}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap">{c.daysOutstanding}</td>
+                        <td className="px-3 py-1.5 text-right tnum text-xs whitespace-nowrap">{acctFmt(c.originalAmount)}</td>
+                        <td className="px-3 py-1.5 text-right tnum text-xs text-neutral-400 whitespace-nowrap">{c.amountPaid > 0 ? acctFmt(c.amountPaid) : ""}</td>
+                        <td className="px-3 py-1.5 text-right tnum text-xs font-semibold whitespace-nowrap">{acctFmt(c.amountDue)}</td>
+                        <td className="px-3 py-1.5 text-right tnum text-xs whitespace-nowrap">{c.daysOutstanding}</td>
                         <td className="px-3 py-1.5 text-xs whitespace-nowrap">{bucketLabel(c.daysOutstanding)}</td>
                       </tr>
                     ))}
@@ -3379,7 +3379,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
             <tfoot>
               <tr className="border-t-2 border-neutral-800 font-bold">
                 <td className="px-3 py-2 whitespace-nowrap" colSpan={4}>TOTAL OUTSTANDING</td>
-                <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{acctFmt(rows.reduce((s, r) => s + r.amountDue, 0))}</td>
+                <td className="px-3 py-2 text-right tnum whitespace-nowrap">{acctFmt(rows.reduce((s, r) => s + r.amountDue, 0))}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -3393,35 +3393,35 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "customer_balance_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Tenant Balance Summary</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
-      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-positive-600" : t.balance > 0 ? "text-danger-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
+      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right tnum font-semibold ${t.balance < 0 ? "text-positive-600" : t.balance > 0 ? "text-danger-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Journal */}
     {reportId === "journal" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Journal</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-neutral-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-neutral-800">{je.description}</span></div><span className="text-xs text-neutral-400">{acctFmtDate(je.date)}</span></div>
-      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-neutral-50"><td className="py-1 text-neutral-600">{l.accountName}</td><td className="py-1 text-neutral-400">{l.memo||""}</td><td className="py-1 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
+      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-neutral-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="tnum text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-neutral-800">{je.description}</span></div><span className="text-xs text-neutral-400">{acctFmtDate(je.date)}</span></div>
+      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-neutral-50"><td className="py-1 text-neutral-600">{l.accountName}</td><td className="py-1 text-neutral-400">{l.memo||""}</td><td className="py-1 text-right tnum">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right tnum">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
     </div>)}
 
     {/* Transaction List by Date */}
     {reportId === "txn_by_date" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Transaction List by Date</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Entry</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
-      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-1.5 text-xs text-neutral-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-brand-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-neutral-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-neutral-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
+      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-1.5 text-xs text-neutral-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-brand-600 tnum">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-neutral-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-neutral-500">{t.description}</td><td className="px-3 py-1.5 text-right tnum">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right tnum">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Account Listing */}
     {reportId === "account_list" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Account Listing</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant/Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Active</th></tr></thead>
-      <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 font-mono text-xs text-neutral-600">{a.code||"—"}</td><td className="px-4 py-2 text-neutral-800">{a.name}</td><td className="px-4 py-2 text-neutral-500">{a.type}</td><td className="px-4 py-2 text-xs text-neutral-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
+      <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 tnum text-xs text-neutral-600">{a.code||"—"}</td><td className="px-4 py-2 text-neutral-800">{a.name}</td><td className="px-4 py-2 text-neutral-500">{a.type}</td><td className="px-4 py-2 text-xs text-neutral-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Expenses by Category */}
     {reportId === "expenses_by_category" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Expenses by Category</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-brand-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700"><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="">{a.name}</LedgerLink></td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-brand-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-brand-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700"><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="">{a.name}</LedgerLink></td><td className="px-4 py-2 text-right tnum">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-brand-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* P&L by Property — columnar QBO-style */}
@@ -3505,10 +3505,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         // a bare positive is indistinguishable from a profit.
         const fmtCell = (v) => v === 0 ? "–" : acctFmt(Math.abs(v));
         const fmtSigned = (v) => v === 0 ? "–" : (v < 0 ? "(" + acctFmt(Math.abs(v)) + ")" : acctFmt(v));
-        const cellCls = "px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap";
+        const cellCls = "px-3 py-1.5 text-right tnum text-xs whitespace-nowrap";
         const labelCls = "px-3 py-1.5 text-sm text-neutral-700 whitespace-nowrap";
         const boldLabelCls = "px-3 py-1.5 text-sm font-bold text-neutral-900 whitespace-nowrap";
-        const boldCellCls = "px-3 py-1.5 text-right font-mono text-xs font-bold whitespace-nowrap";
+        const boldCellCls = "px-3 py-1.5 text-right tnum text-xs font-bold whitespace-nowrap";
         const sectionCls = "px-3 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50";
         // `groupIds` turns a subtotal label into a ledger link over every
         // account the subtotal sums, matching the single-account links on
@@ -3570,11 +3570,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
             <td className="px-3 py-2 text-sm font-black text-neutral-900">Net Income</td>
             {props.map(p => {
               const ni = sumGroup(p.id, [...incomeAccts, ...otherIncomeAccts]) - sumGroup(p.id, [...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td key={p.id} className={`px-3 py-2 text-right font-mono text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
+              return <td key={p.id} className={`px-3 py-2 text-right tnum text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
             })}
             {(() => {
               const ni = sumGroupAll([...incomeAccts, ...otherIncomeAccts]) - sumGroupAll([...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td className={`px-3 py-2 text-right font-mono text-xs font-black bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
+              return <td className={`px-3 py-2 text-right tnum text-xs font-black bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
             })()}
           </tr>
         </tbody>
@@ -3588,11 +3588,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "cash_flow" && (() => { const cf = getCashFlowData(start, end); return (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Statement of Cash Flows</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="text-sm font-bold text-neutral-900 py-1">Operating Activities</div>
-      {cf.operating.items.map((item,i) => <div key={i} className="flex justify-between py-1" style={{paddingLeft:24}}><span className="text-sm text-neutral-700">{item.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(item.amount, true)}</span></div>)}
-      <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold" style={{paddingLeft:24}}><span className="text-sm">Net Cash from Operations</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.operating.total)}</span></div>
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-4"><span className="text-sm">NET CHANGE IN CASH</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.netChange, true)}</span></div>
-      <div className="flex justify-between py-1 mt-2"><span className="text-sm text-neutral-500">Beginning Cash</span><span className="font-mono text-sm">{acctFmt(cf.beginningCash)}</span></div>
-      <div className="flex justify-between py-1 font-bold"><span className="text-sm">Ending Cash</span><span className="font-mono text-sm">{acctFmt(cf.endingCash)}</span></div>
+      {cf.operating.items.map((item,i) => <div key={i} className="flex justify-between py-1" style={{paddingLeft:24}}><span className="text-sm text-neutral-700">{item.name}</span><span className="tnum text-sm tabular-nums">{acctFmt(item.amount, true)}</span></div>)}
+      <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold" style={{paddingLeft:24}}><span className="text-sm">Net Cash from Operations</span><span className="tnum text-sm tabular-nums">{acctFmt(cf.operating.total)}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-4"><span className="text-sm">NET CHANGE IN CASH</span><span className="tnum text-sm tabular-nums">{acctFmt(cf.netChange, true)}</span></div>
+      <div className="flex justify-between py-1 mt-2"><span className="text-sm text-neutral-500">Beginning Cash</span><span className="tnum text-sm">{acctFmt(cf.beginningCash)}</span></div>
+      <div className="flex justify-between py-1 font-bold"><span className="text-sm">Ending Cash</span><span className="tnum text-sm">{acctFmt(cf.endingCash)}</span></div>
     </div>); })()}
 
     {/* Rent Roll */}
@@ -3600,21 +3600,21 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Rent Roll</p></div>
       {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total Units</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-700">{occ}</div><div className="text-xs text-neutral-400">Occupied</div></div><div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-600">{data.length-occ}</div><div className="text-xs text-neutral-400">Vacant</div></div><div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-info-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-neutral-400">Monthly Rent</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right tnum">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* NOI by Property */}
     {reportId === "noi_by_property" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">NOI by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getNOIByProperty(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">NOI</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Margin</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-success-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-danger-600" : "text-success-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right tnum text-success-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right tnum text-danger-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right tnum font-bold ${r.noi < 0 ? "text-danger-600" : "text-success-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Vacancy Report */}
     {reportId === "vacancy" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Vacancy Report</p></div>
       {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Est. Lost Revenue</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right tnum">{r.daysVacant}</td><td className="px-4 py-2 text-right tnum text-danger-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* License Compliance */}
@@ -3631,8 +3631,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           <div className="bg-danger-100 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-700">{counts.expired || 0}</div><div className="text-xs text-neutral-400">Expired</div></div>
         </div>
         <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Number</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Jurisdiction</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Expiry</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th><th className="px-3 py-2 text-center text-xs font-semibold text-neutral-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Fee</th></tr></thead>
-        <tbody>{data.map((r, i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 max-w-48 truncate">{r.property}</td><td className="px-3 py-2 text-neutral-600">{r.type}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.number || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.jurisdiction || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.expiryDate}</td><td className={`px-3 py-2 text-right font-mono ${r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`}>{r.daysUntil < 0 ? `${r.daysUntil}` : r.daysUntil}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "expired" ? "bg-danger-100 text-danger-700" : r.status === "urgent" ? "bg-danger-50 text-danger-600" : r.status === "soon" ? "bg-warn-50 text-warn-700" : r.status === "pending_renewal" ? "bg-brand-50 text-brand-700" : "bg-success-50 text-success-700"}`}>{r.status.replace("_", " ")}</span></td><td className="px-3 py-2 text-right font-mono">{r.fee ? acctFmt(r.fee) : "—"}</td></tr>)}</tbody>
-        <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={7} className="px-3 py-2">TOTAL FEES</td><td className="px-3 py-2 text-right font-mono">{acctFmt(data.reduce((s, r) => s + r.fee, 0))}</td></tr></tfoot></table>
+        <tbody>{data.map((r, i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 max-w-48 truncate">{r.property}</td><td className="px-3 py-2 text-neutral-600">{r.type}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.number || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.jurisdiction || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.expiryDate}</td><td className={`px-3 py-2 text-right tnum ${r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`}>{r.daysUntil < 0 ? `${r.daysUntil}` : r.daysUntil}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "expired" ? "bg-danger-100 text-danger-700" : r.status === "urgent" ? "bg-danger-50 text-danger-600" : r.status === "soon" ? "bg-warn-50 text-warn-700" : r.status === "pending_renewal" ? "bg-brand-50 text-brand-700" : "bg-success-50 text-success-700"}`}>{r.status.replace("_", " ")}</span></td><td className="px-3 py-2 text-right tnum">{r.fee ? acctFmt(r.fee) : "—"}</td></tr>)}</tbody>
+        <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={7} className="px-3 py-2">TOTAL FEES</td><td className="px-3 py-2 text-right tnum">{acctFmt(data.reduce((s, r) => s + r.fee, 0))}</td></tr></tfoot></table>
         </>);
       })()}
     </div>)}
@@ -3641,7 +3641,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "lease_expirations" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Lease Expiration Schedule</p></div>
       {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No leases expiring in the next 180 days</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Left</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-neutral-500">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-danger-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-warn-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-neutral-500">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right tnum ${r.daysUntilExpiration <= 30 ? "text-danger-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-warn-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right tnum">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Work Order Summary */}
@@ -3649,61 +3649,61 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Work Order Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-neutral-400">Total</div></div><div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-warn-600">{data.byStatus.open}</div><div className="text-xs text-neutral-400">Open</div></div><div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-highlight-600">{data.byStatus.in_progress}</div><div className="text-xs text-neutral-400">In Progress</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-600">{data.byStatus.completed}</div><div className="text-xs text-neutral-400">Completed</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Issue</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Cost</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
-      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{w.property}</td><td className="px-3 py-2 text-neutral-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-warn-100 text-warn-700":w.status==="in_progress"?"bg-highlight-100 text-highlight-700":"bg-success-100 text-success-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-neutral-500">{w.daysOpen}</td></tr>)}</tbody></table>
+      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{w.property}</td><td className="px-3 py-2 text-neutral-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-warn-100 text-warn-700":w.status==="in_progress"?"bg-highlight-100 text-highlight-700":"bg-success-100 text-success-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right tnum">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right tnum text-neutral-500">{w.daysOpen}</td></tr>)}</tbody></table>
     </div>); })()}
 
     {/* Open Invoices */}
     {reportId === "open_invoices" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid charges</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Original</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Paid</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Due</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.date}</td><td className="px-3 py-2 text-xs text-neutral-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-success-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-danger-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-danger-600 font-bold" : r.daysOutstanding > 30 ? "text-warn-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-danger-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.date}</td><td className="px-3 py-2 text-xs text-neutral-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right tnum">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right tnum text-success-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right tnum font-semibold text-danger-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right tnum ${r.daysOutstanding > 60 ? "text-danger-600 font-bold" : r.daysOutstanding > 30 ? "text-warn-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right tnum text-danger-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Collections Report */}
     {reportId === "collections" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Collections Report</p></div>
       {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding balances</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Contact</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Total Owed</th><th className="px-3 py-2 text-center text-xs font-semibold text-neutral-500">Severity</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-danger-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-danger-100 text-danger-700":r.severity==="warning"?"bg-warn-100 text-warn-700":"bg-neutral-100 text-neutral-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right tnum font-bold text-danger-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-danger-100 text-danger-700":r.severity==="warning"?"bg-warn-100 text-warn-700":"bg-neutral-100 text-neutral-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Customer Balance Detail */}
     {reportId === "customer_balance_detail" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Tenant Balance Detail</p></div>
-      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-positive-600" : "text-danger-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
+      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`tnum text-sm font-bold ${t.totalBalance < 0 ? "text-positive-600" : "text-danger-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
       <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-neutral-400">Date</th><th className="px-2 py-1 text-left text-neutral-400">Entry</th><th className="px-2 py-1 text-left text-neutral-400">Description</th><th className="px-2 py-1 text-right text-neutral-400">Debit</th><th className="px-2 py-1 text-right text-neutral-400">Credit</th><th className="px-2 py-1 text-right text-neutral-400">Balance</th></tr></thead>
-      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-2 py-1 text-neutral-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-neutral-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-positive-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
+      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-2 py-1 text-neutral-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 tnum">{tx.jeNumber||""}</td><td className="px-2 py-1 text-neutral-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right tnum">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right tnum">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right tnum font-semibold ${tx.balance < 0 ? "text-positive-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
     </div>)}
 
     {/* Expenses by Vendor */}
     {reportId === "expenses_by_vendor" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Expenses by Vendor</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByVendor(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-notice-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right tnum">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-notice-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Security Deposit Ledger */}
     {reportId === "security_deposits" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Security Deposit Ledger</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No security deposits held</p> : (<><table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Received</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Returned</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Held</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-4 py-2 text-right tnum">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right tnum text-danger-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right tnum font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
     </div>)}
 
     {/* Late Fee Report */}
     {reportId === "late_fees" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Late Fee Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No late fees in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Assessed</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Count</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-success-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-danger-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-right tnum">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right tnum text-success-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right tnum font-bold text-danger-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Owner Distributions */}
     {reportId === "owner_distributions" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Owner Distribution Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No distributions in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-neutral-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400">{r.date}</td><td className="px-4 py-2 tnum text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-neutral-700">{r.description}</td><td className="px-4 py-2 text-right tnum font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Rent Collection Summary */}
@@ -3711,14 +3711,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Rent Collection Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-info-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-neutral-400">Charged</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-neutral-400">Collected</div></div><div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-neutral-400">Outstanding</div></div><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-neutral-400">Collection Rate</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Charged</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rate</th></tr></thead>
-      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-success-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
+      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right tnum">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right tnum text-success-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right tnum text-danger-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* Transaction Detail by Account */}
     {reportId === "txn_by_account" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Transaction Detail by Account</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-neutral-50 px-3 py-2 rounded-lg font-semibold text-sm text-neutral-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-neutral-400">{acct.type}</span></div>
-      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-3 py-1 text-neutral-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-neutral-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
+      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-3 py-1 text-neutral-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 tnum w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-neutral-600">{t.description}</td><td className="px-3 py-1 text-right tnum w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right tnum w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
     </div>)}
 
     {/* P&L Comparison */}
@@ -3727,12 +3727,12 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {!compareData && <p className="text-center py-4 text-warn-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Current</th>{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Prior</th>}{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Change</th>}</tr></thead>
       <tbody><tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Income</td></tr>
-      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-success-600" : a.amount-(prior?.amount||0) < 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
-      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
+      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right tnum">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right tnum text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right tnum ${a.amount-(prior?.amount||0) > 0 ? "text-success-600" : a.amount-(prior?.amount||0) < 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right tnum">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right tnum text-neutral-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right tnum">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
       <tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Expenses</td></tr>
-      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-success-600" : a.amount-(prior?.amount||0) > 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
-      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
-      <tr className="border-t-2 border-b-2 border-neutral-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
+      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right tnum">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right tnum text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right tnum ${a.amount-(prior?.amount||0) < 0 ? "text-success-600" : a.amount-(prior?.amount||0) > 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right tnum">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right tnum text-neutral-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right tnum">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
+      <tr className="border-t-2 border-b-2 border-neutral-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right tnum">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right tnum text-neutral-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right tnum ${plData.netIncome-compareData.netIncome > 0 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
       </tbody></table>
     </div>)}
 
@@ -3740,24 +3740,24 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "ap_aging_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">AP Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
-      <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{vendor}</td><td className="px-4 py-2 text-right font-mono">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
+      <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{vendor}</td><td className="px-4 py-2 text-right tnum">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right tnum">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right tnum">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right tnum">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right tnum">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right tnum font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Unpaid Bills */}
     {reportId === "unpaid_bills" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Unpaid Bills</p></div>
       {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid bills found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Ref</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400 text-xs">{r.date}</td><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-neutral-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400 text-xs">{r.date}</td><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-neutral-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 tnum text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right tnum font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Vendor Balance Summary */}
     {reportId === "vendor_balance_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Vendor Balance Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding vendor balances</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.total)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL OWED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right tnum font-semibold">{acctFmt(r.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL OWED</td><td className="px-4 py-2 text-right tnum">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Audit Log */}
@@ -3773,7 +3773,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Reconciliation Summary</p></div>
       <Btn variant="slate" size="sm" className="mb-3" onClick={async () => { const d = await getReconSummary(); setReconData(d); }}>Refresh</Btn>
       {reconData.length === 0 ? <p className="text-center py-8 text-neutral-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Status</th></tr></thead>
-      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-success-100 text-success-700":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
+      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right tnum">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right tnum">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right tnum ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-success-100 text-success-700":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
     </div>)}
 
     {/* Budget vs Actuals */}
@@ -3787,11 +3787,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         <p className="text-xs font-semibold text-brand-700 mb-2">Set Monthly Budget for {budgetMonth}</p>
         <div className="space-y-1">{accounts.filter(a => a.is_active && ["Revenue","Expense","Cost of Goods Sold","Other Income","Other Expense"].includes(a.type)).sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => {
           const existing = budgets.find(b => b.account_id === a.id);
-          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-neutral-600 w-48 truncate">{a.code||"•"} {a.name}</span><Input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
+          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-neutral-600 w-48 truncate">{a.code||"•"} {a.name}</span><Input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right tnum" /></div>;
         })}</div>
       </div>)}
       {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-neutral-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance (%)</th></tr></thead>
-      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-success-600" : "text-danger-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-success-600" : "text-danger-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
+      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right tnum">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right tnum text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right tnum font-semibold ${favorable ? "text-success-600" : "text-danger-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-success-600" : "text-danger-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
     </div>)}
 
     </>)}
@@ -4759,7 +4759,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           <span className="material-icons-outlined text-success-600 text-xl">trending_up</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalRevenue)}</p>
+      <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalRevenue)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
@@ -4769,7 +4769,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           <span className="material-icons-outlined text-danger-600 text-xl">trending_down</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalExpenses)}</p>
+      <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalExpenses)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
@@ -4779,7 +4779,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           <span className="material-icons-outlined text-info-600 text-xl">account_balance</span>
         </span>
       </div>
-      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-neutral-900" : "text-danger-600"}`}>{acctFmt(plData.netIncome)}</p>
+      <p className={`text-2xl font-bold tnum ${plData.netIncome >= 0 ? "text-neutral-900" : "text-danger-600"}`}>{acctFmt(plData.netIncome)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
@@ -4789,7 +4789,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           <span className="material-icons-outlined text-accent-600 text-xl">business</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(bsData.totalAssets)}</p>
+      <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(bsData.totalAssets)}</p>
       <p className="text-xs text-neutral-400 mt-1">Balance sheet</p>
     </div>
   </div>
@@ -4834,7 +4834,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
               </div>
             </div>
             <div className="text-right">
-              <span className="font-mono text-sm font-semibold text-neutral-800">{acctFmt(total)}</span>
+              <span className="tnum text-sm font-semibold text-neutral-800">{acctFmt(total)}</span>
               <div className="mt-0.5"><AcctStatusBadge status={je.status} /></div>
             </div>
           </div>
@@ -4870,7 +4870,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
                 <span className={`w-2.5 h-2.5 rounded-full ${colors[type]}`} />
                 <span className="text-sm text-neutral-700">{type}</span>
               </div>
-              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(total, true)}</span>
+              <span className={`tnum text-sm font-semibold ${total < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(total, true)}</span>
             </div>
           );
           })}

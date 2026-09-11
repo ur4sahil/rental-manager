@@ -2138,15 +2138,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <div className={`mt-2 pt-2 border-t ${wrapCls} text-[11px] space-y-0.5`}>
               <div className="flex justify-between text-neutral-500">
                 <span>Bank</span>
-                <span className="font-mono text-neutral-800">{r.bankBal == null ? "—" : formatCurrency(r.bankBal)}</span>
+                <span className="tnum text-neutral-800">{r.bankBal == null ? "—" : formatCurrency(r.bankBal)}</span>
               </div>
               <div className="flex justify-between text-neutral-500">
                 <span>Books</span>
-                <span className="font-mono text-neutral-800">{formatCurrency(r.bookBal)}</span>
+                <span className="tnum text-neutral-800">{formatCurrency(r.bookBal)}</span>
               </div>
               <div className="flex justify-between text-neutral-500">
                 <span>Pending ({r.pendingCount})</span>
-                <span className="font-mono text-neutral-800">{formatCurrency(r.pendingNet)}</span>
+                <span className="tnum text-neutral-800">{formatCurrency(r.pendingNet)}</span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-dashed border-neutral-200">
                 {r.bankBal == null ? (
@@ -2156,7 +2156,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 ) : (
                   <>
                     <span className="text-danger-700 font-semibold">⚠ Mismatch</span>
-                    <span className="font-mono font-bold text-danger-700">{formatCurrency(r.diff)}</span>
+                    <span className="tnum font-bold text-danger-700">{formatCurrency(r.diff)}</span>
                   </>
                 )}
               </div>
@@ -2251,7 +2251,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             const lines = act.lines || [];
             return (
             <tr key={r.id} className="border-b border-neutral-100 hover:bg-neutral-50">
-              <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-neutral-400">{r.priority}</span></td>
+              <td className="px-3 py-3 text-center"><span className="tnum text-xs text-neutral-400">{r.priority}</span></td>
               <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
               <td className="px-3 py-3 text-xs text-neutral-500 max-w-48">
                 <span className="text-accent-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
@@ -2415,7 +2415,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         );
       })()}
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
-      <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
+      <td className={`px-3 py-2.5 text-right tnum font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
@@ -2485,15 +2485,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                   </td>
                   <td className="py-1 pr-3 text-neutral-500">{className_(l.class_id) || d.je?.property || "—"}</td>
                   <td className="py-1 pr-3 text-neutral-500 max-w-xs truncate" title={l.memo || ""}>{l.memo || "—"}</td>
-                  <td className="py-1 text-right font-mono text-neutral-700">{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</td>
-                  <td className="py-1 text-right font-mono text-neutral-700">{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</td>
+                  <td className="py-1 text-right tnum text-neutral-700">{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</td>
+                  <td className="py-1 text-right tnum text-neutral-700">{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</td>
                 </tr>
                 );
               })}
               <tr className="border-t border-brand-200 font-semibold text-neutral-700">
                 <td className="py-1" colSpan={3}>Total</td>
-                <td className="py-1 text-right font-mono">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.debit), 0))}</td>
-                <td className="py-1 text-right font-mono">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.credit), 0))}</td>
+                <td className="py-1 text-right tnum">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.debit), 0))}</td>
+                <td className="py-1 text-right tnum">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.credit), 0))}</td>
               </tr>
             </tbody>
           </table>
@@ -2622,7 +2622,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {splitLines.map((line, i) => (
           <div key={i} className="grid grid-cols-5 gap-2 items-end">
             <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
-            <Input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
+            <Input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right tnum" />
             <Input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
             <Select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -2632,7 +2632,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           ))}
         </div>
         <div className="flex items-center justify-between mt-2">
-          <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
+          <span className={`text-xs tnum ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
             Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
           </span>
           <Btn variant="purple" size="sm" onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2}>Post Split</Btn>
@@ -2752,7 +2752,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     {wizStep === 3 && wizParsed && (
     <div className="space-y-4">
       {wizDetected && <div className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-full inline-block">Auto-detected: {wizDetected.name}</div>}
-      <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
+      <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg tnum">{h}</span>)}</div></div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
         <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><Select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</Select></div>
@@ -2779,7 +2779,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <tr key={i} className={`border-t ${r.valid ? "" : "bg-danger-50/50"}`}>
               <td className="px-3 py-1.5">{r.date || "—"}</td>
               <td className="px-3 py-1.5 truncate max-w-48">{r.description}</td>
-              <td className={`px-3 py-1.5 text-right font-mono ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
+              <td className={`px-3 py-1.5 text-right tnum ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
               <td className="px-3 py-1.5 text-center">{r.valid ? <span className="text-success-600">✓</span> : <span className="text-danger-500" title="Invalid date or amount">✗</span>}</td>
             </tr>
           ))}</tbody>

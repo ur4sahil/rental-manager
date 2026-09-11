@@ -3545,7 +3545,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
   </div>
   <div className="text-right">
-  <div className={"font-semibold font-mono " + (e.amount < 0 ? "text-positive-600" : "text-danger-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  <div className={"font-semibold tnum " + (e.amount < 0 ? "text-positive-600" : "text-danger-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
   </div>
   </div>
@@ -3742,7 +3742,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">PM Company's 8-Digit Code</label>
-  <Input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="font-mono tracking-wider" />
+  <Input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="tnum tracking-wider" />
   <p className="text-xs text-neutral-400 mt-1">Ask the property manager for their company code</p>
   </div>
   <Btn variant="purple" className="w-full" onClick={() => assignPM(showPmAssign)}>Assign Property Manager</Btn>

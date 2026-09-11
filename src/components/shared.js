@@ -34,7 +34,7 @@ export class ErrorBoundary extends React.Component {
   <div className="text-5xl mb-4">⚠️</div>
   <h2 className="text-xl font-bold text-subtle-800 mb-2">Something went wrong</h2>
   <p className="text-sm text-subtle-500 mb-2">We've logged this issue automatically.</p>
-  <div className="inline-block bg-danger-50 text-danger-700 font-mono text-sm px-3 py-1 rounded mb-4">{this.state.errorCode}</div>
+  <div className="inline-block bg-danger-50 text-danger-700 tnum text-sm px-3 py-1 rounded mb-4">{this.state.errorCode}</div>
   <p className="text-xs text-subtle-400 mb-6">If this keeps happening, share this code with your admin.</p>
   <Btn variant="primary" onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}>Reload App</Btn>
   </div>
@@ -148,7 +148,7 @@ export function ToastContainer({ toasts, removeToast }) {
     <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : "warning"}</span>
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2 mb-1">
-        <span className={`text-xs font-mono px-1.5 py-0.5 rounded font-bold ${t.type === "error" ? "bg-danger-100 text-danger-700" : "bg-warn-100 text-warn-700"}`}>{t.code}</span>
+        <span className={`text-xs tnum px-1.5 py-0.5 rounded font-bold ${t.type === "error" ? "bg-danger-100 text-danger-700" : "bg-warn-100 text-warn-700"}`}>{t.code}</span>
         {t.action === "retry" && <span className="text-xs opacity-70">Try again</span>}
         {t.action === "contact" && <span className="text-xs opacity-70">Contact admin</span>}
       </div>

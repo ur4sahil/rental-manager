@@ -401,7 +401,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
                 {QB_FILE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
               </Select>}
             </td>
-            <td className="text-right pr-3 font-mono text-neutral-700">{f.isAccountList ? f.count.toLocaleString() + " accounts" : (f.parsed ? f.parsed.rows.length.toLocaleString() : "—")}</td>
+            <td className="text-right pr-3 tnum text-neutral-700">{f.isAccountList ? f.count.toLocaleString() + " accounts" : (f.parsed ? f.parsed.rows.length.toLocaleString() : "—")}</td>
             <td className="text-right"><TextLink tone="danger" size="xs" onClick={() => removeFile(i)}>Remove</TextLink></td>
           </tr>
           ))}
@@ -478,8 +478,8 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
                 {(ACCOUNT_SUBTYPE_OPTIONS[a.type] || []).map(t => <option key={t} value={t}>{t}</option>)}
               </Select>
             </td>
-            <td className="text-right font-mono text-neutral-500">{a.lineCount}</td>
-            <td className="text-right font-mono text-neutral-700">{formatCurrency(a.net)}</td>
+            <td className="text-right tnum text-neutral-500">{a.lineCount}</td>
+            <td className="text-right tnum text-neutral-700">{formatCurrency(a.net)}</td>
             <td className="px-2">
               <Select value={a.action} size="sm" onChange={e => updateAccount(a.path, { action: e.target.value })}>
                 <option value="create">Create new</option>
@@ -488,7 +488,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
               </Select>
             </td>
             <td className="px-2 min-w-48">
-              {a.action === "create" && <span className="text-neutral-400 font-mono">{a.code} {a.role === "tenant_ar" ? `AR - ${a.tenantName}` : a.leaf}</span>}
+              {a.action === "create" && <span className="text-neutral-400 tnum">{a.code} {a.role === "tenant_ar" ? `AR - ${a.tenantName}` : a.leaf}</span>}
               {a.action === "map" && (
                 <Select value={a.targetAccountId || ""} size="sm" onChange={e => updateAccount(a.path, { targetAccountId: e.target.value })}>
                   <option value="">Choose an account…</option>
@@ -552,16 +552,16 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
             {trialBalance.byType.map(t => (
             <tr key={t.type} className="border-t border-neutral-100">
               <td className="py-1 text-neutral-700">{t.type}</td>
-              <td className="text-right font-mono text-neutral-500">{t.accounts}</td>
-              <td className="text-right font-mono text-neutral-500">{t.lines}</td>
-              <td className="text-right font-mono">{formatCurrency(t.debit)}</td>
-              <td className="text-right font-mono">{formatCurrency(t.credit)}</td>
+              <td className="text-right tnum text-neutral-500">{t.accounts}</td>
+              <td className="text-right tnum text-neutral-500">{t.lines}</td>
+              <td className="text-right tnum">{formatCurrency(t.debit)}</td>
+              <td className="text-right tnum">{formatCurrency(t.credit)}</td>
             </tr>
             ))}
             <tr className="border-t-2 border-neutral-300 font-semibold text-neutral-800">
               <td className="py-1" colSpan={3}>Total</td>
-              <td className="text-right font-mono">{formatCurrency(trialBalance.debit)}</td>
-              <td className="text-right font-mono">{formatCurrency(trialBalance.credit)}</td>
+              <td className="text-right tnum">{formatCurrency(trialBalance.debit)}</td>
+              <td className="text-right tnum">{formatCurrency(trialBalance.credit)}</td>
             </tr>
           </tbody>
         </table>

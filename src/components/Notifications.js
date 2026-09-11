@@ -239,7 +239,7 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
       {state.log.length > 0 && (
         <details className="mt-3">
           <summary className="text-xs text-neutral-400 cursor-pointer hover:text-neutral-600">Show technical details</summary>
-          <pre className="mt-2 bg-neutral-50 rounded-lg p-3 text-[11px] text-neutral-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{state.log.join("\n")}</pre>
+          <pre className="mt-2 bg-neutral-50 rounded-lg p-3 text-[11px] text-neutral-600 tnum whitespace-pre-wrap max-h-48 overflow-y-auto">{state.log.join("\n")}</pre>
         </details>
       )}
     </Card>

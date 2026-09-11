@@ -276,9 +276,9 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                           <div className="text-sm font-medium text-neutral-700">{b.installment_label}</div>
                           <div className="text-[10px] text-neutral-400">{b.tax_year}</div>
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-neutral-600">{b.due_date}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs text-neutral-600">{b.expected_amount ? formatCurrency(b.expected_amount) : "—"}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs text-neutral-600">{b.paid_amount ? formatCurrency(b.paid_amount) : (b.status === "paid" ? "✓" : "—")}</td>
+                        <td className="px-4 py-2.5 tnum text-xs text-neutral-600">{b.due_date}</td>
+                        <td className="px-4 py-2.5 text-right tnum text-xs text-neutral-600">{b.expected_amount ? formatCurrency(b.expected_amount) : "—"}</td>
+                        <td className="px-4 py-2.5 text-right tnum text-xs text-neutral-600">{b.paid_amount ? formatCurrency(b.paid_amount) : (b.status === "paid" ? "✓" : "—")}</td>
                         <td className="px-4 py-2.5">
                           <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${chip.cls}`}>{chip.label}</span>
                         </td>

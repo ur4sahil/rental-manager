@@ -1332,15 +1332,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="grid grid-cols-3 gap-2 mb-3">
   <div className="bg-danger-50 rounded-xl px-3 py-2 text-center">
   <div className="text-[11px] text-danger-600">Charged</div>
-  <div className="text-sm font-bold text-danger-700 font-mono">{formatCurrency(charged)}</div>
+  <div className="text-sm font-bold text-danger-700 tnum">{formatCurrency(charged)}</div>
   </div>
   <div className="bg-positive-50 rounded-xl px-3 py-2 text-center">
   <div className="text-[11px] text-positive-700">Paid / credited</div>
-  <div className="text-sm font-bold text-positive-700 font-mono">{formatCurrency(paid)}</div>
+  <div className="text-sm font-bold text-positive-700 tnum">{formatCurrency(paid)}</div>
   </div>
   <div className="bg-neutral-100 rounded-xl px-3 py-2 text-center">
   <div className="text-[11px] text-neutral-500">Balance</div>
-  <div className={"text-sm font-bold font-mono " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-700" : "text-neutral-700")}>{formatCurrency(safeNum(selectedTenant.balance))}</div>
+  <div className={"text-sm font-bold tnum " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-700" : "text-neutral-700")}>{formatCurrency(safeNum(selectedTenant.balance))}</div>
   </div>
   </div>
 
@@ -1364,10 +1364,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     <div className="font-medium text-neutral-700 truncate">{label}</div>
     <div className="text-xs text-neutral-400">{e.date}{ref ? ` · JE #${ref}` : ""}</div>
     </div>
-    <div className={"text-right w-24 font-semibold font-mono " + (credit ? "text-positive-600" : "text-danger-600")}>
+    <div className={"text-right w-24 font-semibold tnum " + (credit ? "text-positive-600" : "text-danger-600")}>
     {credit ? "+" : "\u2212"}{formatCurrency(Math.abs(safeNum(e.amount)))}
     </div>
-    <div className="text-right w-24 text-xs text-neutral-500 font-mono">
+    <div className="text-right w-24 text-xs text-neutral-500 tnum">
     {e.balance != null ? formatCurrency(e.balance) : "\u2014"}
     </div>
     </div>
@@ -1753,7 +1753,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
   </div>
   <div className="text-right">
-  <div className={"font-semibold font-mono " + (safeNum(e.amount) < 0 ? "text-positive-600" : "text-danger-500")}>{safeNum(e.amount) < 0 ? "+" : "-"}{formatCurrency(Math.abs(safeNum(e.amount)))}</div>
+  <div className={"font-semibold tnum " + (safeNum(e.amount) < 0 ? "text-positive-600" : "text-danger-500")}>{safeNum(e.amount) < 0 ? "+" : "-"}{formatCurrency(Math.abs(safeNum(e.amount)))}</div>
   {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
   </div>
   </div>
@@ -1771,7 +1771,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-medium text-neutral-700">{p.method || p.type || "Payment"}</div>
   <div className="text-xs text-neutral-400">{p.date}{p.status ? " · " + p.status : ""}</div>
   </div>
-  <div className="text-right font-semibold font-mono text-positive-600">{formatCurrency(p.amount)}</div>
+  <div className="text-right font-semibold tnum text-positive-600">{formatCurrency(p.amount)}</div>
   </div>
   ))}
   </div>

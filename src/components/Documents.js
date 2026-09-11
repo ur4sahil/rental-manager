@@ -1756,9 +1756,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {Object.entries(templateForm.field_config?.calculated || {}).map(([name, cfg]) => (
   <div key={name} className="flex items-center gap-2 text-xs bg-warn-50 border border-warn-100 rounded-lg px-3 py-2 mb-1">
-  <span className="font-mono font-semibold text-warn-800">{name}</span>
+  <span className="tnum font-semibold text-warn-800">{name}</span>
   <span className="text-warn-500">=</span>
-  <span className="font-mono text-warn-700 flex-1">{cfg.formula}</span>
+  <span className="tnum text-warn-700 flex-1">{cfg.formula}</span>
   <TextLink tone="danger" size="xs" underline={false} onClick={() => {
   const calc = { ...(templateForm.field_config?.calculated || {}) };
   delete calc[name];
@@ -1785,9 +1785,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {Object.entries(templateForm.field_config?.conditional || {}).map(([name, cfg]) => (
   <div key={name} className="flex items-center gap-2 text-xs bg-accent-50 border border-accent-100 rounded-lg px-3 py-2 mb-1">
-  <span className="font-mono font-semibold text-accent-800">{name}</span>
+  <span className="tnum font-semibold text-accent-800">{name}</span>
   <span className="text-accent-500">visible when</span>
-  <span className="font-mono text-accent-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
+  <span className="tnum text-accent-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
   <TextLink tone="danger" size="xs" underline={false} onClick={() => {
   const cond = { ...(templateForm.field_config?.conditional || {}) };
   delete cond[name];
@@ -1970,7 +1970,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   document.addEventListener("mouseup", onUp);
   }}>
   <div className="flex items-center justify-between px-1">
-  <span className={`text-[9px] font-mono font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
+  <span className={`text-[9px] tnum font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
   <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="leading-none">✕</TextLink>
   </div>
   </div>

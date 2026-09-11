@@ -571,7 +571,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   )}
   <div>
-  <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Type <span className="font-mono text-danger-600 normal-case">{deleteModal.company.name}</span> to confirm</label>
+  <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Type <span className="tnum text-danger-600 normal-case">{deleteModal.company.name}</span> to confirm</label>
   <Input value={deleteTyped} onChange={e => setDeleteTyped(e.target.value)} placeholder={deleteModal.company.name} autoFocus />
   </div>
   </div>

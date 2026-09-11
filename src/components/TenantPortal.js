@@ -89,13 +89,13 @@ function StripeCardForm({ clientSecret, totalCents, feeCents, rentCents, payMeth
       <PaymentElement options={{ layout: "tabs" }} />
       <div className="mt-4 p-3 bg-neutral-50 rounded-lg text-sm">
         <div className="flex justify-between text-neutral-600">
-          <span>Rent</span><span className="font-mono">${(rentCents / 100).toFixed(2)}</span>
+          <span>Rent</span><span className="tnum">${(rentCents / 100).toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-neutral-500 text-xs mt-1">
-          <span>{feeLabel}</span><span className="font-mono">${(feeCents / 100).toFixed(2)}</span>
+          <span>{feeLabel}</span><span className="tnum">${(feeCents / 100).toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-semibold text-neutral-800 mt-2 pt-2 border-t border-neutral-200">
-          <span>Total charge</span><span className="font-mono">${(totalCents / 100).toFixed(2)}</span>
+          <span>Total charge</span><span className="tnum">${(totalCents / 100).toFixed(2)}</span>
         </div>
       </div>
       {localError && <div className="mt-3 text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-3 py-2">{localError}</div>}
@@ -812,7 +812,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <label className="text-xs text-neutral-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-neutral-400">$</span>
-  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
+  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg tnum" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
   <Btn variant="slate" size="xs" onClick={() => setPaymentAmount(String(tenantData.rent || 0))}>Full Rent (${safeNum(tenantData.rent)})</Btn>
@@ -844,7 +844,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
         <div className="text-xs text-neutral-400">{o.sub}</div>
         </div>
         <div className="text-right">
-        <div className="text-sm font-mono font-bold text-neutral-800">${(o.math.totalCents / 100).toFixed(2)}</div>
+        <div className="text-sm tnum font-bold text-neutral-800">${(o.math.totalCents / 100).toFixed(2)}</div>
         <div className="text-xs text-neutral-400">+ ${(o.math.feeCents / 100).toFixed(2)} fee ({o.feeLabel})</div>
         </div>
       </div>
@@ -920,7 +920,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     <span className="bg-positive-100 text-positive-700 text-xs font-bold rounded-full px-2 py-1">Active</span>
     </div>
     <div className="bg-brand-50/40 rounded-2xl p-4 space-y-2">
-    <div className="flex justify-between text-sm"><span className="text-neutral-400">Card</span><span className="font-mono text-neutral-700 capitalize">{stripeAutopay.card_brand || "card"} •••• {stripeAutopay.card_last4 || "????"}</span></div>
+    <div className="flex justify-between text-sm"><span className="text-neutral-400">Card</span><span className="tnum text-neutral-700 capitalize">{stripeAutopay.card_brand || "card"} •••• {stripeAutopay.card_last4 || "????"}</span></div>
     <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-neutral-700">${safeNum(stripeAutopay.amount).toLocaleString()}/month</span></div>
     <div className="flex justify-between text-sm"><span className="text-neutral-400">Next Charge</span><span className="font-medium text-neutral-700">{stripeAutopay.next_charge_date || "—"}</span></div>
     </div>
@@ -1026,7 +1026,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       <div className="text-neutral-800 font-medium">{tenantLedgerLabel(je.description, l.memo, isPayment)}</div>
       <div className="md:text-right text-danger-600 font-semibold">{isCharge ? formatCurrency(safeNum(l.debit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
       <div className="md:text-right text-positive-600 font-semibold">{isPayment ? formatCurrency(safeNum(l.credit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
-      <div className="md:text-right font-mono font-bold text-neutral-800">{formatCurrency(l._balance)}</div>
+      <div className="md:text-right tnum font-bold text-neutral-800">{formatCurrency(l._balance)}</div>
       </div>
       );
     })}

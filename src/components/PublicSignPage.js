@@ -205,7 +205,7 @@ export default function PublicSignPage({ token }) {
                 : "You'll receive a copy once all other parties have signed."}
           </p>
           {doneInfo?.integrity_hash && (
-            <div className="text-[10px] font-mono text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2 break-all space-y-1 text-left">
+            <div className="text-[10px] tnum text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2 break-all space-y-1 text-left">
               <div><span className="text-neutral-500">Document hash at send:</span> <span className="text-neutral-700">{(doneInfo.doc_hash_at_send || "").slice(0, 32)}…</span></div>
               <div><span className="text-neutral-500">Signature hash:</span> <span className="text-neutral-700">{doneInfo.integrity_hash.slice(0, 32)}…</span></div>
               {pdfStatus === "uploading" && <div className="text-warn-700">⏳ Generating signed PDF…</div>}
@@ -289,7 +289,7 @@ export default function PublicSignPage({ token }) {
             <span className="material-icons-outlined text-brand-600 text-base mt-0.5">fingerprint</span>
             <div>
               <div className="font-semibold text-neutral-700 mb-0.5">You are signing the version of this document with hash:</div>
-              <div className="font-mono break-all text-neutral-700">{payload.doc_hash_at_send}</div>
+              <div className="tnum break-all text-neutral-700">{payload.doc_hash_at_send}</div>
               <div className="text-neutral-500 mt-1">Save this hash if you want to verify later that the document hasn't been altered.</div>
             </div>
           </div>

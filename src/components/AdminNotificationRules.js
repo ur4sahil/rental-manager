@@ -596,11 +596,11 @@ function VariableChips({ eventVars, extraVars, onAddExtra, onRemoveExtra, onInse
         {eventVars.map(v => (
           <button key={v} type="button"
             onClick={() => onInsert("{{" + v + "}}")}
-            className="text-[11px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded hover:bg-brand-100 hover:text-brand-700"
+            className="text-[11px] tnum bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded hover:bg-brand-100 hover:text-brand-700"
             title="Click to insert">{"{{" + v + "}}"}</button>
         ))}
         {(extraVars || []).map(v => (
-          <span key={v} className="inline-flex items-center gap-1 text-[11px] font-mono bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">
+          <span key={v} className="inline-flex items-center gap-1 text-[11px] tnum bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">
             <button type="button" onClick={() => onInsert("{{" + v + "}}")} className="hover:underline" title="Click to insert">{"{{" + v + "}}"}</button>
             <button type="button" onClick={() => onRemoveExtra(v)} className="text-brand-400 hover:text-danger-600" title="Remove">×</button>
           </span>

@@ -245,7 +245,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   {mode === "signup_tenant" && (
   <div className="mb-4">
   <label className="text-xs font-medium text-neutral-500 block mb-1">Invite Code *</label>
-  <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-warn-50 font-mono tracking-wider" />
+  <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-warn-50 tnum tracking-wider" />
   <p className="text-xs text-neutral-400 mt-1">Check your invite email from your landlord or property manager</p>
   </div>
   )}

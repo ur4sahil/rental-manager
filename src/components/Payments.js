@@ -150,10 +150,10 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   {payments.map(p => (
   <tr key={p.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors">
   <td className="px-4 py-3 text-neutral-500">{p.date}</td>
-  <td className="px-4 py-3 font-mono text-xs text-positive-600">{p.number || "—"}</td>
+  <td className="px-4 py-3 tnum text-xs text-positive-600">{p.number || "—"}</td>
   <td className="px-4 py-3 font-medium text-neutral-800">{p.tenant || "—"}</td>
   <td className="px-4 py-3 text-neutral-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
-  <td className="px-4 py-3 text-right font-semibold font-mono text-positive-600">{formatCurrency(p.amount)}</td>
+  <td className="px-4 py-3 text-right font-semibold tnum text-positive-600">{formatCurrency(p.amount)}</td>
   <td className="px-4 py-3 capitalize text-neutral-500 text-xs">{p.type?.replace("_", " ")}</td>
   <td className="px-4 py-3 text-neutral-400 text-xs">{p.method}</td>
   <td className="px-4 py-3">

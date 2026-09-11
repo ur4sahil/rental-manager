@@ -205,6 +205,22 @@
   --shadow-card: 0 4px 20px -2px rgba(0,0,0,0.05);
 }
 
+/* Aligned figures: money, balances, counts, reference codes.
+   QuickBooks sets these in its UI sans with tabular figures rather than a
+   monospace face. Housify used `font-mono` in 249 places, and no
+   --font-mono token was ever defined, so it fell back to
+   Menlo/Consolas/Courier -- a typewriter amount sitting beside Figtree in
+   the same table row, which is what read as "horrible".
+   tabular-nums is required, not cosmetic: Figtree's proportional digits
+   do not align at all. Measured at 40px, "1111" is 66.1px wide where
+   "0000" is 102.5px, so a column of figures came out ragged. With
+   tabular-nums both are 99.7px. */
+.tnum {
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 body {
   margin: 0;
   font-family: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
