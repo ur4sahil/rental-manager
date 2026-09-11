@@ -111,7 +111,12 @@ async function callLocalOnce(model, prompt, maxTok) {
   // rather than silently scoring zero.
   const content = (d.message?.content || "").trim();
   const thinking = (d.message?.thinking || "").trim();
-  return { text: content || thinking, truncated: !content && !!thinking,
+  // `text` is the ANSWER. `thinking` is kept separate and must never be
+  // scored: the grounding check counts invented facts, and a model that
+  // reasons "I must not invent a date" mentions a date while doing so.
+  // Scoring the reasoning marked Qwen as inventing a fact when its
+  // actual draft was clean.
+  return { text: content, thinking, truncated: !content && !!thinking,
            ms: Math.round((d.total_duration || 0) / 1e6) };
 }
 
@@ -145,6 +150,7 @@ for (const m of MODELS) {
     // ... it is Mortgage"), so the first match is its opening guess and
     // the last is its conclusion. Scoring the first marked correct
     // answers wrong.
+    if (out.truncated) { process.stdout.write("T"); total--; continue; }
     let said = out.text.slice(0, 18), lastAt = -1;
     for (const c of CATEGORIES) {
       const re = new RegExp(`\\b${c.replace(/ /g, "\\s*")}\\b`, "gi");
@@ -159,13 +165,19 @@ for (const m of MODELS) {
   process.stdout.write("\n");
   if (failed) { results.push({ ...m, unavailable: true }); continue; }
 
-  const g = await call(m, GROUNDING.prompt, 220);
-  const invented = GROUNDING.forbidden.filter(re => re.test(g.text)).length;
+  // Grounding is scored on the final draft only. If the budget ran out
+  // before the model emitted one, that is reported as unknown rather
+  // than silently scored against its reasoning.
+  const g = await call(m, GROUNDING.prompt, 900);
+  const invented = g.truncated || !g.text
+    ? null
+    : GROUNDING.forbidden.filter(re => re.test(g.text)).length;
+  if (invented === null) process.stdout.write("  grounding: no draft emitted within the token budget\n");
 
   results.push({ ...m, right, total, avgMs: Math.round(ms / Math.max(total, 1)), wrong, invented, draft: g.text });
   console.log(`  classify: ${right}/${total}   avg ${Math.round(ms / Math.max(total, 1))} ms`);
   wrong.forEach(w => console.log(`     miss: ${w}`));
-  console.log(`  grounding: ${invented === 0 ? "stayed within the facts" : invented + " invented detail(s)"}`);
+  console.log(`  grounding: ${invented === null ? "unknown (no draft emitted)" : invented === 0 ? "stayed within the facts" : invented + " invented detail(s)"}`);
 }
 
 console.log("\n==================== SUMMARY ====================");
