@@ -66,6 +66,36 @@ export function refLabel(reference) {
   return r; // user-typed reference — already readable
 }
 
+// A system reference is an IDEMPOTENCY KEY, not a note. It is what
+// idx_je_company_reference_unique matches on to stop the same charge
+// posting twice, and it is generated -- e.g.
+// "RECUR-6a0e0d78-2026-08", where 6a0e0d78 is a slice of the recurring
+// entry's uuid. Showing that raw in an editable box is wrong twice over:
+// it is gibberish to read, and typing over it silently removes the
+// protection against double-posting.
+//
+// refLabelFull keeps the human meaning AND the period, which is the part
+// a person actually wants ("Recurring · Aug 2026").
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+export function refLabelFull(reference) {
+  const r = (reference || "").trim();
+  if (!r) return "—";
+  const label = refLabel(r);
+  if (label === r) return r; // user-typed; already readable
+  // Trailing YYYY-MM or YYYYMMDD carries the period.
+  const ym = /(\d{4})-(\d{2})$/.exec(r);
+  if (ym) {
+    const m = Number(ym[2]);
+    return `${label} \u00b7 ${MONTHS[m - 1] || ym[2]} ${ym[1]}`;
+  }
+  const ymd = /(\d{4})(\d{2})(\d{2})$/.exec(r);
+  if (ymd) {
+    const m = Number(ymd[2]);
+    return `${label} \u00b7 ${MONTHS[m - 1] || ymd[2]} ${Number(ymd[3])}, ${ymd[1]}`;
+  }
+  return label;
+}
+
 // ============ LEDGER DEEP-LINK ============
 // Account ledgers are React modals (no route), so a plain <div onClick>
 // can't be Ctrl/Cmd/middle-clicked into a new tab. ledgerHref() builds a
@@ -1446,7 +1476,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-neutral-500">Reference</label><Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="mt-1" placeholder="Invoice #, Check #..." /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Reference</label>{refLabel(form.reference) !== (form.reference || "").trim() && (form.reference || "").trim()? <div className="mt-1 px-3 py-2 text-sm rounded-lg bg-neutral-50 border border-neutral-200 text-neutral-600 flex items-center justify-between gap-2" title={form.reference}><span>{refLabelFull(form.reference)}</span><span className="text-[10px] uppercase tracking-wide text-neutral-400">system</span></div>: <Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} placeholder="Optional note or invoice no." className="mt-1 w-full" />}</div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
   </div>
   {/* Property is selected per-line via Class, not at header level */}
