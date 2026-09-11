@@ -4049,7 +4049,17 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     try { hydrate(await _acctDataCache.inFlight); } catch (_) { setLoading(false); }
     return;
   }
-  setLoading(true);
+  // quiet: refetch WITHOUT blanking the screen.
+  //
+  // `if (loading) return <Spinner />` sits at the top of this module, so
+  // setLoading(true) unmounts everything and rebuilds it -- which is why
+  // posting a transaction threw you back to the top of the page and lost
+  // your tab, scroll position, expanded sections and filters. A write
+  // already has data on screen; it does not need to be replaced by a
+  // spinner. The mount and company-change path stays loud, because there
+  // the alternative is showing the PREVIOUS company's figures while the
+  // new ones load.
+  if (!opts.quiet) setLoading(true);
   let _resolveInFlight = null, _rejectInFlight = null;
   if (opts.allowCache) {
   _acctDataCache.companyId = companyId;
@@ -4276,7 +4286,8 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   try {
   const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + (acct.code || shortId()) }]);
   if (error) { pmError("PM-4006", { raw: error, context: "create account" }); return; }
-  fetchAll();
+  showToast("Account created", "success");
+  fetchAll({ quiet: true });
   } finally { guardRelease("addAccount"); }
   }
   async function updateAccount(acct) {
@@ -4291,7 +4302,8 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // (Cross-company pollution was never possible, but within one
   // company a rename didn't propagate until hard reload.)
   if (_acctIdCache[companyId]) delete _acctIdCache[companyId];
-  fetchAll();
+  showToast("Account updated", "success");
+  fetchAll({ quiet: true });
   }
   async function toggleAccount(id, currentActive) {
   if (currentActive) {
@@ -4300,7 +4312,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   const { error: _err3877 } = await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
   if (_err3877) { showToast("Error updating acct_accounts: " + _err3877.message, "error"); return; }
-  fetchAll();
+  fetchAll({ quiet: true });
   }
   async function deleteGLAccount(id) {
   // Safety: check for journal entries
@@ -4319,7 +4331,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // who later asks "where did account 5700 go?" needs to see this.
   logAudit("delete", "accounting", `Permanently deleted account ${acct?.code || ""} ${acct?.name || ""}`, String(id), userProfile?.email, userRole, companyId);
   showToast("Account deleted.", "success");
-  fetchAll();
+  fetchAll({ quiet: true });
   }
 
   // --- Journal Entry CRUD ---
@@ -4363,7 +4375,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   return;
   }
   }
-  fetchAll();
+  fetchAll({ quiet: true });
   } finally { guardRelease("addJournalEntry"); }
   }
   async function updateJournalEntry(data) {
@@ -4382,7 +4394,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
   // Replace lines
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
-  if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll(); return; }
+  if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll({ quiet: true }); return; }
   if (lines?.length > 0) {
   // class_id and entity_id are uuid columns. Legacy rows sometimes
   // carry bigint-stringified values (e.g. entity_id="306" for a
@@ -4399,11 +4411,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: safeUUID(l.class_id), memo: l.memo, entity_type: l.entity_type, entity_id: safeUUID(l.entity_id), entity_name: l.entity_name })));
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
-  fetchAll();
+  fetchAll({ quiet: true });
   return;
   }
   }
-  fetchAll();
+  fetchAll({ quiet: true });
   }
   async function postJournalEntry(id) {
   if (!guardSubmit("postJE", id)) return;
@@ -4414,7 +4426,8 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (!v.isValid) { showToast("Cannot post: journal entry is out of balance by $" + v.difference.toFixed(2), "error"); return; }
   const { error: _err3952 } = await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
   if (_err3952) { showToast("Error updating acct_journal_entries: " + _err3952.message, "error"); return; }
-  fetchAll();
+  showToast("Journal entry posted" + (je.number ? " (" + je.number + ")" : ""), "success");
+  fetchAll({ quiet: true });
   } finally { guardRelease("postJE", id); }
   }
   async function voidJournalEntry(id) {
@@ -4499,7 +4512,8 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   }
   }
-  fetchAll();
+  showToast("Journal entry voided", "success");
+  fetchAll({ quiet: true });
   } catch (e) { showToast("Error voiding entry: " + e.message, "error"); } finally { guardRelease("voidJE", id); }
   }
 
@@ -4597,7 +4611,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   logAudit("reverse", "accounting", `Reversed JE ${je.number} → ${newNumber}`, jeRow.id, userProfile?.email, "", companyId);
   showToast(`Reversal posted as ${newNumber}.`, "success");
-  fetchAll();
+  fetchAll({ quiet: true });
   } catch (e) {
   pmError("PM-4003", { raw: e, context: "reverse journal entry" });
   showToast("Error reversing entry: " + e.message, "error");
@@ -4610,7 +4624,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   try {
   const { error } = await supabase.from("acct_classes").insert([{ ...cls, company_id: companyId }]);
   if (error) { pmError("PM-4010", { raw: error, context: "create accounting class" }); return; }
-  fetchAll();
+  fetchAll({ quiet: true });
   } finally { guardRelease("addClass"); }
   }
   async function updateClass(cls) {
@@ -4624,12 +4638,13 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   description: cls.description || "", color: cls.color || "#3B82F6"
   }).eq("company_id", companyId).eq("id", id);
   if (error) { pmError("PM-4010", { raw: error, context: "update accounting class" }); return; }
-  fetchAll();
+  showToast("Class updated", "success");
+  fetchAll({ quiet: true });
   }
   async function toggleClass(id, currentActive) {
   const { error: _err4013 } = await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
   if (_err4013) { showToast("Error updating acct_classes: " + _err4013.message, "error"); return; }
-  fetchAll();
+  fetchAll({ quiet: true });
   }
 
   if (loading) return <Spinner />;
