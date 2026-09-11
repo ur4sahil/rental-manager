@@ -28,10 +28,13 @@
     <link rel="apple-touch-icon" sizes="512x512" href="%PUBLIC_URL%/logo512.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Housify — Property Management</title>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     <style>
-      body { font-family: 'Inter', sans-serif; }
+      /* Pre-hydration body font. Must match --font-body in index.css:
+         naming a face that is no longer loaded falls back silently, which
+         shows as the app rendering in the wrong font for a beat. */
+      body { font-family: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif; }
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }

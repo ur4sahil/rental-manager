@@ -1288,7 +1288,7 @@ function AppInner() {
   const Page = pageComponents[effectivePage] || Dashboard;
 
   return (
-  <div className="flex h-dvh safe-y safe-x bg-surface-muted font-inter overflow-hidden">
+  <div className="flex h-dvh safe-y safe-x bg-surface-muted font-body overflow-hidden">
   {/* Sidebar */}
   <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-50 fixed md:relative h-full safe-y`}>
   <div className="px-5 py-4 border-b border-brand-50">
@@ -1296,7 +1296,7 @@ function AppInner() {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">Housify</span>
+  <span className="font-display font-extrabold text-lg tracking-tight text-brand-900">Housify</span>
   </div>
   {activeCompany && (
   <div className="flex items-center justify-between mt-2">
@@ -1396,7 +1396,7 @@ function AppInner() {
   {showNotifications && (
   <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-brand-50 z-50">
   <div className="px-4 py-3 border-b border-brand-50 flex justify-between items-center">
-  <span className="font-manrope font-bold text-neutral-700 text-sm">Notifications</span>
+  <span className="font-display font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">
   <TextLink tone="brand" size="xs" onClick={() => { setPage("notifications"); setShowNotifications(false); }}>View All</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setNotifications([]); setShowNotifications(false); }}>Clear</TextLink>

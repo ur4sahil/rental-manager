@@ -417,7 +417,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-danger-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
@@ -461,7 +461,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{u.provider}</div><div className="text-xs text-neutral-400 mt-0.5">{u.property}</div></div>
-  <div className="text-right"><div className="text-lg font-manrope font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
+  <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{u.due}</div></div>

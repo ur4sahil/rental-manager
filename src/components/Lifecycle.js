@@ -369,7 +369,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 1: Select Tenant */}
   {step === 1 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Select Tenant & Move-Out Date</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Select Tenant & Move-Out Date</h3>
   <div className="space-y-4">
   <div>
   <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Tenant</label>
@@ -402,7 +402,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 2: Inspection Checklist */}
   {step === 2 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
   <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-success-50 border-success-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
@@ -421,7 +421,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 3: Deposit Accounting */}
   {step === 3 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
   <div className="bg-brand-50/30 rounded-2xl p-4 mb-4">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Original Deposit</span><span className="font-bold text-neutral-700">${depositAmount.toFixed(2)}</span></div>
   </div>
@@ -470,10 +470,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 4: AR Settlement */}
   {step === 4 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
   <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-danger-50" : "bg-success-50"}`}>
   <div className="text-sm text-neutral-400">Current Balance</div>
-  <div className={`text-2xl font-manrope font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</div>
+  <div className={`text-2xl font-display font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</div>
   </div>
   {outstandingBalance > 0 && (
   <div className="space-y-2">
@@ -500,7 +500,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 5: Confirm & Execute */}
   {step === 5 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Confirm Move-Out</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Confirm Move-Out</h3>
   <div className="space-y-3 text-sm">
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Tenant</span><span className="font-semibold text-neutral-700">{selectedTenant?.name}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>

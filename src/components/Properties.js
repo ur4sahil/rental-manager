@@ -1048,7 +1048,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-positive-600 text-2xl">home</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Details</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Property Details</h3>
                 <p className="text-sm text-neutral-400">Enter the property address and basic info</p>
               </div>
             </div>
@@ -1129,7 +1129,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-info-600 text-2xl">person</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Tenant & Lease</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Tenant & Lease</h3>
                 <p className="text-sm text-neutral-400">Enter tenant information and lease terms</p>
               </div>
             </div>
@@ -1283,7 +1283,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-info-600 text-2xl">bolt</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Utilities</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Utilities</h3>
                 <p className="text-sm text-neutral-400">Set up utility accounts for this property</p>
               </div>
             </div>
@@ -1348,7 +1348,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-highlight-600 text-2xl">account_balance</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">HOA</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">HOA</h3>
                 <p className="text-sm text-neutral-400">Homeowners Association dues (up to 5)</p>
               </div>
             </div>
@@ -1400,7 +1400,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-warn-600 text-2xl">real_estate_agent</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Loan / Mortgage</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Loan / Mortgage</h3>
                 <p className="text-sm text-neutral-400">Property financing details</p>
               </div>
             </div>
@@ -1514,7 +1514,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-success-600 text-2xl">description</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Documents</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Documents</h3>
                 <p className="text-sm text-neutral-400">Upload property-related documents</p>
               </div>
             </div>
@@ -1618,7 +1618,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Recurring Rent</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Recurring Rent</h3>
                 <p className="text-sm text-neutral-400">Set up automatic rent charges</p>
               </div>
             </div>
@@ -1670,7 +1670,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-danger-600 text-2xl">shield</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Insurance</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Insurance</h3>
                 <p className="text-sm text-neutral-400">Property insurance coverage</p>
               </div>
             </div>
@@ -1743,7 +1743,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-warn-600 text-2xl">receipt_long</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Tax</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Property Tax</h3>
                 <p className="text-sm text-neutral-400">
                   Annual tax bill, assessment, billing cadence
                   {propForm.county && propForm.state && <span className="ml-1 text-neutral-500">· {propForm.county}, {propForm.state}</span>}
@@ -1833,7 +1833,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <span className="material-icons-outlined text-positive-600 text-2xl">checklist</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-neutral-800">Review</h3>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Review</h3>
                 <p className="text-sm text-neutral-400">Summary of your property setup</p>
               </div>
             </div>
@@ -2022,7 +2022,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       {/* Header */}
       <div className="bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-manrope font-bold text-neutral-800">Property Setup</h2>
+          <h2 className="text-lg font-display font-bold text-neutral-800">Property Setup</h2>
           <p className="text-sm text-neutral-400">{savedAddress || "New Property"}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -3618,7 +3618,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-display font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-success-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-warn-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Total Rent</div></div>

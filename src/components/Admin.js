@@ -1461,11 +1461,11 @@ function AuditTrail({ companyId }) {
   {/* Stats */}
   <div className="grid grid-cols-4 gap-3 mb-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-manrope font-bold text-neutral-800">{totalCount}</p>
+  <p className="text-lg font-display font-bold text-neutral-800">{totalCount}</p>
   <p className="text-xs text-neutral-400">Total Actions</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-manrope font-bold text-neutral-800">{users.length}</p>
+  <p className="text-lg font-display font-bold text-neutral-800">{users.length}</p>
   <p className="text-xs text-neutral-400">Users Active</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">

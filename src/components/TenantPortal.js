@@ -887,7 +887,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* ---- AUTOPAY TAB ---- */}
   {activeTab === "autopay" && tenantData && (
   <div className="max-w-md mx-auto">
-  <h3 className="font-manrope font-bold text-neutral-800 mb-4">Autopay</h3>
+  <h3 className="font-display font-bold text-neutral-800 mb-4">Autopay</h3>
   <div className="bg-white rounded-3xl border border-brand-50 shadow-card p-6">
   {/* Three states:
         1. setupIntent != null → tenant is mid-setup, show card form

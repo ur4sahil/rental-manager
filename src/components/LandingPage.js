@@ -9,22 +9,22 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">Housify</span>
+  <span className="font-display font-extrabold text-xl tracking-tight text-brand-900">Housify</span>
   </div>
   <Btn variant="primary" onClick={() => onGetStarted("login")}>Sign In</Btn>
   </nav>
   <div className="bg-gradient-to-br from-brand-50/50 to-surface-muted px-8 py-16 text-center">
   <p className="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>
-  <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-neutral-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
+  <h1 className="text-4xl md:text-5xl font-display font-extrabold text-neutral-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
   <p className="text-lg text-neutral-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
 
-  <h2 className="text-lg font-manrope font-manrope font-bold text-neutral-700 mb-6">I am a...</h2>
+  <h2 className="text-lg font-display font-display font-bold text-neutral-700 mb-6">I am a...</h2>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
   <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-brand-100 p-8 text-center hover:border-brand-300 hover:shadow-card transition-all group">
   <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-brand-600 text-3xl">business</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Property Manager</div>
+  <div className="text-lg font-display font-bold text-neutral-800 mb-2">Property Manager</div>
   <p className="text-sm text-neutral-400">I manage properties on behalf of owners. Full access to all management tools.</p>
   <div className="mt-4 text-brand-600 text-sm font-bold">Get Started →</div>
   </button>
@@ -33,7 +33,7 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-16 h-16 rounded-2xl bg-success-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-success-600 text-3xl">home</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Property Owner</div>
+  <div className="text-lg font-display font-bold text-neutral-800 mb-2">Property Owner</div>
   <p className="text-sm text-neutral-400">I own properties and want to manage them directly or assign a property manager.</p>
   <div className="mt-4 text-success-600 text-sm font-bold">Get Started →</div>
   </button>
@@ -42,7 +42,7 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-16 h-16 rounded-2xl bg-warn-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-warn-600 text-3xl">vpn_key</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Tenant</div>
+  <div className="text-lg font-display font-bold text-neutral-800 mb-2">Tenant</div>
   <p className="text-sm text-neutral-400">I have an invite code from my landlord or property manager to access my portal.</p>
   <div className="mt-4 text-warn-600 text-sm font-bold">Enter Invite Code →</div>
   </button>
@@ -54,7 +54,7 @@ export function LandingPage({ onGetStarted }) {
   </div>
 
   <div className="px-8 py-16 bg-white/50">
-  <h2 className="text-2xl font-manrope font-bold text-center text-neutral-800 mb-10">Everything You Need</h2>
+  <h2 className="text-2xl font-display font-bold text-center text-neutral-800 mb-10">Everything You Need</h2>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
   {[
   { icon: "apartment", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
@@ -68,7 +68,7 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-12 h-12 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mb-3">
   <span className="material-icons-outlined text-xl">{f.icon}</span>
   </div>
-  <div className="font-manrope font-bold text-neutral-800 mb-1">{f.title}</div>
+  <div className="font-display font-bold text-neutral-800 mb-1">{f.title}</div>
   <div className="text-sm text-neutral-400">{f.desc}</div>
   </div>
   ))}

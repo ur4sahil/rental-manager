@@ -178,7 +178,7 @@ export function PageHeader({ title, subtitle, children }) {
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
       <div>
-        <h2 className="text-xl md:text-2xl font-manrope font-bold text-neutral-800">{title}</h2>
+        <h2 className="text-xl md:text-2xl font-display font-bold text-neutral-800">{title}</h2>
         {subtitle && <p className="text-xs text-neutral-400 mt-0.5">{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}
@@ -188,7 +188,7 @@ export function PageHeader({ title, subtitle, children }) {
 
 // ---- SECTION TITLE (within a page) ----
 export function SectionTitle({ children, className = "" }) {
-  return <h3 className={`font-manrope font-bold text-neutral-700 text-sm mb-3 uppercase tracking-wide ${className}`}>{children}</h3>;
+  return <h3 className={`font-display font-bold text-neutral-700 text-sm mb-3 uppercase tracking-wide ${className}`}>{children}</h3>;
 }
 
 // ---- EMPTY STATE ----
@@ -229,7 +229,7 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
         </div>
         <div>
           <div className="text-xs text-neutral-400 font-medium">{label}</div>
-          <div className="text-xl font-manrope font-bold text-neutral-800">{value}</div>
+          <div className="text-xl font-display font-bold text-neutral-800">{value}</div>
           {trend && <div className="text-xs text-success-600 font-medium">{trend}</div>}
         </div>
       </div>

@@ -436,7 +436,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-neutral-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
+  <h3 className="font-display font-semibold text-neutral-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Apply Template</label>
   <Select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >

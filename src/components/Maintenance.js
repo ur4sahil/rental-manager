@@ -931,7 +931,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* New Vendor Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-neutral-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
@@ -968,7 +968,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* Invoice Form */}
   {showInvoiceForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-neutral-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-neutral-400 mb-1 block">Vendor *</label>
   <Select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="truncate">

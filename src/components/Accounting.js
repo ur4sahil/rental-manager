@@ -740,7 +740,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {/* Header */}
   <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-50">
   <div className="min-w-0 flex-1">
-  <h3 className="text-base sm:text-lg font-manrope font-bold text-neutral-800 truncate">{title || acctNames}</h3>
+  <h3 className="text-base sm:text-lg font-display font-bold text-neutral-800 truncate">{title || acctNames}</h3>
   {acctCodes && <p className="text-xs text-neutral-400">{acctCodeList.length > 4 ? acctCodes : "Account " + acctCodes} · {allLines.length} entries</p>}
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -870,7 +870,7 @@ export function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
   <div className={`bg-white rounded-xl shadow-sm border border-neutral-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
   <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
-  <h2 className="text-lg font-manrope font-bold text-neutral-900">{title}</h2>
+  <h2 className="text-lg font-display font-bold text-neutral-900">{title}</h2>
   <IconBtn icon="close" onClick={onClose} />
   </div>
   <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
@@ -1045,7 +1045,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
             <span className="material-icons-outlined text-brand-600 text-2xl">task_alt</span>
           </div>
           <div>
-            <h3 className="text-lg font-manrope font-bold text-neutral-800">Opening balance posted</h3>
+            <h3 className="text-lg font-display font-bold text-neutral-800">Opening balance posted</h3>
             <p className="text-sm text-neutral-400">As of {posted.date} · {posted.number}</p>
           </div>
         </div>
@@ -1073,7 +1073,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
           <span className="material-icons-outlined text-brand-600 text-2xl">restart_alt</span>
         </div>
         <div className="flex-1">
-          <h3 className="text-lg font-manrope font-bold text-neutral-800">Opening Balances</h3>
+          <h3 className="text-lg font-display font-bold text-neutral-800">Opening Balances</h3>
           <p className="text-sm text-neutral-400">One-time setup for a new business or migration — enter ending balances from your prior system.</p>
         </div>
       </div>
@@ -5260,7 +5260,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
-  <h3 className="font-manrope font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
+  <h3 className="font-display font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Account</label>
   <Select aria-label="Bank account to reconcile" value={activeReconAccount?.id || ""} onChange={e => setReconAccountId(e.target.value)}>

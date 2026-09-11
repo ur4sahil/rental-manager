@@ -34,8 +34,8 @@
   --color-warning: #d97706;
 
   /* Font families */
-  --font-manrope: 'Manrope', sans-serif;
-  --font-inter: 'Inter', sans-serif;
+  --font-display: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-body: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
 
   /* Neutral palette (maps to slate) */
   --color-neutral-50: #f8fafc;
@@ -207,7 +207,7 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Disable the whole-page rubber-band scroll on iOS webview / Safari

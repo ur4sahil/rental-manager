@@ -67,7 +67,7 @@ export function StatCard({ label, value, sub, color = "text-neutral-800", onClic
   return (
   <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-brand-50 p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
   <div className="text-xs text-neutral-400 font-medium uppercase tracking-widest mb-1">{label}</div>
-  <div className={`text-2xl font-manrope font-bold ${color}`}>{value}</div>
+  <div className={`text-2xl font-display font-bold ${color}`}>{value}</div>
   {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
   </div>
   );
@@ -130,7 +130,7 @@ export function Modal({ title, onClose, children, labelledBy }) {
   <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy || titleId} tabIndex={-1}
        className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
-  <h3 id={titleId} className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
+  <h3 id={titleId} className="font-display font-bold text-neutral-800 text-lg">{title}</h3>
   <IconBtn icon="close" onClick={onClose} aria-label="Close dialog" />
   </div>
   <div className="p-6">{children}</div>
@@ -176,7 +176,7 @@ export function ConfirmModal({ config, onConfirm, onCancel }) {
   <div className="fixed inset-0 bg-black/40 z-[90] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-md">
   <div className="px-6 py-4 border-b border-brand-50">
-  <h3 className="font-manrope font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
+  <h3 className="font-display font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
   </div>
   <div className="px-6 py-5">
   <p className="text-sm text-neutral-600 whitespace-pre-line">{config.message}</p>
@@ -298,7 +298,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   <div className="w-14 h-14 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
   <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
   </div>
-  <h3 className="text-lg font-manrope font-bold text-neutral-800">Set Up Recurring Rent</h3>
+  <h3 className="text-lg font-display font-bold text-neutral-800">Set Up Recurring Rent</h3>
   <p className="text-sm text-neutral-400 mt-1">Schedule automatic rent charges for <strong>{entry.tenantName}</strong></p>
   </div>
   <div className="space-y-3">

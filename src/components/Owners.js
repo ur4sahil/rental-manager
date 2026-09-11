@@ -303,7 +303,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {/* Owner Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-neutral-800">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3><Btn variant="ghost" onClick={resetForm} title="Close">✕</Btn></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3><Btn variant="ghost" onClick={resetForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
@@ -737,7 +737,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* MAINTENANCE TAB */}
   {activeTab === "maintenance" && (
   <div>
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Maintenance Activity</h3>
+  <h3 className="font-display font-bold text-neutral-700 mb-3">Maintenance Activity</h3>
   <OwnerMaintenanceView companyId={companyId} properties={properties} />
   </div>
   )}

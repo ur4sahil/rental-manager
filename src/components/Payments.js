@@ -398,7 +398,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   <div className="flex items-center gap-2">
   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-positive-100 text-positive-700" : "bg-neutral-100 text-neutral-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
-  <span className="text-lg font-manrope font-bold text-neutral-800">${s.amount}</span>
+  <span className="text-lg font-display font-bold text-neutral-800">${s.amount}</span>
   </div>
   </div>
   <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
