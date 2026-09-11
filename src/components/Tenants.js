@@ -111,6 +111,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
+  // Name ascending is how the list was ordered before sorting existed, so
+  // the default view does not change for anyone.
+  const [tenantSort, setTenantSort] = useState({ key: "name", dir: "asc" });
+  const SORTABLE = { name: "Name", property: "Property", email: "Email",
+                     lease_status: "Status", rent: "Rent", balance: "Balance" };
   const [tenantFilterProp, setTenantFilterProp] = useState("all");
   const [tenantFilterBalance, setTenantFilterBalance] = useState("all");
   const [tenantFilterLeaseExpiry, setTenantFilterLeaseExpiry] = useState("all");
@@ -1911,10 +1916,29 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <PageHeader title="Tenants" />
   <div className="flex gap-2 items-center">
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
-  {[["card","\u25A6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  {[["card","\u25A6","Cards"],["table","\u2630","Table"],["compact","\u2261","Compact"]].map(([m,icon,label]) => (
+  <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
+  {/* Sort control, not just clickable table headers. The list defaults to
+      CARD view, where there are no headers to click -- so with headers
+      alone the list is unsortable unless you first discover the view
+      toggle, which is three unlabelled symbols. */}
+  <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+    Sort
+    <Select
+      size="sm"
+      className="w-36"
+      aria-label="Sort tenants by"
+      value={`${tenantSort.key}:${tenantSort.dir}`}
+      onChange={e => { const [key, dir] = e.target.value.split(":"); setTenantSort({ key, dir }); }}
+    >
+      {Object.entries(SORTABLE).flatMap(([key, label]) => [
+        <option key={key + ":asc"} value={key + ":asc"}>{label} \u2191</option>,
+        <option key={key + ":desc"} value={key + ":desc"}>{label} \u2193</option>,
+      ])}
+    </Select>
+  </label>
   <Btn variant="secondary" onClick={exportTenants}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   {/* Tenants are added through the Property Setup Wizard */}
   </div>
@@ -2194,6 +2218,30 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {(() => {
+  // Sort state for the tenant list. Name ascending matches how the list
+  // was ordered before sorting existed, so the default view is unchanged.
+  const SortTh = ({ col, label, className = "px-4 py-3 text-left" }) => {
+    const active = tenantSort.key === col;
+    return (
+      <th className={className}>
+        <button
+          type="button"
+          onClick={() => setTenantSort(s => ({ key: col, dir: s.key === col && s.dir === "asc" ? "desc" : "asc" }))}
+          className="inline-flex items-center gap-1 uppercase hover:text-neutral-700"
+          aria-label={`Sort by ${label}${active ? (tenantSort.dir === "asc" ? ", ascending" : ", descending") : ""}`}
+          aria-sort={active ? (tenantSort.dir === "asc" ? "ascending" : "descending") : "none"}
+        >
+          {label}
+          {/* The inactive arrow is rendered but faint, so the columns do
+              not shift width when the sort moves between them. */}
+          <span className={`material-icons-outlined text-sm leading-none ${active ? "text-brand-600" : "text-neutral-300"}`}>
+            {active && tenantSort.dir === "desc" ? "arrow_downward" : "arrow_upward"}
+          </span>
+        </button>
+      </th>
+    );
+  };
+
   const ft = tenants.filter(t => {
   if (tenantFilter !== "all" && tenantFilter && t.lease_status !== tenantFilter) return false;
   if (tenantFilterProp !== "all" && t.property !== tenantFilterProp) return false;
@@ -2215,6 +2263,25 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!t.name?.toLowerCase().includes(q) && !t.email?.toLowerCase().includes(q) && !t.property?.toLowerCase().includes(q) && !t.phone?.toLowerCase().includes(q)) return false;
   }
   return true;
+  })
+  // Sorted copy. .sort() mutates, so sorting `tenants` directly would
+  // reorder the state array under React and make renders depend on the
+  // order of previous renders.
+  .slice()
+  .sort((a, b) => {
+    const { key, dir } = tenantSort;
+    const mul = dir === "desc" ? -1 : 1;
+    const NUMERIC = { rent: true, balance: true };
+    if (NUMERIC[key]) return (safeNum(a[key]) - safeNum(b[key])) * mul;
+    const av = String(a[key] == null ? "" : a[key]).trim();
+    const bv = String(b[key] == null ? "" : b[key]).trim();
+    // Blanks last in BOTH directions. Flipping them to the top on a
+    // descending sort reads as broken -- a tenant with no email is not
+    // "the highest email".
+    if (!av && !bv) return 0;
+    if (!av) return 1;
+    if (!bv) return -1;
+    return av.localeCompare(bv, undefined, { sensitivity: "base", numeric: true }) * mul;
   });
   const TenantActions = ({t}) => (
   <div className="flex gap-1.5 flex-wrap">
@@ -2276,7 +2343,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>
   <th className="px-3 py-3 text-left w-8"><Checkbox checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
-  <th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th>
+  <SortTh col="name" label="Name" /><SortTh col="property" label="Property" /><SortTh col="email" label="Email" /><SortTh col="lease_status" label="Status" /><SortTh col="rent" label="Rent" className="px-4 py-3 text-right" /><SortTh col="balance" label="Balance" className="px-4 py-3 text-right" /><th className="px-4 py-3 text-right">Actions</th>
   </tr>
   </thead>
   <tbody>
