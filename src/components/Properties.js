@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -2152,7 +2152,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: tenantData } = await supabase.from("tenants").select("name, email, phone, property").eq("company_id", companyId).is("archived_at", null);
   if (tenantData) {
   for (const p of allProps) {
-  const t = tenantData.find(t => t.property === p.address && t.name === p.tenant);
+  const t = tenantData.find(t => sameAddress(t.property, p.address) && t.name === p.tenant);
   if (t) { p._tenantEmail = t.email || ""; p._tenantPhone = t.phone || ""; }
   }
   }
@@ -3611,7 +3611,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-warn-600">{(w.completed_steps || []).length} steps completed · {w.status === "in_progress" ? "In progress" : w.status}</div>
   </div>
   </div>
-  <Btn variant="warning-fill" onClick={() => { const prop = properties.find(p => p.address === w.property_address); setShowPropertyWizard({ propertyId: prop?.id || w.property_id, address: w.property_address, isOccupied: prop?.status === "occupied", tenant: prop?.tenant || "", rent: Number(prop?.rent) || 0, leaseStart: prop?.lease_start || "", leaseEnd: prop?.lease_end || "", securityDeposit: Number(prop?.security_deposit) || 0, }); }}>Resume Setup</Btn>
+  <Btn variant="warning-fill" onClick={() => { const prop = properties.find(p => sameAddress(p.address, w.property_address)); setShowPropertyWizard({ propertyId: prop?.id || w.property_id, address: w.property_address, isOccupied: prop?.status === "occupied", tenant: prop?.tenant || "", rent: Number(prop?.rent) || 0, leaseStart: prop?.lease_start || "", leaseEnd: prop?.lease_end || "", securityDeposit: Number(prop?.security_deposit) || 0, }); }}>Resume Setup</Btn>
   </div>
   ))}
   </div>

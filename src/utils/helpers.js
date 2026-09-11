@@ -632,3 +632,25 @@ export const priorityColors = {
 // Use this everywhere instead of a single literal. The real fix is to
 // settle on one word and migrate, which is a data decision.
 export const ACTIVE_LEASE = ["active", "current"];
+
+// Compare two address strings for identity.
+//
+// `properties.address` is DERIVED -- a trigger composes it from the
+// address components, so it is normalised. `tenants.property`,
+// `leases.property` and `work_orders.property_address` are free text set
+// at creation or import, and nothing normalises them. Joining the two
+// with `===` therefore fails on a difference no human would call a
+// difference: a trailing space on "13431 Marble Rock Dr, Chantilly, VA
+// 20151 " made the Rent Roll print VACANT for an occupied unit.
+//
+// Deliberately only normalises case, surrounding and repeated
+// whitespace. It does NOT strip unit designators: "100 Oak Street, Unit
+// A" and "100 Oak Street" are different places, and collapsing them
+// would attach Unit A's tenant to the building -- and with several units
+// matching, silently show the wrong tenant's name and rent.
+export const normalizeAddress = (v) =>
+  String(v == null ? "" : v).trim().replace(/\s+/g, " ").toLowerCase();
+export const sameAddress = (a, b) => {
+  const x = normalizeAddress(a);
+  return x !== "" && x === normalizeAddress(b);
+};

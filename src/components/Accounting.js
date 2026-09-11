@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1958,15 +1958,15 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
       // 'active' -- so a strict match found no tenant at all and the
       // whole Rent Roll reported every unit VACANT with $0 rent, in the
       // report, the Excel export and the PDF.
-      const t = tenants.find(t => t.property === p.address && ACTIVE_LEASE.includes(t.lease_status));
-      const l = leases.find(l => l.property === p.address && l.status === "active");
+      const t = tenants.find(t => sameAddress(t.property, p.address) && ACTIVE_LEASE.includes(t.lease_status));
+      const l = leases.find(l => sameAddress(l.property, p.address) && l.status === "active");
       return { property: p.address, tenant: t?.name || "VACANT", rent: safeNum(p.rent), leaseStart: l?.start_date || p.lease_start || "", leaseEnd: l?.end_date || p.lease_end || "", status: p.status, deposit: safeNum(p.security_deposit) };
     }).sort((a,b) => a.property.localeCompare(b.property));
   }
 
   function getVacancyReport() {
     return properties.filter(p => p.status === "vacant" || !p.tenant).map(p => {
-      const lastLease = leases.filter(l => l.property === p.address).sort((a,b) => (b.end_date||"").localeCompare(a.end_date||""))[0];
+      const lastLease = leases.filter(l => sameAddress(l.property, p.address)).sort((a,b) => (b.end_date||"").localeCompare(a.end_date||""))[0];
       const moveOut = lastLease?.end_date ? parseLocalDate(lastLease.end_date) : null;
       const daysVacant = moveOut ? Math.max(0, Math.floor((new Date() - moveOut) / 86400000)) : 0;
       return { property: p.address, lastTenant: lastLease?.tenant_name || "—", moveOutDate: lastLease?.end_date || "—", daysVacant, lastRent: safeNum(p.rent), estimatedLost: Math.round(daysVacant * safeNum(p.rent) / 30) };

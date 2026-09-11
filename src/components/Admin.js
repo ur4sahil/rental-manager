@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest } from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -712,7 +712,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
 
   function hasPendingException(t) {
     return openExceptions.some(r =>
-      r.property === t.address &&
+      sameAddress(r.property, t.address) &&
       (r.doc_type === t.wizardStepLabel || r.doc_type === t.wizardStep)
     );
   }
