@@ -12,7 +12,7 @@ import { AUDIT_ACTIONS, AUDIT_MODULES, logAudit } from "./utils/audit";
 import { queueNotification } from "./utils/notifications";
 import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings, clearMembershipCache } from "./utils/company";
 import { COMPANY_DEFAULTS } from "./config";
-import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, ensureDefaultAccounts, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
 import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
 import PullToRefresh from "./components/PullToRefresh";
 
@@ -782,38 +782,6 @@ function AppInner() {
   }
   // Default: show selector (first login, multi-company, or stale lastCompanyId)
   setScreen("company_select");
-  }
-
-  async function ensureDefaultAccounts(cid) {
-  const defaults = [
-  { code: "1000", name: "Checking Account", type: "Asset", is_active: true },
-  { code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
-  { code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
-  { code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
-  // Equity block — needed so the Opening Balances tab has a place to
-  // post prior-system balances. 3000 is the clearing account used as
-  // the plug on the opening JE; never rename or deactivate without
-  // reviewing every opening-balance JE that references it.
-  { code: "3000", name: "Opening Balance Equity", type: "Equity", is_active: true },
-  { code: "3100", name: "Owner's Equity", type: "Equity", is_active: true },
-  { code: "3200", name: "Retained Earnings", type: "Equity", is_active: true },
-  { code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
-  { code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
-  { code: "4100", name: "Other Income", type: "Revenue", is_active: true },
-  { code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
-  { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
-  { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
-  ];
-  const { data: existing } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
-  const existingNames = new Set((existing || []).map(a => a.name));
-  const missing = defaults.filter(a => !existingNames.has(a.name));
-  if (missing.length === 0) return;
-  const rows = missing.map(a => ({ ...a, company_id: cid, old_text_id: cid + "-" + a.code }));
-  for (const row of rows) {
-  const { error } = await supabase.from("acct_accounts").insert([row]);
-  if (error) pmError("PM-4006", { raw: error, context: "ensureDefaultAccounts insert for " + row.code, silent: true });
-  }
-  delete _acctIdCache[cid];
   }
 
   function handleSelectCompany(company, role, explicitUser = null) {

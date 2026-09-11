@@ -731,3 +731,51 @@ export async function postOpeningBalanceJE({ companyId, date, balances, userEmai
     lines,
   });
 }
+
+// Seed a company's default chart of accounts. Lives here rather than in
+// App.js, which is meant to stay a thin router -- the line-budget test
+// says to extract rather than raise the cap again.
+export async function ensureDefaultAccounts(cid) {
+const defaults = [
+{ code: "1000", name: "Checking Account", type: "Asset", is_active: true },
+{ code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
+{ code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
+{ code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
+// Equity block — needed so the Opening Balances tab has a place to
+// post prior-system balances. 3000 is the clearing account used as
+// the plug on the opening JE; never rename or deactivate without
+// reviewing every opening-balance JE that references it.
+{ code: "3000", name: "Opening Balance Equity", type: "Equity", is_active: true },
+{ code: "3100", name: "Owner's Equity", type: "Equity", is_active: true },
+{ code: "3200", name: "Retained Earnings", type: "Equity", is_active: true },
+{ code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
+{ code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
+{ code: "4100", name: "Other Income", type: "Revenue", is_active: true },
+{ code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
+{ code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
+{ code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
+];
+const { data: existing, error: readErr } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
+// A failed read looked like "this company has no accounts", so every
+// default was treated as missing and re-inserted. Bail instead: seeding
+// against an unknown starting state is how duplicates get made.
+if (readErr) { pmError("PM-4006", { raw: readErr, context: "ensureDefaultAccounts read existing", silent: true }); return; }
+// Skip on EITHER code or name. Matching name alone missed accounts
+// whose code existed under a different name (a renamed "Utilities
+// Expense"), and the insert then violated the real constraint,
+// (company_id, code): 19 swallowed HTTP 409s per login, which is also
+// cover for a real error.
+const existingNames = new Set((existing || []).map(a => a.name));
+const existingCodes = new Set((existing || []).map(a => String(a.code)));
+const missing = defaults.filter(a => !existingNames.has(a.name) && !existingCodes.has(String(a.code)));
+if (missing.length === 0) return;
+const rows = missing.map(a => ({ ...a, company_id: cid, old_text_id: cid + "-" + a.code }));
+for (const row of rows) {
+const { error } = await supabase.from("acct_accounts").insert([row]);
+// 23505 = unique_violation: another tab or a concurrent login seeded
+// it first. That is the desired end state, not a failure worth
+// logging -- logging it is what produced the noise.
+if (error && error.code !== "23505") pmError("PM-4006", { raw: error, context: "ensureDefaultAccounts insert for " + row.code, silent: true });
+}
+delete _acctIdCache[cid];
+}

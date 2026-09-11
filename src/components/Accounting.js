@@ -1704,7 +1704,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 }
 
 // --- Reports Center (QuickBooks-style) ---
-export function AcctReports({ linesLoaded = true, accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
+export function AcctReports({ linesLoaded = true, linesFailed = false, accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
   const [activeView, setActiveView] = useState("catalog"); // catalog | viewer
   const [currentReport, setCurrentReport] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -3015,7 +3015,16 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   // General Ledger are excluded: they come from a database aggregate and
   // are correct the moment the page opens.
   const RPC_BACKED = ["tb", "gl"];
-  const needsClientLedger = !RPC_BACKED.includes(reportId);
+  // Reports that read no journal lines at all -- verified by reading each
+  // one: getRentRoll, getVacancyReport, getLeaseExpirations and
+  // getLicenseCompliance touch properties, tenants and leases only.
+  // Gating them on the ledger made the Rent Roll wait on data it never
+  // uses, which is how a slow (or cached-but-unflagged) ledger left it
+  // spinning. The financial ones -- rent_collection, collections,
+  // noi_by_property, work_orders_summary, security_deposits -- do read
+  // the ledger and stay gated.
+  const LEDGER_FREE = ["rent_roll", "vacancy", "lease_expirations", "license_compliance"];
+  const needsClientLedger = !RPC_BACKED.includes(reportId) && !LEDGER_FREE.includes(reportId);
   // For an RPC-backed report: wait while the aggregate is in flight, and
   // if it failed, wait for the lines so the fallback has something real
   // to add up. Either way, never render figures derived from an empty
@@ -3117,7 +3126,15 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         number that looks like an answer -- for as long as the fetch
         takes. Trial Balance and General Ledger skip this: they come
         from a database aggregate and are already correct. */}
-    {ledgerPending && (
+    {ledgerPending && linesFailed && (
+    <div className="py-16 text-center">
+      <span className="material-icons-outlined text-4xl text-danger-500">error_outline</span>
+      <p className="text-sm font-semibold text-neutral-800 mt-2">The ledger could not be loaded</p>
+      <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">This report adds up journal lines in your browser, and they did not all arrive. Figures are withheld rather than shown understated.</p>
+      {onRefresh && <button onClick={() => onRefresh()} className="mt-4 px-4 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700">Try again</button>}
+    </div>
+    )}
+    {ledgerPending && !linesFailed && (
     <div className="py-16 text-center">
       <Spinner />
       <p className="text-sm text-neutral-500 mt-3">Loading the ledger for this report…</p>
@@ -3787,6 +3804,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // $0.00 during the ~17s the lines take to load, which is worse than
   // showing nothing -- a wrong number that looks like an answer.
   const [linesLoaded, setLinesLoaded] = useState(false);
+  // Distinguishes "still arriving" from "it failed". Without this the
+  // two are indistinguishable in the UI and a failure reads as a slow
+  // load that never ends.
+  const [linesFailed, setLinesFailed] = useState(false);
   const [acctClasses, setAcctClasses] = useState([]);
   const [acctTenants, setAcctTenants] = useState([]);
   const [acctVendors, setAcctVendors] = useState([]);
@@ -3910,6 +3931,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     setAcctAccounts(p.accounts); setJournalEntries(p.jeHeaders); setAcctClasses(p.classes);
     setAcctTenants(p.tenants); setAcctVendors(p.vendors);
     setLoading(false);
+    // The cache is only written AFTER the journal lines are fetched and
+    // attached to each header, so a cache hit already holds a complete
+    // ledger. Without this the flag stayed false and every report that
+    // waits on it sat behind "Loading the ledger for this report..."
+    // forever -- with the data already in memory. It looked intermittent
+    // because the first load fetched (and worked) while every
+    // re-navigation inside the 5-minute TTL hung.
+    setLinesLoaded(true);
+    setLinesFailed(false);
   };
   if (opts.allowCache && _acctDataCache.companyId === companyId && _acctDataCache.payload
       && Date.now() - _acctDataCache.at < ACCT_CACHE_TTL_MS) {
@@ -4011,7 +4041,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // once made this render a confident $0.00 instead of an error.
   // company_id is omitted from the projection: it is constant for the
   // whole fetch and was costing ~0.8MB across 16,548 rows.
-  const { rows: allLines, failed: linesFailed } = await fetchAllPaged(
+  // Named linesIncomplete, not linesFailed: a `linesFailed` state now
+  // exists for "the fetch threw", and shadowing it here would make two
+  // different failures share one name inside this block.
+  const { rows: allLines, failed: linesIncomplete } = await fetchAllPaged(
   () => supabase.from("acct_journal_lines")
     .select("id,journal_entry_id,account_id,account_name,debit,credit,class_id,memo,reconciled,entity_type,entity_id,entity_name,bank_feed_transaction_id")
     .eq("company_id", companyId).order("id"),
@@ -4026,7 +4059,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   linesByJE[l.journal_entry_id].push(l);
   });
   jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
-  if (linesFailed) console.warn("[accounting] journal lines incomplete — balances understated");
+  if (linesIncomplete) { setLinesFailed(true); console.warn("[accounting] journal lines incomplete — balances understated"); }
   setLinesLoaded(true);
   } else {
   setLinesLoaded(true);
@@ -4132,6 +4165,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (_resolveInFlight) _resolveInFlight(_acctDataCache.payload);
   } catch (e) {
   if (_rejectInFlight) _rejectInFlight(e);
+  // Record the failure so the reports show an error with a retry rather
+  // than a spinner that never resolves. Deliberately NOT setting
+  // linesLoaded: that would render a confident $0.00 off an empty
+  // ledger, which is the worse of the two failures.
+  setLinesFailed(true);
   throw e;
   } finally {
   _acctDataCache.inFlight = null;
@@ -4680,7 +4718,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
+  {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
   {/* Account Ledger Drill-Down */}
   {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
