@@ -88,12 +88,25 @@ export function ledgerHref(ids, title) {
     + "#acct_coa";
 }
 
+// Every drillable figure in the reports goes through this, so the
+// affordance lives here rather than being re-specified at each call site.
+//
+// It used to inherit the surrounding text colour with only
+// `hover:underline`, which meant a clickable total was pixel-identical to
+// plain text until the mouse happened to land on it. Sahil reported the
+// totals as "not clickable" while clicking the section HEADINGS ("Assets",
+// "Liabilities") -- reasonable, because nothing marked the totals as the
+// clickable thing. Brand colour plus a dotted underline is the app's
+// existing link language (see TextLink in ui.js).
+const LEDGER_LINK_BASE =
+  "text-brand-600 hover:text-brand-700 underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer";
+
 export function LedgerLink({ ids, title, onOpenLedger, className = "", children }) {
   const arr = Array.isArray(ids) ? ids : [ids];
   return (
     <a
       href={ledgerHref(arr, title)}
-      className={className}
+      className={`${LEDGER_LINK_BASE} ${className}`}
       title={title}
       aria-label={title ? `Open ledger for ${title}` : "Open ledger"}
       onClick={e => {
@@ -612,26 +625,57 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const primaryType = acctMap[ids[0]]?.type || "Asset";
   const nb = getNormalBalance(primaryType);
 
-  let running = 0;
-  const allLines = [];
   const sortedJEs = journalEntries.filter(je => je.status === "posted").sort((a, b) => a.date.localeCompare(b.date) || (a.id || "").localeCompare(b.id || ""));
-  for (const je of sortedJEs) {
-  if (je.date < start || je.date > end) continue;
-  if (propertyFilter && je.property !== propertyFilter) continue;
-  for (const l of (je.lines || [])) {
-  if (!ids.includes(l.account_id)) continue;
-  const dr = safeNum(l.debit);
-  const cr = safeNum(l.credit);
-  running += nb === "debit" ? dr - cr : cr - dr;
-  allLines.push({ date: je.date, number: je.number, jeId: je.id, description: je.description, reference: je.reference, property: je.property, memo: l.memo, accountName: acctMap[l.account_id]?.name || "", debit: dr, credit: cr, balance: running });
-  }
-  }
+  const inScope = (je) => je.date >= start && je.date <= end && (!propertyFilter || je.property === propertyFilter);
+
+  // Group PER ACCOUNT, each with its own running balance and subtotal.
+  //
+  // This used to build one flat list with a single running balance across
+  // every selected account. For a total spanning 46 accounts that is
+  // worse than useless: the rows interleave by date, and the balance
+  // column adds cash to receivables to fixed assets, so no number in it
+  // means anything. A combined ledger has to read as a stack of ledgers
+  // -- the shape of the QuickBooks exports Sahil supplied.
+  //
+  // The direction is taken per account too. The old code read
+  // getNormalBalance(acctMap[ids[0]].type) once and applied it to all of
+  // them, so in a mixed selection every account after the first ran
+  // backwards.
+  const groups = ids.map(accountId => {
+    const acct = acctMap[accountId];
+    const dir = getNormalBalance(acct?.type || "Asset");
+    let run = 0, totalDr = 0, totalCr = 0;
+    const rows = [];
+    for (const je of sortedJEs) {
+      if (!inScope(je)) continue;
+      for (const l of (je.lines || [])) {
+        if (l.account_id !== accountId) continue;
+        const dr = safeNum(l.debit), cr = safeNum(l.credit);
+        run += dir === "debit" ? dr - cr : cr - dr;
+        totalDr += dr; totalCr += cr;
+        rows.push({ date: je.date, number: je.number, jeId: je.id, description: je.description,
+                    reference: je.reference, property: je.property, memo: l.memo,
+                    accountName: acct?.name || "", debit: dr, credit: cr, balance: run });
+      }
+    }
+    return { accountId, acct, code: acct?.code || "", name: acct?.name || "Unknown",
+             rows, totalDr, totalCr, closing: run };
+  }).filter(g => g.rows.length > 0);
+
+  // Flat list retained for the counts, the CSV and the PDF, which read it.
+  const allLines = groups.flatMap(g => g.rows);
+  const grandDr = groups.reduce((t, g) => t + g.totalDr, 0);
+  const grandCr = groups.reduce((t, g) => t + g.totalCr, 0);
+  const multiAccount = groups.length > 1;
 
   // Properties for filter dropdown
   const properties = [...new Set(journalEntries.filter(je => je.property).map(je => je.property))].sort();
+  // Column count for the colSpans in the grouped table. The Account column
+  // only appears in a multi-account view.
+  const COLS = multiAccount ? 9 : 8;
 
   function exportCSV() {
-  const multi = ids.length > 1;
+  const multi = multiAccount;
   const rows = [["Date", "JE #", "Description", "Reference", ...(multi ? ["Account"] : []), "Property", "Memo", "Debit", "Credit", "Balance"]];
   allLines.forEach(l => rows.push([l.date, l.number, l.description, l.reference, ...(multi ? [l.accountName] : []), l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
   const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
@@ -659,11 +703,11 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const totalDr = allLines.reduce((s, l) => s + l.debit, 0);
   const totalCr = allLines.reduce((s, l) => s + l.credit, 0);
-  const multi = ids.length > 1;
+  const multi = multiAccount;
   const headRow = `<tr><th class="l">Date</th><th class="l">JE #</th><th class="l">Description</th><th class="l">Ref</th>${multi ? '<th class="l">Account</th>' : ""}<th class="l">Property</th><th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th></tr>`;
   const bodyRows = allLines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.number || "—")}</td><td>${esc(l.description || "")}${l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : ""}</td><td>${esc(refLabel(l.reference))}</td>${multi ? `<td>${esc(l.accountName || "")}</td>` : ""}<td>${esc(l.property?.split(",")[0] || "—")}</td><td class="r mono">${l.debit > 0 ? esc(acctFmt(l.debit)) : ""}</td><td class="r mono">${l.credit > 0 ? esc(acctFmt(l.credit)) : ""}</td><td class="r mono${l.balance < 0 ? " neg" : ""}">${esc(acctFmt(l.balance, true))}</td></tr>`).join("");
   const colspan = multi ? 6 : 5;
-  const totalsRow = `<tr class="tot"><td colspan="${colspan}" class="r">Totals</td><td class="r mono">${esc(acctFmt(totalDr))}</td><td class="r mono">${esc(acctFmt(totalCr))}</td><td class="r mono${running < 0 ? " neg" : ""}">${esc(acctFmt(running, true))}</td></tr>`;
+  const totalsRow = `<tr class="tot"><td colspan="${colspan}" class="r">Totals</td><td class="r mono">${esc(acctFmt(totalDr))}</td><td class="r mono">${esc(acctFmt(totalCr))}</td><td class="r mono${!multiAccount && groups[0] && groups[0].closing < 0 ? " neg" : ""}">${multiAccount ? "&mdash;" : esc(acctFmt(groups[0] ? groups[0].closing : 0, true))}</td></tr>`;
   const periodLabel = period === "Custom" ? `${start} to ${end}` : period;
   const css = `body{font-family:Arial,sans-serif;margin:30px 40px;color:${printTheme.inkStrong};font-size:12px}
 h1{font-size:18px;margin:0 0 2px}.sub{color:${printTheme.inkMuted};font-size:12px;margin:0 0 14px}
@@ -715,7 +759,12 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
   <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
-  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(running, true)}</strong></span>
+  {/* Only a single-account ledger has a meaningful closing balance.
+      Across accounts the figure would sum unlike things, so the count of
+      accounts is shown instead of an authoritative-looking nonsense. */}
+  {multiAccount
+    ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span>
+    : <span>Bal: <strong className={`font-mono ${(groups[0]?.closing || 0) >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(groups[0]?.closing || 0, true)}</strong></span>}
   {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
   {/* Mobile: Card view */}
@@ -747,28 +796,62 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <th className="px-3 py-2.5 text-left">JE #</th>
   <th className="px-3 py-2.5 text-left">Description</th>
   <th className="px-3 py-2.5 text-left">Ref</th>
-  {ids.length > 1 && <th className="px-3 py-2.5 text-left">Account</th>}
+  {multiAccount && <th className="px-3 py-2.5 text-left">Account</th>}
   <th className="px-3 py-2.5 text-left">Property</th>
   <th className="px-3 py-2.5 text-right">Debit</th>
   <th className="px-3 py-2.5 text-right">Credit</th>
   <th className="px-3 py-2.5 text-right">Balance</th>
   </tr>
   </thead>
-  <tbody>
-  {allLines.map((l, i) => (
+  {/* One <tbody> per account: its own heading, its own rows, its own
+      subtotal. A stack of ledgers rather than one interleaved list. */}
+  {groups.map(g => (
+  <tbody key={g.accountId}>
+  {multiAccount && (
+  <tr className="bg-neutral-100/80">
+    <td colSpan={COLS} className="px-4 py-2 text-xs font-bold text-neutral-700 border-t-2 border-neutral-300">
+      {g.code ? g.code + " · " : ""}{g.name}
+      <span className="ml-2 font-normal text-neutral-400">{g.rows.length} {g.rows.length === 1 ? "entry" : "entries"}</span>
+    </td>
+  </tr>
+  )}
+  {g.rows.map((l, i) => (
   <tr key={i} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
   <td className="px-3 py-2 text-xs text-brand-600 font-mono">{l.number || "—"}</td>
   <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
   <td className="px-3 py-2 text-xs text-neutral-400" title={l.reference || ""}>{refLabel(l.reference)}</td>
-  {ids.length > 1 && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
+  {multiAccount && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
   <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
   <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
   </tr>
   ))}
-  {allLines.length === 0 && <tr><td colSpan={ids.length > 1 ? 9 : 8} className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</td></tr>}
+  {multiAccount && (
+  <tr className="bg-neutral-50 font-semibold">
+    <td colSpan={COLS - 3} className="px-4 py-2 text-xs text-neutral-600 border-t border-neutral-300">Total for {g.code ? g.code + " · " : ""}{g.name}</td>
+    <td className="px-3 py-2 text-right font-mono text-xs border-t border-neutral-300">{acctFmt(g.totalDr)}</td>
+    <td className="px-3 py-2 text-right font-mono text-xs border-t border-neutral-300">{acctFmt(g.totalCr)}</td>
+    <td className={`px-3 py-2 text-right font-mono text-xs border-t border-neutral-300 ${g.closing < 0 ? "text-danger-600" : "text-neutral-900"}`}>{acctFmt(g.closing, true)}</td>
+  </tr>
+  )}
+  </tbody>
+  ))}
+  <tbody>
+  {/* Grand total. Debits and credits sum meaningfully across accounts;
+      a combined CLOSING BALANCE does not -- adding cash to receivables
+      to income produces a number that looks authoritative and means
+      nothing -- so that cell is deliberately left blank. */}
+  {multiAccount && allLines.length > 0 && (
+  <tr className="bg-brand-50/60 font-bold">
+    <td colSpan={COLS - 3} className="px-4 py-2.5 text-xs text-neutral-800 border-t-2 border-neutral-800">{groups.length} accounts · {allLines.length} entries</td>
+    <td className="px-3 py-2.5 text-right font-mono text-xs border-t-2 border-neutral-800">{acctFmt(grandDr)}</td>
+    <td className="px-3 py-2.5 text-right font-mono text-xs border-t-2 border-neutral-800">{acctFmt(grandCr)}</td>
+    <td className="px-3 py-2.5 text-right text-[11px] font-normal text-neutral-400 border-t-2 border-neutral-800">—</td>
+  </tr>
+  )}
+  {allLines.length === 0 && <tr><td colSpan={COLS} className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</td></tr>}
   </tbody>
   </table>
   </div>
@@ -1149,7 +1232,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   {accts.map(a => (
   <tr key={a.id} className={`border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
   <td className={`py-3 font-mono text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
-  <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}><LedgerLink ids={[a.id]} title={(a.code ? a.code + " " : "") + a.name} onOpenLedger={onOpenLedger} className="text-inherit no-underline hover:underline">{a.name}</LedgerLink></td>
+  <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}><LedgerLink ids={[a.id]} title={(a.code ? a.code + " " : "") + a.name} onOpenLedger={onOpenLedger} className="">{a.name}</LedgerLink></td>
   <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
@@ -3152,20 +3235,22 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     const PLTotal = ({ label, amount, ids, className, amountClassName, indent }) => (
       <div className={className} style={indent ? { paddingLeft: indent } : undefined}>
         {ids && ids.length && onOpenLedger
-          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">{label}</LedgerLink>
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-sm">{label}</LedgerLink>
           : <span className="text-sm">{label}</span>}
-        <span className={amountClassName || "font-mono text-sm tabular-nums"}>{acctFmt(amount)}</span>
+        {ids && ids.length && onOpenLedger
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className={amountClassName || "font-mono text-sm tabular-nums"}>{acctFmt(amount)}</LedgerLink>
+          : <span className={amountClassName || "font-mono text-sm tabular-nums"}>{acctFmt(amount)}</span>}
       </div>
     );
     return (
     <div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Profit & Loss</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-neutral-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Income</span></div>
-      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm text-neutral-700 no-underline hover:underline">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showIncome && <PLTotal label="Total Income" amount={plData.totalRevenue} ids={plIds(plData.revenue)} indent={24} className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" />}
       <PLTotal label="Gross Profit" amount={plData.totalRevenue} ids={plIds(plData.revenue)} className="flex justify-between py-2 border-t-2 border-neutral-800 font-black mt-2" />
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-neutral-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Expenses</span></div>
-      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm text-neutral-700 no-underline hover:underline">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showExpenses && <PLTotal label="Total Expenses" amount={plData.totalExpenses} ids={plIds(plData.expenses)} indent={24} className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" />}
       <PLTotal label="NET INCOME" amount={plData.netIncome} ids={[...plIds(plData.revenue), ...plIds(plData.expenses)]} className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3" amountClassName={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`} />
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
@@ -3182,26 +3267,34 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     const BSSubtotal = ({ label, amount, ids }) => (
       <div className="flex justify-between py-1 border-t border-neutral-200 font-semibold" style={{ paddingLeft: 48 }}>
         {ids && ids.length && onOpenLedger
-          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-xs text-neutral-700 no-underline hover:underline">{label}</LedgerLink>
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="text-xs">{label}</LedgerLink>
           : <span className="text-xs text-neutral-700">{label}</span>}
-        <span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(amount)}</span>
+        {ids && ids.length && onOpenLedger
+          ? <LedgerLink ids={ids} title={label} onOpenLedger={onOpenLedger} className="font-mono text-xs tabular-nums">{acctFmt(amount)}</LedgerLink>
+          : <span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(amount)}</span>}
       </div>
     );
-    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic, ids, onOpenLedger }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-info-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>{ids && onOpenLedger ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className={`text-sm no-underline hover:underline ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</LedgerLink> : <span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span>}<span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span></div>);
+    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic, ids, onOpenLedger }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-info-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>{ids && onOpenLedger ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className={`text-sm no-underline hover:underline ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</LedgerLink> : <span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span>}{ids && onOpenLedger
+      ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(amount, true)}</LedgerLink>
+      : <span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span>}</div>);
     // A subtotal is a question ("what makes up $31,529?"), so it opens a
     // ledger spanning every account beneath it -- the same way the
     // QuickBooks export groups them. Previously the totals were inert
     // text while the individual rows were clickable.
     const BSSection = ({ title, children, show, toggle, total, totalLabel, totalIds }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-neutral-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-neutral-300 font-bold mt-1" style={{ paddingLeft: 24 }}>{totalIds && totalIds.length && onOpenLedger
-      ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="text-sm text-neutral-900 no-underline hover:underline">{totalLabel || "Total " + title}</LedgerLink>
-      : <span className="text-sm text-neutral-900">{totalLabel || "Total " + title}</span>}<span className="font-mono text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span></div>)}</div>);
+      ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="text-sm">{totalLabel || "Total " + title}</LedgerLink>
+      : <span className="text-sm text-neutral-900">{totalLabel || "Total " + title}</span>}{totalIds && totalIds.length && onOpenLedger
+      ? <LedgerLink ids={totalIds} title={totalLabel || "Total " + title} onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(total)}</LedgerLink>
+      : <span className="font-mono text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span>}</div>)}</div>);
     return (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-success-600 bg-success-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-danger-600 bg-danger-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
       <div className="flex justify-end mb-2 border-b border-neutral-200 pb-1"><span className="text-xs font-semibold text-neutral-500 uppercase">Total</span></div>
       <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS" totalIds={[...bankAccounts, ...arSubAccounts, ...arParentAccounts, ...otherAssets].map(a=>a.id)} onOpenLedger={onOpenLedger}>{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for Bank Accounts" amount={bankAccounts.reduce((s,a)=>s+a.amount,0)} ids={bankAccounts.map(a=>a.id)} /></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for AR" amount={arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0)} ids={(arSubAccounts.length > 0 ? arSubAccounts : arParentAccounts).map(a=>a.id)} /></div>}{otherAssets.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities" totalIds={bsData.liabilities.map(a=>a.id)} onOpenLedger={onOpenLedger}>{bsData.liabilities.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity" totalIds={bsData.equity.map(a=>a.id)}>{bsData.equity.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black">{onOpenLedger ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">TOTAL LIABILITIES AND EQUITY</LedgerLink> : <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>}<span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black">{onOpenLedger ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">TOTAL LIABILITIES AND EQUITY</LedgerLink> : <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>}{onOpenLedger
+      ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</LedgerLink>
+      : <span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>}</div>
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>);
     })()}
@@ -3328,7 +3421,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "expenses_by_category" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Expenses by Category</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-brand-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700"><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-inherit no-underline hover:underline">{a.name}</LedgerLink></td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-brand-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-brand-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700"><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="">{a.name}</LedgerLink></td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-brand-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* P&L by Property — columnar QBO-style */}
@@ -3426,7 +3519,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           return (
           <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
             <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{groupIds && groupIds.length && onOpenLedger
-              ? <LedgerLink ids={groupIds} title={label} onOpenLedger={onOpenLedger} className="no-underline hover:underline">{label}</LedgerLink>
+              ? <LedgerLink ids={groupIds} title={label} onOpenLedger={onOpenLedger} className="">{label}</LedgerLink>
               : label}</td>
             {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{show(v)}</td>; })}
             {/* Pinned right: with 40+ property columns an unpinned total

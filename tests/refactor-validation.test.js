@@ -63,7 +63,7 @@ function testFileStructure() {
     assert(fs.existsSync(path.join(utilsDir, f)), `src/utils/${f} exists`);
   }
   const actualUtilFiles = fs.readdirSync(utilsDir).filter(f => f.endsWith('.js'));
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 15, `src/utils/ has 8..15 files (found ${actualUtilFiles.length})`);
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 17, `src/utils/ has 8..17 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -154,7 +154,12 @@ function testFileStructure() {
   // constraint and "Annually" lost a whole 40-row sheet.
   //
   // +147 / +105 / +3 across three files. Spread, not concentrated.
-  assert(totalLines <= 40300, `Total src lines <= 40300 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE
+  assert(totalLines <= 40800, `Total src lines <= 40800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
+  // chunker). Both are new focused modules in src/utils/, which is the
+  // direction this bound exists to encourage -- a small dedicated file
+  // rather than more weight in a component. Raised deliberately, not to
+  // silence a failure.
 }
 
 // ───────────────────────────────────────────
