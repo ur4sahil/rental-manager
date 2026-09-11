@@ -220,19 +220,11 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   const active = entries.filter(e => e.status === "active");
   const paused = entries.filter(e => e.status === "paused");
 
-  return (
-  <div>
-  <div className="flex items-center justify-between mb-4">
-  <div>
-  <div className="text-sm text-subtle-500">{active.length} active · {paused.length} paused</div>
-  </div>
-  <div className="flex gap-2">
-  <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
-  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
-  </div>
-  </div>
-
-  {showForm && (
+  // The edit form renders inside the row being edited, not at the top
+  // of the page. Editing the fifth entry and having its form appear
+  // above the first one means losing your place and scrolling back to
+  // check which entry you are actually changing.
+  const renderRecurringForm = () => (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -261,7 +253,22 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <Btn variant="slate" onClick={() => { setShowForm(false); setEditingEntry(null); }}>Cancel</Btn>
   </div>
   </div>
-  )}
+  );
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-4">
+  <div>
+  <div className="text-sm text-subtle-500">{active.length} active · {paused.length} paused</div>
+  </div>
+  <div className="flex gap-2">
+  <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
+  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
+  </div>
+  </div>
+
+  {/* New entries only — an edit renders beneath its own row. */}
+  {showForm && !editingEntry && renderRecurringForm()}
 
   {entries.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
@@ -296,6 +303,10 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   </div>
   </div>
   {e.next_post_date && <div className="text-xs text-subtle-400 mt-2">Next post: {e.next_post_date}</div>}
+  {/* The edit form, in place, directly under the entry it edits. */}
+  {showForm && editingEntry && editingEntry.id === e.id && (
+  <div className="mt-3 pt-3 border-t border-brand-100">{renderRecurringForm()}</div>
+  )}
   </div>
   ))}
   </div>
@@ -1856,7 +1867,10 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
   const [showAssets, setShowAssets] = useState(true);
   const [showLiabilities, setShowLiabilities] = useState(true);
   const [showEquity, setShowEquity] = useState(true);
-  const [showARSub, setShowARSub] = useState(false);
+  // Open by default. Every other Balance Sheet section starts expanded,
+  // so a collapsed Accounts Receivable read as an empty AR rather than a
+  // closed group -- and it is the section most often actually read.
+  const [showARSub, setShowARSub] = useState(true);
   const [glColumns, setGlColumns] = useState(() => { try { const s = localStorage.getItem("gl_columns"); return s ? JSON.parse(s) : { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } catch (e) { pmError("PM-4013", { raw: e, context: "reading GL column prefs from localStorage", silent: true }); return { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } });
   const [showColPicker, setShowColPicker] = useState(false);
   const toggleGlCol = (col) => { const next = { ...glColumns, [col]: !glColumns[col] }; setGlColumns(next); try { localStorage.setItem("gl_columns", JSON.stringify(next)); } catch (e) { pmError("PM-4014", { raw: e, context: "saving GL column prefs to localStorage", silent: true }); } };

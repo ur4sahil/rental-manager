@@ -270,6 +270,43 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const _leaseStart = form.lease_start;
   const _leaseEnd = form.lease_end;
   const _secDep = Number(form.security_deposit) || 0;
+
+  // A rent change has to reach the recurring entry that bills it.
+  // Otherwise a rent increase is saved on the tenant and the monthly
+  // charge keeps posting the OLD amount indefinitely -- the books quietly
+  // disagree with the lease.
+  //
+  // Matched on tenant_id (bigint, same as tenants.id), not tenant_name:
+  // names are not unique -- production has same-name tenant groups -- and
+  // this edit may itself be renaming the tenant.
+  if (editingTenant && Number(editingTenant.rent) !== _rent) {
+    const { data: recurring, error: recErr } = await supabase
+      .from("recurring_journal_entries")
+      .select("id, amount, description")
+      .eq("company_id", companyId)
+      .eq("tenant_id", editingTenant.id)
+      .neq("status", "cancelled");
+    if (recErr) {
+      // Non-fatal: the tenant is already saved. Say so plainly rather
+      // than leaving the mismatch silent.
+      showToast("Rent saved, but the recurring entry could not be checked — please update it manually.", "warning");
+      pmError("PM-4008", { raw: recErr, context: "sync recurring amount after rent change", silent: true });
+    } else if (recurring && recurring.length > 0) {
+      const { error: upErr } = await supabase.from("recurring_journal_entries")
+        .update({ amount: _rent })
+        .eq("company_id", companyId)
+        .eq("tenant_id", editingTenant.id)
+        .neq("status", "cancelled");
+      if (upErr) {
+        showToast("Rent saved, but the recurring entry still bills " + formatCurrency(recurring[0].amount) + " — please update it manually.", "warning");
+        pmError("PM-4008", { raw: upErr, context: "update recurring amount after rent change", silent: true });
+      } else {
+        // Announced, not silent: this changes what the tenant is billed.
+        showToast(`Rent updated to ${formatCurrency(_rent)} — the recurring ${recurring.length === 1 ? "entry" : "entries"} now bill${recurring.length === 1 ? "s" : ""} the new amount.`, "success");
+      }
+    }
+  }
+
   setShowForm(false);
   setEditingTenant(null);
   setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
