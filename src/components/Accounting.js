@@ -3923,6 +3923,67 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   useEffect(() => { fetchAll({ allowCache: true }); }, [companyId]);
 
+  // Refetch ONE journal entry and merge it into state.
+  //
+  // A quiet fetchAll stopped the screen blanking, but it still re-read
+  // the entire ledger -- roughly 19 pages -- for every post, void or
+  // edit. This reads two rows' worth instead. The projections and the
+  // ordering below deliberately mirror fetchAll's, because a merged
+  // entry that is shaped or sorted differently from a fetched one
+  // produces bugs that only appear after a write.
+  //
+  // Returns false if the entry could not be read, so callers can fall
+  // back to a full refresh rather than silently showing stale figures.
+  async function refetchJournalEntry(id) {
+    if (!id) return false;
+    const [{ data: je, error: jeErr }, { data: lines, error: lErr }] = await Promise.all([
+      supabase.from("acct_journal_entries")
+        .select("id,number,date,description,reference,status,property")
+        .eq("company_id", companyId).eq("id", id).maybeSingle(),
+      supabase.from("acct_journal_lines")
+        .select("id,journal_entry_id,account_id,account_name,debit,credit,class_id,memo,reconciled,entity_type,entity_id,entity_name,bank_feed_transaction_id")
+        .eq("company_id", companyId).eq("journal_entry_id", id).order("id"),
+    ]);
+    if (jeErr || lErr) return false;
+
+    // The module-level cache still holds the pre-write ledger, so a
+    // remount would hydrate stale rows over the merge. Drop it; the next
+    // mount does a full read, which is a loud path anyway.
+    invalidateAccountingCache(companyId);
+
+    setJournalEntries(prev => {
+      // Deleted (or no longer visible): drop it.
+      if (!je) return prev.filter(x => x.id !== id);
+      // company_id is set by hand because it is omitted from the
+      // projection above, exactly as the bulk fetch does it.
+      const merged = { ...je, lines: (lines || []).map(l => ({ ...l, company_id: companyId })) };
+      const i = prev.findIndex(x => x.id === id);
+      const next = i === -1 ? [...prev, merged] : prev.map(x => (x.id === id ? merged : x));
+      // Same order as the bulk fetch: date descending, then id.
+      return next.sort((a, b) =>
+        String(b.date || "").localeCompare(String(a.date || "")) ||
+        String(a.id || "").localeCompare(String(b.id || "")));
+    });
+    return true;
+  }
+
+  // Accounts and classes are small single queries; no need to re-read the
+  // ledger when only one of them changed.
+  async function refetchAccounts() {
+    const { data, error } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
+    if (error || !data) return false;
+    invalidateAccountingCache(companyId);
+    setAcctAccounts(data);
+    return true;
+  }
+  async function refetchClasses() {
+    const { data, error } = await supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name");
+    if (error || !data) return false;
+    invalidateAccountingCache(companyId);
+    setAcctClasses(data);
+    return true;
+  }
+
   // Deep-link: a fresh tab opened via LedgerLink (Ctrl/Cmd/middle-click on an
   // account row) boots with ?ledger=<id,id> in the search string. Once the
   // accounts have loaded we reconstruct the title and open the ledger modal,
@@ -4287,7 +4348,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + (acct.code || shortId()) }]);
   if (error) { pmError("PM-4006", { raw: error, context: "create account" }); return; }
   showToast("Account created", "success");
-  fetchAll({ quiet: true });
+  if (!await refetchAccounts()) fetchAll({ quiet: true });
   } finally { guardRelease("addAccount"); }
   }
   async function updateAccount(acct) {
@@ -4303,7 +4364,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // company a rename didn't propagate until hard reload.)
   if (_acctIdCache[companyId]) delete _acctIdCache[companyId];
   showToast("Account updated", "success");
-  fetchAll({ quiet: true });
+  if (!await refetchAccounts()) fetchAll({ quiet: true });
   }
   async function toggleAccount(id, currentActive) {
   if (currentActive) {
@@ -4427,7 +4488,9 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { error: _err3952 } = await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
   if (_err3952) { showToast("Error updating acct_journal_entries: " + _err3952.message, "error"); return; }
   showToast("Journal entry posted" + (je.number ? " (" + je.number + ")" : ""), "success");
-  fetchAll({ quiet: true });
+  // Fall back to a full refresh if the single-entry read fails, rather
+  // than leaving the screen showing the pre-post figures.
+  if (!await refetchJournalEntry(id)) fetchAll({ quiet: true });
   } finally { guardRelease("postJE", id); }
   }
   async function voidJournalEntry(id) {
@@ -4513,7 +4576,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   }
   showToast("Journal entry voided", "success");
-  fetchAll({ quiet: true });
+  if (!await refetchJournalEntry(id)) fetchAll({ quiet: true });
   } catch (e) { showToast("Error voiding entry: " + e.message, "error"); } finally { guardRelease("voidJE", id); }
   }
 
@@ -4639,7 +4702,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }).eq("company_id", companyId).eq("id", id);
   if (error) { pmError("PM-4010", { raw: error, context: "update accounting class" }); return; }
   showToast("Class updated", "success");
-  fetchAll({ quiet: true });
+  if (!await refetchClasses()) fetchAll({ quiet: true });
   }
   async function toggleClass(id, currentActive) {
   const { error: _err4013 } = await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);

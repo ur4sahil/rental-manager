@@ -93,6 +93,15 @@ test("posting a journal entry does not blank the screen", async ({ page }) => {
     } catch {}
   }, 120);
 
+  // Count the ledger reads the post triggers. A full refresh re-pages the
+  // whole journal (~19 requests on a large ledger); a targeted refetch
+  // reads one entry and its lines.
+  const ledgerReads = [];
+  page.on("request", r => {
+    const u = r.url();
+    if (/acct_journal_lines|acct_journal_entries/.test(u)) ledgerReads.push(u);
+  });
+
   await postBtn.click();
   // Capture the toast EARLY -- toasts auto-dismiss, and reading the page
   // nine seconds later found nothing while wrongly suggesting none had
@@ -116,6 +125,10 @@ test("posting a journal entry does not blank the screen", async ({ page }) => {
   expect(tables, "the table vanished — the screen was rebuilt").toBeGreaterThan(0);
   expect(postedAfter, "the entry did not actually post").toBe(postedBefore + 1);
   expect(toast.join(" "), "no toast confirmed the post").toMatch(/posted/i);
+  // The write itself is one PATCH; the read-back should be a couple of
+  // requests, not a re-page of the entire ledger.
+  console.log(`ledger requests triggered by the post: ${ledgerReads.length}`);
+  expect(ledgerReads.length, "the post still re-read the whole ledger").toBeLessThan(8);
   } finally {
     // Always remove the fixture, including on failure, so a red run does
     // not leave a posted entry skewing the sandbox's balances.
