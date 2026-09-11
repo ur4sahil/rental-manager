@@ -17,6 +17,7 @@
 
 const taxHandler = require("./_tax-bill-reminders-impl");
 const licenseHandler = require("./_license-expiry-reminders-impl");
+const lateFeeHandler = require("./_late-fees-impl");
 const { setCors } = require("./_cors");
 
 module.exports = async (req, res) => {
@@ -27,6 +28,7 @@ module.exports = async (req, res) => {
     || "";
   if (task === "tax-bills") return taxHandler(req, res);
   if (task === "licenses") return licenseHandler(req, res);
+  if (task === "late-fees") return lateFeeHandler(req, res);
   // Allow running both back-to-back when invoked with ?task=all (or no task)
   if (task === "all" || !task) {
     // Each handler responds independently — when chaining we have to
