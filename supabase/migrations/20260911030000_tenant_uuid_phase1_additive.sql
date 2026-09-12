@@ -44,6 +44,12 @@
 
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS id_new uuid;
 UPDATE tenants SET id_new = gen_random_uuid() WHERE id_new IS NULL;
+-- The DEFAULT is not optional. Backfilling and then setting NOT NULL
+-- without one leaves the column unfillable by any INSERT, so every new
+-- tenant fails with 23502 -- which is exactly what happened on the test
+-- database: the app could not create a tenant at all, and three
+-- data-layer tests failed on it. See 20260912020000.
+ALTER TABLE tenants ALTER COLUMN id_new SET DEFAULT gen_random_uuid();
 ALTER TABLE tenants ALTER COLUMN id_new SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS tenants_id_new_uq ON tenants(id_new);
 

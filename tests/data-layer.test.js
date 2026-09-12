@@ -10,6 +10,26 @@ function assert(ok, name) {
   else { console.log('  ❌ ' + name); fail++; errors.push(name); }
 }
 
+// properties.address is DERIVED -- the sync_addr_ins/sync_addr_upd
+// triggers recompute it from address_line_1/2, city, state, zip via
+// compute_property_address(). So passing `address` directly is silently
+// discarded: with no components the trigger writes an EMPTY address, and
+// idx_properties_unique_address (company_id, address) then rejects the
+// second such row. Two empty-address rows already exist in this database
+// from before the trigger, which is why every property insert in this
+// file started failing with 23505 rather than at whatever it was testing.
+//
+// So: give the components and let the trigger do its job.
+function propertyFixture(label, extra = {}) {
+  const n = Math.floor(Math.random() * 1e6);
+  return {
+    address_line_1: `${label} ${n}`,
+    city: 'Testville', state: 'MD', zip: '20601',
+    status: 'vacant', type: 'Test',
+    ...extra,
+  };
+}
+
 async function testProperties() {
   console.log('\n📦 PROPERTIES');
   const { data, error } = await supabase.from('properties').select('*');
@@ -18,7 +38,7 @@ async function testProperties() {
   assert(data && data.some(p => p.status === 'occupied'), 'Has occupied properties');
   assert(data && data.some(p => p.status === 'vacant'), 'Has vacant properties');
   assert(data && data.some(p => p.owner_id), 'Some properties have owners assigned');
-  const { data: n, error: ie } = await supabase.from('properties').insert({ address: 'TEMP-TEST-999', status: 'vacant', type: 'Test' }).select().single();
+  const { data: n, error: ie } = await supabase.from('properties').insert(propertyFixture('TEMP-TEST')).select().single();
   assert(!ie, 'Can insert property');
   if (n) {
     const { error: ue } = await supabase.from('properties').update({ notes: 'tested' }).eq('id', n.id);
@@ -158,7 +178,7 @@ async function testPropertyOwnerAssignment() {
   const { data: owners } = await supabase.from('owners').select('*').limit(1);
   assert(owners && owners.length > 0, 'Has an owner to assign');
   if (owners && owners[0]) {
-    const { data: prop, error: pe } = await supabase.from('properties').insert({ address: 'TEMP-OWNER-TEST-999', status: 'vacant', type: 'Test' }).select().single();
+    const { data: prop, error: pe } = await supabase.from('properties').insert(propertyFixture('TEMP-OWNER-TEST')).select().single();
     assert(!pe && prop, 'Can create temp property');
     if (prop) {
       await supabase.from('properties').update({ owner_id: owners[0].id }).eq('id', prop.id);
@@ -221,7 +241,7 @@ async function testDeletePropertyWithOwner() {
   console.log('\n🗑️  DELETE PROPERTY WITH OWNER');
   const { data: owners } = await supabase.from('owners').select('*').limit(1);
   if (owners && owners[0]) {
-    const { data: prop } = await supabase.from('properties').insert({ address: 'TEMP-DEL-OWNER-TEST', status: 'vacant', type: 'Test', owner_id: owners[0].id }).select().single();
+    const { data: prop } = await supabase.from('properties').insert(propertyFixture('TEMP-DEL-OWNER-TEST', { owner_id: owners[0].id })).select().single();
     assert(prop && prop.owner_id === owners[0].id, 'Property created with owner_id assigned');
     if (prop) {
       const { error: de } = await supabase.from('properties').delete().eq('id', prop.id);
@@ -405,7 +425,7 @@ async function testFullLifecycle() {
   const ids = {};
 
   // 1. Create property
-  const { data: prop, error: propErr } = await supabase.from('properties').insert({ address: addr, status: 'vacant', type: 'Single Family', rent: 2000 }).select().single();
+  const { data: prop, error: propErr } = await supabase.from('properties').insert(propertyFixture(addr, { type: 'Single Family', rent: 2000 })).select().single();
   assert(!propErr && prop, 'Lifecycle: property created');
   if (!prop) return;
   ids.property = prop.id;
@@ -742,7 +762,7 @@ async function testPropertyDeleteCascadeNewTables() {
   const ids = {};
 
   // Create property
-  const { data: prop } = await supabase.from('properties').insert({ company_id: cid, address: addr, status: 'vacant', type: 'Test' }).select().single();
+  const { data: prop } = await supabase.from('properties').insert(propertyFixture(addr, { company_id: cid })).select().single();
   if (prop) ids.property = prop.id;
 
   // Create related records in new tables
@@ -840,7 +860,7 @@ async function testMoveOutFlow() {
   const cid = companies?.[0]?.id;
   const addr = 'TEST-MOVEOUT-' + Date.now();
   // Create property + tenant + lease
-  const { data: prop } = await supabase.from('properties').insert({ company_id: cid, address: addr, status: 'occupied', type: 'Test', tenant: 'MoveOut Tenant', rent: 2000 }).select().single();
+  const { data: prop } = await supabase.from('properties').insert(propertyFixture(addr, { company_id: cid, status: 'occupied', tenant: 'MoveOut Tenant', rent: 2000 })).select().single();
   const { data: tenant } = await supabase.from('tenants').insert({ company_id: cid, name: 'MoveOut Tenant', email: 'moveout@test.com', phone: '555', property: addr, rent: 2000, balance: 0, lease_status: 'active' }).select().single();
   const { data: lease } = await supabase.from('leases').insert({ company_id: cid, tenant_name: 'MoveOut Tenant', property: addr, start_date: '2026-01-01', end_date: '2026-12-31', rent_amount: 2000, security_deposit: 2000, status: 'active', move_in_checklist: '[]', move_out_checklist: '[]' }).select().single();
   assert(prop && tenant && lease, 'MoveOut: property + tenant + lease created');
@@ -1183,12 +1203,14 @@ async function testMultiTenantProperty() {
   console.log('\n👥 MULTI-TENANT PROPERTY');
   const { data: companies } = await supabase.from('companies').select('id').limit(1);
   const cid = companies?.[0]?.id;
-  const { data: prop, error: propErr } = await supabase.from('properties').insert({
-    company_id: cid, address: 'TEST-MULTI-TENANT-999', status: 'occupied', type: 'Multi Family',
-    tenant: 'Primary Tenant', tenant_2: 'Second Tenant', tenant_2_email: 'second@test.com', tenant_2_phone: '555-0002',
-    tenant_3: 'Third Tenant', tenant_3_email: 'third@test.com', tenant_3_phone: '555-0003',
-    tenant_4: 'Fourth Tenant', tenant_5: 'Fifth Tenant'
-  }).select().single();
+  const { data: prop, error: propErr } = await supabase.from('properties').insert(
+    propertyFixture('TEST-MULTI-TENANT', {
+      company_id: cid, status: 'occupied', type: 'Multi Family',
+      tenant: 'Primary Tenant', tenant_2: 'Second Tenant', tenant_2_email: 'second@test.com', tenant_2_phone: '555-0002',
+      tenant_3: 'Third Tenant', tenant_3_email: 'third@test.com', tenant_3_phone: '555-0003',
+      tenant_4: 'Fourth Tenant', tenant_5: 'Fifth Tenant',
+    })
+  ).select().single();
   assert(!propErr && prop, 'MultiTenant: can create property with 5 tenants');
   if (prop) {
     assert(prop.tenant === 'Primary Tenant', 'MultiTenant: primary tenant stored');

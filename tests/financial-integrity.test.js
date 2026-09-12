@@ -30,7 +30,14 @@ const accountingJs = fs.readFileSync(path.join(srcDir, 'utils/accounting.js'), '
 const helpersJs = fs.readFileSync(path.join(srcDir, 'utils/helpers.js'), 'utf8');
 const appJs = fs.readFileSync(path.join(srcDir, 'App.js'), 'utf8');
 const lifecycleJs = fs.readFileSync(path.join(srcDir, 'components/Lifecycle.js'), 'utf8');
-const accountingComponentJs = fs.readFileSync(path.join(srcDir, 'components/Accounting.js'), 'utf8');
+// The report computation (validateJE, getPeriodDates, the P&L/Balance
+// Sheet builders) was extracted out of the 5,446-line component into
+// src/utils/acctReports.js. These checks grep for source text, so they
+// followed the file rather than the code and six of them started failing
+// on functions that had simply moved. Concatenating both means they
+// assert on the accounting code wherever it lives.
+const accountingComponentJs = fs.readFileSync(path.join(srcDir, 'components/Accounting.js'), 'utf8')
+  + '\n' + fs.readFileSync(path.join(srcDir, 'utils/acctReports.js'), 'utf8');
 const propertiesJs = fs.readFileSync(path.join(srcDir, 'components/Properties.js'), 'utf8');
 const tenantsJs = fs.readFileSync(path.join(srcDir, 'components/Tenants.js'), 'utf8');
 const tenantPortalJs = fs.readFileSync(path.join(srcDir, 'components/TenantPortal.js'), 'utf8');

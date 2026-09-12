@@ -1,0 +1,19 @@
+-- Give tenants.id_new a default.
+--
+-- 20260911030000 added the column, backfilled every existing row, and set
+-- NOT NULL -- but never set a DEFAULT. The result is a column no INSERT
+-- can satisfy: creating a tenant fails with
+--
+--   23502  null value in column "id_new" of relation "tenants"
+--          violates not-null constraint
+--
+-- which broke tenant creation outright on the test database, not just in
+-- the test suite. It surfaced as three data-layer tests failing to build
+-- their fixtures.
+--
+-- Only databases that already ran 20260911030000 need this; that file now
+-- sets the default itself, so a fresh run does not. Production has NOT run
+-- either migration and therefore never had the bug.
+--
+-- Safe to re-run: SET DEFAULT is idempotent.
+ALTER TABLE tenants ALTER COLUMN id_new SET DEFAULT gen_random_uuid();
