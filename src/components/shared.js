@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel} from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
@@ -256,7 +256,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
   const payload = {
   company_id: companyId,
-  description: "Monthly rent — " + entry.tenantName + " — " + entry.property?.split(",")[0],
+  description: "Monthly rent — " + entry.tenantName + " — " + propertyLabel(entry.property),
   frequency: freq,
   day_of_month: dayOfMonth,
   amount: Number(amount),
@@ -303,7 +303,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   </div>
   <div className="space-y-3">
   <div className="bg-brand-50 rounded-xl p-3">
-  <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{entry.property?.split(",")[0]}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{propertyLabel(entry.property)}</span></div>
   <div className="flex justify-between text-sm mt-1"><span className="text-neutral-500">Lease Period</span><span className="font-medium text-neutral-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
   </div>
   <div>

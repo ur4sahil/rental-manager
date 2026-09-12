@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink, DataTable} from "../ui";
-import { formatLocalDate, formatCurrency, parseLocalDate } from "../utils/helpers";
+import { formatLocalDate, formatCurrency, parseLocalDate, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -125,7 +125,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
   }
 
   async function handleUnpay(bill) {
-    if (!await showConfirm({ message: `Undo the paid status on "${bill.installment_label}" for ${bill.property.split(",")[0]}?` })) return;
+    if (!await showConfirm({ message: `Undo the paid status on "${bill.installment_label}" for ${propertyLabel(bill.property)}?` })) return;
     if (!guardSubmit("unpayBill", bill.id)) return;
     try {
       const res = await unmarkBillPaid({ billId: bill.id, companyId });
@@ -252,7 +252,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
             <div key={addr} className="bg-white rounded-xl border border-neutral-100 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 bg-neutral-50/60">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-800">{addr.split(",")[0]}</div>
+                  <div className="text-sm font-semibold text-neutral-800">{propertyLabel(addr)}</div>
                   <div className="text-[10px] text-neutral-500 uppercase tracking-wide">{jurisdiction} · {rows.length} {rows.length === 1 ? "bill" : "bills"}</div>
                 </div>
               </div>
@@ -306,7 +306,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setMarkPaidBill(null)}>
           <div className="bg-white rounded-xl border border-neutral-100 shadow-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Mark bill paid</h3>
-            <p className="text-xs text-neutral-500 mb-4">{markPaidBill.bill.installment_label} · {markPaidBill.bill.property.split(",")[0]}</p>
+            <p className="text-xs text-neutral-500 mb-4">{markPaidBill.bill.installment_label} · {propertyLabel(markPaidBill.bill.property)}</p>
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Paid date *</label>
@@ -336,7 +336,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setEditBill(null)}>
           <div className="bg-white rounded-xl border border-neutral-100 shadow-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Edit bill</h3>
-            <p className="text-xs text-neutral-500 mb-4">{editBill.bill.property.split(",")[0]} · {editBill.bill.tax_year}</p>
+            <p className="text-xs text-neutral-500 mb-4">{propertyLabel(editBill.bill.property)} · {editBill.bill.tax_year}</p>
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Installment label</label>

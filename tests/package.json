@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -71,7 +71,8 @@
     "test:bulk": "node bank-bulk-actions.test.mjs",
     "test:rpc": "node rpc-smoke.test.js",
     "test:datatable": "node datatable.test.cjs",
-    "test:tables": "node table-columns.test.mjs"
+    "test:tables": "node table-columns.test.mjs",
+    "test:proplabel": "node property-label.test.mjs"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

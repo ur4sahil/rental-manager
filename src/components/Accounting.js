@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -271,7 +271,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="31" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /><div className="text-[11px] text-subtle-400 mt-1">In months with fewer days (e.g. Feb), posts on the last available day.</div></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</Select></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {propertyLabel(t.property)}</option>)}</Select></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
@@ -511,7 +511,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const totalCr = allLines.reduce((s, l) => s + l.credit, 0);
   const multi = multiAccount;
   const headRow = `<tr><th class="l">Date</th><th class="l">JE #</th><th class="l">Description</th><th class="l">Ref</th>${multi ? '<th class="l">Account</th>' : ""}<th class="l">Property</th><th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th></tr>`;
-  const bodyRows = allLines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.number || "—")}</td><td>${esc(l.description || "")}${l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : ""}</td><td>${esc(refLabel(l.reference))}</td>${multi ? `<td>${esc(l.accountName || "")}</td>` : ""}<td>${esc(l.property?.split(",")[0] || "—")}</td><td class="r mono">${l.debit > 0 ? esc(acctFmt(l.debit)) : ""}</td><td class="r mono">${l.credit > 0 ? esc(acctFmt(l.credit)) : ""}</td><td class="r mono${l.balance < 0 ? " neg" : ""}">${esc(acctFmt(l.balance, true))}</td></tr>`).join("");
+  const bodyRows = allLines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.number || "—")}</td><td>${esc(l.description || "")}${l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : ""}</td><td>${esc(refLabel(l.reference))}</td>${multi ? `<td>${esc(l.accountName || "")}</td>` : ""}<td>${esc(propertyLabel(l.property) || "—")}</td><td class="r mono">${l.debit > 0 ? esc(acctFmt(l.debit)) : ""}</td><td class="r mono">${l.credit > 0 ? esc(acctFmt(l.credit)) : ""}</td><td class="r mono${l.balance < 0 ? " neg" : ""}">${esc(acctFmt(l.balance, true))}</td></tr>`).join("");
   const colspan = multi ? 6 : 5;
   const totalsRow = `<tr class="tot"><td colspan="${colspan}" class="r">Totals</td><td class="r mono">${esc(acctFmt(totalDr))}</td><td class="r mono">${esc(acctFmt(totalCr))}</td><td class="r mono${!multiAccount && groups[0] && groups[0].closing < 0 ? " neg" : ""}">${multiAccount ? "&mdash;" : esc(acctFmt(groups[0] ? groups[0].closing : 0, true))}</td></tr>`;
   const periodLabel = period === "Custom" ? `${start} to ${end}` : period;
@@ -522,7 +522,7 @@ th,td{padding:5px 8px;border-bottom:1px solid ${printTheme.borderLight};text-ali
 th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:${printTheme.inkMuted};font-weight:600}
 .r{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,monospace}.mut{color:${printTheme.inkSubtle}}
 .neg{color:${printTheme.danger}}.tot td{border-top:2px solid ${printTheme.inkStrong};font-weight:700;font-size:12px}`;
-  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyFilter.split(",")[0] + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p><table><thead>${headRow}</thead><tbody>${bodyRows}${totalsRow}</tbody></table></div>`;
+  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyLabel(propertyFilter) + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p><table><thead>${headRow}</thead><tbody>${bodyRows}${totalsRow}</tbody></table></div>`;
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
   document.body.appendChild(iframe);
@@ -541,25 +541,33 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   }
 
   return (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center sm:p-4">
-  <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-5xl h-[95vh] sm:max-h-[90vh] flex flex-col">
+  // A PAGE, not an overlay. It used to be a fixed-inset modal over a
+  // dimmed backdrop, which is what Sahil was objecting to: "everywhere
+  // throughout the app, the clicks open a popup. they should open a
+  // separate page on the same tab". Opening one now pushes a history
+  // entry, so browser Back returns to the report you drilled from and the
+  // URL is shareable.
+  <div className="flex flex-col gap-0">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 flex flex-col">
   {/* Header */}
   <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-50">
-  <div className="min-w-0 flex-1">
+  <div className="min-w-0 flex-1 flex items-center gap-3">
+  <IconBtn icon="arrow_back" onClick={onClose} title="Back" aria-label="Back to the report" />
+  <div className="min-w-0">
   <h3 className="text-base sm:text-lg font-display font-bold text-neutral-800 truncate">{title || acctNames}</h3>
   {acctCodes && <p className="text-xs text-neutral-400">{acctCodeList.length > 4 ? acctCodes : "Account " + acctCodes} · {allLines.length} entries</p>}
+  </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
   {allLines.length > 0 && <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>}
   {allLines.length > 0 && <Btn variant="slate" size="sm" icon="picture_as_pdf" className="hidden sm:block" onClick={exportPDF}>PDF</Btn>}
-  <IconBtn icon="close" onClick={onClose} />
   </div>
   </div>
   {/* Filters */}
   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-neutral-50/50 overflow-x-auto">
   {PERIODS.map(p => <FilterPill key={p} tone="dark" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-neutral-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
-  {properties.length > 1 && <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
+  {properties.length > 1 && <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{propertyLabel(p)}</option>)}</Select>}
   </div>
   {/* Summary bar */}
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
@@ -576,7 +584,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
   {/* Mobile: Card view */}
-  <div className="flex-1 overflow-auto sm:hidden">
+  <div className="sm:hidden">
   {allLines.length === 0 && <div className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</div>}
   {allLines.map((l, i) => (
   <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-brand-50/40 transition-colors active:bg-brand-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
@@ -589,14 +597,14 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <div className="flex items-center gap-3 text-xs">
   {l.debit > 0 && <span className="text-success-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-danger-500">CR {acctFmt(l.credit)}</span>}
-  {l.property && <span className="text-neutral-400">{l.property.split(",")[0]}</span>}
+  {l.property && <span className="text-neutral-400">{propertyLabel(l.property)}</span>}
   <span className="text-brand-600 tnum ml-auto">{l.number || "—"}</span>
   </div>
   </div>
   ))}
   </div>
   {/* Desktop: Table view */}
-  <div className="flex-1 overflow-auto hidden sm:block">
+  <div className="hidden sm:block overflow-x-auto">
     <DataTable
       stickyHeader
       scroll={false}
@@ -616,7 +624,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
         ...(multiAccount ? [{ key: "accountName", label: "Account", className: "text-xs text-neutral-500",
           render: l => l.accountName }] : []),
         { key: "property", label: "Property", className: "text-xs text-neutral-400",
-          render: l => l.property?.split(",")[0] || "\u2014" },
+          render: l => propertyLabel(l.property) || "\u2014" },
         { key: "debit", label: "Debit", align: "right", className: "text-xs",
           render: l => (l.debit > 0 ? acctFmt(l.debit) : "") },
         { key: "credit", label: "Credit", align: "right", className: "text-xs",
@@ -1409,7 +1417,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   ))}
   <Select filter value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl md:ml-auto">
   <option value="">All Properties</option>
-  {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
+  {jeProperties.map(p => <option key={p} value={p}>{propertyLabel(p)}</option>)}
   </Select>
   <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="From date" />
   <span className="text-xs text-neutral-400">to</span>
@@ -3546,7 +3554,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         <table className="w-full text-sm border-collapse min-w-max">
         <thead><tr className="bg-neutral-50 border-b border-neutral-200">
           <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 sticky left-0 bg-neutral-50 min-w-48"></th>
-          {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{p.name.split(",")[0]}</th>)}
+          {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{propertyLabel(p.name)}</th>)}
           <th className="px-3 py-2 text-right text-xs font-bold text-neutral-900 min-w-28 bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10">TOTAL</th>
         </tr></thead>
         <tbody>
@@ -4282,6 +4290,46 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // sub-pages without unmounting the component.
   useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
+
+  // Opening a ledger is a NAVIGATION, not a dialog: it pushes a history
+  // entry so browser Back (and the phone's back gesture) returns to the
+  // report it was drilled from, instead of leaving the whole app.
+  //
+  // openLedger/closeLedger are the only two ways ledgerView changes, so
+  // the history stack and the view cannot drift apart. The guard matters:
+  // closeLedger is also what the Back button in the header calls, and
+  // that must go BACK rather than push another entry.
+  const ledgerNavRef = useRef(false);
+  const openLedger = (ids, title) => {
+    setLedgerView({ accountIds: ids, title });
+    if (!ledgerNavRef.current) {
+      ledgerNavRef.current = true;
+      // Stamp the entry we are leaving before pushing. App.js's popstate
+      // handler reads e.state.page and falls back to "dashboard" when the
+      // state is null -- and the entry is null whenever the app was reached
+      // by a plain URL with a hash, which is every shared link and every
+      // fresh tab. Without this, Back out of a ledger landed on the
+      // Dashboard instead of the report it was drilled from.
+      const here = { page: window.location.hash.replace("#", "") || "accounting", screen: "app" };
+      window.history.replaceState({ ...(window.history.state || {}), ...here }, "", window.location.href);
+      window.history.pushState({ ...here, acctLedger: true }, "", window.location.href);
+    }
+  };
+  const closeLedger = () => {
+    if (ledgerNavRef.current) { ledgerNavRef.current = false; window.history.back(); }
+    else setLedgerView(null);
+  };
+  useEffect(() => {
+    const onPop = () => {
+      // Whatever the history stack just moved to, we are no longer in the
+      // ledger -- the entry it pushed is gone.
+      ledgerNavRef.current = false;
+      setLedgerView(null);
+      setPendingLedgerReturn(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
   const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
   const companyName = activeCompany?.name || "My Company";
@@ -4387,7 +4435,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       ? names.slice(0, 3).join(", ") + ` + ${names.length - 3} more`
       : names.join(", ");
   }
-  setLedgerView({ accountIds: idsArr, title });
+  openLedger(idsArr, title);
   stripLedgerParam();
   }, [acctAccounts]);
 
@@ -5116,6 +5164,14 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {/* Content Area */}
   <div className="min-w-0 py-2">
 
+  {/* The ledger is a page, so it REPLACES the tab it was opened from
+      rather than floating over it. Rendering both left the report sitting
+      underneath, which is the modal behaviour with the backdrop removed.
+      HIDDEN rather than unmounted: which report is open is AcctReports'
+      own state, so unmounting it meant Back out of a ledger landed on the
+      report catalogue instead of the Balance Sheet you drilled from. */}
+  <div className={ledgerView ? "hidden" : undefined}>
+
   {activeTab === "overview" && (
   <div>
   {/* Setup prompt — shown until the company has at least one posted JE.
@@ -5214,7 +5270,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
               <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-success-400":je.status==="draft"?"bg-warn-400":"bg-neutral-300"}`} />
               <div>
                 <p className="text-sm text-neutral-700">{je.description}</p>
-                <p className="text-xs text-neutral-400">{je.number} · {je.date}{je.property ? " · " + je.property.split(",")[0] : ""}</p>
+                <p className="text-xs text-neutral-400">{je.number} · {je.date}{je.property ? " · " + propertyLabel(je.property) : ""}</p>
               </div>
             </div>
             <div className="text-right">
@@ -5268,14 +5324,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
-  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
+  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (pendingLedgerReturn) { openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title); setPendingLedgerReturn(null); setViewJEId(null); } return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
-  {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
-  {/* Account Ledger Drill-Down */}
-  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}
+  {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={openLedger} onRefresh={fetchAll} />}
+  </div>
+
+  {/* Account Ledger Drill-Down — a page of its own */}
+  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setPendingLedgerReturn(null); closeLedger(); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>

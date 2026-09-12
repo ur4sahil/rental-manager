@@ -1,5 +1,5 @@
 import { supabase } from "../supabase";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFilterValue } from "./helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFilterValue, propertyLabel} from "./helpers";
 import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
@@ -340,7 +340,7 @@ export async function getPropertyClassId(propertyAddress, companyId) {
   }
   // 3. No class exists — create one and store on property
   const { data: newClass } = await supabase.from("acct_classes").insert([{
-  id: crypto.randomUUID(), name: propertyAddress, description: "Auto-created for " + propertyAddress.split(",")[0],
+  id: crypto.randomUUID(), name: propertyAddress, description: "Auto-created for " + propertyLabel(propertyAddress),
   color: pickColor(propertyAddress), is_active: true, company_id: companyId,
   }]).select("id").maybeSingle();
   if (newClass?.id) {
@@ -463,6 +463,9 @@ export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   let acctName = "AR - " + tenantName;
   if (tenantId) {
     const { data: tRow } = await supabase.from("tenants").select("property").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
+    // Deliberately NOT propertyLabel(): this is a MATCHING key compared
+    // against values built the same way elsewhere, not a label. Making it
+    // include the unit would stop it matching.
     const shortProp = (tRow?.property || "").split(",")[0].trim();
     if (shortProp) acctName = "AR - " + tenantName + " (" + shortProp + ")";
   }

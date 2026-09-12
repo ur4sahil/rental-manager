@@ -654,3 +654,43 @@ export const sameAddress = (a, b) => {
   const x = normalizeAddress(a);
   return x !== "" && x === normalizeAddress(b);
 };
+
+// The short, human label for a property address.
+//
+// Addresses are stored as "line1, line2, city, STATE ZIP", where line2 is
+// the unit and is often absent. Twenty-two call sites each did
+// `address.split(",")[0]`, which keeps line1 and therefore DROPS THE UNIT:
+// "353 Gatewater Ct, B, Glen Burnie, MD 21061" displayed as
+// "353 Gatewater Ct", and "1865 Dutch Village, J-290, Hyattsville, MD
+// 20785" as "1865 Dutch Village". Twelve properties show a label that is
+// not their identity, and two units in one building would read the same.
+// Sahil: "why does the addresses so simple. why are they not unique".
+//
+// So drop the city and state/zip from the END rather than keeping only the
+// first segment. What is left is line1 plus the unit.
+//
+// Two details the naive version gets wrong:
+//  * Some line1 values already carry the unit ("2010 Alice Ave #104") and
+//    line2 repeats it ("104"), which would render "2010 Alice Ave #104 104".
+//    A line2 already present in line1 is dropped.
+//  * A handful of rows are malformed -- line1 itself holds a full address,
+//    so the string has six segments. Keeping only what precedes the first
+//    city-looking tail is impossible to do reliably there, so those fall
+//    back to the first segment, which is what they showed before.
+export function propertyLabel(address) {
+  if (!address || typeof address !== "string") return "";
+  const parts = address.split(",").map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return "";
+  // "Overhead", or a bare street with no city -- nothing to trim.
+  if (parts.length <= 2) return parts[0];
+  // The tail is city + "STATE ZIP". Anything left over beyond one unit
+  // segment means the address is malformed; don't guess.
+  const head = parts.slice(0, parts.length - 2);
+  if (head.length > 2) return parts[0];
+  const [line1, line2] = head;
+  if (!line2) return line1;
+  // A unit already spelled out in line1 must not be repeated.
+  const bare = line2.replace(/^#/, "");
+  if (new RegExp(`(^|[\\s#])${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i").test(line1)) return line1;
+  return `${line1} ${line2}`;
+}

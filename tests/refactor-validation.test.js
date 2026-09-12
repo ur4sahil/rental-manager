@@ -154,7 +154,13 @@ function testFileStructure() {
   // constraint and "Annually" lost a whole 40-row sheet.
   //
   // +147 / +105 / +3 across three files. Spread, not concentrated.
-  assert(totalLines <= 41400, `Total src lines <= 41400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // Raised to 42200 on 2026-09-12: the table migration had silently
+  // deleted seven Tenants columns, ten Accounting report TOTAL rows and
+  // the journal entry form's remove-line column. Restoring them put real
+  // lines back, plus propertyLabel() in src/utils/helpers.js replacing 22
+  // copies of address.split(",")[0]. Code coming BACK from an accidental
+  // deletion is exactly what this bound should not block.
+  assert(totalLines <= 42200, `Total src lines <= 42200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

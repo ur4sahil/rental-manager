@@ -668,6 +668,8 @@ export function buildImportPlan({
   // the full address rejected every row whose property already carried
   // a city and ZIP -- 9 errors on one real import, all of them
   // properties that existed.
+  // Deliberately NOT propertyLabel(): an import matching key, compared
+  // against street lines from the spreadsheet. A label is for display.
   const street = (v) => norm(String(cellString(v)).split(",")[0]);
   const addressTargets = new Map();
   const addStreet = (map, key, val) => { if (key && !map.has(key)) map.set(key, val); };
@@ -747,6 +749,9 @@ export function buildImportPlan({
       // survives and still has a stable key to match on next time.
       const row = { ...r };
       if (key === "hoas" && !cellString(row.hoa_name)) {
+        // Deliberately NOT propertyLabel(): this WRITES hoa_name to the
+        // database. Changing how it is derived would rename existing HOAs
+        // on the next import rather than just relabelling a column.
         row.hoa_name = `${String(target.address).split(",")[0].trim()} HOA`;
         warnings.push({ sheet, row: r._row, kind: "pendency",
           message: `${where}: no HOA name given — saved as "${row.hoa_name}". Rename it on the property if you like.` });

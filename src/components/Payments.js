@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, PageHeader, DataTable} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -142,7 +142,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
       { key: "tenant", label: "Tenant", className: "font-medium text-neutral-800",
         render: p => (<>{p.tenant || "—"}</>) },
       { key: "property", label: "Property", className: "text-neutral-400 text-xs",
-        render: p => (<>{p.property?.split(",")[0] || "—"}</>) },
+        render: p => (<>{propertyLabel(p.property) || "—"}</>) },
       { key: "amount", label: "Amount", align: "right", className: "font-semibold tnum text-positive-600",
         render: p => (<>{formatCurrency(p.amount)}</>) },
       { key: "type", label: "Type", className: "capitalize text-neutral-500 text-xs",

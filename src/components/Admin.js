@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress} from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -680,7 +680,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
   }
 
   async function requestException(t) {
-    if (!await showConfirm({ message: `Request a waiver on "${t.wizardStepLabel}" for ${(t.address || "").split(",")[0]}? Your assigned manager will review.` })) return;
+    if (!await showConfirm({ message: `Request a waiver on "${t.wizardStepLabel}" for ${propertyLabel(t.address)}? Your assigned manager will review.` })) return;
     try {
       const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", (userProfile?.email || "").toLowerCase()).maybeSingle();
       let approver = me?.manager_email || null;
@@ -697,13 +697,13 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
         approver_email: approver,
       }]);
       if (approver) {
-        addNotification("📋", `${userProfile?.email || "Staff"} requested a setup waiver for ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`, { recipient: approver, type: "wizard_skip_request" });
+        addNotification("📋", `${userProfile?.email || "Staff"} requested a setup waiver for ${t.wizardStepLabel} — ${propertyLabel(t.address)}`, { recipient: approver, type: "wizard_skip_request" });
         queueNotification("approval_pending", approver, {
           kind: "wizard_skip", step: t.wizardStepLabel, property: t.address,
           requested_by: userProfile?.email || "",
         }, companyId);
       }
-      addNotification("📤", `Setup waiver requested: ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`);
+      addNotification("📤", `Setup waiver requested: ${t.wizardStepLabel} — ${propertyLabel(t.address)}`);
       logAudit("request", "properties", "Setup waiver requested (" + t.wizardStepLabel + ") for " + t.address, "", userProfile?.email, userRole, companyId);
       showToast("Exception request submitted", "success");
       onRefresh();
@@ -722,7 +722,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
       {/* One card per property with pending setup steps */}
       {Array.from(byProp.values()).map(group => {
         const isOpen = !!expanded[group.address];
-        const shortAddr = (group.address || "").split(",")[0];
+        const shortAddr = propertyLabel(group.address);
         return (
           <div key={group.address} className="bg-white rounded-xl border border-brand-50 overflow-hidden">
             <button onClick={() => setExpanded(prev => ({ ...prev, [group.address]: !isOpen }))} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-brand-50/30 transition-colors text-left">
@@ -879,7 +879,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
     for (const step of applicable) {
       if (step === "property_details") continue;
       if (completed.has(step) || approved.has(step)) continue;
-      const shortAddr = (prop.address || "").split(",")[0];
+      const shortAddr = propertyLabel(prop.address);
       const label = WIZARD_STEP_LABELS[step] || step;
       allTasks.push({
         icon: "📋",
@@ -935,7 +935,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
     logAudit("approve", "properties",
       "Admin-approved wizard skip: " + task.wizardStepLabel + " for " + task.address,
       task.wizardId, userProfile?.email, userRole, companyId);
-    if (addNotification) addNotification("✅", task.wizardStepLabel + " marked complete for " + task.address.split(",")[0]);
+    if (addNotification) addNotification("✅", task.wizardStepLabel + " marked complete for " + propertyLabel(task.address));
     showToast(task.wizardStepLabel + " marked complete.", "success");
     fetchAll();
   } catch (e) {

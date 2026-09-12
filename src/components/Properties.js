@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -1625,7 +1625,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div className="bg-brand-50 rounded-xl p-3 space-y-1">
                 <div className="flex justify-between text-sm"><span className="text-neutral-500">Tenant{[tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].some(t => t?.trim()) ? "s" : ""}</span><span className="font-medium text-neutral-800">{[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{savedAddress.split(",")[0]}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{propertyLabel(savedAddress)}</span></div>
                 {tenantForm.lease_start && tenantForm.lease_end && (
                   <div className="flex justify-between text-sm"><span className="text-neutral-500">Lease</span><span className="font-medium text-neutral-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
                 )}
@@ -3607,7 +3607,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3">
   <span className="material-icons-outlined text-warn-600">construction</span>
   <div>
-  <div className="text-sm font-semibold text-warn-800">Setup incomplete: {w.property_address?.split(",")[0]}</div>
+  <div className="text-sm font-semibold text-warn-800">Setup incomplete: {propertyLabel(w.property_address)}</div>
   <div className="text-xs text-warn-600">{(w.completed_steps || []).length} steps completed · {w.status === "in_progress" ? "In progress" : w.status}</div>
   </div>
   </div>

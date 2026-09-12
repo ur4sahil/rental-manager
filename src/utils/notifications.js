@@ -1,6 +1,7 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
 import { resolveRecipients } from "./notificationRecipients";
+import { propertyLabel } from "./helpers";
 
 // ============ NOTIFICATION QUEUE ============
 // Queues email notifications for async processing by the worker
@@ -190,7 +191,7 @@ function toMins(timeStr) {
 // — full address won't fit on a phone banner anyway.
 function shortProp(p) {
   if (!p || typeof p !== "string") return "";
-  return p.split(",")[0].trim();
+  return propertyLabel(p);
 }
 function pushTitleFor(type, data) {
   const d = typeof data === "string" ? {} : (data || {});
