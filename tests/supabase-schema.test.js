@@ -8,6 +8,24 @@ require('dotenv').config();
 require("./sandbox-env");   // must precede any use of process.env.SUPABASE_*
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const fs = require('fs');
+const path = require('path');
+const ROOT = path.join(__dirname, '..');
+
+// PostgREST caps a response at 1000 rows and .limit() does NOT override
+// it, so any consistency check that reads a whole table has to page or it
+// is quietly checking a prefix. Ordered, because range() without an ORDER
+// BY is not stable across pages.
+async function pageAll(table, columns) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from(table).select(columns)
+      .order('id', { ascending: true }).range(from, from + 999);
+    if (error) return out;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) return out;
+  }
+}
 
 let pass = 0, fail = 0, errors = [];
 function assert(ok, name) {
@@ -308,15 +326,34 @@ async function testDataIntegrity() {
       'Properties with tenants should have occupied status');
   }
 
-  // Tenants with active lease should have lease_status=active
-  const { data: tenants } = await supabase.from('tenants').select('*');
-  const { data: leases } = await supabase.from('leases').select('*').eq('status', 'active');
-  if (tenants && leases) {
-    const activeLeaseTenants = leases.map(l => l.tenant_name);
-    const tenantsWithActiveLease = tenants.filter(t => activeLeaseTenants.includes(t.name));
-    const correctStatus = tenantsWithActiveLease.filter(t => t.lease_status === 'active');
-    assert(tenantsWithActiveLease.length === 0 || correctStatus.length > 0,
-      'Tenants with active leases should have lease_status=active');
+  // Tenants with an active lease should be marked as leased.
+  //
+  // Three things were wrong with this check. It asserted the literal
+  // 'active', but this database spells it 'current' -- the same split that
+  // made the Rent Roll report every unit VACANT until ACTIVE_LEASE was
+  // introduced, and the app now accepts both. It matched tenants to leases
+  // by NAME ALONE, across companies, which the repo has an explicit rule
+  // against (5 same-name tenant groups exist). And it read both tables
+  // unpaged, so PostgREST's 1000-row cap silently truncated the match.
+  //
+  // The accepted values come from the app's own constant so the test
+  // cannot drift from the code again.
+  const helpersSrc = fs.readFileSync(path.join(ROOT, 'src/utils/helpers.js'), 'utf8');
+  const ACTIVE_LEASE = JSON.parse(
+    (helpersSrc.match(/export const ACTIVE_LEASE = (\[[^\]]*\])/) || [])[1].replace(/'/g, '"')
+  );
+  const tenants = await pageAll('tenants', 'id, name, company_id, lease_status');
+  const leases = await pageAll('leases', 'id, tenant_name, company_id, status');
+  if (tenants.length && leases.length) {
+    const activeByCompany = new Set(
+      leases.filter(l => l.status === 'active').map(l => `${l.company_id}|${l.tenant_name}`)
+    );
+    const withActiveLease = tenants.filter(t => activeByCompany.has(`${t.company_id}|${t.name}`));
+    const leased = withActiveLease.filter(t => ACTIVE_LEASE.includes(t.lease_status));
+    const wrong = withActiveLease.filter(t => !ACTIVE_LEASE.includes(t.lease_status));
+    assert(withActiveLease.length === 0 || leased.length > 0,
+      `Tenants with an active lease are marked leased (${leased.length}/${withActiveLease.length}` +
+      `${wrong.length ? '; others say: ' + [...new Set(wrong.map(t => t.lease_status))].join(', ') : ''})`);
   }
 
   // Payments amount should be positive

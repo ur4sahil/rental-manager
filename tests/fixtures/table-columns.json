@@ -15,7 +15,11 @@
         ],
         "footer": "(computed)",
         "groups": true,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "onRowClick",
+          "stickyHeader"
+        ]
       },
       {
         "keys": [
@@ -24,7 +28,10 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "hideHeader"
+        ]
       },
       {
         "keys": [
@@ -36,7 +43,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -50,7 +58,10 @@
         ],
         "footer": "Totals",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "rowAttrs"
+        ]
       },
       {
         "keys": [
@@ -65,7 +76,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -78,7 +90,22 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
+      },
+      {
+        "keys": [
+          "name",
+          "description",
+          "revenue",
+          "expenses",
+          "netIncome",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -88,7 +115,8 @@
         ],
         "footer": "TOTALS",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -102,7 +130,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -116,7 +145,23 @@
         ],
         "footer": "TOTALS",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
+      },
+      {
+        "keys": [
+          "description",
+          "date",
+          "originalAmount",
+          "amountPaid",
+          "amountDue",
+          "daysOutstanding",
+          "bucket"
+        ],
+        "footer": "TOTAL OUTSTANDING",
+        "groups": true,
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -125,7 +170,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -136,7 +182,10 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "hideHeader"
+        ]
       },
       {
         "keys": [
@@ -149,7 +198,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -161,7 +211,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -171,7 +222,21 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
+      },
+      {
+        "keys": [
+          "label",
+          "__total"
+        ],
+        "footer": "Net Income",
+        "groups": true,
+        "sortable": [],
+        "behaviour": [
+          "stickyFirstColumn",
+          "stickyLastColumn"
+        ]
       },
       {
         "keys": [
@@ -183,7 +248,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -195,7 +261,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -206,7 +273,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -221,7 +289,8 @@
         ],
         "footer": "TOTAL FEES",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -233,7 +302,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -245,7 +315,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -259,7 +330,8 @@
         ],
         "footer": "TOTAL",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -271,7 +343,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -284,7 +357,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -294,7 +368,8 @@
         ],
         "footer": "TOTAL",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -306,7 +381,8 @@
         ],
         "footer": "TOTAL HELD",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -318,7 +394,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -329,7 +406,8 @@
         ],
         "footer": "TOTAL DISTRIBUTED",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -341,7 +419,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -353,7 +432,10 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "hideHeader"
+        ]
       },
       {
         "keys": [
@@ -364,7 +446,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -378,7 +461,8 @@
         ],
         "footer": "TOTALS",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -390,7 +474,8 @@
         ],
         "footer": "TOTAL",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -399,7 +484,8 @@
         ],
         "footer": "TOTAL OWED",
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -411,7 +497,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -423,7 +510,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -435,10 +523,16 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
-    "printTables": []
+    "printTables": [
+      {
+        "labels": [],
+        "footer": null
+      }
+    ]
   },
   "src/components/Admin.js": {
     "dataTables": [
@@ -453,7 +547,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -472,10 +567,19 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
+          "select",
+          "posted_date",
+          "description",
+          "payee",
+          "category",
+          "reason",
+          "amount",
+          "action",
           "account",
           "class_property",
           "memo",
@@ -484,7 +588,13 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": [
+          "onRowClick",
+          "rowAttrs",
+          "rowClassName",
+          "expandedRow"
+        ]
       },
       {
         "keys": [
@@ -495,7 +605,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -513,10 +624,16 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
-    "printTables": []
+    "printTables": [
+      {
+        "labels": [],
+        "footer": null
+      }
+    ]
   },
   "src/components/HOA.js": {
     "dataTables": [
@@ -533,7 +650,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -554,10 +672,28 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
+  },
+  "src/components/Leases.js": {
+    "dataTables": [],
+    "printTables": [
+      {
+        "labels": [
+          "",
+          "",
+          "Property",
+          "Tenant",
+          "Lease Term",
+          "Monthly Rent",
+          "Security Deposit"
+        ],
+        "footer": null
+      }
+    ]
   },
   "src/components/Loans.js": {
     "dataTables": [
@@ -575,7 +711,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -595,7 +732,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -616,7 +754,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -633,7 +772,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -647,7 +787,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       },
       {
         "keys": [
@@ -659,7 +800,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -677,7 +819,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []
@@ -704,6 +847,9 @@
           "lease_status",
           "rent",
           "balance"
+        ],
+        "behaviour": [
+          "onSort"
         ]
       }
     ],
@@ -737,7 +883,8 @@
         ],
         "footer": null,
         "groups": false,
-        "sortable": []
+        "sortable": [],
+        "behaviour": []
       }
     ],
     "printTables": []

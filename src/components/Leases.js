@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { printTheme } from "../utils/theme";
+import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
@@ -617,13 +617,24 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
     const l = lease;
     return ''
       + '<h1 style="text-align:center;color:' + printTheme.signatureInk + ';">Residential Lease Agreement</h1>'
-      + '<table style="width:100%;margin:20px 0;border-collapse:collapse;">'
-      + '<tr><td style="padding:6px 10px;font-weight:600;width:30%;">Property</td><td style="padding:6px 10px;">' + escapeHtml(l.property || "") + '</td></tr>'
-      + '<tr><td style="padding:6px 10px;font-weight:600;">Tenant</td><td style="padding:6px 10px;">' + escapeHtml(l.tenant_name || "") + '</td></tr>'
-      + '<tr><td style="padding:6px 10px;font-weight:600;">Lease Term</td><td style="padding:6px 10px;">' + escapeHtml(l.start_date || "") + ' through ' + escapeHtml(l.end_date || "") + '</td></tr>'
-      + '<tr><td style="padding:6px 10px;font-weight:600;">Monthly Rent</td><td style="padding:6px 10px;">$' + safeNum(l.rent_amount).toLocaleString() + '</td></tr>'
-      + '<tr><td style="padding:6px 10px;font-weight:600;">Security Deposit</td><td style="padding:6px 10px;">$' + safeNum(l.security_deposit).toLocaleString() + '</td></tr>'
-      + '</table>'
+      + printTable({
+        // A key/value detail block, so no header row -- see printTable's
+        // hideHeader. It used to hand-write padding:6px 10px on all ten
+        // cells and a width:30% on the first, which is exactly the kind of
+        // per-table styling the primitive exists to end.
+        hideHeader: true,
+        columns: [
+          { label: "", style: "font-weight:600;width:30%", render: r => r.label },
+          { label: "", render: r => r.value },
+        ],
+        rows: [
+          { label: "Property",         value: escapeHtml(l.property || "") },
+          { label: "Tenant",           value: escapeHtml(l.tenant_name || "") },
+          { label: "Lease Term",       value: escapeHtml(l.start_date || "") + ' through ' + escapeHtml(l.end_date || "") },
+          { label: "Monthly Rent",     value: '$' + safeNum(l.rent_amount).toLocaleString() },
+          { label: "Security Deposit", value: '$' + safeNum(l.security_deposit).toLocaleString() },
+        ],
+      })
       + (l.clauses ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Lease Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.clauses) + '</div>' : '')
       + (l.special_terms ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Special Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.special_terms) + '</div>' : '')
       + '<hr style="margin-top:32px;"/><p style="font-size:11px;color:' + printTheme.inkMuted + ';">By signing below each party confirms they have read and agree to the terms set out above.</p>';

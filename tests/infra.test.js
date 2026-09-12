@@ -148,7 +148,27 @@ function testHtmlEntry() {
   // Tailwind v4 uses PostCSS (index.css @import), not CDN link in HTML
   const css = fs.readFileSync(path.join(ROOT, 'src/index.css'), 'utf8');
   assert(css.includes('tailwindcss') || css.includes('@theme') || html.includes('tailwind'), 'Includes Tailwind CSS (via PostCSS or CDN)');
-  assert(html.includes('Manrope') || html.includes('manrope'), 'Loads Manrope font');
+  // Every font family the CSS names in a --font-* token must actually be
+  // fetched by index.html.
+  //
+  // This used to assert the literal string 'Manrope', which went stale the
+  // moment the app moved to Figtree and then just failed. Deriving the
+  // names from the tokens makes it test the real invariant -- and that
+  // invariant has been broken for real: --font-mono was referenced but
+  // never defined, so every money figure silently fell back to Menlo.
+  const fontTokens = [...css.matchAll(/--font-[a-z]+:\s*'([^']+)'/g)].map(m => m[1]);
+  assert(fontTokens.length > 0, 'index.css declares at least one --font-* token');
+  for (const family of fontTokens) {
+    assert(html.toLowerCase().includes(family.toLowerCase()),
+      `index.html loads the "${family}" font named by a --font-* token`);
+  }
+  // A --font-* reference with no declaration falls back to a system face
+  // without any error, which is how the money columns lost their figures.
+  const referenced = [...css.matchAll(/var\(--font-([a-z]+)\)/g)].map(m => m[1]);
+  const declared = new Set([...css.matchAll(/--font-([a-z]+):/g)].map(m => m[1]));
+  for (const name of new Set(referenced)) {
+    assert(declared.has(name), `--font-${name} is declared, not just referenced`);
+  }
   assert(html.includes('Material') || html.includes('material'), 'Loads Material Icons');
   assert(html.includes('manifest'), 'References PWA manifest');
   assert(html.includes('<meta') && html.includes('viewport'), 'Has viewport meta tag');

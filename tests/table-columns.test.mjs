@@ -55,6 +55,9 @@ for (const file of Object.keys(want)) {
       assert(`${file} table ${i}: total row still says "${a.footer}"`, a.footer === b.footer,
         `was "${a.footer}", now "${b.footer}"`);
     }
+    const lost = (a.behaviour || []).filter(k => !(b.behaviour || []).includes(k));
+    assert(`${file} table ${i}: keeps its row behaviour`, lost.length === 0,
+      `no longer set: ${lost.join(", ")}`);
     const unsortable = (a.sortable || []).filter(k => !(b.sortable || []).includes(k));
     assert(`${file} table ${i}: keeps its sortable headers`, unsortable.length === 0,
       `no longer sortable: ${unsortable.join(", ")}`);

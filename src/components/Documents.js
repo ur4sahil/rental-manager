@@ -4,7 +4,7 @@ import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { printTheme } from "../utils/theme";
+import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
@@ -1175,19 +1175,25 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   function renderCertificateHtml(doc, sigs, companyName) {
   const signedCount = (sigs || []).filter(s => s.status === "signed").length;
   const total = (sigs || []).length;
-  const rows = (sigs || []).map((s, idx) => ''
-    + '<tr style="border-bottom:1px solid ' + printTheme.borderLight + ';">'
-    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">' + (idx + 1) + '</td>'
-    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">'
-    + '<div style="font-weight:600;">' + escapeForHtml(s.signer_name || "(no name)") + '</div>'
-    + '<div style="color:' + printTheme.inkMuted + ';">' + escapeForHtml(s.signer_email || "") + '</div>'
-    + '<div style="color:' + printTheme.inkSubtle + ';text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>'
-    + '</td>'
-    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">' + (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:' + printTheme.danger + ';">Not signed</span>') + '</td>'
-    + '<td style="padding:10px 8px;font-size:10px;color:' + printTheme.inkMuted + ';vertical-align:top;">' + escapeForHtml(s.signer_ip || "—") + '</td>'
-    + '<td style="padding:10px 8px;font-size:10px;color:' + printTheme.inkMuted + ';vertical-align:top;font-family:monospace;word-break:break-all;">' + (s.integrity_hash ? escapeForHtml(s.integrity_hash.slice(0, 24)) + "…" : "—") + '</td>'
-    + '</tr>'
-  ).join("");
+  // The five <td> wrappers are gone -- printTable owns cell padding and
+  // borders now -- but every value expression below is the original,
+  // unchanged, including its escaping. Escaping stays with the caller
+  // because only the caller knows which values are user-supplied.
+  const SIG_COLUMNS = [
+    { label: "#", style: `font-size:11px;color:${printTheme.inkStrong};vertical-align:top`,
+      render: (s, idx) => String(idx + 1) },
+    { label: "Signer", style: `font-size:11px;color:${printTheme.inkStrong};vertical-align:top`,
+      render: s => ''
+        + '<div style="font-weight:600;">' + escapeForHtml(s.signer_name || "(no name)") + '</div>'
+        + '<div style="color:' + printTheme.inkMuted + ';">' + escapeForHtml(s.signer_email || "") + '</div>'
+        + '<div style="color:' + printTheme.inkSubtle + ';text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>' },
+    { label: "Signed at", style: `font-size:11px;color:${printTheme.inkStrong};vertical-align:top`,
+      render: s => (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:' + printTheme.danger + ';">Not signed</span>') },
+    { label: "IP", style: `font-size:10px;color:${printTheme.inkMuted};vertical-align:top`,
+      render: s => escapeForHtml(s.signer_ip || "\u2014") },
+    { label: "Integrity hash", style: `font-size:10px;color:${printTheme.inkMuted};vertical-align:top;font-family:monospace;word-break:break-all`,
+      render: s => (s.integrity_hash ? escapeForHtml(s.integrity_hash.slice(0, 24)) + "\u2026" : "\u2014") },
+  ];
   const uaList = (sigs || []).filter(s => s.user_agent).map(s => ''
     + '<div style="font-size:9px;color:' + printTheme.inkSubtle + ';margin-bottom:2px;"><strong>' + escapeForHtml(s.signer_email) + ':</strong> ' + escapeForHtml(s.user_agent) + '</div>'
   ).join("");
@@ -1208,16 +1214,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     + '<li><strong>Signers:</strong> ' + signedCount + ' of ' + total + ' completed</li>'
     + '</ul>'
     + '</div>'
-    + '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'
-    + '<thead><tr style="background:' + printTheme.surfaceMuted + ';text-align:left;">'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">#</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Signer</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Signed at</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">IP</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Integrity hash</th>'
-    + '</tr></thead>'
-    + '<tbody>' + rows + '</tbody>'
-    + '</table>'
+    + '<div style="margin-bottom:24px;">' + printTable({ columns: SIG_COLUMNS, rows: sigs || [] }) + '</div>' 
     + (uaList ? '<div style="margin-top:16px;padding:12px;background:' + printTheme.surfaceMuted + ';border-radius:6px;"><div style="font-size:10px;font-weight:600;color:' + printTheme.inkMuted + ';margin-bottom:6px;">BROWSER INFORMATION</div>' + uaList + '</div>' : '')
     + '<div style="margin-top:32px;padding-top:16px;border-top:1px solid ' + printTheme.borderLight + ';font-size:10px;color:' + printTheme.inkSubtle + ';text-align:center;">'
     + 'Each integrity hash is a SHA-256 digest over the document body, signer email, signature payload, and timestamp at the moment of signing. Any alteration to the signed document or signature will cause the hash to no longer match. Certificate generated ' + escapeForHtml(new Date().toLocaleString()) + '.'

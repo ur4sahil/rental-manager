@@ -5,7 +5,7 @@ import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { printTheme, chartPalette } from "../utils/theme";
+import { printTheme, chartPalette, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache } from "../utils/accounting";
@@ -476,9 +476,10 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
 
   // Properties for filter dropdown
   const properties = [...new Set(journalEntries.filter(je => je.property).map(je => je.property))].sort();
-  // Column count for the colSpans in the grouped table. The Account column
-  // only appears in a multi-account view.
-  const COLS = multiAccount ? 9 : 8;
+  // (The hand-counted column total that used to live here is gone:
+  // DataTable and printTable both compute their own colSpans, which is the
+  // point of them -- a hand-written count is how a 9-column header ended
+  // up over 8-column rows in this very table.)
 
   function exportCSV() {
   const multi = multiAccount;
@@ -510,10 +511,32 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const totalDr = allLines.reduce((s, l) => s + l.debit, 0);
   const totalCr = allLines.reduce((s, l) => s + l.credit, 0);
   const multi = multiAccount;
-  const headRow = `<tr><th class="l">Date</th><th class="l">JE #</th><th class="l">Description</th><th class="l">Ref</th>${multi ? '<th class="l">Account</th>' : ""}<th class="l">Property</th><th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th></tr>`;
-  const bodyRows = allLines.map(l => `<tr><td>${esc(l.date)}</td><td>${esc(l.number || "—")}</td><td>${esc(l.description || "")}${l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : ""}</td><td>${esc(refLabel(l.reference))}</td>${multi ? `<td>${esc(l.accountName || "")}</td>` : ""}<td>${esc(propertyLabel(l.property) || "—")}</td><td class="r mono">${l.debit > 0 ? esc(acctFmt(l.debit)) : ""}</td><td class="r mono">${l.credit > 0 ? esc(acctFmt(l.credit)) : ""}</td><td class="r mono${l.balance < 0 ? " neg" : ""}">${esc(acctFmt(l.balance, true))}</td></tr>`).join("");
-  const colspan = multi ? 6 : 5;
-  const totalsRow = `<tr class="tot"><td colspan="${colspan}" class="r">Totals</td><td class="r mono">${esc(acctFmt(totalDr))}</td><td class="r mono">${esc(acctFmt(totalCr))}</td><td class="r mono${!multiAccount && groups[0] && groups[0].closing < 0 ? " neg" : ""}">${multiAccount ? "&mdash;" : esc(acctFmt(groups[0] ? groups[0].closing : 0, true))}</td></tr>`;
+  // printTable owns the markup; every value expression below is the
+  // original, escaping included. The Account column is conditional the
+  // same way it is on screen -- a spread entry rather than a `${multi ?
+  // "<th>" : ""}` in the header AND a matching one in the body, which is
+  // how the two could disagree about the column count.
+  const PDF_COLUMNS = [
+    { label: "Date", render: l => esc(l.date) },
+    { label: "JE #", render: l => esc(l.number || "—") },
+    { label: "Description", render: l => esc(l.description || "") + (l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : "") },
+    { label: "Ref", render: l => esc(refLabel(l.reference)) },
+    ...(multi ? [{ label: "Account", render: l => esc(l.accountName || "") }] : []),
+    { label: "Property", render: l => esc(propertyLabel(l.property) || "—") },
+    { label: "Debit", align: "right", style: "font-family:ui-monospace,SFMono-Regular,monospace",
+      render: l => (l.debit > 0 ? esc(acctFmt(l.debit)) : "") },
+    { label: "Credit", align: "right", style: "font-family:ui-monospace,SFMono-Regular,monospace",
+      render: l => (l.credit > 0 ? esc(acctFmt(l.credit)) : "") },
+    { label: "Balance", align: "right", style: "font-family:ui-monospace,SFMono-Regular,monospace",
+      render: l => `<span${l.balance < 0 ? ' class="neg"' : ""}>${esc(acctFmt(l.balance, true))}</span>` },
+  ];
+  // The closing balance is dashed out across accounts: summing cash into
+  // receivables into income produces an authoritative-looking nonsense.
+  const PDF_FOOTER = [{ label: "Totals", cells: [
+    esc(acctFmt(totalDr)),
+    esc(acctFmt(totalCr)),
+    multiAccount ? "&mdash;" : `<span${groups[0] && groups[0].closing < 0 ? ' class="neg"' : ""}>${esc(acctFmt(groups[0] ? groups[0].closing : 0, true))}</span>`,
+  ] }];
   const periodLabel = period === "Custom" ? `${start} to ${end}` : period;
   const css = `body{font-family:Arial,sans-serif;margin:30px 40px;color:${printTheme.inkStrong};font-size:12px}
 h1{font-size:18px;margin:0 0 2px}.sub{color:${printTheme.inkMuted};font-size:12px;margin:0 0 14px}
@@ -522,7 +545,7 @@ th,td{padding:5px 8px;border-bottom:1px solid ${printTheme.borderLight};text-ali
 th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:${printTheme.inkMuted};font-weight:600}
 .r{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,monospace}.mut{color:${printTheme.inkSubtle}}
 .neg{color:${printTheme.danger}}.tot td{border-top:2px solid ${printTheme.inkStrong};font-weight:700;font-size:12px}`;
-  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyLabel(propertyFilter) + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p><table><thead>${headRow}</thead><tbody>${bodyRows}${totalsRow}</tbody></table></div>`;
+  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyLabel(propertyFilter) + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p>${printTable({ columns: PDF_COLUMNS, rows: allLines, footer: PDF_FOOTER, fontSize: '12px' })}</div>`;
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
   document.body.appendChild(iframe);
@@ -1607,21 +1630,27 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <div className={`border rounded-xl p-4 min-w-0 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold tnum mt-1 truncate ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
-  <tbody>
-  {classReport.map(c => (
-  <tr key={c.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors">
-  <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div></td>
-  <td className="px-5 py-3 text-xs text-neutral-400">{c.description}</td>
-  <td className="px-5 py-3 text-right tnum text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
-  <td className="px-5 py-3 text-right tnum text-sm text-danger-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
-  <td className={`px-5 py-3 text-right tnum text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`}>{acctFmt(c.netIncome, true)}</td>
-  <td className="px-5 py-3 flex gap-1"><TextLink tone="brand" size="xs" onClick={() => openEdit(c)}>Edit</TextLink><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    density="normal"
+    columns={[
+      { key: "name", label: "Class",
+        render: c => (<div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div>) },
+      { key: "description", label: "Description", className: "text-xs text-neutral-400",
+        render: c => c.description },
+      { key: "revenue", label: "Revenue", align: "right", className: "text-sm text-success-700",
+        render: c => (c.revenue > 0 ? acctFmt(c.revenue) : "\u2014") },
+      { key: "expenses", label: "Expenses", align: "right", className: "text-sm text-danger-600",
+        render: c => (c.expenses > 0 ? acctFmt(c.expenses) : "\u2014") },
+      { key: "netIncome", label: "Net Income", align: "right",
+        className: c => `text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`,
+        render: c => acctFmt(c.netIncome, true) },
+      { key: "actions", label: "", thClassName: "w-16",
+        render: c => (<span className="flex gap-1"><TextLink tone="brand" size="xs" onClick={() => openEdit(c)}>Edit</TextLink><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "\ud83d\udfe2" : "\u26aa"}</button></span>) },
+    ]}
+    rows={classReport}
+    rowKey={c => c.id}
+    empty="No classes yet"
+  />
   </div>
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
   <div className="space-y-3">
@@ -2313,6 +2342,16 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         const colIndices = [0]; // always include label column
         for (let c = i + 1; c <= Math.min(i + COLS_PER_PAGE, propCount); c++) colIndices.push(c);
         const pageLabel = `Properties ${i + 1}–${Math.min(i + COLS_PER_PAGE, propCount)} of ${propCount}`;
+        // NOT printTable, deliberately. This is a print PAGINATOR, not a
+        // table renderer: it has no row data to hand a column spec, only
+        // the already-rendered DOM (`allThs`, `bodyRows`), which it slices
+        // into 8-property pages. printTable takes rows + columns and would
+        // need the report recomputed here to use it.
+        //
+        // It does depend on the rendered shape, though: one thead tr, and
+        // tbody rows it classifies by whether they are a single td with a
+        // colspan (a section heading) or one td per column. DataTable
+        // preserves both -- e2e/54 pins them.
         let tbl = "<table><thead><tr>";
         colIndices.forEach(ci => { tbl += allThs[ci] ? `<th${ci === 0 ? ' style="text-align:left;min-width:180px"' : ' style="text-align:right;min-width:90px"'}>${allThs[ci].textContent}</th>` : ""; });
         tbl += "</tr></thead><tbody>";
@@ -3289,51 +3328,48 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         const tenants = Object.keys(byTenant).sort();
         return (
           <div className="overflow-x-auto -mx-4 md:mx-0">
-          <table className="w-full text-sm min-w-[720px]">
-            <thead className="bg-neutral-50 border-b border-neutral-200">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Tenant / Charge</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Date</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Original</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Paid</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Due</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 whitespace-nowrap">Days</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap">Bucket</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.map(tenant => {
-                const charges = byTenant[tenant];
-                const tTotal = charges.reduce((s, c) => s + c.amountDue, 0);
-                return (
-                  <React.Fragment key={tenant}>
-                    <tr className="bg-brand-50/40 border-t border-neutral-200">
-                      <td colSpan={6} className="px-3 py-2 font-semibold text-neutral-800 whitespace-nowrap">{tenant}</td>
-                      <td className="px-3 py-2 text-right tnum font-semibold whitespace-nowrap">{acctFmt(tTotal)}</td>
-                    </tr>
-                    {charges.map((c, i) => (
-                      <tr key={i} className="border-t border-neutral-100">
-                        <td className="px-3 py-1.5 text-xs text-neutral-500 pl-6 whitespace-nowrap">{(c.description || "").slice(0, 50)}</td>
-                        <td className="px-3 py-1.5 text-xs text-neutral-400 whitespace-nowrap">{c.date}</td>
-                        <td className="px-3 py-1.5 text-right tnum text-xs whitespace-nowrap">{acctFmt(c.originalAmount)}</td>
-                        <td className="px-3 py-1.5 text-right tnum text-xs text-neutral-400 whitespace-nowrap">{c.amountPaid > 0 ? acctFmt(c.amountPaid) : ""}</td>
-                        <td className="px-3 py-1.5 text-right tnum text-xs font-semibold whitespace-nowrap">{acctFmt(c.amountDue)}</td>
-                        <td className="px-3 py-1.5 text-right tnum text-xs whitespace-nowrap">{c.daysOutstanding}</td>
-                        <td className="px-3 py-1.5 text-xs whitespace-nowrap">{bucketLabel(c.daysOutstanding)}</td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-neutral-800 font-bold">
-                <td className="px-3 py-2 whitespace-nowrap" colSpan={4}>TOTAL OUTSTANDING</td>
-                <td className="px-3 py-2 text-right tnum whitespace-nowrap">{acctFmt(rows.reduce((s, r) => s + r.amountDue, 0))}</td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
-          </table>
+          <DataTable
+            // Nested: one group per tenant, whose group row carries that
+            // tenant's total, with the individual charges beneath it. The
+            // hand-rolled version built this from a React.Fragment with a
+            // colSpan={6} header row and a 7th cell holding the subtotal --
+            // the exact shape `groups` exists to express.
+            columns={[
+              { key: "description", label: "Tenant / Charge", className: "text-xs text-neutral-500 pl-6 whitespace-nowrap",
+                render: c => (c.description || "").slice(0, 50) },
+              { key: "date", label: "Date", className: "text-xs text-neutral-400 whitespace-nowrap",
+                render: c => c.date },
+              { key: "originalAmount", label: "Original", align: "right", className: "text-xs whitespace-nowrap",
+                render: c => acctFmt(c.originalAmount) },
+              { key: "amountPaid", label: "Paid", align: "right", className: "text-xs text-neutral-400 whitespace-nowrap",
+                render: c => (c.amountPaid > 0 ? acctFmt(c.amountPaid) : "") },
+              { key: "amountDue", label: "Due", align: "right", className: "text-xs font-semibold whitespace-nowrap",
+                render: c => acctFmt(c.amountDue) },
+              { key: "daysOutstanding", label: "Days", align: "right", className: "text-xs whitespace-nowrap",
+                render: c => c.daysOutstanding },
+              { key: "bucket", label: "Bucket", className: "text-xs whitespace-nowrap",
+                render: c => bucketLabel(c.daysOutstanding) },
+            ]}
+            // The tenant name and that tenant's total shared ONE row in the
+            // hand-rolled version (a colSpan={6} name cell plus a 7th cell
+            // holding the subtotal). A group footer would have added a row
+            // per tenant, so the group label carries both instead -- same
+            // row, same right edge.
+            groups={tenants.map(tenant => ({
+              key: tenant,
+              label: (
+                <span className="flex justify-between items-baseline gap-4">
+                  <span>{tenant}</span>
+                  <span className="tnum font-semibold">{acctFmt(byTenant[tenant].reduce((s, c) => s + c.amountDue, 0))}</span>
+                </span>
+              ),
+              rows: byTenant[tenant],
+            }))}
+            rowKey={(c, i) => i}
+            footer={[{ label: "TOTAL OUTSTANDING", strong: true,
+              cells: ["", "", acctFmt(rows.reduce((s, r) => s + r.amountDue, 0)), "", ""] }]}
+            empty="No open AR balances"
+          />
           </div>
         );
       })()}
@@ -3526,81 +3562,115 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         // a bare positive is indistinguishable from a profit.
         const fmtCell = (v) => v === 0 ? "–" : acctFmt(Math.abs(v));
         const fmtSigned = (v) => v === 0 ? "–" : (v < 0 ? "(" + acctFmt(Math.abs(v)) + ")" : acctFmt(v));
-        const cellCls = "px-3 py-1.5 text-right tnum text-xs whitespace-nowrap";
-        const labelCls = "px-3 py-1.5 text-sm text-neutral-700 whitespace-nowrap";
-        const boldLabelCls = "px-3 py-1.5 text-sm font-bold text-neutral-900 whitespace-nowrap";
-        const boldCellCls = "px-3 py-1.5 text-right tnum text-xs font-bold whitespace-nowrap";
-        const sectionCls = "px-3 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50";
+        // Padding is NOT in these any more: DataTable density="compact" is
+        // exactly the px-3 py-1.5 they used to carry, and passing it twice
+        // puts two px-* classes on one cell, which resolves by stylesheet
+        // order rather than by intent.
+        const labelCls = "text-sm text-neutral-700 whitespace-nowrap";
+        const boldLabelCls = "text-sm font-bold text-neutral-900 whitespace-nowrap";
+        const numCls = "text-xs whitespace-nowrap";
+        const boldNumCls = "text-xs font-bold whitespace-nowrap";
         // `groupIds` turns a subtotal label into a ledger link over every
         // account the subtotal sums, matching the single-account links on
         // the detail rows above it.
-        const renderRow = (label, getVal, bold, borderTop, acctId, groupIds) => {
-          const show = bold ? fmtSigned : fmtCell;
-          const total = getVal(TOTAL);
-          return (
-          <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
-            <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{groupIds && groupIds.length && onOpenLedger
-              ? <LedgerLink ids={groupIds} title={label} onOpenLedger={onOpenLedger} className="">{label}</LedgerLink>
-              : label}</td>
-            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{show(v)}</td>; })}
-            {/* Pinned right: with 40+ property columns an unpinned total
-                is off-screen, which reads as "the report has no totals". */}
-            <td className={`${bold ? boldCellCls : cellCls} border-l-2 border-neutral-400 sticky right-0 z-10 ${bold ? "bg-neutral-100" : "bg-white"} ${total < 0 && bold ? "text-danger-600" : ""}`}>{show(total)}</td>
-          </tr>
-          );
-        };
+        // A crosstab: one column per property, one row per account, with
+        // section subtotals. Rows are described as DATA and rendered by
+        // DataTable, rather than each row emitting its own <tr> -- which is
+        // how the label column, the per-property cells and the pinned TOTAL
+        // each carried their own copy of the bold/normal styling.
+        const row = (label, getVal, bold, acctId, groupIds) => ({ label, getVal, bold, acctId, groupIds });
+        // A section subtotal, as a DataTable footer row: cells for every
+        // property plus the pinned TOTAL, with the label spanning column 1.
+        const totalRow = (label, getVal, groupIds, className) => ({
+          label: groupIds && groupIds.length && onOpenLedger
+            ? <LedgerLink ids={groupIds} title={label} onOpenLedger={onOpenLedger} className="">{label}</LedgerLink>
+            : label,
+          className,
+          cells: [
+            ...props.map(p => fmtSigned(getVal(p.id))),
+            <span className={getVal(TOTAL) < 0 ? "text-danger-600" : undefined}>{fmtSigned(getVal(TOTAL))}</span>,
+          ],
+        });
+        const netIncomeAt = (id) =>
+          (id === TOTAL
+            ? sumGroupAll([...incomeAccts, ...otherIncomeAccts]) - sumGroupAll([...cogsAccts, ...expenseAccts, ...otherExpAccts])
+            : sumGroup(id, [...incomeAccts, ...otherIncomeAccts]) - sumGroup(id, [...cogsAccts, ...expenseAccts, ...otherExpAccts]));
+
+        const sections = [];
+        sections.push({
+          key: "income", label: "Income",
+          rows: incomeAccts.map(a => row(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, a.id)),
+          footer: [totalRow("Total for Income", cid => at(cid, id => sumGroup(id, incomeAccts), () => sumGroupAll(incomeAccts)), incomeAccts.map(a=>a.id))],
+        });
+        // Gross Profit follows COGS, and Net Operating Income follows
+        // Expenses, so each rides along as a second footer row on its
+        // section rather than becoming a section of its own.
+        const cogsFooter = [];
+        if (cogsAccts.length > 0) cogsFooter.push(totalRow("Total COGS", cid => at(cid, id => sumGroup(id, cogsAccts), () => sumGroupAll(cogsAccts)), cogsAccts.map(a=>a.id)));
+        cogsFooter.push(totalRow("Gross Profit", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts))));
+        sections.push({
+          key: "cogs", label: cogsAccts.length > 0 ? "Cost of Goods Sold" : null,
+          rows: cogsAccts.map(a => row(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, a.id)),
+          footer: cogsFooter,
+        });
+        sections.push({
+          key: "expenses", label: "Expenses",
+          rows: expenseAccts.map(a => row(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, a.id)),
+          footer: [
+            totalRow("Total for Expenses", cid => at(cid, id => sumGroup(id, expenseAccts), () => sumGroupAll(expenseAccts)), expenseAccts.map(a=>a.id)),
+            totalRow("Net Operating Income", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts) - sumGroup(id, expenseAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts) - sumGroupAll(expenseAccts))),
+          ],
+        });
+        if (otherIncomeAccts.length > 0 || otherExpAccts.length > 0) {
+          sections.push({
+            key: "other", label: null,
+            rows: [
+              ...otherIncomeAccts.map(a => row(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, a.id)),
+              ...otherExpAccts.map(a => row(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, a.id)),
+            ],
+            footer: [totalRow("Net Other Income", cid => at(cid, id => sumGroup(id, otherIncomeAccts) - sumGroup(id, otherExpAccts), () => sumGroupAll(otherIncomeAccts) - sumGroupAll(otherExpAccts)))],
+          });
+        }
+
         return (
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-max">
-        <thead><tr className="bg-neutral-50 border-b border-neutral-200">
-          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 sticky left-0 bg-neutral-50 min-w-48"></th>
-          {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{propertyLabel(p.name)}</th>)}
-          <th className="px-3 py-2 text-right text-xs font-bold text-neutral-900 min-w-28 bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10">TOTAL</th>
-        </tr></thead>
-        <tbody>
-          {/* Income */}
-          {incomeAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Income</td></tr>}
-          {incomeAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
-          {renderRow("Total for Income", cid => at(cid, id => sumGroup(id, incomeAccts), () => sumGroupAll(incomeAccts)), true, true, null, incomeAccts.map(a=>a.id))}
-
-          {/* COGS */}
-          {cogsAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Cost of Goods Sold</td></tr>}
-          {cogsAccts.map(a => renderRow(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, false, a.id))}
-          {cogsAccts.length > 0 && renderRow("Total COGS", cid => at(cid, id => sumGroup(id, cogsAccts), () => sumGroupAll(cogsAccts)), true, true, null, cogsAccts.map(a=>a.id))}
-
-          {/* Gross Profit */}
-          {renderRow("Gross Profit", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts)), true, true, null, [...incomeAccts, ...cogsAccts].map(a=>a.id))}
-
-          {/* Expenses */}
-          {expenseAccts.length > 0 && <tr><td colSpan={props.length + 2} className={sectionCls}>Expenses</td></tr>}
-          {expenseAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
-          {renderRow("Total for Expenses", cid => at(cid, id => sumGroup(id, expenseAccts), () => sumGroupAll(expenseAccts)), true, true, null, expenseAccts.map(a=>a.id))}
-
-          {/* Net Operating Income */}
-          {renderRow("Net Operating Income", cid => at(cid, id => sumGroup(id, incomeAccts) - sumGroup(id, cogsAccts) - sumGroup(id, expenseAccts), () => sumGroupAll(incomeAccts) - sumGroupAll(cogsAccts) - sumGroupAll(expenseAccts)), true, true, null, [...incomeAccts, ...cogsAccts, ...expenseAccts].map(a=>a.id))}
-
-          {/* Other Income/Expense */}
-          {(otherIncomeAccts.length > 0 || otherExpAccts.length > 0) && <>
-            {otherIncomeAccts.map(a => renderRow(a.name, cid => at(cid, id => val(id, a.id), () => valAll(a.id)), false, false, a.id))}
-            {otherExpAccts.map(a => renderRow(a.name, cid => at(cid, id => -val(id, a.id), () => -valAll(a.id)), false, false, a.id))}
-            {renderRow("Net Other Income", cid => at(cid, id => sumGroup(id, otherIncomeAccts) - sumGroup(id, otherExpAccts), () => sumGroupAll(otherIncomeAccts) - sumGroupAll(otherExpAccts)), true, true, null, [...otherIncomeAccts, ...otherExpAccts].map(a=>a.id))}
-          </>}
-
-          {/* Net Income */}
-          <tr className="border-t-2 border-neutral-800">
-            <td className="px-3 py-2 text-sm font-black text-neutral-900">Net Income</td>
-            {props.map(p => {
-              const ni = sumGroup(p.id, [...incomeAccts, ...otherIncomeAccts]) - sumGroup(p.id, [...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td key={p.id} className={`px-3 py-2 text-right tnum text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
-            })}
-            {(() => {
-              const ni = sumGroupAll([...incomeAccts, ...otherIncomeAccts]) - sumGroupAll([...cogsAccts, ...expenseAccts, ...otherExpAccts]);
-              return <td className={`px-3 py-2 text-right tnum text-xs font-black bg-neutral-100 border-l-2 border-neutral-400 sticky right-0 z-10 ${ni < 0 ? "text-danger-600" : ""}`}>{fmtSigned(ni)}</td>;
-            })()}
-          </tr>
-        </tbody>
-        </table>
-        </div>
+        <DataTable
+          scroll
+          density="compact"
+          stickyFirstColumn
+          // With one column per property an unpinned TOTAL is off-screen,
+          // which reads as "this report has no totals".
+          stickyLastColumn
+          columns={[
+            { key: "label", label: "", thClassName: "min-w-48",
+              className: r => (r.bold ? boldLabelCls : labelCls),
+              render: r => (r.groupIds && r.groupIds.length && onOpenLedger
+                ? <LedgerLink ids={r.groupIds} title={r.label} onOpenLedger={onOpenLedger} className="">{r.label}</LedgerLink>
+                : <span style={{ paddingLeft: 24 }}>{r.label}</span>) },
+            ...props.map(p => ({
+              key: p.id, label: propertyLabel(p.name), align: "right", thClassName: "min-w-28 text-neutral-700",
+              className: r => `${r.bold ? boldNumCls : numCls}${r.acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`,
+              render: r => {
+                const v = r.getVal(p.id);
+                return <span onClick={r.acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([r.acctId], r.label) : undefined}>{(r.bold ? fmtSigned : fmtCell)(v)}</span>;
+              },
+            })),
+            { key: "__total", label: "TOTAL", align: "right",
+              thClassName: "min-w-28 font-bold text-neutral-900 bg-neutral-100 border-l-2 border-neutral-400",
+              className: r => `${r.bold ? boldNumCls : numCls} border-l-2 border-neutral-400 ${r.getVal(TOTAL) < 0 && r.bold ? "text-danger-600" : ""}`,
+              render: r => (r.bold ? fmtSigned : fmtCell)(r.getVal(TOTAL)) },
+          ]}
+          groups={sections}
+          rowKey={r => r.label}
+          footer={[{
+            label: "Net Income",
+            className: "border-t-2 border-neutral-800 font-black",
+            cells: [
+              ...props.map(p => fmtSigned(netIncomeAt(p.id))),
+              <span className={netIncomeAt(TOTAL) < 0 ? "text-danger-600" : undefined}>{fmtSigned(netIncomeAt(TOTAL))}</span>,
+            ],
+          }]}
+          empty="No data for this period"
+        />
         );
       })()}
     </div>)}

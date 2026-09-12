@@ -665,6 +665,11 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   ? `cure the following lease violation or vacate the premises`
   : `vacate the premises unconditionally`}
   within <strong>${days} days</strong> of the date of this notice (by <strong>${sanitizeForPrint(deadline)}</strong>).</p>
+  ${/* NOT printTable, deliberately: this is a legal notice served on a
+       tenant and filed with a court. Its austere border="1" cellpadding="8"
+       presentation is appropriate to that and should NOT inherit the app's
+       report styling, which would make a legal document look like a
+       dashboard export. */""}
   ${evCase.notice_type === "pay_or_quit" ? `<h2>Amount Due</h2><table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%">
   <tr><td>Rent Owed</td><td style="text-align:right">$${balanceOwed.toLocaleString()}</td></tr>
   <tr><td>Late Fees</td><td style="text-align:right">$${(evCase.late_fees || 0).toLocaleString()}</td></tr>

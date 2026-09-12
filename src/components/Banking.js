@@ -2557,37 +2557,30 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
   {/* Transaction Table */}
   <div className="bg-white rounded-xl border border-neutral-200 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-neutral-50 border-b border-neutral-200">
-    <tr>
-      {(activeTab === "for_review" || activeTab === "categorized") && <th className="px-3 py-2.5 w-8"><Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DATE</th>
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DESCRIPTION</th>
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">PAYEE</th>
-      {activeTab === "categorized" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CATEGORY</th>}
-      {activeTab === "excluded" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">REASON</th>}
-      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">AMOUNT</th>
-      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTION</th>
-    </tr>
-  </thead>
-  <tbody>
-  {paginatedTxns.map(txn => {
-    const isExpanded = expandedTxn === txn.id;
-    return (
-    <React.Fragment key={txn.id}>
-    <tr data-txn-id={txn.id} aria-selected={selectedTxn === txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""} ${selectedTxn === txn.id ? "ring-2 ring-inset ring-brand-400" : ""}`} onClick={() => { setSelectedTxn(txn.id); setExpandedTxn(isExpanded ? null : txn.id); }}>
-      {(activeTab === "for_review" || activeTab === "categorized") && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
-      <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
-      <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
+  <DataTable
+    density="compact"
+    // Master-detail. Each row can open a full-width panel beneath it, which
+    // is what expandedRow exists for -- the first attempt to flat-migrate
+    // this table deleted 257 lines of that panel markup, including a whole
+    // match-mode UI, and still parsed, linted and built clean.
+    columns={[
+      ...((activeTab === "for_review" || activeTab === "categorized") ? [{ key: "select", thClassName: "w-8",
+        label: <Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" />,
+        render: txn => (<span onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></span>) }] : []),
+      { key: "posted_date", label: "DATE", className: "text-neutral-600 whitespace-nowrap",
+        render: txn => txn.posted_date },
+      { key: "description", label: "DESCRIPTION", className: "text-neutral-800 max-w-xs truncate",
+        render: txn => (<>
         {txn.bank_description_clean || txn.bank_description_raw}
         {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
-      </td>
-      <td className="px-3 py-2.5 text-neutral-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
-      {activeTab === "categorized" && (() => {
-        const d = describePosting(txn);
-        return (
-        <td className="px-3 py-2.5 text-xs">
+        </>) },
+      { key: "payee", label: "PAYEE", className: "text-neutral-500 truncate max-w-32",
+        render: txn => txn.payee_normalized || "—" },
+      ...(activeTab === "categorized" ? [{ key: "category", label: "CATEGORY", className: "text-xs",
+        render: txn => {
+          const d = describePosting(txn);
+          return (<>
           {d.loading ? <span className="text-neutral-300">Loading…</span> : (
           <div className="flex flex-col gap-0.5 max-w-56">
             {d.catLines.length === 0
@@ -2602,244 +2595,258 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             </span>
           </div>
           )}
-        </td>
-        );
-      })()}
-      {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
-      <td className={`px-3 py-2.5 text-right tnum font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
-      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+          </>);
+        } }] : []),
+      ...(activeTab === "excluded" ? [{ key: "reason", label: "REASON", className: "text-xs text-danger-600",
+        render: txn => txn.exclusion_reason || "—" }] : []),
+      { key: "amount", label: "AMOUNT", align: "right",
+        className: txn => `font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`,
+        render: txn => <>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</> },
+      { key: "action", label: "ACTION", align: "right", className: "whitespace-nowrap",
+        render: txn => { const isExpanded = expandedTxn === txn.id; return (<span onClick={e => e.stopPropagation()}>
         {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
         {txn.status === "excluded" && <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>}
-      </td>
-    </tr>
-    {/* Posting Detail Panel — categorized/matched/posted rows */}
-    {isExpanded && ["categorized", "matched", "posted"].includes(txn.status) && (() => {
-      const d = describePosting(txn);
-      const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
-      const srcLabel = { plaid: "Plaid", teller: "Teller", csv: "CSV import" }[txn.source_type] || txn.source_type || "—";
-      const feedLabel = feed ? `${feed.institution_name || feed.account_name || "Account"}${feed.masked_number ? " ••••" + feed.masked_number : ""}` : "—";
-      return (
-      <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
-        {d.loading ? <div className="text-xs text-neutral-400 py-2">Loading posting detail…</div>
-        : d.lines.length === 0 ? (
-          <div className="text-xs text-neutral-500 py-1">
-            <p className="font-medium text-neutral-700 mb-1">No journal entry linked to this transaction.</p>
-            <p>It is marked <strong>{txn.status}</strong>{txn.accepted_by ? ` by ${txn.accepted_by}` : ""}{txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}, but no general-ledger lines reference it — so nothing was posted to the books. Use <strong>Undo</strong> to send it back to For Review and categorize it properly.</p>
-            {d.error && <p className="text-danger-600 mt-1">Detail could not be loaded — check your connection and reopen this row.</p>}
-          </div>
-        ) : (
-        <div className="space-y-3">
-          {/* Header line */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            <span className="font-semibold text-neutral-800">{d.je?.number || "Journal entry"}</span>
-            {d.je?.status && <span className={`px-1.5 py-0.5 rounded-full ${d.je.status === "posted" ? "bg-success-100 text-success-700" : d.je.status === "voided" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700"}`}>{d.je.status}</span>}
-            <span className="text-neutral-400">·</span>
-            <span className="text-neutral-600">{d.kind}</span>
-            {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{d.je.date}</span></>}
-            <span className="ml-auto text-neutral-500">
-              {txn.accepted_by ? <>Accepted by <strong className="text-neutral-700">{txn.accepted_by}</strong></> : "No acceptor recorded"}
-              {txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}
-            </span>
-          </div>
+        </span>); } },
+    ]}
+    rows={paginatedTxns}
+    rowKey={txn => txn.id}
+    rowAttrs={txn => ({ "data-txn-id": txn.id, "aria-selected": selectedTxn === txn.id })}
+    // Recovered from the hand-rolled <tr>: the keyboard cursor's ring and
+    // the expanded row's tint were on its className, and clicking a row
+    // both moved the cursor and toggled the panel. All three were dropped
+    // by the migration -- the cursor became invisible and rows stopped
+    // opening on click.
+    rowClassName={txn => `hover:bg-neutral-50 ${expandedTxn === txn.id ? "bg-brand-50/50" : ""} ${selectedTxn === txn.id ? "ring-2 ring-inset ring-brand-400" : ""}`}
+    onRowClick={txn => { setSelectedTxn(txn.id); setExpandedTxn(expandedTxn === txn.id ? null : txn.id); }}
+    expandedRow={txn => {
+      const isExpanded = expandedTxn === txn.id;
+      if (!isExpanded) return null;
+      return (<>
+        {isExpanded && ["categorized", "matched", "posted"].includes(txn.status) && (() => {
+          const d = describePosting(txn);
+          const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+          const srcLabel = { plaid: "Plaid", teller: "Teller", csv: "CSV import" }[txn.source_type] || txn.source_type || "—";
+          const feedLabel = feed ? `${feed.institution_name || feed.account_name || "Account"}${feed.masked_number ? " ••••" + feed.masked_number : ""}` : "—";
+          return (
+          <div className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
+            {d.loading ? <div className="text-xs text-neutral-400 py-2">Loading posting detail…</div>
+            : d.lines.length === 0 ? (
+              <div className="text-xs text-neutral-500 py-1">
+                <p className="font-medium text-neutral-700 mb-1">No journal entry linked to this transaction.</p>
+                <p>It is marked <strong>{txn.status}</strong>{txn.accepted_by ? ` by ${txn.accepted_by}` : ""}{txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}, but no general-ledger lines reference it — so nothing was posted to the books. Use <strong>Undo</strong> to send it back to For Review and categorize it properly.</p>
+                {d.error && <p className="text-danger-600 mt-1">Detail could not be loaded — check your connection and reopen this row.</p>}
+              </div>
+            ) : (
+            <div className="space-y-3">
+              {/* Header line */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="font-semibold text-neutral-800">{d.je?.number || "Journal entry"}</span>
+                {d.je?.status && <span className={`px-1.5 py-0.5 rounded-full ${d.je.status === "posted" ? "bg-success-100 text-success-700" : d.je.status === "voided" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700"}`}>{d.je.status}</span>}
+                <span className="text-neutral-400">·</span>
+                <span className="text-neutral-600">{d.kind}</span>
+                {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{d.je.date}</span></>}
+                <span className="ml-auto text-neutral-500">
+                  {txn.accepted_by ? <>Accepted by <strong className="text-neutral-700">{txn.accepted_by}</strong></> : "No acceptor recorded"}
+                  {txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}
+                </span>
+              </div>
 
-          {d.je?.description && <p className="text-xs text-neutral-600">{d.je.description}</p>}
-          {d.je?.status === "voided" && (
-            <p className="text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-2 py-1">
-              This transaction is still marked <strong>{txn.status}</strong>, but the journal entry behind it was voided — nothing is posted to the books. Use <strong>Undo</strong> to return it to For Review and categorize it again.
-            </p>
-          )}
-          {d.superseded > 0 && (
-            <p className="text-xs text-warn-700 bg-warn-50 border border-warn-200 rounded-lg px-2 py-1">
-              This transaction was categorized and undone before — {d.superseded} earlier journal {d.superseded === 1 ? "entry is" : "entries are"} voided and not shown below.
-            </p>
-          )}
+              {d.je?.description && <p className="text-xs text-neutral-600">{d.je.description}</p>}
+              {d.je?.status === "voided" && (
+                <p className="text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-2 py-1">
+                  This transaction is still marked <strong>{txn.status}</strong>, but the journal entry behind it was voided — nothing is posted to the books. Use <strong>Undo</strong> to return it to For Review and categorize it again.
+                </p>
+              )}
+              {d.superseded > 0 && (
+                <p className="text-xs text-warn-700 bg-warn-50 border border-warn-200 rounded-lg px-2 py-1">
+                  This transaction was categorized and undone before — {d.superseded} earlier journal {d.superseded === 1 ? "entry is" : "entries are"} voided and not shown below.
+                </p>
+              )}
 
-          {/* Journal lines */}
-          <DataTable
-            columns={[
-              { key: "account", label: "ACCOUNT", className: l => { const isBank = l.account_id === feed?.gl_account_id; return (`pr-3 ${isBank ? "text-neutral-500" : "text-neutral-800 font-medium"}`); },
-                render: l => { const isBank = l.account_id === feed?.gl_account_id; return (<>
-                  {acctLabel(l)}{isBank && <span className="ml-1.5 text-neutral-400">(bank side)</span>}
-                </>); } },
-              { key: "class_property", label: "CLASS / PROPERTY", className: "pr-3 text-neutral-500",
-                render: l => (<>{className_(l.class_id) || d.je?.property || "—"}</>) },
-              { key: "memo", label: "MEMO", className: "pr-3 text-neutral-500 max-w-xs truncate",
-                render: l => (<>{l.memo || "—"}</>) },
-              { key: "debit", label: "DEBIT", align: "right", className: "tnum text-neutral-700",
-                render: l => (<>{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</>) },
-              { key: "credit", label: "CREDIT", align: "right", className: "tnum text-neutral-700",
-                render: l => (<>{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</>) },
-            ]}
-            rows={d.lines}
-            rowKey={l => l.id}
-            empty="Nothing to show"
-          />
+              {/* Journal lines */}
+              <DataTable
+                columns={[
+                  { key: "account", label: "ACCOUNT", className: l => { const isBank = l.account_id === feed?.gl_account_id; return (`pr-3 ${isBank ? "text-neutral-500" : "text-neutral-800 font-medium"}`); },
+                    render: l => { const isBank = l.account_id === feed?.gl_account_id; return (<>
+                      {acctLabel(l)}{isBank && <span className="ml-1.5 text-neutral-400">(bank side)</span>}
+                    </>); } },
+                  { key: "class_property", label: "CLASS / PROPERTY", className: "pr-3 text-neutral-500",
+                    render: l => (<>{className_(l.class_id) || d.je?.property || "—"}</>) },
+                  { key: "memo", label: "MEMO", className: "pr-3 text-neutral-500 max-w-xs truncate",
+                    render: l => (<>{l.memo || "—"}</>) },
+                  { key: "debit", label: "DEBIT", align: "right", className: "tnum text-neutral-700",
+                    render: l => (<>{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</>) },
+                  { key: "credit", label: "CREDIT", align: "right", className: "tnum text-neutral-700",
+                    render: l => (<>{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</>) },
+                ]}
+                rows={d.lines}
+                rowKey={l => l.id}
+                empty="Nothing to show"
+              />
 
-          {/* Bank-side context */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-neutral-500 pt-1 border-t border-brand-100">
-            <div><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></div>
-            <div><span className="text-neutral-400">Source:</span> <span className="text-neutral-700">{srcLabel} · {feedLabel}</span></div>
-            <div>
-              <span className="text-neutral-400">Payee:</span> <span className="text-neutral-700">{txn.payee_normalized || txn.payee_raw || "—"}</span>
-              {txn.check_number && <span className="ml-2 text-neutral-400">Check #<span className="text-neutral-700">{txn.check_number}</span></span>}
+              {/* Bank-side context */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-neutral-500 pt-1 border-t border-brand-100">
+                <div><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></div>
+                <div><span className="text-neutral-400">Source:</span> <span className="text-neutral-700">{srcLabel} · {feedLabel}</span></div>
+                <div>
+                  <span className="text-neutral-400">Payee:</span> <span className="text-neutral-700">{txn.payee_normalized || txn.payee_raw || "—"}</span>
+                  {txn.check_number && <span className="ml-2 text-neutral-400">Check #<span className="text-neutral-700">{txn.check_number}</span></span>}
+                </div>
+              </div>
+
+              {d.je?.id && onViewJE && (
+                <div className="pt-1">
+                  <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); onViewJE(d.je.id); }} className="font-semibold hover:underline">Open in Journal Entries →</TextLink>
+                </div>
+              )}
             </div>
+            )}
           </div>
-
-          {d.je?.id && onViewJE && (
-            <div className="pt-1">
-              <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); onViewJE(d.je.id); }} className="font-semibold hover:underline">Open in Journal Entries →</TextLink>
-            </div>
-          )}
+          );
+        })()}
+        {/* Excluded Detail Panel */}
+        {isExpanded && txn.status === "excluded" && (
+        <div className="px-4 py-3 bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-500">
+          <p className="mb-1">Excluded as <strong className="text-danger-600">{txn.exclusion_reason || "no reason recorded"}</strong>
+          {txn.excluded_by ? <> by <strong className="text-neutral-700">{txn.excluded_by}</strong></> : ""}
+          {txn.excluded_at ? ` on ${formatLocalDate(new Date(txn.excluded_at))}` : ""}. Nothing was posted to the general ledger.</p>
+          <p><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></p>
         </div>
         )}
-      </td></tr>
-      );
-    })()}
-    {/* Excluded Detail Panel */}
-    {isExpanded && txn.status === "excluded" && (
-    <tr><td colSpan={7} className="px-4 py-3 bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-500">
-      <p className="mb-1">Excluded as <strong className="text-danger-600">{txn.exclusion_reason || "no reason recorded"}</strong>
-      {txn.excluded_by ? <> by <strong className="text-neutral-700">{txn.excluded_by}</strong></> : ""}
-      {txn.excluded_at ? ` on ${formatLocalDate(new Date(txn.excluded_at))}` : ""}. Nothing was posted to the general ledger.</p>
-      <p><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></p>
-    </td></tr>
-    )}
-    {/* Inline Action Panel */}
-    {isExpanded && txn.status === "for_review" && (
-    <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
-      {/* Action Tabs */}
-      <div className="flex gap-1 mb-3 border-b border-brand-100 pb-2">
-        {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
-          <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
-            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
-        ))}
-        <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
-          className="px-3 py-1 text-xs text-danger-500 hover:bg-danger-50 rounded-lg ml-auto border border-danger-200">Exclude</button>
-      </div>
-      {/* Rule Suggestion Indicator */}
-      {txn.raw_payload_json?._suggestion?.ruleName && (
-        <div className="text-xs text-accent-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
-        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <TextLink tone="danger" size="xs" underline={false} onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="font-semibold hover:underline ml-1">Confirm Exclude</TextLink></span>}
-        </div>
-      )}
-
-      {/* ADD */}
-      {actionMode === "add" && (
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
-          <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
-          <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => String(t.id) === String(id))?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
-          </Select></div>
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
-          <Input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>
-          <Select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select></div>
-        <Btn variant="success-fill" onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="disabled:opacity-40">Add & Post</Btn>
-      </div>
-      )}
-      {showNewBankAcct && (
-      <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
-      <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
-      <div className="grid grid-cols-3 gap-2">
-      <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
-      <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-      <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-      </div>
-      <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineBankAcct}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewBankAcct(false)}>Cancel</Btn></div>
-      </div>
-      )}
-
-      {/* MATCH */}
-      {actionMode === "match" && (
-      <div>
-        {matchLoading && <div className="text-xs text-neutral-400 py-4 text-center">Searching for matches...</div>}
-        {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-neutral-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
-        {!matchLoading && matchCandidates.length > 0 && (
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          <p className="text-xs text-neutral-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
-          {matchCandidates.map(c => (
-          <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-neutral-200 px-3 py-2">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-neutral-800 truncate">{c.number} — {c.description}</div>
-              <div className="text-xs text-neutral-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
-            </div>
-            <Btn variant="primary" onClick={() => confirmMatch(txn, c)} className="shrink-0 ml-2">Match</Btn>
+        {/* Inline Action Panel */}
+        {isExpanded && txn.status === "for_review" && (
+        <div className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
+          {/* Action Tabs */}
+          <div className="flex gap-1 mb-3 border-b border-brand-100 pb-2">
+            {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
+              <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
+                className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
+            ))}
+            <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
+              className="px-3 py-1 text-xs text-danger-500 hover:bg-danger-50 rounded-lg ml-auto border border-danger-200">Exclude</button>
           </div>
-          ))}
+          {/* Rule Suggestion Indicator */}
+          {txn.raw_payload_json?._suggestion?.ruleName && (
+            <div className="text-xs text-accent-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
+            {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <TextLink tone="danger" size="xs" underline={false} onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="font-semibold hover:underline ml-1">Confirm Exclude</TextLink></span>}
+            </div>
+          )}
+
+          {/* ADD */}
+          {actionMode === "add" && (
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
+              <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
+              <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => String(t.id) === String(id))?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+                <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
+              </Select></div>
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
+              <Input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>
+              <Select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+                <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select></div>
+            <Btn variant="success-fill" onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="disabled:opacity-40">Add & Post</Btn>
+          </div>
+          )}
+          {showNewBankAcct && (
+          <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+          <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+          <div className="grid grid-cols-3 gap-2">
+          <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+          <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          </div>
+          <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineBankAcct}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewBankAcct(false)}>Cancel</Btn></div>
+          </div>
+          )}
+
+          {/* MATCH */}
+          {actionMode === "match" && (
+          <div>
+            {matchLoading && <div className="text-xs text-neutral-400 py-4 text-center">Searching for matches...</div>}
+            {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-neutral-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
+            {!matchLoading && matchCandidates.length > 0 && (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <p className="text-xs text-neutral-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
+              {matchCandidates.map(c => (
+              <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-neutral-200 px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-neutral-800 truncate">{c.number} — {c.description}</div>
+                  <div className="text-xs text-neutral-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
+                </div>
+                <Btn variant="primary" onClick={() => confirmMatch(txn, c)} className="shrink-0 ml-2">Match</Btn>
+              </div>
+              ))}
+            </div>
+            )}
+          </div>
+          )}
+
+          {/* TRANSFER */}
+          {actionMode === "transfer" && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Transfer to Account *</label>
+              <Select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+                <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
+              </Select></div>
+            <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
+              <Input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+            <Btn variant="primary" onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="disabled:opacity-40">Post Transfer</Btn>
+          </div>
+          )}
+
+          {/* SPLIT */}
+          {actionMode === "split" && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-neutral-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
+              <TextLink tone="brand" size="xs" onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])}>+ Add Line</TextLink>
+            </div>
+            <div className="space-y-2">
+              {splitLines.map((line, i) => (
+              <div key={i} className="grid grid-cols-5 gap-2 items-end">
+                <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
+                <Input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right tnum" />
+                <Input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
+                <Select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+                  <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+                {splitLines.length > 2 && <TextLink tone="danger" size="xs" underline={false} onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))}>✕</TextLink>}
+              </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <span className={`text-xs tnum ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
+                Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
+              </span>
+              <Btn variant="purple" size="sm" onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2}>Post Split</Btn>
+            </div>
+          </div>
+          )}
+
+          {/* Transaction Details */}
+          <div className="mt-2 text-xs text-neutral-400 border-t border-brand-100 pt-2">
+            <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
+            <span className="mr-3">Raw: {txn.bank_description_raw}</span>
+            {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
+            {txn.reference_number && <span className="mr-3">Ref: {txn.reference_number}</span>}
+            {txn.payee_raw && <span>Payee: {txn.payee_raw}</span>}
+          </div>
+          {/* Create Rule from Transaction */}
+          <div className="mt-2 pt-2 border-t border-brand-100">
+            <TextLink tone="accent" size="xs" onClick={() => createRuleFromTransaction(txn)} className="flex items-center gap-1">
+              <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
+            </TextLink>
+          </div>
         </div>
         )}
-      </div>
-      )}
-
-      {/* TRANSFER */}
-      {actionMode === "transfer" && (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Transfer to Account *</label>
-          <Select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
-          </Select></div>
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
-          <Input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <Btn variant="primary" onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="disabled:opacity-40">Post Transfer</Btn>
-      </div>
-      )}
-
-      {/* SPLIT */}
-      {actionMode === "split" && (
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-neutral-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
-          <TextLink tone="brand" size="xs" onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])}>+ Add Line</TextLink>
-        </div>
-        <div className="space-y-2">
-          {splitLines.map((line, i) => (
-          <div key={i} className="grid grid-cols-5 gap-2 items-end">
-            <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
-            <Input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right tnum" />
-            <Input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
-            <Select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-              <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            {splitLines.length > 2 && <TextLink tone="danger" size="xs" underline={false} onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))}>✕</TextLink>}
-          </div>
-          ))}
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className={`text-xs tnum ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
-            Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
-          </span>
-          <Btn variant="purple" size="sm" onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2}>Post Split</Btn>
-        </div>
-      </div>
-      )}
-
-      {/* Transaction Details */}
-      <div className="mt-2 text-xs text-neutral-400 border-t border-brand-100 pt-2">
-        <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
-        <span className="mr-3">Raw: {txn.bank_description_raw}</span>
-        {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
-        {txn.reference_number && <span className="mr-3">Ref: {txn.reference_number}</span>}
-        {txn.payee_raw && <span>Payee: {txn.payee_raw}</span>}
-      </div>
-      {/* Create Rule from Transaction */}
-      <div className="mt-2 pt-2 border-t border-brand-100">
-        <TextLink tone="accent" size="xs" onClick={() => createRuleFromTransaction(txn)} className="flex items-center gap-1">
-          <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
-        </TextLink>
-      </div>
-    </td></tr>
-    )}
-    </React.Fragment>
-    );
-  })}
-  {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-neutral-400">No transactions in this tab</td></tr>}
-  </tbody>
-  </table>
+      </>);
+    }}
+    empty="Nothing to show"
+  />
   </div>
   {/* Bottom Pagination */}
   {txnTotalPages > 1 && (

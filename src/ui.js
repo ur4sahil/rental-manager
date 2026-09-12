@@ -611,12 +611,23 @@ export function DataTable({
   // A first column pinned while the rest scrolls, for reports with one
   // column per property.
   stickyFirstColumn = false,
+  // The mirror of stickyFirstColumn, for a crosstab whose TOTAL column
+  // must stay on screen. The P&L by Property matrix has one column per
+  // property; with forty of them an unpinned total is off-screen, which
+  // reads as "this report has no totals".
+  stickyLastColumn = false,
   // Per-row DOM attributes, as rowAttrs(row, index) => object. Keyboard
   // navigation needs to find a row by index from document.activeElement,
   // which needs a real attribute on the <tr>; the JE line editor carried
   // data-je-line={i} for exactly that and lost it when it was flat-migrated
   // here, silently breaking every shortcut that walks lines.
   rowAttrs = null,
+  // Per-row classes, as rowClassName(row, index). A row can be marked in
+  // ways a column cannot express: Banking's keyboard cursor draws a
+  // ring-2 ring-inset on the row it is on, and the expanded row gets a
+  // tinted background. Both lived on the hand-rolled <tr> and were lost
+  // when it was migrated -- the cursor became invisible.
+  rowClassName = null,
   // Sorting lives in the primitive, not in a per-page SortTh. Pass
   // sort={{ key, dir }} plus onSort(key), and give a column `sort: true`
   // (it sorts by its own key) or `sort: "other_key"`.
@@ -650,6 +661,7 @@ export function DataTable({
         className={[
           td,
           stickyFirstColumn && col === columns[0] ? "sticky left-0 z-10 bg-white" : "",
+          stickyLastColumn && col === columns[columns.length - 1] ? "sticky right-0 z-10 bg-white" : "",
           ALIGN[col.align] || ALIGN.left,
           col.align === "right" ? "tnum" : "",
           // A className may be a FUNCTION of the row. Several tables colour
@@ -673,10 +685,11 @@ export function DataTable({
           key={keyOf(row, i)}
           {...(rowAttrs ? rowAttrs(row, i) : null)}
           onClick={onRowClick ? () => onRowClick(row, i) : undefined}
-          className={
-            "border-t border-neutral-100 " +
-            (onRowClick ? "cursor-pointer hover:bg-brand-50/40 transition-colors" : "")
-          }
+          className={[
+            "border-t border-neutral-100",
+            onRowClick ? "cursor-pointer hover:bg-brand-50/40 transition-colors" : "",
+            (rowClassName ? rowClassName(row, i) : "") || "",
+          ].filter(Boolean).join(" ")}
         >
           {columns.map(c => cell(c, row, i))}
         </tr>
@@ -697,12 +710,23 @@ export function DataTable({
     const given = (f.cells || []).length;
     const span = Math.max(cols - given, 1);
     return (
-      <tr key={f.label || i} className={"border-t-2 border-neutral-300 " + (f.strong ? "font-bold" : "font-semibold")}>
-        <td className={td + " " + (ALIGN[columns[0] && columns[0].align] || ALIGN.left)} colSpan={span}>{f.label}</td>
+      // f.className lets a caller keep an emphasis the primitive does not
+      // have a name for -- the P&L matrix's bottom line was font-black over
+      // a border-neutral-800 rule, and flattening every total row to one
+      // weight would have lost the distinction between a section subtotal
+      // and the report's answer.
+      <tr key={(typeof f.label === "string" ? f.label : null) || i}
+          className={(f.className || "border-t-2 border-neutral-300 " + (f.strong ? "font-bold" : "font-semibold"))}>
+        <td className={[td, ALIGN[columns[0] && columns[0].align] || ALIGN.left,
+          stickyFirstColumn ? "sticky left-0 z-10 bg-neutral-100" : ""].filter(Boolean).join(" ")} colSpan={span}>{f.label}</td>
         {(f.cells || []).map((c, ci) => {
           const col = columns[cols - given + ci] || {};
           return (
-            <td key={ci} className={[td, ALIGN[col.align] || ALIGN.right, col.align === "right" ? "tnum" : "tnum"].join(" ")}>
+            <td key={ci} className={[td, ALIGN[col.align] || ALIGN.right, "tnum",
+              // Without this a pinned column lost its pin on every total
+              // row -- the totals scrolled away while the data stayed put.
+              stickyLastColumn && col === columns[columns.length - 1] ? "sticky right-0 z-10 bg-neutral-100" : "",
+            ].filter(Boolean).join(" ")}>
               {c}
             </td>
           );
@@ -722,6 +746,7 @@ export function DataTable({
               scope="col"
               className={[th, ALIGN[c.align] || ALIGN.left, "font-semibold",
                 stickyFirstColumn && c === columns[0] ? "sticky left-0 z-20 bg-neutral-50" : "",
+                stickyLastColumn && c === columns[columns.length - 1] ? "sticky right-0 z-20 bg-neutral-50" : "",
                 c.thClassName || ""].filter(Boolean).join(" ")}
               style={c.width ? { width: c.width } : undefined}
               aria-sort={sortKeyOf(c) && sort && sort.key === sortKeyOf(c)
@@ -756,11 +781,14 @@ export function DataTable({
             <tbody key={g.key}>
               {g.label && (
                 <tr className="bg-neutral-100/80">
-                  <td colSpan={cols} className={td + " text-xs font-bold text-neutral-700 border-t-2 border-neutral-300"}>{g.label}</td>
+                  <td colSpan={cols} className={td + " text-xs font-bold text-neutral-700 border-t-2 border-neutral-300" + (stickyFirstColumn ? " sticky left-0 z-10 bg-neutral-100" : "")}>{g.label}</td>
                 </tr>
               )}
               {bodyRows(g.rows || [])}
-              {g.footer && footerRow(g.footer)}
+              {/* A section can end with more than one total: the P&L
+                  matrix follows "Total COGS" with "Gross Profit", and
+                  "Total for Expenses" with "Net Operating Income". */}
+              {g.footer && (Array.isArray(g.footer) ? g.footer : [g.footer]).map(footerRow)}
             </tbody>
           ))}
           {footer && <tbody>{footer.map(footerRow)}</tbody>}

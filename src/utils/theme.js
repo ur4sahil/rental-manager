@@ -75,16 +75,29 @@ export const chartPalette = [
 // the caller knows which values are user-supplied.
 const P_CELL = "padding:8px 10px";
 
-export function printTable({ columns = [], rows = [], footer = null, fontSize = "13px" }) {
+// A column may carry `style`, appended after the shared cell style, for
+// the cases a label and an alignment cannot express -- a monospace hash
+// that must wrap mid-string, a secondary column set a point smaller.
+// Same escape hatch as DataTable's per-column className, and for the same
+// reason: without it those tables stay hand-written.
+//
+// `hideHeader` mirrors DataTable's: a key/value detail table (a lease's
+// Property / Tenant / Rent block) has no header row, and adding one would
+// invent a row that was never there.
+export function printTable({ columns = [], rows = [], footer = null, fontSize = "13px", hideHeader = false }) {
   const align = (c) => `text-align:${c.align === "right" ? "right" : c.align === "center" ? "center" : "left"}`;
+  const extra = (c) => (c.style ? ";" + c.style : "");
 
-  const head = columns.map(c =>
-    `<th style="${P_CELL};${align(c)};border-bottom:2px solid ${printTheme.borderMed}">${c.label || ""}</th>`
-  ).join("");
+  // Header typography matches DataTable's on screen -- uppercase, a point
+  // smaller, muted, letter-spaced -- so a printed table and its on-screen
+  // counterpart read as the same table.
+  const head = hideHeader ? "" : `<thead><tr style="background:${printTheme.surfaceMuted}">` + columns.map(c =>
+    `<th style="${P_CELL};${align(c)};font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:${printTheme.inkMuted};border-bottom:2px solid ${printTheme.borderMed}">${c.label || ""}</th>`
+  ).join("") + "</tr></thead>";
 
   const body = rows.length
     ? rows.map((r, i) => "<tr>" + columns.map(c =>
-        `<td style="${P_CELL};${align(c)};border-bottom:1px solid ${printTheme.borderLight}">${
+        `<td style="${P_CELL};${align(c)};border-bottom:1px solid ${printTheme.borderLight}${extra(c)}">${
           c.render ? c.render(r, i) : (r[c.key] == null ? "" : r[c.key])
         }</td>`
       ).join("") + "</tr>").join("")
@@ -109,6 +122,5 @@ export function printTable({ columns = [], rows = [], footer = null, fontSize = 
     : "";
 
   return `<table style="width:100%;border-collapse:collapse;font-size:${fontSize}">` +
-    `<thead><tr style="background:${printTheme.surfaceMuted}">${head}</tr></thead>` +
-    `<tbody>${body}</tbody>${foot}</table>`;
+    head + `<tbody>${body}</tbody>${foot}</table>`;
 }

@@ -88,9 +88,14 @@ assert("posting advances the cursor to the next row",
 assert("keyboard open seeds the panel from the rule suggestion",
   banking.includes("const openPanel = (txn)") && banking.includes("_suggestion"));
 assert("the cursor row is visibly marked", /ring-2 ring-inset ring-brand-400/.test(banking));
-assert("the cursor row is announced to assistive tech", /aria-selected=\{selectedTxn === txn\.id\}/.test(banking));
+// The attribute now comes from DataTable's rowAttrs rather than a literal
+// <tr aria-selected>, so accept either -- what matters is that the row
+// carries it.
+assert("the cursor row is announced to assistive tech",
+  /aria-selected=\{selectedTxn === txn\.id\}/.test(banking) || /"aria-selected": selectedTxn === txn\.id/.test(banking));
 assert("clicking a row also moves the cursor",
-  /onClick=\{\(\) => \{ setSelectedTxn\(txn\.id\); setExpandedTxn/.test(banking));
+  /onClick=\{\(\) => \{ setSelectedTxn\(txn\.id\); setExpandedTxn/.test(banking)
+  || /onRowClick=\{txn => \{ setSelectedTxn\(txn\.id\); setExpandedTxn/.test(banking));
 assert("handler stands down for a modal or the palette",
   /document\.querySelector\('\[role="dialog"\]'\)\) return;/.test(banking));
 

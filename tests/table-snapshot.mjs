@@ -32,6 +32,13 @@ export function dataTables(src) {
       footer: foot ? (b.match(/footer=\{\[\{\s*label:\s*"([^"]*)"/) || [null, "(computed)"])[1] : null,
       groups: /\n\s*groups=/.test(b),
       sortable: [...b.matchAll(/\{\s*key:\s*"([^"]*)"[^}]*?sort:\s*(?:true|")/g)].map(x => x[1]),
+      // Row-level behaviour, not just columns. The Banking migration kept
+      // all eight columns and still lost the row's click handler, its
+      // keyboard-cursor ring and its aria-selected -- invisible to a
+      // column-only snapshot, and the reason these are pinned too.
+      behaviour: ["onRowClick", "rowAttrs", "rowClassName", "expandedRow", "stickyFirstColumn",
+                  "stickyLastColumn", "hideHeader", "stickyHeader", "onSort"]
+        .filter(k => new RegExp(`\\n\\s*${k}[=\\s]`).test(b)),
     });
     re.lastIndex = j;
   }
