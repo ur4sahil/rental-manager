@@ -531,3 +531,154 @@ export const keyboardActivate = {
     e.currentTarget.click();
   },
 };
+
+// ============ DATA TABLE ============
+// One table, so 62 of them stop each inventing their own.
+//
+// The audit found 62 hand-rolled <table>s across 15 files, with 9
+// different header treatments and 24 distinct cell paddings. That
+// inconsistency is what reads as unpolished -- two tables side by side in
+// the same product disagreeing about what a column heading looks like.
+//
+// DENSITY LIVES HERE AND NOWHERE ELSE. Every padding below is a constant
+// in this file, so changing row height is one edit rather than 24.
+const TD = {
+  normal:  "px-4 py-2.5",
+  compact: "px-3 py-1.5",
+};
+const TH = {
+  normal:  "px-4 py-2.5",
+  compact: "px-3 py-1.5",
+};
+const ALIGN = { left: "text-left", right: "text-right", center: "text-center" };
+
+// A column is { key, label, align, width, render, className, thClassName }.
+// `render(row, index)` overrides the default cell, which is row[key].
+// `align: "right"` also applies tabular figures, since a right-aligned
+// column is nearly always numeric and digits must line up.
+export function DataTable({
+  columns = [],
+  rows = [],
+  rowKey,
+  onRowClick,
+  groups = null,        // [{ key, label, rows, footer }] -- renders one tbody each
+  footer = null,        // [{ label, cells:[], strong }] -- total rows
+  empty = "Nothing to show",
+  loading = false,
+  density = "normal",
+  stickyHeader = false,
+  scroll = true,
+  className = "",
+  ariaLabel,
+}) {
+  const td = TD[density] || TD.normal;
+  const th = TH[density] || TH.normal;
+  const cols = columns.length || 1;
+  const keyOf = (r, i) => (rowKey ? rowKey(r, i) : (r && r.id != null ? r.id : i));
+
+  const cell = (col, row, i) => {
+    const v = col.render ? col.render(row, i) : (row ? row[col.key] : null);
+    return (
+      <td
+        key={col.key}
+        className={[
+          td,
+          ALIGN[col.align] || ALIGN.left,
+          col.align === "right" ? "tnum" : "",
+          col.className || "",
+        ].filter(Boolean).join(" ")}
+        style={col.width ? { width: col.width } : undefined}
+      >
+        {v}
+      </td>
+    );
+  };
+
+  const bodyRows = (list) =>
+    list.map((row, i) => (
+      <tr
+        key={keyOf(row, i)}
+        onClick={onRowClick ? () => onRowClick(row, i) : undefined}
+        className={
+          "border-t border-neutral-100 " +
+          (onRowClick ? "cursor-pointer hover:bg-brand-50/40 transition-colors" : "")
+        }
+      >
+        {columns.map(c => cell(c, row, i))}
+      </tr>
+    ));
+
+  // A footer row gives cells for the LAST n columns and spans the rest, so
+  // a total lines up under its column without every caller counting
+  // colSpans by hand -- the mistake that put a 9-column header over
+  // 8-column rows in the ledger.
+  const footerRow = (f, i) => {
+    const given = (f.cells || []).length;
+    const span = Math.max(cols - given, 1);
+    return (
+      <tr key={f.label || i} className={"border-t-2 border-neutral-300 " + (f.strong ? "font-bold" : "font-semibold")}>
+        <td className={td + " " + (ALIGN[columns[0] && columns[0].align] || ALIGN.left)} colSpan={span}>{f.label}</td>
+        {(f.cells || []).map((c, ci) => {
+          const col = columns[cols - given + ci] || {};
+          return (
+            <td key={ci} className={[td, ALIGN[col.align] || ALIGN.right, col.align === "right" ? "tnum" : "tnum"].join(" ")}>
+              {c}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
+  const table = (
+    <table className={"w-full text-sm border-collapse " + className} aria-label={ariaLabel}>
+      <thead className={"bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide " + (stickyHeader ? "sticky top-0 z-10" : "")}>
+        <tr>
+          {columns.map(c => (
+            <th
+              key={c.key}
+              scope="col"
+              className={[th, ALIGN[c.align] || ALIGN.left, "font-semibold", c.thClassName || ""].filter(Boolean).join(" ")}
+              style={c.width ? { width: c.width } : undefined}
+            >
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      {loading ? (
+        <tbody><tr><td colSpan={cols} className={td + " text-center text-neutral-400 py-8"}>Loading…</td></tr></tbody>
+      ) : groups ? (
+        <>
+          {groups.map(g => (
+            <tbody key={g.key}>
+              {g.label && (
+                <tr className="bg-neutral-100/80">
+                  <td colSpan={cols} className={td + " text-xs font-bold text-neutral-700 border-t-2 border-neutral-300"}>{g.label}</td>
+                </tr>
+              )}
+              {bodyRows(g.rows || [])}
+              {g.footer && footerRow(g.footer)}
+            </tbody>
+          ))}
+          {footer && <tbody>{footer.map(footerRow)}</tbody>}
+          {groups.every(g => !(g.rows || []).length) && (
+            <tbody><tr><td colSpan={cols} className={td + " text-center text-neutral-400 py-8"}>{empty}</td></tr></tbody>
+          )}
+        </>
+      ) : (
+        <tbody>
+          {rows.length ? bodyRows(rows) : (
+            <tr><td colSpan={cols} className={td + " text-center text-neutral-400 py-8"}>{empty}</td></tr>
+          )}
+          {footer && rows.length > 0 && footer.map(footerRow)}
+        </tbody>
+      )}
+    </table>
+  );
+
+  // Wide content scrolls inside its own container so the page body never
+  // scrolls sideways.
+  return scroll ? <div className="overflow-x-auto">{table}</div> : table;
+}

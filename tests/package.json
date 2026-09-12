@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -61,7 +61,7 @@
     "test:errcodes": "node error-classification.test.js",
     "test:qbacctlist": "node qb-account-list.test.js",
     "test:propsheets": "node property-import-sheets.test.js",
-    "test:code": "npm run test:audit && npm run test:undef && npm run test:routes && npm run test:pgrest && npm run test:columns && npm run test:errcodes && npm run test:qbimport && npm run test:qbacctlist && npm run test:palette && npm run test:shortcuts && npm run test:propimport && npm run test:propsheets && npm run test:refactor && npm run test:adversarial && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk",
+    "test:code": "npm run test:audit && npm run test:undef && npm run test:routes && npm run test:pgrest && npm run test:columns && npm run test:errcodes && npm run test:qbimport && npm run test:qbacctlist && npm run test:palette && npm run test:shortcuts && npm run test:propimport && npm run test:propsheets && npm run test:refactor && npm run test:adversarial && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable",
     "test:db": "npm run test:enums && npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:classint && npm run test:financial && npm run test:opening && npm run test:approvals && npm run test:docsigs && npm run test:taxbills && npm run test:taxes && npm run test:moveout && npm run test:reverseJE && npm run test:fanout && npm run test:invariants && npm run test:recurring && npm run test:adversarial:ext && npm run test:sendpush && npm run test:rls && npm run test:rpc",
     "test:enums": "node import-enum-values.test.js",
     "test:audit": "node audit-static.test.js",
@@ -69,7 +69,8 @@
     "test:chunks": "node doc-chunks.test.mjs",
     "test:refs": "node ref-labels.test.mjs",
     "test:bulk": "node bank-bulk-actions.test.mjs",
-    "test:rpc": "node rpc-smoke.test.js"
+    "test:rpc": "node rpc-smoke.test.js",
+    "test:datatable": "node datatable.test.cjs"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

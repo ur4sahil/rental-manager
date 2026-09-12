@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TextLink} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -409,7 +409,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </Select>
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
@@ -478,32 +478,31 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
   {utilView === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
-  </thead>
-  <tbody>
-  {fu.map(u => (
-  <tr key={u.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 font-medium text-neutral-800">{u.provider}</td>
-  <td className="px-4 py-2.5 text-neutral-500">{u.property}</td>
-  <td className="px-4 py-2.5 text-right font-semibold">${u.amount}</td>
-  <td className="px-4 py-2.5 text-neutral-400">{u.due}</td>
-  <td className="px-4 py-2.5"><Badge status={u.status} /></td>
-  <td className="px-4 py-2.5 text-neutral-500 capitalize">{u.responsibility}</td>
-  <td className="px-4 py-2.5 text-xs">
-  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {u.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}}>{showCreds.has(u.id) ? "Hide" : "Show"} login</TextLink>}
-  {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
-  </td>
-  <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {u.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => approvePay(u)} className="mr-2">Pay</TextLink>}
-  <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "provider", label: "Provider", className: "font-medium text-neutral-800" },
+      { key: "property", label: "Property", className: "text-neutral-500" },
+      { key: "amount", label: "Amount", align: "right", className: "font-semibold",
+        render: u => `$${u.amount}` },
+      { key: "due", label: "Due", className: "text-neutral-400" },
+      { key: "status", label: "Status", render: u => <Badge status={u.status} /> },
+      { key: "responsibility", label: "Resp.", className: "text-neutral-500 capitalize" },
+      { key: "login", label: "Portal", className: "text-xs", render: u => (<>
+        {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">\u2014</span>}
+        {u.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}}>{showCreds.has(u.id) ? "Hide" : "Show"} login</TextLink>}
+        {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "\u2014"} / {u._decPass || "\u2014"}</div>}
+      </>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: u => (<>
+        {u.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => approvePay(u)} className="mr-2">Pay</TextLink>}
+        <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
+      </>) },
+    ]}
+    rows={fu}
+    rowKey={u => u.id}
+    empty="No utility bills found"
+    scroll={false}
+    ariaLabel="Utility bills"
+  />
   </div>
   )}
   {fu.length === 0 && <div className="text-center py-8 text-neutral-400">No utility bills found</div>}
