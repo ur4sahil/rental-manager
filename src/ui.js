@@ -79,6 +79,20 @@ export function IconBtn({ icon, className = "", title, ...props }) {
 }
 
 // ---- CARD ----
+// ---- SKELETON ----
+// A placeholder shaped like the content that is coming.
+//
+// Every loading state in the app was either a centred spinner or the
+// single word "Loading…". For a table that is the worst option available:
+// the row area collapses to one line, so the page jumps when the data
+// lands, and a spinner in the middle of a table says nothing about what
+// is arriving. DataTable's loading state draws skeleton rows instead --
+// one per column, at the table's real row height -- so the layout is
+// already the right shape before the first figure appears.
+export function Skeleton({ className = "" }) {
+  return <span className={`inline-block bg-neutral-200 rounded animate-pulse align-middle ${className}`} />;
+}
+
 // ---- SURFACES ----
 // One recipe per KIND of surface, and nothing spells its own.
 //
@@ -953,7 +967,21 @@ export function DataTable({
       )}
 
       {loading ? (
-        <tbody><tr><td colSpan={cols} className={td + " text-center text-neutral-400 py-8"}>Loading…</td></tr></tbody>
+        // Skeleton rows, not a single "Loading…" line. The old version
+        // collapsed the whole row area to one line, so the page jumped
+        // when the data landed. Five rows is enough to read as a table
+        // without pretending to know how many rows are coming.
+        <tbody aria-busy="true">
+          {[0, 1, 2, 3, 4].map(r => (
+            <tr key={r} className="border-t border-neutral-100">
+              {columns.map((c, ci) => (
+                <td key={c.key || ci} className={[td, ALIGN[c.align] || ALIGN.left].join(" ")}>
+                  <Skeleton className={`h-3 ${c.align === "right" ? "w-12" : ci === 0 ? "w-32" : "w-20"}`} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
       ) : groups ? (
         <>
           {groups.map(g => (

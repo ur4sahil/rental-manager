@@ -76,7 +76,14 @@ ok(/Total for Checking/.test(h) && /Total for AR/.test(h), "per-group subtotals 
 ok(/2 accounts/.test(h), "grand total renders");
 
 h = render({ columns: cols, rows, loading: true });
-ok(/Loading/.test(h) && !/Rent</.test(h), "loading replaces rows, never shows stale ones");
+// The invariant is that loading shows NO row data, not that it prints the
+// word "Loading" -- which is what this used to check, and what broke when
+// the single "Loading…" line became skeleton rows. A collapsed one-line
+// loading state made the page jump when the data landed.
+ok(!/Rent</.test(h), "loading never shows stale rows");
+ok(/aria-busy/.test(h), "loading marks the body busy for assistive tech");
+ok(/animate-pulse/.test(h), "loading draws skeleton placeholders");
+ok(count(h, "tr") >= 5, `skeleton keeps the table's shape: got ${count(h, "tr")} rows`);
 
 h = render({ columns: cols, rows, stickyHeader: true });
 ok(/sticky top-0/.test(h), "sticky header applied on request");
