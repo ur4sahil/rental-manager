@@ -339,7 +339,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   if (companyId && tenants.length === 0) return (
   <div className="max-w-2xl mx-auto">
   <PageHeader title="Move-Out Wizard" />
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <EmptyState icon="person_off" title="No tenants with an active lease"
   subtitle="A move-out can only be run for a tenant whose lease status is Active. No tenant in this company currently has one." />
   <div className="flex justify-center">
@@ -368,7 +368,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   {/* Step 1: Select Tenant */}
   {step === 1 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Select Tenant & Move-Out Date</h3>
   <div className="space-y-4">
   <div>
@@ -401,7 +401,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   {/* Step 2: Inspection Checklist */}
   {step === 2 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
@@ -420,7 +420,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   {/* Step 3: Deposit Accounting */}
   {step === 3 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
   <div className="bg-brand-50/30 rounded-2xl p-4 mb-4">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Original Deposit</span><span className="font-bold text-neutral-700">${depositAmount.toFixed(2)}</span></div>
@@ -469,7 +469,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   {/* Step 4: AR Settlement */}
   {step === 4 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
   <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-danger-50" : "bg-success-50"}`}>
   <div className="text-sm text-neutral-400">Current Balance</div>
@@ -499,7 +499,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   {/* Step 5: Confirm & Execute */}
   {step === 5 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Confirm Move-Out</h3>
   <div className="space-y-3 text-sm">
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Tenant</span><span className="font-semibold text-neutral-700">{selectedTenant?.name}</span></div>
@@ -997,7 +997,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const curIdx = stageIdx(c.current_stage);
   const daysActive = Math.ceil((new Date() - new Date(c.created_at)) / 86400000);
   return (
-  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-danger-200 hover:shadow-md transition-all">
+  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 cursor-pointer hover:border-danger-200 hover:shadow-md transition-all">
   <div className="flex justify-between items-start">
   <div>
   <div className="flex items-center gap-2 mb-1">

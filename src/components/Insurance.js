@@ -151,7 +151,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   </Modal>
   )}
 
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     columns={[
       { key: "property", label: "Property", className: "text-neutral-800",

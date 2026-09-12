@@ -265,7 +265,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   // above the first one means losing your place and scrolling back to
   // check which entry you are actually changing.
   const renderRecurringForm = () => (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
@@ -311,7 +311,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   {showForm && !editingEntry && renderRecurringForm()}
 
   {entries.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200">
   <div className="text-4xl mb-3">🔄</div>
   <div className="text-subtle-500 font-medium">No recurring entries</div>
   <div className="text-xs text-subtle-400 mt-1">Recurring entries are created automatically when you add a tenant, or you can add them manually.</div>
@@ -571,7 +571,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   // entry, so browser Back returns to the report you drilled from and the
   // URL is shareable.
   <div className="flex flex-col gap-0">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 flex flex-col">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card flex flex-col">
   {/* Header */}
   <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-50">
   <div className="min-w-0 flex-1 flex items-center gap-3">
@@ -693,7 +693,7 @@ export function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
   return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
-  <div className={`bg-white rounded-xl shadow-sm border border-neutral-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
+  <div className={`bg-white rounded-xl border border-neutral-200 shadow-card w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
   <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
   <h2 className="text-lg font-display font-bold text-neutral-900">{title}</h2>
   <IconBtn icon="close" onClick={onClose} />
@@ -1042,7 +1042,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const accts = grouped[type];
   if (!accts?.length) return null;
   return (
-  <div key={type} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto mb-3">
+  <div key={type} className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto mb-3">
   <div className="px-5 py-3 bg-neutral-50 flex items-center justify-between">
   <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-neutral-400">{accts.length} accounts</span></div>
   <span className="tnum text-xs font-semibold text-neutral-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
@@ -1284,7 +1284,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineAccount}>Create & Select</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewAcct(null)}>Cancel</Btn></div>
   </div>
   )}
-  <div className="rounded-xl border border-brand-100 overflow-x-auto">
+  <div className="rounded-xl border border-neutral-200 overflow-x-auto">
   <DataTable
     columns={[
       { key: "account", label: "Account",
@@ -1462,7 +1462,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
       )}
     </div>
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     columns={[
       { key: "entry", label: "Entry #", className: "tnum text-xs font-semibold text-neutral-700",
@@ -1621,7 +1621,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <div className="bg-danger-50 border border-danger-100 rounded-xl p-4 min-w-0"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 tnum mt-1 truncate">{acctFmt(totalExp)}</p></div>
   <div className={`border rounded-xl p-4 min-w-0 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold tnum mt-1 truncate ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     density="normal"
     columns={[
@@ -3119,7 +3119,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         Property has one column per property (40+ on this data), and the
         ledger/journal/transaction lists are wide by nature. Constraining
         those would force a horizontal scroll on data that fits today. */}
-    <div className={"bg-white rounded-xl shadow-sm border border-neutral-200 p-6 " +
+    <div className={"bg-white rounded-xl border border-neutral-200 shadow-card p-6 " +
       (WIDE_REPORTS.includes(reportId) ? "" : "max-w-statement mx-auto")} data-report-content>
 
     {/* The ledger is still arriving. Reports that add it up in the
@@ -5757,7 +5757,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {/* Reconcile Tab */}
   {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <h3 className="font-display font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Account</label>
@@ -5776,7 +5776,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {reconciliations.map(r => {
   const sc = { reconciled: "bg-positive-100 text-positive-700", in_progress: "bg-warn-100 text-warn-700", discrepancy: "bg-danger-100 text-danger-700" };
   return (
-  <div key={r.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
+  <div key={r.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
   <div>
   <div className="text-sm font-medium text-neutral-800">{r.period}</div>
   <div className="text-xs text-neutral-400">{new Date(r.created_at).toLocaleDateString()}</div>
@@ -5807,7 +5807,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
     <Btn variant="danger" size="sm" onClick={() => reopenReconciliation(viewRecon)}>Re-open</Btn>
   )}
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-5">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : viewRecon.status === "reopened" ? "bg-neutral-100 text-neutral-600" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>

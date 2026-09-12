@@ -329,7 +329,7 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
   }
   return (
     <div className="min-h-dvh safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
-    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 w-full max-w-sm text-center">
     <span className="material-icons-outlined text-4xl text-brand-500 mb-2">lock</span>
     <h2 className="text-xl font-bold text-neutral-800 mb-1">Set Your Password</h2>
     <p className="text-sm text-neutral-400 mb-6">Welcome, {currentUser?.email}. Create a password so you can log in anytime.</p>
@@ -367,7 +367,7 @@ function ResetPasswordScreen({ currentUser, showToast }) {
   }
   return (
     <div className="min-h-dvh safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
-    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 w-full max-w-sm text-center">
     <span className="material-icons-outlined text-4xl text-brand-500 mb-2">lock_reset</span>
     <h2 className="text-xl font-bold text-neutral-800 mb-1">Reset Your Password</h2>
     <p className="text-sm text-neutral-400 mb-6">Enter a new password for {currentUser?.email}.</p>
@@ -1411,7 +1411,7 @@ function AppInner() {
   )}
   </button>
   {showNotifications && (
-  <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-brand-50 z-50">
+  <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl border border-neutral-200 shadow-card z-50">
   <div className="px-4 py-3 border-b border-brand-50 flex justify-between items-center">
   <span className="font-display font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">

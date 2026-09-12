@@ -150,7 +150,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Upload Document</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
@@ -180,7 +180,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   ))}
   </div>
 
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 overflow-hidden">
   <DataTable
     columns={[
       { key: "document", label: "Document", className: "font-medium text-neutral-800",
@@ -1587,19 +1587,19 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
           <h2 className="text-lg font-semibold text-neutral-800 text-center">How would you like to start?</h2>
           <p className="text-sm text-neutral-500 text-center mt-1 mb-8">Pick a starting point — you can edit fields and signing settings either way.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <label className={"relative flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6 " + (importingDocx ? "opacity-60 pointer-events-none" : "")}>
+            <label className={"relative flex flex-col items-center text-center bg-white rounded-xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6 " + (importingDocx ? "opacity-60 pointer-events-none" : "")}>
               <span className="material-icons-outlined text-4xl text-brand-500 mb-3">description</span>
               <span className="text-sm font-semibold text-neutral-800">{importingDocx ? "Importing…" : "Import from Word"}</span>
               <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Upload a .docx — we'll convert it to an editable rich-text template that reflows with your data.</span>
               <FileInput accept=".docx" className="hidden" onChange={e => { setTemplateForm(prev => ({ ...prev, template_type: "html" })); handleDocxImport(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
-            <label className="relative flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
+            <label className="relative flex flex-col items-center text-center bg-white rounded-xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
               <span className="material-icons-outlined text-4xl text-brand-500 mb-3">picture_as_pdf</span>
               <span className="text-sm font-semibold text-neutral-800">Upload a PDF</span>
               <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Use a fixed-layout PDF (court forms, lease addenda). Place fields on top — original layout preserved.</span>
               <FileInput accept=".pdf" className="hidden" onChange={e => { setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" })); handlePdfUpload(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
-            <button type="button" onClick={() => { setTemplateForm(prev => ({ ...prev, template_type: "html" })); setTemplateLandingSkipped(true); }} className="flex flex-col items-center text-center bg-white rounded-2xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
+            <button type="button" onClick={() => { setTemplateForm(prev => ({ ...prev, template_type: "html" })); setTemplateLandingSkipped(true); }} className="flex flex-col items-center text-center bg-white rounded-xl border border-neutral-200 hover:border-brand-300 hover:shadow-md transition cursor-pointer p-6">
               <span className="material-icons-outlined text-4xl text-brand-500 mb-3">edit_note</span>
               <span className="text-sm font-semibold text-neutral-800">Start blank</span>
               <span className="text-xs text-neutral-500 mt-1.5 leading-snug">Open an empty rich-text editor and write your template from scratch.</span>
@@ -1884,7 +1884,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="p-6 space-y-4">
   {/* PDF Upload + Viewer */}
   {!templateForm.pdf_storage_path ? (
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-8 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 p-8 text-center">
   <div className="text-4xl mb-3">📄</div>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Upload a PDF Template</h3>
   <p className="text-sm text-neutral-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
@@ -1896,7 +1896,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   {/* PDF toolbar */}
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 px-4 py-2 flex items-center gap-3">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 px-4 py-2 flex items-center gap-3">
   <span className="text-xs text-neutral-500">{templateForm.pdf_page_count} pages</span>
   <span className="text-xs text-neutral-300">|</span>
   <span className="text-xs text-neutral-500">{templateForm.pdf_field_placements.length} placements</span>
@@ -1939,7 +1939,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pageNum = pg.pageNum;
   const pagePlacements = templateForm.pdf_field_placements.map((p, i) => ({ ...p, _idx: i })).filter(p => p.page === pageNum);
   return (
-  <div key={pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pageNum} className="relative bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   {/* Overlay for click-to-place */}
@@ -2109,7 +2109,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
   if (sectionFields.length === 0) return null;
   return (
-  <div key={section} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div key={section} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{section}</h3>
   <div className="space-y-3">{sectionFields}</div>
   </div>
@@ -2118,7 +2118,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {unsectioned.length > 0 && (() => {
   const rows = unsectioned.map(renderFieldRow).filter(Boolean);
   return rows.length > 0 ? (
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <div className="space-y-3">{rows}</div>
   </div>
   ) : null;
@@ -2135,7 +2135,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -2153,7 +2153,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Live Preview</h3>
   <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
@@ -2202,7 +2202,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -2220,7 +2220,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="bg-white rounded-xl shadow-sm border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: printTheme.ink }}>
+  <div ref={previewRef} className="bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: printTheme.ink }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
   )}
@@ -2234,7 +2234,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
-  <div className="bg-white rounded-xl shadow-sm border border-brand-200 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-brand-200 p-5">
   <div className="flex items-center gap-2 mb-1">
   <span className="material-icons-outlined text-brand-600">draw</span>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Send for Signature</h3>
@@ -2267,7 +2267,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ) : (
   /* Plain email flow (no signing required) */
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
   <label className="flex items-center gap-2 text-sm"><Checkbox checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
@@ -2323,7 +2323,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "create" && (
   <div>
   {/* Mode selection — segmented control */}
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">
   How do you want to start?
   {templates.length > 0 && <span className="ml-2 normal-case tracking-normal font-normal text-neutral-400">{templates.length} template{templates.length === 1 ? "" : "s"} ready</span>}
@@ -2395,7 +2395,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const isPdf = t.template_type === "pdf_overlay";
   const hasESign = t.signing_mode && t.signing_mode !== "none";
   return (
-  <div key={t.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 flex flex-col">
+  <div key={t.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex flex-col">
   <div className="flex items-start justify-between mb-2">
   <div className="flex items-center gap-2 min-w-0">
   <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (isPdf ? "bg-danger-50 text-danger-600" : "bg-brand-50 text-brand-600")}>
@@ -2466,7 +2466,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     : d.envelope_status === "voided" ? { cls: "bg-neutral-100 text-neutral-500", label: "Voided" }
     : null;
   return (
-  <div key={d.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div key={d.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <div className="flex items-center justify-between">
   <div className="flex-1 min-w-0">
   <div className="font-semibold text-neutral-800 text-sm truncate">{d.name}</div>

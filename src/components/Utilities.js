@@ -307,7 +307,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
 
   {showAccountForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-subtle-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
@@ -328,7 +328,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   {utilAccounts.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200">
   <div className="text-4xl mb-3">⚡</div>
   <div className="text-subtle-500 font-medium">No utility accounts connected</div>
   <div className="text-xs text-subtle-400 mt-1">Add your first account to start automated bill fetching</div>
@@ -336,7 +336,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ) : (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
   {utilAccounts.map(acct => (
-  <div key={acct.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4">
+  <div key={acct.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
   <div className="flex items-start justify-between mb-2">
   <div><div className="font-semibold text-subtle-800 text-sm">{acct.provider_display}</div><div className="text-xs text-subtle-400">{acct.property}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (acct.last_check_status === "success" ? "bg-positive-100 text-positive-700" : acct.last_check_status === "failed" ? "bg-danger-100 text-danger-700" : "bg-subtle-100 text-subtle-500")}>{acct.last_check_status || "never"}</span>
@@ -361,7 +361,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-subtle-700 mb-3">Fetched Bills</h3>
   <div className="space-y-2">
   {autoBills.map(bill => (
-  <div key={bill.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4 flex items-center gap-4">
+  <div key={bill.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex items-center gap-4">
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
@@ -379,11 +379,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div>
   <h3 className="font-semibold text-subtle-700 mb-3">Automation Job History</h3>
   {autoJobs.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No automation jobs yet</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200"><div className="text-subtle-400">No automation jobs yet</div></div>
   ) : (
   <div className="space-y-2">
   {autoJobs.map(job => (
-  <div key={job.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4 flex items-center gap-4">
+  <div key={job.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex items-center gap-4">
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-subtle-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-positive-100 text-positive-700" : job.status === "failed" ? "bg-danger-100 text-danger-700" : job.status === "running" ? "bg-info-100 text-info-700" : "bg-subtle-100 text-subtle-500")}>{job.status}</span>
   {job.error_message && <div className="text-xs text-danger-500 max-w-xs truncate">{job.error_message}</div>}
@@ -417,14 +417,14 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-danger-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-danger-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
@@ -458,7 +458,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {utilView === "card" && (
   <div className="space-y-3">
   {fu.map(u => (
-  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div key={u.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{u.provider}</div><div className="text-xs text-neutral-400 mt-0.5">{u.property}</div></div>
   <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
@@ -477,7 +477,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   )}
   {utilView === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     columns={[
       { key: "provider", label: "Provider", className: "font-medium text-neutral-800" },

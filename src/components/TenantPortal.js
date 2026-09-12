@@ -732,7 +732,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* ---- OVERVIEW TAB ---- */}
   {activeTab === "overview" && (
   <div className="space-y-4">
-  <div className="bg-white rounded-3xl border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
   {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.lease_start || tenantData.move_in || "—"], ["Lease End", tenantData.lease_end_date || tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
   <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className={"font-medium text-neutral-800" + (l === "Status" ? " capitalize" : "")}>{v}</span></div>
@@ -747,7 +747,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <Btn variant="danger-fill" size="xs" onClick={() => setPage ? setPage("tenant_pay") : setActiveTab("pay")}>Pay Now</Btn>
   </div>
   )}
-  <div className="bg-white rounded-3xl border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Recent Activity</h3>
   {payments.slice(0, 3).map(p => (
   <div key={p.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
@@ -799,7 +799,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
          JE server-side and we toast success here.
       stripeIntent === null → step 1, otherwise step 2. */}
   {!stripeIntent ? (
-  <div className="bg-white rounded-3xl border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 p-6">
   <h3 className="font-semibold text-neutral-800 text-lg mb-1">Make a Payment</h3>
   <p className="text-sm text-neutral-400 mb-5">Pay securely with Stripe</p>
   <div className="mb-4">
@@ -861,7 +861,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <div className="text-xs text-neutral-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
   </div>
   ) : (
-  <div className="bg-white rounded-3xl border border-brand-50 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 p-6">
   <div className="flex items-center justify-between mb-4">
   <h3 className="font-semibold text-neutral-800 text-lg">{payMethod === "us_bank_account" ? "Bank details" : "Card details"}</h3>
   <button onClick={() => setStripeIntent(null)} className="text-xs text-neutral-400 hover:text-neutral-600 underline">Change amount</button>
@@ -888,7 +888,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {activeTab === "autopay" && tenantData && (
   <div className="max-w-md mx-auto">
   <h3 className="font-display font-bold text-neutral-800 mb-4">Autopay</h3>
-  <div className="bg-white rounded-3xl border border-brand-50 shadow-card p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   {/* Three states:
         1. setupIntent != null → tenant is mid-setup, show card form
         2. stripeAutopay != null → saved card, show details + disable
@@ -1065,7 +1065,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </Btn>
   </div>
   {showMaintForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h4 className="font-medium text-neutral-700 mb-3">Submit a Maintenance Request</h4>
   <label className="text-xs font-medium text-neutral-400 mb-1 block">What's the issue? *</label>
   <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />

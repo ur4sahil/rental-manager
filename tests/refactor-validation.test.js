@@ -160,7 +160,11 @@ function testFileStructure() {
   // lines back, plus propertyLabel() in src/utils/helpers.js replacing 22
   // copies of address.split(",")[0]. Code coming BACK from an accidental
   // deletion is exactly what this bound should not block.
-  assert(totalLines <= 42200, `Total src lines <= 42200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 42600 on 2026-09-12 (Phase 2/3): SearchTrigger, Switch, the type
+  // scale, the SURFACE recipes and TabBar's rebuild all land in ui.js,
+  // which is where this bound WANTS weight to go -- the components they
+  // replace were duplicated across a dozen page files.
+  assert(totalLines <= 42600, `Total src lines <= 42600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

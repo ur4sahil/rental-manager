@@ -79,9 +79,43 @@ export function IconBtn({ icon, className = "", title, ...props }) {
 }
 
 // ---- CARD ----
-export function Card({ className = "", padding = "p-5", children, ...props }) {
+// ---- SURFACES ----
+// One recipe per KIND of surface, and nothing spells its own.
+//
+// The app had fourteen different ways to draw what is conceptually the
+// same thing -- a panel with content in it. The top few, by count:
+//
+//     47x  rounded-xl  border border-neutral-200
+//     47x  rounded-3xl shadow-card
+//     39x  rounded-3xl border border-brand-50
+//     21x  rounded-xl  shadow-sm
+//     21x  rounded-xl  border border-brand-100
+//     12x  rounded-xl  border border-neutral-100
+//
+// Three radii (12px / 16px / 24px) and three border colours, chosen ad
+// hoc, for the same object. The Card component existed and eleven places
+// used it.
+//
+// RADIUS: standardised on rounded-xl (12px). Two reasons, and it is a
+// visible decision so it is stated rather than buried -- rounded-xl is
+// already the most common radius in the codebase (111 uses across its
+// variants against 86 for rounded-3xl), and 24px reads as a consumer app
+// rather than as accounting software. QuickBooks sits nearer 8-12px.
+// Because it is a token now, changing this back is one edit here.
+export const SURFACE = {
+  // The default: a panel on the page background.
+  card:   "bg-white rounded-xl border border-neutral-200",
+  // A card that should lift off the page -- dashboard tiles, summaries.
+  raised: "bg-white rounded-xl border border-neutral-200 shadow-card",
+  // A recessed area INSIDE a card: a filter strip, a nested summary.
+  inset:  "bg-neutral-50 rounded-xl border border-neutral-100",
+  // Floating above everything: menus, popovers, dialogs.
+  overlay: "bg-white rounded-xl border border-neutral-200 shadow-lg",
+};
+
+export function Card({ className = "", padding = "p-5", variant = "card", children, ...props }) {
   return (
-    <div className={`bg-white rounded-3xl shadow-card border border-brand-50 ${padding} ${className}`} {...props}>
+    <div className={`${SURFACE[variant] || SURFACE.card} ${padding} ${className}`} {...props}>
       {children}
     </div>
   );
@@ -495,6 +529,44 @@ export function FileInput({ className = "", accept, ...props }) {
       className={`text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-brand-700 hover:file:bg-brand-100 ${className}`}
       {...props}
     />
+  );
+}
+
+// ---- SWITCH ----
+// An on/off toggle.
+//
+// Three of these were hand-written -- dark mode in Admin, a notification
+// rule in AdminNotificationRules, a notification setting in Notifications
+// -- and all three drifted: w-10 h-5 vs w-11 h-6, left-5 vs translate-x-5
+// for the knob, and three different "on" colours (brand-600, positive-500,
+// success-500). Only one of the three had an aria-label, and none was
+// reachable as a real control: a <button> with no role and no aria-checked
+// reads to a screen reader as an unlabelled button, not a switch.
+const SWITCH_SIZE = {
+  sm: { track: "w-10 h-5", knob: "w-4 h-4", on: "left-5",   off: "left-0.5" },
+  md: { track: "w-11 h-6", knob: "w-5 h-5", on: "left-5.5", off: "left-0.5" },
+};
+const SWITCH_TONE = {
+  brand:    "bg-brand-600",
+  success:  "bg-success-500",
+  positive: "bg-positive-500",
+};
+export function Switch({ checked, onChange, label, size = "sm", tone = "success", disabled, className = "" }) {
+  const z = SWITCH_SIZE[size] || SWITCH_SIZE.sm;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange && onChange(!checked)}
+      className={`relative shrink-0 rounded-full transition-colors ${z.track} ` +
+        `${checked ? (SWITCH_TONE[tone] || SWITCH_TONE.success) : "bg-neutral-300"} ` +
+        `disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING} ${className}`}
+    >
+      <span className={`absolute top-0.5 bg-white rounded-full shadow transition-all ${z.knob} ${checked ? z.on : z.off}`} />
+    </button>
   );
 }
 

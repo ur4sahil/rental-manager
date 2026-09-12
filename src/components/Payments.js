@@ -126,7 +126,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   )}
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
   {/* The table is wider than a phone. Without its own scroll container
       the outer overflow-hidden simply cut ~223px of columns off at
       390px wide, with no way to reach them. */}
@@ -341,7 +341,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <Btn onClick={() => setShowForm(!showForm)}>+ New Schedule</Btn>
   </div>
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-neutral-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>

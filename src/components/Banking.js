@@ -3209,7 +3209,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.plaid_account_id]);
     return (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
       <div className="p-6">
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🏦</span>
@@ -3385,7 +3385,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* consumes another Teller plan slot. */}
   {connectChooser && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔗</span>
         <h3 className="text-lg font-bold text-neutral-800">Connect Bank</h3>
@@ -3428,7 +3428,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* window). Empty = import everything new since the last sync. */}
   {syncDateModal && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔄</span>
         <h3 className="text-lg font-bold text-neutral-800">Sync Bank Transactions</h3>
@@ -3459,7 +3459,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* account name/code like everywhere else in the app. */}
   {glMapModal && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔗</span>
         <h3 className="text-lg font-bold text-neutral-800">Map to GL Account</h3>

@@ -187,7 +187,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 w-full max-w-sm text-center">
   <div className="text-4xl mb-3">{"\u2705"}</div>
   <PageHeader title="Account Created!" />
   <p className="text-sm text-neutral-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
@@ -210,7 +210,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 w-full max-w-sm">
   {isSignup && (
   <div className="text-center mb-4">
   <span className="text-3xl">{typeInfo.icon}</span>

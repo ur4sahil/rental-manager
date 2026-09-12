@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable, TabBar} from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable, TabBar, Switch} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -91,11 +91,11 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   return (
   <div>
   {items.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived {label.toLowerCase()}s</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200"><div className="text-subtle-400">No archived {label.toLowerCase()}s</div></div>
   ) : (
   <div className="space-y-2">
   {items.map(item => (
-  <div key={item.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70">
+  <div key={item.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 opacity-70">
   <div className="flex-1">
   <div className="font-semibold text-subtle-700 text-sm">{item.address || item.name || item.issue || item.tenant || "Item"}</div>
   <div className="text-xs text-subtle-400">
@@ -348,7 +348,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   {/* Role legend */}
   <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
   {Object.entries(ROLES).map(([key, r]) => (
-  <div key={key} className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div key={key} className="bg-white rounded-xl border border-neutral-200 p-3 text-center">
   <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white mb-1 ${r.color}`}>{r.label}</div>
   <div className="text-xs text-neutral-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
   </div>
@@ -357,7 +357,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
 
   {/* Add / Edit form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
   {/* Basic info */}
@@ -439,7 +439,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   {users.map(u => {
   const effectivePages = getEffectivePages(u);
   return (
-  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div key={u.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-center">
   <div className="flex items-center gap-3">
   <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
@@ -618,7 +618,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   ) : (
   <div className="space-y-2">
   {filtered.map(item => (
-  <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 flex items-center gap-4">
+  <div key={item._table + item.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 flex items-center gap-4">
   <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-lg">
   {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" || item._table === "doc_generated" ? "📄" : item._table === "leases" ? "📋" : item._table === "vendors" ? "🏗️" : item._table === "hoa_payments" ? "🏘️" : item._table === "autopay_schedules" ? "🔄" : item._table === "recurring_journal_entries" ? "📊" : item._table === "late_fee_rules" ? "⚠️" : item._table === "app_users" ? "👥" : "💰"}
   </div>
@@ -1458,26 +1458,26 @@ function AuditTrail({ companyId }) {
 
   {/* Stats */}
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-3 text-center">
   <p className="text-lg font-display font-bold text-neutral-800">{totalCount}</p>
   <p className="text-xs text-neutral-400">Total Actions</p>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-3 text-center">
   <p className="text-lg font-display font-bold text-neutral-800">{users.length}</p>
   <p className="text-xs text-neutral-400">Users Active</p>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-3 text-center">
   <p className="text-lg font-bold text-success-600">{logs.filter(l => l.action === "create").length}</p>
   <p className="text-xs text-neutral-400">Created</p>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-3 text-center">
   <p className="text-lg font-bold text-danger-500">{logs.filter(l => l.action === "delete").length}</p>
   <p className="text-xs text-neutral-400">Deleted</p>
   </div>
   </div>
 
   {/* Log Table */}
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
   <DataTable
     columns={[
       { key: "time", label: "Time", className: "text-xs text-neutral-400 whitespace-nowrap",
@@ -1622,7 +1622,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
   </Btn>
 
-  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <PageHeader title="Profile" />
 
   {/* Avatar */}
@@ -1669,7 +1669,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Password Reset */}
-  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-2">Password</h3>
   <p className="text-xs text-neutral-400 mb-3">We'll send a password reset link to your email.</p>
   <Btn variant="slate" size="sm" onClick={sendPasswordReset} disabled={resetSent}>
@@ -1678,21 +1678,19 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Preferences */}
-  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-3">Preferences</h3>
   <div className="flex items-center justify-between py-2">
   <div>
   <div className="text-sm text-neutral-700">Dark Mode</div>
   <div className="text-xs text-neutral-400">Switch between light and dark theme</div>
   </div>
-  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-brand-600" : "bg-neutral-300")}>
-  <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (darkMode ? "left-5" : "left-0.5")} />
-  </button>
+  <Switch checked={darkMode} onChange={toggleDarkMode} tone="brand" label="Dark mode" />
   </div>
   </div>
 
   {/* 2FA */}
-  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-2">Two-Factor Authentication</h3>
   <p className="text-xs text-neutral-400 mb-3">Add an extra layer of security to your account.</p>
   <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-400 text-center">Coming Soon</div>

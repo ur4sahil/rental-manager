@@ -182,7 +182,7 @@ export default function PublicSignPage({ token }) {
   if (error) {
     return (
       <div className="min-h-dvh safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
-        <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 max-w-md text-center">
+        <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 max-w-md text-center">
           <div className="text-5xl mb-3">⚠️</div>
           <h1 className="text-lg font-bold text-neutral-800 mb-2">Can't sign right now</h1>
           <p className="text-sm text-neutral-500">{error}</p>
@@ -194,7 +194,7 @@ export default function PublicSignPage({ token }) {
   if (done) {
     return (
       <div className="min-h-dvh safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
-        <div className="bg-white rounded-3xl shadow-card border border-success-200 p-8 max-w-md text-center">
+        <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-success-200 p-8 max-w-md text-center">
           <div className="text-5xl mb-3">✅</div>
           <h1 className="text-xl font-bold text-neutral-800 mb-1">Thanks — signature recorded</h1>
           <p className="text-sm text-neutral-500 mb-4">
@@ -271,7 +271,7 @@ export default function PublicSignPage({ token }) {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 mb-4">
+        <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 mb-4">
           {payload.doc_property_address && <div className="text-xs text-neutral-400 mb-2">Property: <span className="font-semibold text-neutral-600">{payload.doc_property_address}</span></div>}
           <div
             className="prose prose-sm max-w-none"

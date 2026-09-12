@@ -219,7 +219,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   )}
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-neutral-700 mb-1">New Late Fee Rule</h3>
   <p className="text-xs text-neutral-400 mb-3">Grace period, fee type and amount are pre-filled as suggested defaults from your company settings — adjust them as needed. Give the rule a name to save it.</p>
   <div className="grid grid-cols-2 gap-3">
@@ -235,9 +235,9 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   )}
   <div className="grid grid-cols-3 gap-3 mb-5">
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-notice-500">{flagged.length}</div><div className="text-xs text-neutral-400 mt-1">Overdue</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-danger-500">{afterGrace.length}</div><div className="text-xs text-neutral-400 mt-1">Past Grace Period</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-neutral-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400 mt-1">Total Overdue</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center"><div className="text-2xl font-bold text-notice-500">{flagged.length}</div><div className="text-xs text-neutral-400 mt-1">Overdue</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center"><div className="text-2xl font-bold text-danger-500">{afterGrace.length}</div><div className="text-xs text-neutral-400 mt-1">Past Grace Period</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center"><div className="text-2xl font-bold text-neutral-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400 mt-1">Total Overdue</div></div>
   </div>
   <div className="space-y-3">
   {flagged.map(p => {

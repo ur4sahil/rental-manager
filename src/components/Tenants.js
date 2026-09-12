@@ -1580,7 +1580,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel === "messages" && (
   <div className="flex flex-col" style={{ minHeight: "400px" }}>
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">Messages</h3>
-  <div className="flex-1 flex flex-col rounded-2xl border border-neutral-200 overflow-hidden" style={{ minHeight: "300px", maxHeight: "60vh" }}>
+  <div className="flex-1 flex flex-col rounded-xl border border-neutral-200 overflow-hidden" style={{ minHeight: "300px", maxHeight: "60vh" }}>
   <MessageThread
     messages={messages}
     viewerRole={userRole || "admin"}
@@ -1695,9 +1695,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "archived" && !archivedDetail && (
   <div>
   {archivedTenants.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+  <div key={t.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
     // Fan-out fetch for the full tenant history so the detail panel
     // renders in one shot. Scope each query by tenant_id where the
     // table has it, falling back to escaped name ilike otherwise —
@@ -1746,7 +1746,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       archived, so nothing here emits writes beyond the Restore button
       in the header. */}
   {tenantTab === "archived" && archivedDetail && (
-  <div className="bg-white rounded-xl border border-subtle-200 p-6">
+  <div className="bg-white rounded-xl border border-neutral-200 p-6">
   <TextLink tone="brand" size="xs" onClick={() => setArchivedDetail(null)} className="mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Archived List</TextLink>
   <div className="flex items-center gap-3 mb-4">
   <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{(archivedDetail.tenant.name?.[0] || "?").toUpperCase()}</div>
@@ -2214,7 +2214,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {showForm && editingTenant && (
   <div className={editReturnTo
     ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-2xl shadow-2xl p-4 overflow-y-auto safe-y"
-    : "bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4"}>
+    : "bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4"}>
   <h3 className="font-semibold text-neutral-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2 grid grid-cols-6 gap-3">
@@ -2333,7 +2333,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => {
   const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
   return (
-  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-warn-50/60 border-warn-200" /* tinted, not faded: opacity-60 on the whole card dragged every colour inside it below contrast -- 24 failures on this page alone -- because opacity blends the TEXT too, not just the background */ : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-warn-50/60 border-warn-200" /* tinted, not faded: opacity-60 on the whole card dragged every colour inside it below contrast -- 24 failures on this page alone -- because opacity blends the TEXT too, not just the background */ : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
@@ -2372,7 +2372,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {tenantView === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     // Restored from the pre-migration markup. The flat migration emitted a
     // ONE-column table here -- just the select-all checkbox -- because the
@@ -2419,7 +2419,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {tenantView === "compact" && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card divide-y divide-brand-50/50">
   {ft.map(t => (
   <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/50 cursor-pointer">
   <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>

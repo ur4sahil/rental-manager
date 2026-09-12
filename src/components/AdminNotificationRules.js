@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Card, Input, Textarea, Select, FilterPill, PageHeader } from "../ui";
+import { Btn, Card, Input, Textarea, Select, FilterPill, PageHeader, Switch} from "../ui";
 import { pmError } from "../utils/errors";
 import { Spinner, Modal } from "./shared";
 import { eventLabels } from "./Notifications";
@@ -260,7 +260,7 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
                         </div>
                       </div>
                       <div className="shrink-0" onClick={e => e.stopPropagation()}>
-                        <ToggleSwitch on={enabled} onChange={v => quickToggleEnabled(type, v)} />
+                        <Switch checked={enabled} onChange={v => quickToggleEnabled(type, v)} size="md" tone="positive" label={`${enabled ? "Disable" : "Enable"} ${type} notifications`} />
                       </div>
                     </div>
                   </div>
@@ -402,7 +402,7 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
             <div className="text-sm font-semibold text-neutral-800">Rule active</div>
             <div className="text-xs text-neutral-500">When off, no email/push/in-app fires for this event.</div>
           </div>
-          <ToggleSwitch on={draft.enabled !== false} onChange={v => patch({ enabled: v })} />
+          <Switch checked={draft.enabled !== false} onChange={v => patch({ enabled: v })} size="md" tone="positive" label="Rule enabled" />
         </div>
 
         {/* Channels */}
@@ -627,14 +627,6 @@ function Section({ title, hint, children }) {
       {hint && <div className="text-xs text-neutral-500 mb-2">{hint}</div>}
       {children}
     </div>
-  );
-}
-
-function ToggleSwitch({ on, onChange }) {
-  return (
-    <button onClick={() => onChange(!on)} className={"relative w-11 h-6 rounded-full transition-colors " + (on ? "bg-positive-500" : "bg-neutral-300")}>
-      <div className={"absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform " + (on ? "translate-x-5" : "translate-x-0.5")} />
-    </button>
   );
 }
 

@@ -22,7 +22,14 @@
 
   /* Surface tokens */
   --color-surface: #ffffff;
-  --color-surface-muted: #fcf8ff;
+  /* The page background behind the cards.
+     It was #fcf8ff -- a faint lavender, which tints every white card on
+     top of it and reads as a consumer app. Accounting software wants a
+     neutral ground so the figures on the cards are the only colour in
+     play; QuickBooks uses a plain warm grey. #f7f8fa is neutral-50
+     nudged one step darker, so cards still separate from the page
+     without the page having a hue of its own. */
+  --color-surface-muted: #f7f8fa;
   --color-surface-card: #ffffff;
 
   /* Print / email HTML tokens — used by template strings that render in a

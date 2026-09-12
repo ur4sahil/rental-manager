@@ -390,7 +390,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="space-y-2">
   {companies.filter(c => !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase())).map(c => (
-  <div key={c.id} className="w-full bg-white rounded-xl border border-brand-100 p-4 flex items-center justify-between hover:border-brand-300 hover:shadow-md transition-all">
+  <div key={c.id} className="w-full bg-white rounded-xl border border-neutral-200 p-4 flex items-center justify-between hover:border-brand-300 hover:shadow-md transition-all">
   <div onClick={() => onSelectCompany(c, c.memberRole)} className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer">
   <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-lg shrink-0">
   {c.name[0]}
@@ -479,7 +479,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Create Company Form */}
   {showCreate && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <h3 className="font-bold text-neutral-800 mb-4">Create New Company</h3>
   <div className="space-y-3">
   {/* Company Role Selection */}
@@ -517,7 +517,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Join Company Form */}
   {showJoin && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
   <h3 className="font-bold text-neutral-800 mb-4">Join a Company</h3>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
@@ -551,7 +551,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const disabled = !nameMatches || deleting === deleteModal.company.id;
   return (
   <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-danger-200 w-full max-w-md">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-danger-200 w-full max-w-md">
   <div className="px-6 py-4 border-b border-danger-100 bg-danger-50/60 rounded-t-3xl">
   <h3 className="font-display font-bold text-danger-700 text-lg flex items-center gap-2">
   <span className="material-icons-outlined text-xl">{isHard ? "delete_forever" : "archive"}</span>

@@ -322,7 +322,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div>
   {viewingPhotos && (
   <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white">
   <div><h3 className="font-bold text-neutral-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-neutral-400">{viewingPhotos.property}</p></div>
   <TextLink tone="neutral" size="xl" underline={false} onClick={() => setViewingPhotos(null)}>✕</TextLink>
@@ -378,7 +378,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
@@ -471,7 +471,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   )}
   <div className="space-y-3">
   {filtered.map(w => (
-  <div key={w.id} className={"bg-white rounded-3xl shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-brand-300 ring-1 ring-brand-200" : "border-brand-50")}>
+  <div key={w.id} className={"bg-white rounded-xl border border-neutral-200 shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-brand-300 ring-1 ring-brand-200" : "border-brand-50")}>
   <div className="flex justify-between items-start">
   <div className="flex items-start gap-3">
   <Checkbox checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-brand-600" />
@@ -619,7 +619,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">New Inspection</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
@@ -653,7 +653,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="space-y-3">
   {inspections.map(insp => (
-  <div key={insp.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div key={insp.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-neutral-800">{insp.property}</div>
@@ -928,7 +928,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   {/* New Vendor Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-5 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
@@ -965,7 +965,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   {/* Invoice Form */}
   {showInvoiceForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-5 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-neutral-400 mb-1 block">Vendor *</label>
@@ -1004,7 +1004,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((parseLocalDate(v.insurance_expiry) - new Date()) / 86400000) <= 30;
   const sc = { active: "bg-positive-100 text-positive-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-neutral-100 text-neutral-400", blocked: "bg-danger-100 text-danger-700" };
   return (
-  <div key={v.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div key={v.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-neutral-800">{v.name}{v.company ? " — " + v.company : ""}</div>

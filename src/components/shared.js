@@ -65,7 +65,7 @@ export function Badge({ status, label }) {
 
 export function StatCard({ label, value, sub, color = "text-neutral-800", onClick }) {
   return (
-  <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-brand-50 p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
+  <div onClick={onClick} className={"bg-white rounded-xl border border-neutral-200 shadow-card p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
   <div className="text-xs text-neutral-400 font-medium uppercase tracking-widest mb-1">{label}</div>
   <div className={`text-2xl font-display font-bold ${color}`}>{value}</div>
   {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
@@ -128,7 +128,7 @@ export function Modal({ title, onClose, children, labelledBy }) {
   <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
        onMouseDown={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>
   <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy || titleId} tabIndex={-1}
-       className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+       className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
   <h3 id={titleId} className="font-display font-bold text-neutral-800 text-lg">{title}</h3>
   <IconBtn icon="close" onClick={onClose} aria-label="Close dialog" />
@@ -174,7 +174,7 @@ export function ConfirmModal({ config, onConfirm, onCancel }) {
   const isDanger = config.variant === "danger";
   return (
   <div className="fixed inset-0 bg-black/40 z-[90] flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-md">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-md">
   <div className="px-6 py-4 border-b border-brand-50">
   <h3 className="font-display font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
   </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar, Switch} from "../ui";
 import { normalizeEmail, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Spinner } from "./shared";
@@ -515,11 +515,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
                       <div className="text-xs text-neutral-400">{info.desc}</div>
                     </div>
                   </div>
-                  <button onClick={() => toggleSetting(s)}
-                    aria-label={(s.enabled ? "Disable " : "Enable ") + info.label}
-                    className={"relative w-10 h-5 rounded-full transition-colors shrink-0 " + (s.enabled ? "bg-success-500" : "bg-neutral-300")}>
-                    <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
-                  </button>
+                  <Switch checked={s.enabled} onChange={() => toggleSetting(s)}
+                    label={(s.enabled ? "Disable " : "Enable ") + info.label} />
                 </div>
 
                 {/* Detail controls — only when enabled */}

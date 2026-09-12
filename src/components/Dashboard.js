@@ -152,7 +152,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-caution-600" />
   </div>
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Expirations</h3>
   {(() => {
     // Compute the filtered list once so the empty-state check matches
@@ -184,7 +184,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
     ));
   })()}
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Recent Maintenance</h3>
   {workOrders.slice(0, 3).map(w => (
   <div key={w.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
@@ -197,7 +197,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   ))}
   {workOrders.length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No recent maintenance</div>}
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Utilities Due</h3>
   {utilities.filter(u => u.status === "pending").map(u => (
   <div key={u.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
@@ -217,7 +217,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const LIC_LABELS = { rental_license: "Rental License", rental_registration: "Rental Registration", lead_paint: "Lead Paint Cert", lead_risk_assessment: "Lead Risk Assessment", fire_inspection: "Fire Inspection", bbl: "Business License (BBL)", other: "License" };
   const propById = Object.fromEntries(properties.map(p => [p.id, p.address]));
   return (
-  <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-warn-200 p-4">
   <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
   <span><span className="material-icons-outlined text-sm align-middle mr-1">verified</span>License Expirations</span>
   <TextLink tone="brand" size="xs" onClick={() => setPage("properties")} className="font-normal">View all</TextLink>
@@ -245,7 +245,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   })()}
   {taxBillsDue.length > 0 && (() => {
   return (
-  <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-warn-200 p-4">
   <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
   <span><span className="material-icons-outlined text-sm align-middle mr-1">receipt_long</span>Property Tax Bills Due</span>
   <TextLink tone="brand" size="xs" onClick={() => setPage("tax_bills")} className="font-normal">Manage</TextLink>
@@ -274,7 +274,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   );
   })()}
   {hoaDue.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-warn-100 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-warn-100 p-4">
   <h3 className="font-semibold text-warn-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">holiday_village</span>HOA Payments Due</h3>
   {hoaDue.map(h => {
   const daysLeft = Math.ceil((new Date(h.due_date).getTime() - Date.now()) / 86400000);
@@ -294,7 +294,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   )}
   {/* Voucher Re-examination Alerts */}
   {(() => { const reexamTenants = tenants.filter(t => t.is_voucher && t.reexam_date && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) <= (companySettings.voucher_reexam_window_days || 120) && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) >= -30); return reexamTenants.length > 0 ? (
-  <div className="bg-white rounded-3xl shadow-card border border-highlight-200 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-highlight-200 p-4">
   <h3 className="font-semibold text-highlight-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">event</span>Voucher Re-examination Due</h3>
   {reexamTenants.map(t => {
   const daysLeft = Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000);
@@ -312,7 +312,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   })}
   </div>
   ) : null; })()}
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Net Operating Income</h3>
   <div className="space-y-2">
   {[

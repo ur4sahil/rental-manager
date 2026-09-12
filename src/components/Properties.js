@@ -2880,7 +2880,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showDrafts ? (
   <div>
   {setupDrafts.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200">
     <div className="text-subtle-400 mb-1">No setup drafts in progress.</div>
     <div className="text-xs text-subtle-400">Start a property setup from the Active tab — anything you don't finish will appear here.</div>
   </div>
@@ -2921,11 +2921,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ) : showArchived ? (
   <div>
   {archivedProperties.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived properties</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200"><div className="text-subtle-400">No archived properties</div></div>
   ) : (
   <div className="space-y-2">
   {archivedProperties.map(p => (
-  <div key={p.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70">
+  <div key={p.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 opacity-70">
   <div className="flex-1">
   <div className="font-semibold text-subtle-700 text-sm">{p.address}</div>
   <div className="text-xs text-subtle-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
@@ -2953,7 +2953,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {canReviewAny && showRequests && reviewableRequests.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 mb-4 space-y-3">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4 space-y-3">
   <h3 className="font-semibold text-neutral-800">Pending Approval</h3>
   {reviewableRequests.map(req => (
   <div key={req.id} className="border border-warn-100 rounded-3xl p-4 bg-warn-50/30">
@@ -3618,10 +3618,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-display font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-success-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-warn-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Total Rent</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center"><div className="text-lg font-display font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center"><div className="text-lg font-bold text-success-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center"><div className="text-lg font-bold text-warn-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
+  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Total Rent</div></div>
   </div>
 
   {viewMode === "card" && (
@@ -3663,7 +3663,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {viewMode === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
     columns={[
       { key: "address", label: "Address", className: "font-medium text-neutral-800",
@@ -3705,7 +3705,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {viewMode === "compact" && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card divide-y divide-brand-50/50">
   {filtered.map(p => (
   <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 cursor-pointer ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-success-500" : p.status === "vacant" ? "bg-warn-500" : "bg-danger-500"}`} />

@@ -646,7 +646,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     </div>
 
     {step === "download" && (
-      <div className="rounded-2xl border border-brand-100 bg-brand-50/30 p-5 space-y-3">
+      <div className="rounded-xl border border-neutral-200 bg-brand-50/30 p-5 space-y-3">
         <p className="text-sm text-neutral-700">
           {isAdd
             ? <>An empty workbook for properties you don't have yet. Type them in, fill in whichever
@@ -686,7 +686,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     )}
 
     {step === "upload" && (
-      <div className="rounded-2xl border border-brand-100 p-5 space-y-3">
+      <div className="rounded-xl border border-neutral-200 p-5 space-y-3">
         <p className="text-sm text-neutral-700">Upload the filled-in workbook. You'll see what will change before anything is saved.</p>
         <FileInput accept=".xlsx" onChange={e => handleFile(e.target.files?.[0])} disabled={busy} />
         {busy && <div className="flex items-center gap-2 text-sm text-neutral-500"><Spinner /> Reading…</div>}
@@ -712,7 +712,7 @@ function Stat({ label, value, tone = "neutral" }) {
     warn: "text-warning-700", bad: "text-danger-600",
   };
   return (
-    <div className="rounded-xl border border-neutral-100 px-3 py-2">
+    <div className="rounded-xl border border-neutral-200 px-3 py-2">
       <div className={`text-xl font-semibold ${tones[tone]}`}>{value}</div>
       <div className="text-2xs text-neutral-500 uppercase tracking-wide">{label}</div>
     </div>
@@ -792,7 +792,7 @@ function PreviewStep({ plan, busy, progress, onBack, onCommit }) {
     )}
 
     {plan.warnings.length > 0 && (
-      <details className="rounded-2xl border border-neutral-200 p-4">
+      <details className="rounded-xl border border-neutral-200 p-4">
         <summary className="text-sm font-medium text-neutral-700 cursor-pointer">
           {plan.warnings.length} item{plan.warnings.length === 1 ? "" : "s"} will need approval
         </summary>

@@ -300,7 +300,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   {/* Owner Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-5 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3><Btn variant="ghost" onClick={resetForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
@@ -335,7 +335,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const ownerStmts = statements.filter(s => String(s.owner_id) === String(owner.id));
   const lastDist = distributions.find(d => String(d.owner_id) === String(owner.id));
   return (
-  <div key={owner.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div key={owner.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-neutral-800">{owner.name}{owner.company ? " — " + owner.company : ""}</div>
@@ -409,7 +409,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "statements" && !viewStatement && (
   <div className="space-y-2">
   {statements.map(s => (
-  <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
+  <div key={s.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
   <div className="text-sm font-semibold text-neutral-800">{s.owner_name} — {s.period}</div>
   <div className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleDateString()}</div>
@@ -430,7 +430,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "statements" && viewStatement && (
   <div>
   <Btn variant="ghost" size="sm" onClick={() => setViewStatement(null)}>← Back to Statements</Btn>
-  <div className="bg-white rounded-3xl border border-brand-50 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-5">
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
@@ -468,7 +468,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "distributions" && (
   <div className="space-y-2">
   {distributions.map(d => (
-  <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center">
   <div>
   {/* owner_distributions stores only owner_id — resolve the display
       name from the owners list rather than a non-existent column. */}
@@ -587,19 +587,19 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* Stats */}
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Total Income</div>
   <div className="text-lg font-bold text-positive-600">${totalIncome.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Total Expenses</div>
   <div className="text-lg font-bold text-danger-500">${totalExpenses.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Distributions</div>
   <div className="text-lg font-bold text-brand-600">${totalDistributed.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Pending</div>
   <div className="text-lg font-bold text-warn-600">{pendingStatements.length}</div>
   </div>
@@ -621,7 +621,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <h3 className="font-semibold text-neutral-700">Your Properties</h3>
   <div className="grid gap-3 md:grid-cols-2">
   {properties.map(p => (
-  <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
+  <div key={p.id} className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-neutral-800 text-sm">{p.address}</div>
@@ -640,7 +640,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <h3 className="font-semibold text-neutral-700 mt-4 mb-2">Recent Statements</h3>
   {statements.slice(0, 3).map(s => (
-  <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-brand-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
+  <div key={s.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-brand-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
   <div>
   <div className="text-sm font-medium text-neutral-800">{s.period}</div>
   <div className="text-xs text-neutral-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
@@ -657,7 +657,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "statements" && !viewStatement && (
   <div className="space-y-2">
   {statements.map(s => (
-  <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
+  <div key={s.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
   <div className="text-sm font-semibold text-neutral-800">{s.period}</div>
   <div className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleDateString()}</div>
@@ -679,7 +679,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "statements" && viewStatement && (
   <div>
   <Btn variant="ghost" size="sm" onClick={() => setViewStatement(null)}>{"\u2190"} Back to Statements</Btn>
-  <div className="bg-white rounded-3xl border border-brand-50 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-5">
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
@@ -716,7 +716,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "distributions" && (
   <div className="space-y-2">
   {distributions.map(d => (
-  <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-neutral-800">${safeNum(d.amount).toLocaleString()}</div>
   <div className="text-xs text-neutral-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
@@ -742,7 +742,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "properties" && (
   <div className="space-y-3">
   {properties.map(p => (
-  <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
+  <div key={p.id} className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="font-semibold text-neutral-800">{p.address}</div>

@@ -163,7 +163,7 @@ export function ShortcutsHelp({ open, onClose, scope }) {
                 {g.id === scope && <span className="text-2xs bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full">you're here</span>}
               </div>
               {g.hint && <p className="text-xs text-neutral-400 mb-2">{g.hint}</p>}
-              <div className="rounded-xl border border-neutral-100 divide-y divide-neutral-100">
+              <div className="rounded-xl border border-neutral-200 divide-y divide-neutral-100">
                 {g.items.map((it, i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-1.5">
                     <span className="flex items-center gap-1 shrink-0 w-32">
