@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
-import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
+import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -186,7 +186,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
       { key: "document", label: "Document", className: "font-medium text-neutral-800",
         render: d => (<>📄 {d.name}</>) },
       { key: "property", label: "Property", className: "text-neutral-400",
-        render: d => (<>{d.property}</>) },
+        render: d => (<>{propertyLabel(d.property)}</>) },
       { key: "type", label: "Type",
         render: d => (<>
           <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span>

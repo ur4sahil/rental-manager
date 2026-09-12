@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -2396,7 +2396,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
           <CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-medium text-brand-600 hover:underline text-left">{t.name}</CardOpenButton>
         ) },
       { key: "property", label: "Property", sort: true, className: "text-neutral-500",
-        render: t => t.property },
+        render: t => propertyLabel(t.property) },
       { key: "email", label: "Email", sort: true, className: "text-neutral-400 text-xs",
         render: t => t.email },
       { key: "lease_status", label: "Status", sort: true,

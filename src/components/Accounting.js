@@ -1470,7 +1470,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
       { key: "date", label: "Date", className: "text-neutral-500",
         render: je => (<>{acctFmtDate(je.date)}</>) },
       { key: "property", label: "Property", className: "text-xs text-neutral-500",
-        render: je => (<>{je.property || "—"}</>) },
+        render: je => (<>{propertyLabel(je.property) || "—"}</>) },
       { key: "description", label: "Description", className: "font-medium text-neutral-800",
         render: je => (<>{je.description}</>) },
       { key: "source", label: "Source", className: "text-xs text-neutral-400",
@@ -1878,9 +1878,68 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
 
   const allReports = REPORT_CATALOG.flatMap(c => c.reports);
 
-  function openReport(report) {
+  // ---- the open report lives in the URL ---------------------------------
+  // It used to live only in component state, so the hash was just
+  // "#acct_reports" whether you were looking at the catalogue or at a
+  // Balance Sheet as of a particular date. F5 therefore had nothing to
+  // restore and always dumped you back on the catalogue -- "Refresh
+  // doesnt work at all!". Same reason a drill-down into a ledger and back
+  // landed on the catalogue rather than the statement.
+  //
+  // Query params rather than a hash path, to match ?company= and ?ledger=
+  // which already survive the login flow (AppInner replays the hash after
+  // auth and would clobber a hash query).
+  const reportUrl = (reportId, opts = {}) => {
+    const q = new URLSearchParams(window.location.search);
+    if (reportId) q.set("report", reportId); else { q.delete("report"); q.delete("period"); q.delete("asOf"); q.delete("from"); q.delete("to"); }
+    for (const [k, v] of Object.entries(opts)) { if (v) q.set(k, v); else q.delete(k); }
+    const qs = q.toString();
+    return window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+  };
+  // Opening a report PUSHES, so Back returns to the catalogue. Changing a
+  // period or a date REPLACES, so fiddling with the as-of date does not
+  // bury the catalogue under twenty history entries.
+  const syncReportUrl = (reportId, opts, push) => {
+    const url = reportUrl(reportId, opts);
+    const st = { ...(window.history.state || {}), page: "acct_reports", screen: "app" };
+    if (push) window.history.pushState(st, "", url);
+    else window.history.replaceState(st, "", url);
+  };
+
+  // Restore whatever the URL names -- on first mount (F5, or a shared
+  // link) and on every Back/Forward, since those change the query without
+  // remounting. Runs once the catalogue is known so the id can be
+  // resolved to a real report; an unknown id falls back to the catalogue
+  // rather than rendering an empty viewer.
+  const reportUrlApplied = useRef("");
+  useEffect(() => {
+    const apply = () => {
+      const q = new URLSearchParams(window.location.search);
+      const id = q.get("report") || "";
+      if (id === reportUrlApplied.current) return;
+      reportUrlApplied.current = id;
+      if (!id) { setActiveView("catalog"); setCurrentReport(null); return; }
+      const r = allReports.find(x => x.id === id);
+      if (!r) { setActiveView("catalog"); setCurrentReport(null); return; }
+      const period = q.get("period");
+      const asOf = q.get("asOf");
+      const from = q.get("from"), to = q.get("to");
+      if (period) setPeriod(period);
+      if (asOf) setAsOfDate(asOf);
+      if (from && to) setCustomDates({ start: from, end: to });
+      openReport(r, { fromUrl: true });
+    };
+    apply();
+    const onPop = () => { reportUrlApplied.current = "\u0000"; apply(); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function openReport(report, opts = {}) {
     setCurrentReport(report);
     setActiveView("viewer");
+    if (!opts.fromUrl) syncReportUrl(report.id, {}, true);
     // Load extra data for property reports
     if (["rent_roll","vacancy","lease_expirations","rent_collection","work_orders_summary","security_deposits","collections","noi_by_property","license_compliance"].includes(report.id)) {
       loadExtraData();
@@ -3051,7 +3110,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         pinched. md+ keeps the original single-row inline layout. */}
     <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
-        <TextLink tone="neutral" size="sm" underline={false} onClick={() => setActiveView("catalog")} className="flex items-center gap-1 shrink-0">
+        <TextLink tone="neutral" size="sm" underline={false} onClick={() => { setActiveView("catalog"); setCurrentReport(null); syncReportUrl(null, {}, false); }} className="flex items-center gap-1 shrink-0">
           <span className="material-icons-outlined text-sm">arrow_back</span>
           <span className="hidden sm:inline">Back to Reports</span>
           <span className="sm:hidden">Back</span>
@@ -3081,15 +3140,15 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     <div className="bg-neutral-50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-end">
       {SHOW_PERIOD && (
       <div><label className="text-xs text-neutral-500 block mb-1">Period</label>
-        <Select value={period} onChange={e => setPeriod(e.target.value)} className="py-1.5">
+        <Select value={period} onChange={e => { setPeriod(e.target.value); syncReportUrl(currentReport?.id, { period: e.target.value }, false); }} className="py-1.5">
           {["This Month","Last Month","This Quarter","Last Quarter","This Year","Last Year","Custom"].map(p => <option key={p}>{p}</option>)}
         </Select></div>
       )}
       {period === "Custom" && <>
-        <div><label className="text-xs text-neutral-500 block mb-1">From</label><Input type="date" value={start} onChange={e => setCustomDates({...customDates, start: e.target.value})} className="w-36" /></div>
-        <div><label className="text-xs text-neutral-500 block mb-1">To</label><Input type="date" value={end} onChange={e => setCustomDates({...customDates, end: e.target.value})} className="w-36" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">From</label><Input type="date" value={start} onChange={e => { setCustomDates({...customDates, start: e.target.value}); syncReportUrl(currentReport?.id, { period, from: e.target.value, to: end }, false); }} className="w-36" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">To</label><Input type="date" value={end} onChange={e => { setCustomDates({...customDates, end: e.target.value}); syncReportUrl(currentReport?.id, { period, from: start, to: e.target.value }, false); }} className="w-36" /></div>
       </>}
-      {SHOW_AS_OF && <div><label className="text-xs text-neutral-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="w-36" /></div>}
+      {SHOW_AS_OF && <div><label className="text-xs text-neutral-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => { setAsOfDate(e.target.value); syncReportUrl(currentReport?.id, { asOf: e.target.value }, false); }} className="w-36" /></div>}
       {SHOW_COMPARE && <div><label className="text-xs text-neutral-500 block mb-1">Compare to</label><Select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></Select></div>}
       {SHOW_CLASS && <div><label className="text-xs text-neutral-500 block mb-1">Property</label><Select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>}
       {SHOW_ACCOUNT && <div><label className="text-xs text-neutral-500 block mb-1">Account</label><Select value={selectedAccountId} onChange={e => { accountAutoPicked.current = true; setSelectedAccountId(e.target.value); }} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</Select></div>}
@@ -3681,7 +3740,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "tenant", label: "Tenant",
             render: r => (<>
               {r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}
@@ -3707,7 +3766,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {(() => { const data = getNOIByProperty(start, end); return (<DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "revenue", label: "Revenue", align: "right", className: "tnum text-success-700",
             render: r => (<>{acctFmt(r.revenue)}</>) },
           { key: "expenses", label: "Expenses", align: "right", className: "tnum text-danger-600",
@@ -3729,7 +3788,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {(() => { const data = getVacancyReport(); return data.length === 0 ? <EmptyState size="compact" title={"No vacant properties"} /> : (<DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "last_tenant", label: "Last Tenant", className: "text-neutral-500",
             render: r => (<>{r.lastTenant}</>) },
           { key: "days_vacant", label: "Days Vacant", align: "right", className: "tnum",
@@ -3759,7 +3818,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         <DataTable
           columns={[
             { key: "property", label: "Property", className: "text-neutral-700 max-w-48 truncate",
-              render: r => (<>{r.property}</>) },
+              render: r => (<>{propertyLabel(r.property)}</>) },
             { key: "type", label: "Type", className: "text-neutral-600",
               render: r => (<>{r.type}</>) },
             { key: "number", label: "Number", className: "text-xs text-neutral-500",
@@ -3794,7 +3853,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
           { key: "property", label: "Property", className: "text-neutral-500",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "lease_end", label: "Lease End", className: "text-neutral-500",
             render: r => (<>{r.leaseEnd}</>) },
           { key: "days_left", label: "Days Left", align: "right", className: r => (`tnum ${r.daysUntilExpiration <= 30 ? "text-danger-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-warn-600" : ""}`),
@@ -3815,7 +3874,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
-            render: w => (<>{w.property}</>) },
+            render: w => (<>{propertyLabel(w.property)}</>) },
           { key: "issue", label: "Issue", className: "text-neutral-600",
             render: w => (<>{w.issue}</>) },
           { key: "status", label: "Status",
@@ -3868,7 +3927,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "tenant", label: "Tenant", className: "text-neutral-700 font-medium",
             render: r => (<>{r.tenant}</>) },
           { key: "property", label: "Property", className: "text-xs text-neutral-500",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "contact", label: "Contact", className: "text-xs text-neutral-400",
             render: r => (<>
               {r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}
@@ -3940,7 +3999,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
           { key: "property", label: "Property", className: "text-xs text-neutral-500",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "received", label: "Received", align: "right", className: "tnum",
             render: r => (<>{acctFmt(r.received)}</>) },
           { key: "returned", label: "Returned", align: "right", className: "tnum text-danger-600",
@@ -4005,7 +4064,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
-            render: r => (<>{r.property}</>) },
+            render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "charged", label: "Charged", align: "right", className: "tnum",
             render: r => (<>{acctFmt(r.charged)}</>) },
           { key: "collected", label: "Collected", align: "right", className: "tnum text-success-600",

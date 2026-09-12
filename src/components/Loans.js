@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -193,7 +193,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <DataTable
     columns={[
       { key: "property", label: "Property", className: "text-neutral-800",
-        render: l => (<>{l.property}</>) },
+        render: l => (<>{propertyLabel(l.property)}</>) },
       { key: "lender", label: "Lender", className: "font-medium text-neutral-800",
         render: l => (<>{l.lender_name}</>) },
       { key: "type", label: "Type", className: "text-neutral-500",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -184,7 +184,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <DataTable
     columns={[
       { key: "property", label: "Property", className: "text-neutral-800",
-        render: h => (<>{h.property}</>) },
+        render: h => (<>{propertyLabel(h.property)}</>) },
       { key: "hoa_company", label: "HOA Company", className: "font-medium text-neutral-800",
         render: h => (<>{h.hoa_name}</>) },
       { key: "amount", label: "Amount", align: "right", className: "font-semibold",

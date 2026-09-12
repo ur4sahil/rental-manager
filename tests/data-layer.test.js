@@ -1086,8 +1086,17 @@ async function testNotificationTables() {
 
 async function testCompanyMembers() {
   console.log('\n🏢 COMPANY MEMBERS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
-  const cid = companies?.[0]?.id;
+  // Pick a company that actually HAS members. This used to take
+  // .select('id').limit(1) with no ORDER BY, which is not a stable
+  // choice: when it landed on "E2E 83 Foreign LLC" -- an e2e leftover
+  // with zero members -- all three assertions below failed, and the
+  // failure looked like a data problem rather than the test picking an
+  // empty fixture. The subject here is company_members, not which
+  // company, so ask company_members which company to use.
+  const { data: anyMember } = await supabase.from('company_members')
+    .select('company_id').eq('status', 'active').order('company_id').limit(1);
+  const cid = anyMember?.[0]?.company_id;
+  assert(!!cid, 'CompanyMembers: found a company with at least one active member');
   const { data: members, error: memErr } = await supabase.from('company_members').select('*').eq('company_id', cid);
   assert(!memErr, 'CompanyMembers: can fetch');
   assert(members && members.length > 0, 'CompanyMembers: has at least 1 member');

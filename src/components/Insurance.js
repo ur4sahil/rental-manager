@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -155,7 +155,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   <DataTable
     columns={[
       { key: "property", label: "Property", className: "text-neutral-800",
-        render: p => (<>{p.property}</>) },
+        render: p => (<>{propertyLabel(p.property)}</>) },
       { key: "provider", label: "Provider", className: "font-medium text-neutral-800",
         render: p => (<>{p.provider}</>) },
       { key: "policy", label: "Policy #", className: "text-neutral-500",
