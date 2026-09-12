@@ -203,6 +203,22 @@
 
   /* Box shadows */
   --shadow-card: 0 4px 20px -2px rgba(0,0,0,0.05);
+
+  /* LAYOUT TOKENS
+     Widths are design decisions, so they belong here rather than as a
+     literal in whichever component happened to need one first. Tailwind
+     generates max-w-statement / max-w-page from these, so changing the
+     reading width of every financial statement is one edit.
+
+     --width-statement: how wide a financial statement reads before the
+     account name and its figure drift too far apart. 896px is roughly 90
+     characters, the same reason body copy is not set full-bleed. */
+  /* Tailwind v4 generates max-w-* from the --container-* namespace, not
+     --width-*. Verified by grepping the built CSS: with --width-statement
+     the max-w-statement class was never emitted and the constraint
+     silently did nothing. */
+  --container-statement: 56rem;
+  --container-page: 90rem;
 }
 
 /* Aligned figures: money, balances, counts, reference codes.

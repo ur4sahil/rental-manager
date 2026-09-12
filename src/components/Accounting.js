@@ -3040,7 +3040,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ledger/journal/transaction lists are wide by nature. Constraining
         those would force a horizontal scroll on data that fits today. */}
     <div className={"bg-white rounded-xl shadow-sm border border-neutral-200 p-6 " +
-      (WIDE_REPORTS.includes(reportId) ? "" : "max-w-4xl mx-auto")} data-report-content>
+      (WIDE_REPORTS.includes(reportId) ? "" : "max-w-statement mx-auto")} data-report-content>
 
     {/* The ledger is still arriving. Reports that add it up in the
         browser would otherwise render a confident $0.00 -- a wrong
