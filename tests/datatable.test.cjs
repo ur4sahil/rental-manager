@@ -86,5 +86,23 @@ const a = render({ columns: cols, rows, density: "normal" });
 const b = render({ columns: cols, rows, density: "compact" });
 ok(a !== b, "density changes the rendered padding");
 
+// Header-less tables must not gain a header row they never had.
+h = render({ columns: cols, rows, hideHeader: true });
+ok(count(h, "thead") === 0, "hideHeader emits no thead");
+ok(count(h, "tr") === 2, `only the data rows remain: got ${count(h, "tr")}`);
+
+// Master-detail: an expanded row spans every column, and the colSpan is
+// computed rather than hand-written.
+h = render({ columns: cols, rows, expandedRow: (r) => (r.id === 1 ? "DETAIL PANEL" : null) });
+ok(/DETAIL PANEL/.test(h), "the expanded panel renders");
+ok(/colspan="4"/i.test(h), "the detail row spans all columns");
+ok(count(h, "tr") === 4, `header + 2 rows + 1 detail: got ${count(h, "tr")}`);
+h = render({ columns: cols, rows, expandedRow: () => null });
+ok(count(h, "tr") === 3, "no detail rows when nothing is expanded");
+
+// A pinned first column, for reports with one column per property.
+h = render({ columns: cols, rows, stickyFirstColumn: true });
+ok(/sticky left-0/.test(h), "the first column is pinned when asked");
+
 console.log(`\n✅ Passed: ${pass}\n❌ Failed: ${fail}`);
 process.exit(fail ? 1 : 0);

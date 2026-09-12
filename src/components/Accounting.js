@@ -894,24 +894,26 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
               <div className="text-sm font-semibold text-neutral-800">{g.title}</div>
               <div className="text-[11px] text-neutral-400">{g.note}</div>
             </div>
-            <table className="w-full text-sm">
-              <tbody>
-                {rows.map(a => (
-                  <tr key={a.id} className="border-b border-neutral-100 last:border-b-0">
-                    <td className="px-4 py-2 text-neutral-600"><span className="tnum text-xs text-neutral-400 mr-2">{a.code}</span>{a.name}</td>
-                    <td className="px-4 py-2 text-right w-48">
-                      <Input
-                        inputMode="decimal"
-                        value={balances[a.code] || ""}
-                        onChange={e => setBalances(prev => ({ ...prev, [a.code]: e.target.value.replace(/[^0-9.\-]/g, "") }))}
-                        placeholder="0.00"
-                        className="text-right"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              hideHeader
+              columns={[
+                { key: "col0", label: "", className: "text-neutral-600",
+                  render: a => (<><span className="tnum text-xs text-neutral-400 mr-2">{a.code}</span>{a.name}</>) },
+                { key: "col1", label: "", align: "right", className: "w-48",
+                  render: a => (<>
+                    <Input
+                                            inputMode="decimal"
+                                            value={balances[a.code] || ""}
+                                            onChange={e => setBalances(prev => ({ ...prev, [a.code]: e.target.value.replace(/[^0-9.\-]/g, "") }))}
+                                            placeholder="0.00"
+                                            className="text-right"
+                                          />
+                  </>) },
+              ]}
+              rows={rows}
+              rowKey={a => a.id}
+              empty="Nothing to show"
+            />
           </div>
         );
       })}
@@ -3322,7 +3324,22 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "journal" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Journal</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-neutral-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="tnum text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-neutral-800">{je.description}</span></div><span className="text-xs text-neutral-400">{acctFmtDate(je.date)}</span></div>
-      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-neutral-50"><td className="py-1 text-neutral-600">{l.accountName}</td><td className="py-1 text-neutral-400">{l.memo||""}</td><td className="py-1 text-right tnum">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right tnum">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
+      <DataTable
+        hideHeader
+        columns={[
+          { key: "col0", label: "", className: "text-neutral-600",
+            render: l => (<>{l.accountName}</>) },
+          { key: "col1", label: "", className: "text-neutral-400",
+            render: l => (<>{l.memo||""}</>) },
+          { key: "col2", label: "", align: "right", className: "tnum",
+            render: l => (<>{l.debit > 0 ? acctFmt(l.debit) : ""}</>) },
+          { key: "col3", label: "", align: "right", className: "tnum",
+            render: l => (<>{l.credit > 0 ? acctFmt(l.credit) : ""}</>) },
+        ]}
+        rows={je.lines}
+        rowKey={l => l.id}
+        empty="Nothing to show"
+      /></div>)}
     </div>)}
 
     {/* Transaction List by Date */}
@@ -3910,7 +3927,24 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "txn_by_account" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Transaction Detail by Account</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-neutral-50 px-3 py-2 rounded-lg font-semibold text-sm text-neutral-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-neutral-400">{acct.type}</span></div>
-      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-3 py-1 text-neutral-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 tnum w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-neutral-600">{t.description}</td><td className="px-3 py-1 text-right tnum w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right tnum w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
+      <DataTable
+        hideHeader
+        columns={[
+          { key: "col0", label: "", className: "text-neutral-400 w-20",
+            render: t => (<>{t.date}</>) },
+          { key: "col1", label: "", className: "text-brand-600 tnum w-16",
+            render: t => (<>{t.jeNumber||""}</>) },
+          { key: "col2", label: "", className: "text-neutral-600",
+            render: t => (<>{t.description}</>) },
+          { key: "col3", label: "", align: "right", className: "tnum w-20",
+            render: t => (<>{t.debit > 0 ? acctFmt(t.debit) : ""}</>) },
+          { key: "col4", label: "", align: "right", className: "tnum w-20",
+            render: t => (<>{t.credit > 0 ? acctFmt(t.credit) : ""}</>) },
+        ]}
+        rows={acct.transactions}
+        rowKey={t => t.id}
+        empty="Nothing to show"
+      /></div>))}
     </div>)}
 
     {/* P&L Comparison */}

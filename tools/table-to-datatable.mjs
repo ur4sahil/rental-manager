@@ -48,6 +48,19 @@ if (mapped) {
     .filter(h => !/\.map\(|=>/.test(h));   // never a code fragment
 }
 
+// A HEADER-LESS table -- a journal entry's lines in a detail panel, a
+// mini transaction list -- has no <thead> at all. Derive the column count
+// from the first row's cells and emit hideHeader, so the migration does
+// not ADD a header row the original never had.
+let headerless = false;
+if (!headers.length) {
+  const firstRow = /<tr[^>]*>([\s\S]*?)<\/tr>/.exec(block);
+  if (firstRow) {
+    const n = (firstRow[1].match(/<td(?=[\s>])/g) || []).length;
+    if (n > 0) { headers = Array.from({ length: n }, () => ""); headerless = true; }
+  }
+}
+
 // Cells: walk the tbody and split on <td ...> ... </td> with tag depth, so
 // a <td> containing another element's ">" does not end it early.
 const tbody = block.slice(block.indexOf("<tbody"), block.lastIndexOf("</tbody>"));
@@ -155,6 +168,7 @@ const key = (h, i) => (h || `col${i}`).toLowerCase().replace(/[^a-z0-9]+/g, "_")
 ROWVAR = rowVar;
 console.log(`// ${file}:${lineArg}-${endLine + 1}  (${headers.length} columns, ${cells.length} cells lifted)`);
 console.log("<DataTable");
+if (headerless) console.log("  hideHeader");
 console.log("  columns={[");
 headers.forEach((h, i) => {
   const c = cells[i];

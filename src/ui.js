@@ -567,6 +567,20 @@ export function DataTable({
   loading = false,
   density = "normal",
   stickyHeader = false,
+  // Some tables are deliberately header-less -- a journal entry's lines
+  // inside a detail panel, a mini transaction list. Rendering a header
+  // there would ADD a row that was never in the original.
+  hideHeader = false,
+  // Master-detail: an extra full-width row under a row, for the expanded
+  // panel pattern -- click a bank transaction and its matching and
+  // posting controls open beneath it. Return null for rows that are not
+  // expanded. Without this in the primitive, every such table stays
+  // hand-rolled, and flat-migrating one silently deleted 257 lines of
+  // panel markup.
+  expandedRow = null,
+  // A first column pinned while the rest scrolls, for reports with one
+  // column per property.
+  stickyFirstColumn = false,
   scroll = true,
   className = "",
   ariaLabel,
@@ -583,6 +597,7 @@ export function DataTable({
         key={col.key}
         className={[
           td,
+          stickyFirstColumn && col === columns[0] ? "sticky left-0 z-10 bg-white" : "",
           ALIGN[col.align] || ALIGN.left,
           col.align === "right" ? "tnum" : "",
           // A className may be a FUNCTION of the row. Several tables colour
@@ -599,18 +614,27 @@ export function DataTable({
   };
 
   const bodyRows = (list) =>
-    list.map((row, i) => (
-      <tr
-        key={keyOf(row, i)}
-        onClick={onRowClick ? () => onRowClick(row, i) : undefined}
-        className={
-          "border-t border-neutral-100 " +
-          (onRowClick ? "cursor-pointer hover:bg-brand-50/40 transition-colors" : "")
-        }
-      >
-        {columns.map(c => cell(c, row, i))}
-      </tr>
-    ));
+    list.flatMap((row, i) => {
+      const expanded = expandedRow ? expandedRow(row, i) : null;
+      const main = (
+        <tr
+          key={keyOf(row, i)}
+          onClick={onRowClick ? () => onRowClick(row, i) : undefined}
+          className={
+            "border-t border-neutral-100 " +
+            (onRowClick ? "cursor-pointer hover:bg-brand-50/40 transition-colors" : "")
+          }
+        >
+          {columns.map(c => cell(c, row, i))}
+        </tr>
+      );
+      // The detail row spans every column, computed here rather than by
+      // the caller -- a hand-written colSpan is what put a 9-column
+      // header over 8-column rows in the ledger.
+      return expanded
+        ? [main, <tr key={String(keyOf(row, i)) + "-detail"}><td colSpan={cols} className="p-0">{expanded}</td></tr>]
+        : [main];
+    });
 
   // A footer row gives cells for the LAST n columns and spans the rest, so
   // a total lines up under its column without every caller counting
@@ -636,13 +660,16 @@ export function DataTable({
 
   const table = (
     <table className={"w-full text-sm border-collapse " + className} aria-label={ariaLabel}>
+      {!hideHeader && (
       <thead className={"bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide " + (stickyHeader ? "sticky top-0 z-10" : "")}>
         <tr>
           {columns.map(c => (
             <th
               key={c.key}
               scope="col"
-              className={[th, ALIGN[c.align] || ALIGN.left, "font-semibold", c.thClassName || ""].filter(Boolean).join(" ")}
+              className={[th, ALIGN[c.align] || ALIGN.left, "font-semibold",
+                stickyFirstColumn && c === columns[0] ? "sticky left-0 z-20 bg-neutral-50" : "",
+                c.thClassName || ""].filter(Boolean).join(" ")}
               style={c.width ? { width: c.width } : undefined}
             >
               {c.label}
@@ -650,6 +677,7 @@ export function DataTable({
           ))}
         </tr>
       </thead>
+      )}
 
       {loading ? (
         <tbody><tr><td colSpan={cols} className={td + " text-center text-neutral-400 py-8"}>Loading…</td></tr></tbody>
