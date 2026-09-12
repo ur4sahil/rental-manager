@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -2292,20 +2292,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {isMenuOpen && <>
         <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
         <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
-          <button onClick={() => { setGlMapModal({ feedId: feed.id, feedName: feed.account_name || "Bank Account" }); setGlMapValue(feed.gl_account_id || ""); setFeedMenuOpen(null); }}
-            className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
-            <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
-          </button>
+          <MenuItem onClick={() => { setGlMapModal({ feedId: feed.id, feedName: feed.account_name || "Bank Account" }); setGlMapValue(feed.gl_account_id || ""); setFeedMenuOpen(null); }} tone="neutral" icon="link">Change GL Mapping</MenuItem>
           {feed.status === "inactive" ? (
-          <button onClick={() => { reactivateFeed(feed.id); setFeedMenuOpen(null); }}
-            className="w-full text-left px-3 py-2 text-sm text-positive-600 hover:bg-positive-50 flex items-center gap-2">
-            <span className="material-icons-outlined text-sm">link</span>Reactivate
-          </button>
+          <MenuItem onClick={() => { reactivateFeed(feed.id); setFeedMenuOpen(null); }} tone="positive" icon="link">Reactivate</MenuItem>
           ) : (
-          <button onClick={() => { disconnectFeed(feed.id); setFeedMenuOpen(null); }}
-            className="w-full text-left px-3 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
-            <span className="material-icons-outlined text-sm">link_off</span>Disconnect
-          </button>
+          <MenuItem onClick={() => { disconnectFeed(feed.id); setFeedMenuOpen(null); }} tone="danger" icon="link_off">Disconnect</MenuItem>
           )}
         </div>
       </>}

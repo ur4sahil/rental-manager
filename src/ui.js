@@ -603,6 +603,44 @@ export function Switch({ checked, onChange, label, size = "sm", tone = "success"
   );
 }
 
+// ---- MENU ITEM ----
+// A row in a dropdown menu.
+//
+// Eighteen of these were hand-written across the user menu, the bank-feed
+// menus, the company menu and the tenant menus, and they drifted the
+// usual way: px-3 py-2 vs px-4 py-2.5, gap-2 vs gap-3, and each site
+// spelling its own hover colour to match the item's tone (a Disconnect
+// item wanting danger, a Reactivate item wanting positive).
+//
+// `tone` names that instead, so the text and hover always agree -- they
+// did not everywhere: one danger item had a neutral hover, so the row
+// turned grey under a red label.
+// NOTE for the next migration of this kind: the app spells its danger
+// text as BOTH text-danger-500 and text-danger-600. A tone-detection pass
+// that matched only -600 read the Logout row as neutral and silently
+// dropped its red, which e2e/57 caught by comparing the computed colour
+// of the destructive row against a neutral one.
+const MENU_TONE = {
+  neutral:  "text-neutral-700 hover:bg-brand-50",
+  danger:   "text-danger-600 hover:bg-danger-50",
+  positive: "text-positive-600 hover:bg-positive-50",
+  brand:    "text-brand-700 hover:bg-brand-50",
+};
+export function MenuItem({ icon, tone = "neutral", onClick, disabled, children, className = "" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left transition-colors ` +
+        `${MENU_TONE[tone] || MENU_TONE.neutral} disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING} ${className}`}
+    >
+      {icon && <span className="material-icons-outlined text-base">{icon}</span>}
+      {children}
+    </button>
+  );
+}
+
 // ---- SEARCH TRIGGER ----
 // The visible entry point to the command palette.
 //

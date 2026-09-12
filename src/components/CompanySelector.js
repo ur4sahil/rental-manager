@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, TextLink} from "../ui";
+import { Input, Select, Btn, TextLink, MenuItem} from "../ui";
 import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
@@ -409,9 +409,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </button>
   {openMenu === c.id && (
   <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-lg min-w-[160px] z-10 py-1">
-  <button onClick={() => openDeleteFlow(c)} className="w-full text-left px-4 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
-  <span className="material-icons-outlined text-base">delete</span>Delete company
-  </button>
+  <MenuItem onClick={() => openDeleteFlow(c)} tone="danger" icon="delete">Delete company</MenuItem>
   </div>
   )}
   </div>
