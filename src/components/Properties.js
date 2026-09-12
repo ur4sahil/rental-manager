@@ -1094,7 +1094,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   ))}
                 </Select>
                 {propForm.state && !COUNTIES_BY_STATE[propForm.state] && (
-                  <p className="text-[10px] text-warn-600 mt-1">This state isn't in the operating area; ask an admin to extend COUNTIES_BY_STATE.</p>
+                  <p className="text-2xs text-warn-600 mt-1">This state isn't in the operating area; ask an admin to extend COUNTIES_BY_STATE.</p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1650,7 +1650,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               <div>
                 <label className="text-xs font-medium text-neutral-500 block mb-1">First post date <span className="text-neutral-400 font-normal">(optional — leave blank to start next month)</span></label>
                 <Input type="date" value={recurring.start_date || ""} onChange={e => setRecurring({ ...recurring, start_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
-                <p className="text-[11px] text-neutral-400 mt-1">
+                <p className="text-2xs text-neutral-400 mt-1">
                   Use this when you're migrating a lease that started in the past. The recurring charge will post (or back-post) on the date you pick; anything before it is assumed to have been handled in your prior system.
                 </p>
               </div>
@@ -1823,7 +1823,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         {
         const stepBadge = (stepId) => {
           if (completedSteps.has(stepId)) return <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span>;
-          if (approvedSkips.has(stepId)) return <span className="text-xs bg-info-100 text-info-700 px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5"><span className="material-icons-outlined text-[10px] leading-none">verified</span>Skipped (Approved)</span>;
+          if (approvedSkips.has(stepId)) return <span className="text-xs bg-info-100 text-info-700 px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5"><span className="material-icons-outlined text-2xs leading-none">verified</span>Skipped (Approved)</span>;
           return <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>;
         };
         return (
@@ -1984,7 +1984,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div>${Number(taxes.annual_tax_amount || 0).toLocaleString()}/yr · {taxes.billing_frequency.replace("_"," ")}{propForm.county ? " · " + propForm.county : ""}</div>
                     {taxes.next_due_date && <div>Next due: {taxes.next_due_date}</div>}
                     {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow</div>}
-                    {!taxes.escrow_paid_by_lender && <div className="text-brand-600 text-[10px]">Bill reminders auto-generated from jurisdiction schedule</div>}
+                    {!taxes.escrow_paid_by_lender && <div className="text-brand-600 text-2xs">Bill reminders auto-generated from jurisdiction schedule</div>}
                   </div>
                 ) : completedSteps.has("property_tax") ? <p className="text-xs text-neutral-400">Not tracked</p> : null}
               </div>
@@ -3357,8 +3357,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex-1 min-w-0">
   <div className="flex items-center gap-2 flex-wrap">
   <div className="text-sm font-medium text-neutral-700">{typeLabel}</div>
-  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>{statusLabel}</span>
-  {lic.status === "pending_renewal" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-brand-50 text-brand-700 border-brand-200">Renewal filed</span>}
+  <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>{statusLabel}</span>
+  {lic.status === "pending_renewal" && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full border bg-brand-50 text-brand-700 border-brand-200">Renewal filed</span>}
   </div>
   <div className="text-xs text-neutral-400 mt-0.5">
   {lic.license_number && <span>#{lic.license_number}</span>}

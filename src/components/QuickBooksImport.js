@@ -352,7 +352,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       {STEPS.map((s, i) => (
         <React.Fragment key={s.n}>
           <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s.n ? "text-neutral-800" : step > s.n ? "text-success-600" : "text-neutral-300"}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === s.n ? "bg-neutral-800 text-white" : step > s.n ? "bg-success-100 text-success-700" : "bg-neutral-100"}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-2xs ${step === s.n ? "bg-neutral-800 text-white" : step > s.n ? "bg-success-100 text-success-700" : "bg-neutral-100"}`}>
               {step > s.n ? "✓" : s.n}
             </span>
             {s.label}
@@ -462,10 +462,10 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
             render: a => (<>
               {a.path}
                             {a.role === "tenant_ar" && (
-                              <span className="ml-1.5 text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full"
+                              <span className="ml-1.5 text-2xs bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full"
                                     title={a.roleReason || ""}>tenant AR</span>
                             )}
-                            {a.roleReason && <div className="text-[10px] text-neutral-400 truncate" title={a.roleReason}>{a.roleReason}</div>}
+                            {a.roleReason && <div className="text-2xs text-neutral-400 truncate" title={a.roleReason}>{a.roleReason}</div>}
             </>) },
           { key: "type", label: "TYPE",
             render: a => (<>
@@ -502,7 +502,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
                               </Select>
                             )}
                             {a.action === "map" && a.suggestion && (
-                              <div className="text-[10px] text-neutral-400 mt-0.5">{a.suggestion.reason}</div>
+                              <div className="text-2xs text-neutral-400 mt-0.5">{a.suggestion.reason}</div>
                             )}
             </>) },
         ]}
@@ -534,7 +534,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         <div key={label}>
           <p className="text-sm font-medium text-neutral-700 mb-1">{label} <span className="text-neutral-400 font-normal">({items.length})</span></p>
           <div className="max-h-32 overflow-y-auto flex flex-wrap gap-1">
-            {items.map((n, i) => <span key={i} className="text-[11px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full">{n}</span>)}
+            {items.map((n, i) => <span key={i} className="text-2xs bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full">{n}</span>)}
           </div>
         </div>
       ))}

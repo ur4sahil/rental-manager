@@ -253,7 +253,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
               <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 bg-neutral-50/60">
                 <div>
                   <div className="text-sm font-semibold text-neutral-800">{propertyLabel(addr)}</div>
-                  <div className="text-[10px] text-neutral-500 uppercase tracking-wide">{jurisdiction} · {rows.length} {rows.length === 1 ? "bill" : "bills"}</div>
+                  <div className="text-2xs text-neutral-500 uppercase tracking-wide">{jurisdiction} · {rows.length} {rows.length === 1 ? "bill" : "bills"}</div>
                 </div>
               </div>
               <DataTable
@@ -261,7 +261,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                   { key: "installment", label: "Installment",
                     render: b => (<>
                       <div className="text-sm font-medium text-neutral-700">{b.installment_label}</div>
-                                                <div className="text-[10px] text-neutral-400">{b.tax_year}</div>
+                                                <div className="text-2xs text-neutral-400">{b.tax_year}</div>
                     </>) },
                   { key: "due", label: "Due", className: "tnum text-xs text-neutral-600",
                     render: b => (<>{b.due_date}</>) },
@@ -309,19 +309,19 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
             <p className="text-xs text-neutral-500 mb-4">{markPaidBill.bill.installment_label} · {propertyLabel(markPaidBill.bill.property)}</p>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Paid date *</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Paid date *</label>
                 <Input size="sm" type="date" value={markPaidBill.paidDate} onChange={e => setMarkPaidBill({ ...markPaidBill, paidDate: e.target.value })} />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Amount paid</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Amount paid</label>
                 <Input size="sm" type="number" step="0.01" value={markPaidBill.paidAmount} onChange={e => setMarkPaidBill({ ...markPaidBill, paidAmount: e.target.value })} placeholder="0.00" />
-                <p className="text-[10px] text-neutral-400 mt-0.5">Expected {markPaidBill.bill.expected_amount ? formatCurrency(markPaidBill.bill.expected_amount) : "not set"}</p>
+                <p className="text-2xs text-neutral-400 mt-0.5">Expected {markPaidBill.bill.expected_amount ? formatCurrency(markPaidBill.bill.expected_amount) : "not set"}</p>
               </div>
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Notes</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Notes</label>
                 <Input size="sm" value={markPaidBill.paidNotes} onChange={e => setMarkPaidBill({ ...markPaidBill, paidNotes: e.target.value })} placeholder="check #, confirmation no., etc." />
               </div>
-              <p className="text-[10px] text-neutral-400 border-t border-neutral-100 pt-2">Tracking only — no journal entry is posted. Bank reconciliation will handle posting in a later release.</p>
+              <p className="text-2xs text-neutral-400 border-t border-neutral-100 pt-2">Tracking only — no journal entry is posted. Bank reconciliation will handle posting in a later release.</p>
             </div>
             <div className="flex items-center gap-2 justify-end mt-4">
               <Btn size="sm" variant="secondary" onClick={() => setMarkPaidBill(null)}>Cancel</Btn>
@@ -339,18 +339,18 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
             <p className="text-xs text-neutral-500 mb-4">{propertyLabel(editBill.bill.property)} · {editBill.bill.tax_year}</p>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Installment label</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Installment label</label>
                 <Input size="sm" value={editBill.installment_label} onChange={e => setEditBill({ ...editBill, installment_label: e.target.value })} />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Due date</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Due date</label>
                 <Input size="sm" type="date" value={editBill.due_date} onChange={e => setEditBill({ ...editBill, due_date: e.target.value })} />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Expected amount</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Expected amount</label>
                 <Input size="sm" type="number" step="0.01" value={editBill.expected_amount} onChange={e => setEditBill({ ...editBill, expected_amount: e.target.value })} />
               </div>
-              {editBill.bill.auto_generated && <p className="text-[10px] text-warn-600 border-t border-neutral-100 pt-2">Editing this row detaches it from the auto-generation schedule — future regenerations won't overwrite your changes.</p>}
+              {editBill.bill.auto_generated && <p className="text-2xs text-warn-600 border-t border-neutral-100 pt-2">Editing this row detaches it from the auto-generation schedule — future regenerations won't overwrite your changes.</p>}
             </div>
             <div className="flex items-center gap-2 justify-end mt-4">
               <Btn size="sm" variant="secondary" onClick={() => setEditBill(null)}>Cancel</Btn>

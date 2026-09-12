@@ -1651,7 +1651,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div className="space-y-1.5">
   <div>
-  <div className="text-[10px] font-medium text-neutral-500 mb-0.5">Fills itself from</div>
+  <div className="text-2xs font-medium text-neutral-500 mb-0.5">Fills itself from</div>
   <Select value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} className="text-xs w-full" aria-label="Fill automatically from">
   <option value="">Fill manually</option>
   {PREFILL_SOURCES.map(([group, opts]) => (
@@ -1683,7 +1683,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <option value="">— choose a signer —</option>
   {(templateForm.signer_roles || []).map(r => <option key={r.role} value={r.role}>{r.label || r.role}</option>)}
   </Select>
-  {(templateForm.signer_roles || []).length === 0 && <span className="text-[10px] text-warn-600">Define signer roles in the Signature Workflow section ↓</span>}
+  {(templateForm.signer_roles || []).length === 0 && <span className="text-2xs text-warn-600">Define signer roles in the Signature Workflow section ↓</span>}
   </div>
   )}
   <div className="text-xs text-neutral-400 mt-1">Merge tag: <code className="bg-neutral-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
@@ -1706,11 +1706,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Template Details</h3>
   <div className="space-y-2">
   <div>
-  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Name *</label>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Name *</label>
   <Input size="sm" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
   </div>
   <div>
-  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
   {/* A free-text field with the existing types as suggestions, so a new
       type -- "court filing", "addendum" -- can simply be typed. It was a
       closed dropdown of four, which is why anything else became
@@ -1721,10 +1721,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <datalist id="doc-category-list">
     {CATEGORIES.map(c => <option key={c} value={c} />)}
   </datalist>
-  <div className="text-[10px] text-neutral-400 mt-0.5">Pick one or type a new type.</div>
+  <div className="text-2xs text-neutral-400 mt-0.5">Pick one or type a new type.</div>
   </div>
   <div>
-  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
   <Input size="sm" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
   </div>
   </div>
@@ -1735,7 +1735,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white border border-neutral-100 rounded-xl">
   <button type="button" onClick={() => setAdvancedOpen(o => !o)} className="w-full flex items-center justify-between p-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:bg-neutral-50 rounded-xl">
   <span className="flex items-center gap-1.5"><span className="material-icons-outlined text-sm text-neutral-400">{advancedOpen ? "expand_more" : "chevron_right"}</span>Advanced Field Config</span>
-  <span className="text-[10px] text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
+  <span className="text-2xs text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
   </button>
   {advancedOpen && (
   <div className="px-3 pb-3">
@@ -1818,7 +1818,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     <button key={opt.value} type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signing_mode: opt.value }))}
       className={"flex-1 text-left px-3 py-2 rounded-xl border transition-colors " + (templateForm.signing_mode === opt.value ? "border-brand-500 bg-brand-50 text-brand-700" : "border-brand-100 bg-white text-neutral-500 hover:border-brand-300")}>
       <div className="text-xs font-semibold">{opt.label}</div>
-      <div className="text-[10px] text-neutral-400 mt-0.5">{opt.desc}</div>
+      <div className="text-2xs text-neutral-400 mt-0.5">{opt.desc}</div>
     </button>
   ))}
   </div>
@@ -1855,7 +1855,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     if (idx >= 0) next[idx] = { ...next[idx], label: e.target.value };
     setTemplateForm(prev => ({ ...prev, signer_roles: next }));
   }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-5"} />
-  <label className="col-span-1 flex items-center justify-center text-[10px] text-neutral-500"><Checkbox checked={r.required !== false} onChange={e => {
+  <label className="col-span-1 flex items-center justify-center text-2xs text-neutral-500"><Checkbox checked={r.required !== false} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
     const idx = next.findIndex(x => x.role === r.role);
     if (idx >= 0) next[idx] = { ...next[idx], required: e.target.checked };
@@ -1866,7 +1866,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   );
   })}
   {(templateForm.signer_roles || []).length > 0 && (
-  <div className="text-[10px] text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
+  <div className="text-2xs text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
   Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
   </div>
   )}
@@ -1968,7 +1968,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   document.addEventListener("mouseup", onUp);
   }}>
   <div className="flex items-center justify-between px-1">
-  <span className={`text-[9px] tnum font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
+  <span className={`text-2xs tnum font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
   <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="leading-none">✕</TextLink>
   </div>
   </div>
@@ -2091,7 +2091,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-neutral-400 shrink-0">Document Builder</span>
   <span className="text-neutral-300 shrink-0">›</span>
   <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
-  <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">{mode === "prefill" ? "Prefilled" : "Blank"}</span>
+  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">{mode === "prefill" ? "Prefilled" : "Blank"}</span>
   </div>
   <Btn onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
@@ -2177,7 +2177,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-neutral-400 shrink-0">Document Builder</span>
   <span className="text-neutral-300 shrink-0">›</span>
   <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
-  <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">Preview</span>
+  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">Preview</span>
   </div>
   <div className="flex items-center gap-1">
   <Btn variant="secondary" size="xs" onClick={() => exportPDF()} title="Download PDF">
@@ -2238,7 +2238,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex items-center gap-2 mb-1">
   <span className="material-icons-outlined text-brand-600">draw</span>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Send for Signature</h3>
-  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold uppercase">{selectedTemplate.signing_mode}</span>
+  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold uppercase">{selectedTemplate.signing_mode}</span>
   </div>
   <p className="text-xs text-neutral-400 mb-3">Each signer will receive a unique magic-link email. No account required on their end; the link expires in 30 days.</p>
   <div className="space-y-2 mb-3">
@@ -2249,9 +2249,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex items-center justify-between mb-1">
   <span className="flex items-center gap-1.5">
   <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`} />
-  <span className="text-xs font-semibold text-neutral-600">{r.label || r.role}{r.required === false && <span className="text-[10px] text-neutral-400 font-normal ml-1">(optional)</span>}</span>
+  <span className="text-xs font-semibold text-neutral-600">{r.label || r.role}{r.required === false && <span className="text-2xs text-neutral-400 font-normal ml-1">(optional)</span>}</span>
   </span>
-  {selectedTemplate.signing_mode === "sequential" && <span className="text-[10px] text-brand-600">#{r.order || 1}</span>}
+  {selectedTemplate.signing_mode === "sequential" && <span className="text-2xs text-brand-600">#{r.order || 1}</span>}
   </div>
   <div className="grid grid-cols-2 gap-1.5">
   <Input size="sm" value={signerNames[r.role] || ""} onChange={e => setSignerNames(prev => ({ ...prev, [r.role]: e.target.value }))} placeholder="Full name" />
@@ -2311,7 +2311,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button key={id} onClick={() => setTab(id)} className={"flex items-center gap-1.5 pb-2 -mb-px text-sm font-medium border-b-2 transition-colors " + (tab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500 hover:text-neutral-700")}>
   <span className="material-icons-outlined text-base">{icon}</span>
   {label}
-  {id === "history" && generatedDocs.length > 0 && <span className={"text-[10px] px-1.5 py-0.5 rounded-full " + (tab === id ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500")}>{generatedDocs.length}</span>}
+  {id === "history" && generatedDocs.length > 0 && <span className={"text-2xs px-1.5 py-0.5 rounded-full " + (tab === id ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500")}>{generatedDocs.length}</span>}
   </button>
   ))}
   </div>
@@ -2329,12 +2329,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button onClick={() => setMode("blank")} className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors " + (mode === "blank" ? "border-brand-500 bg-brand-50 text-brand-700" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")}>
   <span className="material-icons-outlined text-base">edit_note</span>
   <span className="font-medium">Blank</span>
-  <span className="text-[10px] text-neutral-400 hidden md:inline">· fill manually</span>
+  <span className="text-2xs text-neutral-400 hidden md:inline">· fill manually</span>
   </button>
   <button onClick={() => setMode("prefill")} className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors " + (mode === "prefill" ? "border-success-500 bg-success-50 text-success-700" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")}>
   <span className="material-icons-outlined text-base">auto_fix_high</span>
   <span className="font-medium">Prefill from Property</span>
-  <span className="text-[10px] text-neutral-400 hidden md:inline">· tenant + lease autofill</span>
+  <span className="text-2xs text-neutral-400 hidden md:inline">· tenant + lease autofill</span>
   </button>
   </div>
   {mode === "prefill" && (
@@ -2401,22 +2401,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="min-w-0">
   <div className="font-semibold text-neutral-800 text-sm truncate">{t.name}</div>
   <div className="flex items-center gap-1.5 flex-wrap">
-  <div className="text-[10px] text-neutral-400 capitalize">{t.category || "uncategorised"}</div>
+  <div className="text-2xs text-neutral-400 capitalize">{t.category || "uncategorised"}</div>
   {/* What this template can do, on the card. Signing, PDF overlay and
       auto-fill were all built and none of it was visible until you
       opened the editor and scrolled a right-hand rail -- which is why
       the builder read as "no e-sign". */}
   {t.template_type === "pdf_overlay" && (
-    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600" title="Fields are placed on an uploaded PDF">PDF</span>
+    <span className="text-2xs px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600" title="Fields are placed on an uploaded PDF">PDF</span>
   )}
   {t.signing_mode && t.signing_mode !== "none" && (
-    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-positive-50 text-positive-700"
+    <span className="text-2xs px-1.5 py-0.5 rounded-full bg-positive-50 text-positive-700"
       title={`Signature required — ${(t.signer_roles || []).map(r => r.label || r.role).join(", ") || "signers not yet defined"}`}>
       ✍ e-sign{(t.signer_roles || []).length ? ` · ${t.signer_roles.length}` : ""}
     </span>
   )}
   {(t.fields || []).some(f => f.prefill_from) && (
-    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700"
+    <span className="text-2xs px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700"
       title={`${(t.fields || []).filter(f => f.prefill_from).length} field(s) fill themselves from your data`}>
       auto-fill
     </span>
@@ -2424,13 +2424,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   </div>
-  {t.is_system && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full shrink-0">System</span>}
+  {t.is_system && <span className="text-2xs bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full shrink-0">System</span>}
   </div>
   {t.description && <p className="text-xs text-neutral-400 mb-2 line-clamp-2">{t.description}</p>}
-  <div className="flex items-center gap-1.5 flex-wrap text-[10px] mb-3">
+  <div className="flex items-center gap-1.5 flex-wrap text-2xs mb-3">
   <span className="text-neutral-500">{(t.fields || []).length} fields</span>
   {isPdf && <span className="px-1.5 py-0.5 rounded-full bg-danger-50 text-danger-600 uppercase tracking-wide font-semibold">PDF overlay</span>}
-  {hasESign && <span className="px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 uppercase tracking-wide font-semibold flex items-center gap-0.5"><span className="material-icons-outlined text-[10px]">draw</span>e-sign</span>}
+  {hasESign && <span className="px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 uppercase tracking-wide font-semibold flex items-center gap-0.5"><span className="material-icons-outlined text-2xs">draw</span>e-sign</span>}
   </div>
   <div className="flex gap-1 mt-auto">
   <Btn variant="success-fill" size="xs" className="flex-1" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>

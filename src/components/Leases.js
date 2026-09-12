@@ -744,11 +744,11 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
             <p className="text-xs text-neutral-400 mb-3">Both parties will receive a secure magic link by email. No account required to sign. Links expire in 30 days.</p>
             <div className="space-y-2 mb-3">
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Tenant email</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Tenant email</label>
                 <Input size="sm" type="email" value={tenantEmail} onChange={e => setTenantEmail(e.target.value)} placeholder="tenant@example.com" />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Landlord / PM email</label>
+                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Landlord / PM email</label>
                 <Input size="sm" type="email" value={landlordEmail} onChange={e => setLandlordEmail(e.target.value)} placeholder="you@example.com" />
               </div>
             </div>
@@ -779,7 +779,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-neutral-800 truncate">{s.signer_name || s.signer_email}</div>
                       <div className="text-xs text-neutral-400 capitalize">{(s.signer_role || "").replace(/_/g, " ")} · {s.signer_email}</div>
-                      {s.signed_at && <div className="text-[10px] text-neutral-400 mt-0.5">Signed {new Date(s.signed_at).toLocaleString()}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
+                      {s.signed_at && <div className="text-2xs text-neutral-400 mt-0.5">Signed {new Date(s.signed_at).toLocaleString()}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {s.status === "signed" ? (
@@ -797,7 +797,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
             </div>
 
             {envelopeOpen && (
-              <p className="text-[10px] text-neutral-400 mt-3">
+              <p className="text-2xs text-neutral-400 mt-3">
                 Signers receive a unique link per role. Signatures are verified server-side; IP, user-agent, and a SHA-256 integrity hash are captured at signing time.
               </p>
             )}

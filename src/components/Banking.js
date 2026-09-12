@@ -2265,7 +2265,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             ? "border-neutral-200"
             : r.isReconciled ? "border-positive-200 bg-positive-50/30" : "border-danger-200 bg-danger-50/30";
           return (
-            <div className={`mt-2 pt-2 border-t ${wrapCls} text-[11px] space-y-0.5`}>
+            <div className={`mt-2 pt-2 border-t ${wrapCls} text-2xs space-y-0.5`}>
               <div className="flex justify-between text-neutral-500">
                 <span>Bank</span>
                 <span className="tnum text-neutral-800">{r.bankBal == null ? "—" : formatCurrency(r.bankBal)}</span>
@@ -2280,7 +2280,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-dashed border-neutral-200">
                 {r.bankBal == null ? (
-                  <span className="text-[10px] text-neutral-400 italic">Connect bank for reco</span>
+                  <span className="text-2xs text-neutral-400 italic">Connect bank for reco</span>
                 ) : r.isReconciled ? (
                   <span className="text-positive-700 font-semibold">✓ Reconciled</span>
                 ) : (

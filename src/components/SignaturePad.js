@@ -167,7 +167,7 @@ export default function SignaturePad({
       <div className="mt-5 border border-neutral-200 rounded-xl bg-neutral-50/60 overflow-hidden">
         <div className="px-4 py-3 border-b border-neutral-200 bg-white">
           <div className="text-sm font-semibold text-neutral-800">Electronic Records & Signatures Disclosure</div>
-          <div className="text-[11px] text-neutral-500 mt-0.5">
+          <div className="text-2xs text-neutral-500 mt-0.5">
             Disclosure version {ESIGN_CONSENT_VERSION} · Required by the federal ESIGN Act and your state's UETA
             <button type="button" onClick={() => setShowFullDisclosure(s => !s)} className="ml-2 text-brand-600 hover:text-brand-700 underline">
               {showFullDisclosure ? "Hide details" : "Read full disclosure"}

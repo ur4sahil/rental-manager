@@ -131,7 +131,7 @@ export function Textarea({ className = "", rows = 3, size = "md", ...props }) {
 // ---- FORM FIELD (label + input wrapper) ----
 export function FormField({ label, required, className = "", size = "md", children }) {
   const labelCls = size === "sm"
-    ? "text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1"
+    ? "text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1"
     : "text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1";
   return (
     <div className={className}>
@@ -348,7 +348,7 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
           {grouped.length === 0 && <div className="px-3 py-3 text-xs text-neutral-400 text-center">No accounts match "{search}"</div>}
           {grouped.map(g => (
             <div key={g.type}>
-              <div className="px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider bg-neutral-50 sticky top-0">{g.type}</div>
+              <div className="px-3 py-1 text-2xs font-bold text-neutral-400 uppercase tracking-wider bg-neutral-50 sticky top-0">{g.type}</div>
               {g.items.map(a => {
                 const idx = flatItems.indexOf(a);
                 return (
@@ -761,7 +761,7 @@ export function DataTable({
                 >
                   {c.label}
                   {sort && sort.key === sortKeyOf(c) && (
-                    <span className="material-icons-outlined text-[14px] leading-none">
+                    <span className="material-icons-outlined text-sm leading-none">
                       {sort.dir === "asc" ? "arrow_upward" : "arrow_downward"}
                     </span>
                   )}

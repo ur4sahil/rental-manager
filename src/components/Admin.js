@@ -362,11 +362,11 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
 
   {/* Basic info */}
   <div className="grid grid-cols-6 gap-2 mb-3">
-  <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">First Name *</label><Input size="sm" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
-  <div className="col-span-1"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">MI</label><Input size="sm" maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
-  <div className="col-span-3"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Last Name *</label><Input size="sm" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
-  <div className="col-span-4"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Email *</label><Input size="sm" type="email" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingUser} autoComplete="off" className="disabled:bg-brand-50/30 disabled:text-neutral-400" /></div>
-  <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Role</label><Select size="sm" value={form.role} onChange={e => handleRoleChange(e.target.value)}>
+  <div className="col-span-2"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">First Name *</label><Input size="sm" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">MI</label><Input size="sm" maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Last Name *</label><Input size="sm" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  <div className="col-span-4"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Email *</label><Input size="sm" type="email" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingUser} autoComplete="off" className="disabled:bg-brand-50/30 disabled:text-neutral-400" /></div>
+  <div className="col-span-2"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Role</label><Select size="sm" value={form.role} onChange={e => handleRoleChange(e.target.value)}>
   {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
   <option key={key} value={key}>{r.label}</option>
   ))}
@@ -375,7 +375,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
       property-change and document-exception requests. Hidden for
       admin (no reviewer above them) and tenant (doesn't submit). */}
   {form.role !== "admin" && form.role !== "tenant" && (
-  <div className="col-span-6"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Approval Manager <span className="text-neutral-400 normal-case">(who reviews their edit/exception requests)</span></label>
+  <div className="col-span-6"><label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Approval Manager <span className="text-neutral-400 normal-case">(who reviews their edit/exception requests)</span></label>
   <Select size="sm" value={form.manager_email} onChange={e => setForm({ ...form, manager_email: e.target.value })}>
   <option value="">— No manager (admin reviews) —</option>
   {managerCandidates.filter(m => m.email && m.email !== form.email).map(m => (
@@ -744,9 +744,9 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
                       <div key={i} className="bg-white rounded-lg border border-brand-50 px-3 py-2 flex items-center gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-neutral-700 truncate">{t.wizardStepLabel}</div>
-                          {pending && <div className="text-[10px] text-warn-700 mt-0.5 font-semibold uppercase tracking-wide">Exception pending review</div>}
+                          {pending && <div className="text-2xs text-warn-700 mt-0.5 font-semibold uppercase tracking-wide">Exception pending review</div>}
                         </div>
-                        <span className={"text-[10px] px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+                        <span className={"text-2xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
                         <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t.wizardStep } })}>Open</Btn>
                         {canApprove ? (
                           <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Done</Btn>
@@ -766,7 +766,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-neutral-700 truncate">{t.title}</div>
                       </div>
-                      <span className={"text-[10px] px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+                      <span className={"text-2xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
                       <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
                     </div>
                   );

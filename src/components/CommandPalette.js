@@ -170,7 +170,7 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
             aria-activedescendant={results[active] ? `cmdk-opt-${active}` : undefined}
             autoComplete="off"
           />
-          <kbd className="text-[10px] text-neutral-400 border border-neutral-200 rounded px-1.5 py-0.5">esc</kbd>
+          <kbd className="text-2xs text-neutral-400 border border-neutral-200 rounded px-1.5 py-0.5">esc</kbd>
         </div>
 
         <div ref={listRef} id="cmdk-list" role="listbox" aria-label="Results" className="max-h-80 overflow-y-auto py-1">
@@ -182,7 +182,7 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
             return (
               <React.Fragment key={c.id + i}>
                 {header && (
-                  <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{header}</div>
+                  <div className="px-4 pt-2 pb-1 text-2xs font-semibold uppercase tracking-wide text-neutral-400">{header}</div>
                 )}
                 <button
                   id={`cmdk-opt-${i}`}
@@ -198,14 +198,14 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
                     <span className="text-sm text-neutral-800">{c.label}</span>
                     {c.context && <span className="text-xs text-neutral-400 ml-2">{c.context}</span>}
                   </span>
-                  {i === active && <kbd className="text-[10px] text-neutral-400 border border-neutral-200 rounded px-1.5 py-0.5">↵</kbd>}
+                  {i === active && <kbd className="text-2xs text-neutral-400 border border-neutral-200 rounded px-1.5 py-0.5">↵</kbd>}
                 </button>
               </React.Fragment>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-neutral-100 bg-neutral-50 text-[10px] text-neutral-400">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-neutral-100 bg-neutral-50 text-2xs text-neutral-400">
           <span><kbd className="border border-neutral-200 rounded px-1">↑</kbd> <kbd className="border border-neutral-200 rounded px-1">↓</kbd> move</span>
           <span><kbd className="border border-neutral-200 rounded px-1">↵</kbd> open</span>
           <span className="ml-auto">{companyName}</span>

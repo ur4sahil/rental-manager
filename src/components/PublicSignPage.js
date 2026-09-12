@@ -205,7 +205,7 @@ export default function PublicSignPage({ token }) {
                 : "You'll receive a copy once all other parties have signed."}
           </p>
           {doneInfo?.integrity_hash && (
-            <div className="text-[10px] tnum text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2 break-all space-y-1 text-left">
+            <div className="text-2xs tnum text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2 break-all space-y-1 text-left">
               <div><span className="text-neutral-500">Document hash at send:</span> <span className="text-neutral-700">{(doneInfo.doc_hash_at_send || "").slice(0, 32)}…</span></div>
               <div><span className="text-neutral-500">Signature hash:</span> <span className="text-neutral-700">{doneInfo.integrity_hash.slice(0, 32)}…</span></div>
               {pdfStatus === "uploading" && <div className="text-warn-700">⏳ Generating signed PDF…</div>}
@@ -225,7 +225,7 @@ export default function PublicSignPage({ token }) {
             </a>
           )}
           {doneInfo?.all_signed && doneInfo?.signers_queued > 0 && (
-            <p className="text-[11px] text-neutral-400 mt-2">
+            <p className="text-2xs text-neutral-400 mt-2">
               All {doneInfo.signers_queued} signers will receive a copy by email.
             </p>
           )}
@@ -265,7 +265,7 @@ export default function PublicSignPage({ token }) {
           <div className="text-right">
             <div className="text-xs text-neutral-400">Signing as</div>
             <div className="text-sm font-semibold text-neutral-700">{payload.signer_name || payload.signer_email}</div>
-            <div className="text-[10px] text-neutral-400 capitalize">{(payload.signer_role || "").replace(/_/g, " ")}</div>
+            <div className="text-2xs text-neutral-400 capitalize">{(payload.signer_role || "").replace(/_/g, " ")}</div>
           </div>
         </div>
       </div>
@@ -285,7 +285,7 @@ export default function PublicSignPage({ token }) {
             "the document" abstractly; with it they're committing to
             a specific 64-character SHA-256 they can compare later. */}
         {payload.doc_hash_at_send && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-brand-50/40 border border-brand-100 text-[11px] text-neutral-600 flex items-start gap-2">
+          <div className="mb-4 px-4 py-3 rounded-xl bg-brand-50/40 border border-brand-100 text-2xs text-neutral-600 flex items-start gap-2">
             <span className="material-icons-outlined text-brand-600 text-base mt-0.5">fingerprint</span>
             <div>
               <div className="font-semibold text-neutral-700 mb-0.5">You are signing the version of this document with hash:</div>
@@ -305,7 +305,7 @@ export default function PublicSignPage({ token }) {
           onSubmit={handleSign}
         />
 
-        <p className="text-[10px] text-neutral-400 text-center mt-4">
+        <p className="text-2xs text-neutral-400 text-center mt-4">
           This link expires {payload.expires_at ? "on " + new Date(payload.expires_at).toLocaleDateString() : "in 30 days"}.
           Your IP address, browser information, and a cryptographic hash of this document are recorded for audit purposes.
         </p>

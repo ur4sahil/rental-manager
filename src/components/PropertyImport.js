@@ -635,7 +635,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       {STEPS.map((s, i) => (
         <React.Fragment key={s.id}>
           <div className={`flex items-center gap-1.5 text-xs font-medium ${i <= stepIdx ? "text-brand-700" : "text-neutral-300"}`}>
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${i < stepIdx ? "bg-brand-600 text-white" : i === stepIdx ? "bg-brand-100 text-brand-700 ring-2 ring-brand-400" : "bg-neutral-100"}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-2xs ${i < stepIdx ? "bg-brand-600 text-white" : i === stepIdx ? "bg-brand-100 text-brand-700 ring-2 ring-brand-400" : "bg-neutral-100"}`}>
               {i < stepIdx ? "✓" : i + 1}
             </span>
             {s.label}
@@ -714,7 +714,7 @@ function Stat({ label, value, tone = "neutral" }) {
   return (
     <div className="rounded-xl border border-neutral-100 px-3 py-2">
       <div className={`text-xl font-semibold ${tones[tone]}`}>{value}</div>
-      <div className="text-[11px] text-neutral-500 uppercase tracking-wide">{label}</div>
+      <div className="text-2xs text-neutral-500 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

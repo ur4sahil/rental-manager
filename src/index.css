@@ -33,6 +33,38 @@
   --color-danger: #dc2626;
   --color-warning: #d97706;
 
+  /* ---- TYPE SCALE ----
+     The app had no scale: Tailwind's defaults plus 115 arbitrary one-off
+     sizes -- text-[10px] in 79 places, text-[11px] in 31, text-[9px] in 4
+     and a lone text-[14px]. An arbitrary size cannot be changed centrally,
+     which is the whole complaint: "why are we hardcoding the UI changes".
+
+     Declaring the steps here makes them Tailwind tokens, so text-xs and
+     friends read from this block and the density of the entire app is one
+     edit. The steps below are the ones actually in use, plus one named
+     micro step for the sub-xs text that had been spelled three different
+     ways.
+
+     text-2xs is 11px, not 10px or 9px. 9px fails legibility outright, and
+     three near-identical micro sizes is how the inconsistency arose --
+     one named step is the point of having a scale. Chosen at 11px because
+     that is the floor QuickBooks uses for its own table meta text. */
+  --text-2xs: 0.6875rem;   /* 11px -- table meta, badges, timestamps */
+  /* Tailwind pairs a line-height with each of its built-in steps; a custom
+     step gets none and silently inherits the parent's, which at 11px reads
+     loose next to the 12px rows beside it. 1rem matches what Tailwind
+     gives text-xs. */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;      /* 12px -- dense table body, secondary labels */
+  --text-sm: 0.875rem;     /* 14px -- body default (see :root font-size) */
+  --text-base: 1rem;       /* 16px */
+  --text-lg: 1.125rem;     /* 18px -- card and panel headings */
+  --text-xl: 1.25rem;      /* 20px */
+  --text-2xl: 1.5rem;      /* 24px -- page titles, stat figures */
+  --text-3xl: 1.875rem;    /* 30px */
+  --text-4xl: 2.25rem;     /* 36px -- marketing only */
+  --text-5xl: 3rem;        /* 48px -- marketing only */
+
   /* Font families */
   --font-display: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-body: 'Figtree', 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;

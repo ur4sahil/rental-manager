@@ -64,7 +64,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
   return (
     <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 bg-neutral-50/50">
       {bubbles.map(b => b.type === "divider" ? (
-        <div key={b.key} className="flex items-center gap-2 my-3 text-[11px] text-neutral-400 uppercase tracking-wide">
+        <div key={b.key} className="flex items-center gap-2 my-3 text-2xs text-neutral-400 uppercase tracking-wide">
           <div className="flex-1 h-px bg-neutral-200" /><span>{b.label}</span><div className="flex-1 h-px bg-neutral-200" />
         </div>
       ) : (() => {
@@ -113,7 +113,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
         return (
           <div key={b.key} className={"group flex items-end gap-2 " + (outgoing ? "justify-end" : "justify-start")}>
             {!outgoing && (
-              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
+              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
             )}
             {canDelete && (
               <button
@@ -129,13 +129,13 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
             <div className={"max-w-sm rounded-2xl px-4 py-2 shadow-sm " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
               {m.message && <div className="text-sm whitespace-pre-wrap break-words">{m.message}</div>}
               {m.attachment_url && <AttachmentChip url={m.attachment_url} name={m.attachment_name} outgoing={outgoing} />}
-              <div className={"flex items-center gap-1.5 text-[11px] mt-1 " + (outgoing ? "text-brand-100" : "text-neutral-400")}>
+              <div className={"flex items-center gap-1.5 text-2xs mt-1 " + (outgoing ? "text-brand-100" : "text-neutral-400")}>
                 <span>{displayName}</span><span>·</span><span>{timeLabel}</span>
                 {receipt && <><span>·</span><span>{receipt}</span></>}
               </div>
             </div>
             {outgoing && (
-              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
+              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
             )}
           </div>
         );
@@ -517,12 +517,12 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-neutral-800 truncate">{tenant.name || "Unknown"}</div>
-                      <div className="text-[11px] text-neutral-400 shrink-0">{when}</div>
+                      <div className="text-2xs text-neutral-400 shrink-0">{when}</div>
                     </div>
                     <div className="text-xs text-neutral-500 truncate mt-0.5">{preview}</div>
-                    <div className="text-[11px] text-neutral-400 truncate">{tenant.property || ""}</div>
+                    <div className="text-2xs text-neutral-400 truncate">{tenant.property || ""}</div>
                   </div>
-                  {unread > 0 && <div className="w-5 h-5 rounded-full bg-danger-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{unread > 9 ? "9+" : unread}</div>}
+                  {unread > 0 && <div className="w-5 h-5 rounded-full bg-danger-500 text-white text-2xs font-bold flex items-center justify-center shrink-0">{unread > 9 ? "9+" : unread}</div>}
                 </button>
               );
             })}

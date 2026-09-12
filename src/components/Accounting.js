@@ -270,7 +270,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="31" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /><div className="text-[11px] text-subtle-400 mt-1">In months with fewer days (e.g. Feb), posts on the last available day.</div></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="31" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /><div className="text-2xs text-subtle-400 mt-1">In months with fewer days (e.g. Feb), posts on the last available day.</div></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {propertyLabel(t.property)}</option>)}</Select></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
@@ -906,7 +906,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
       <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-4">
         <label className="text-xs font-medium text-neutral-500 block mb-1">Opening date</label>
         <Input type="date" aria-label="Opening balance as-of date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} className="max-w-xs" />
-        <p className="text-[11px] text-neutral-400 mt-1">The day BEFORE your normal bookkeeping starts. For a calendar-year migration, use the prior Dec 31.</p>
+        <p className="text-2xs text-neutral-400 mt-1">The day BEFORE your normal bookkeeping starts. For a calendar-year migration, use the prior Dec 31.</p>
       </div>
 
       {groups.map(g => {
@@ -918,7 +918,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
           <div key={g.type} className="bg-white rounded-xl border border-neutral-200 mb-3 overflow-hidden">
             <div className="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
               <div className="text-sm font-semibold text-neutral-800">{g.title}</div>
-              <div className="text-[11px] text-neutral-400">{g.note}</div>
+              <div className="text-2xs text-neutral-400">{g.note}</div>
             </div>
             <DataTable
               hideHeader
@@ -960,7 +960,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
               : `Plug to 3000 Opening Balance Equity: ${formatCurrency(Math.abs(plug))} ${plug > 0 ? "credit" : "debit"}`}
           </span>
         </div>
-        <p className="text-[11px] text-neutral-400 mt-2">
+        <p className="text-2xs text-neutral-400 mt-2">
           Opening Balance Equity is a clearing account. After you've entered everything and the Balance Sheet looks right, move the OBE balance to Owner's Equity or Retained Earnings with a normal journal entry.
         </p>
       </div>
@@ -1267,7 +1267,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-neutral-500">Reference</label>{refLabel(form.reference) !== (form.reference || "").trim() && (form.reference || "").trim()? <div className="mt-1 px-3 py-2 text-sm rounded-lg bg-neutral-50 border border-neutral-200 text-neutral-600 flex items-center justify-between gap-2" title={form.reference}><span>{refLabelFull(form.reference)}</span><span className="text-[10px] uppercase tracking-wide text-neutral-400">system</span></div>: <Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} placeholder="Optional note or invoice no." className="mt-1 w-full" />}</div>
+  <div><label className="text-xs font-medium text-neutral-500">Reference</label>{refLabel(form.reference) !== (form.reference || "").trim() && (form.reference || "").trim()? <div className="mt-1 px-3 py-2 text-sm rounded-lg bg-neutral-50 border border-neutral-200 text-neutral-600 flex items-center justify-between gap-2" title={form.reference}><span>{refLabelFull(form.reference)}</span><span className="text-2xs uppercase tracking-wide text-neutral-400">system</span></div>: <Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} placeholder="Optional note or invoice no." className="mt-1 w-full" />}</div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
   </div>
   {/* Property is selected per-line via Class, not at header level */}
@@ -5747,7 +5747,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
           {(userRole === "admin" || userRole === "owner" || userRole === "manager") ? (
             <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
           ) : (
-            <div className="text-[11px] text-danger-500 italic">Only admin/manager can unlock.</div>
+            <div className="text-2xs text-danger-500 italic">Only admin/manager can unlock.</div>
           )}
         </div>
       </div>

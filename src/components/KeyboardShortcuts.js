@@ -118,7 +118,7 @@ export function useShortcutsHost(getScope) {
 
 function Key({ children }) {
   return (
-    <kbd className="inline-flex items-center justify-center min-w-[22px] px-1.5 py-0.5 rounded border border-neutral-300 bg-white text-[11px] font-medium text-neutral-600 shadow-[0_1px_0_rgba(0,0,0,0.06)]">
+    <kbd className="inline-flex items-center justify-center min-w-[22px] px-1.5 py-0.5 rounded border border-neutral-300 bg-white text-2xs font-medium text-neutral-600 shadow-[0_1px_0_rgba(0,0,0,0.06)]">
       {children}
     </kbd>
   );
@@ -160,7 +160,7 @@ export function ShortcutsHelp({ open, onClose, scope }) {
             <section key={g.id}>
               <div className="flex items-baseline gap-2 mb-2">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{g.title}</h4>
-                {g.id === scope && <span className="text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full">you're here</span>}
+                {g.id === scope && <span className="text-2xs bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full">you're here</span>}
               </div>
               {g.hint && <p className="text-xs text-neutral-400 mb-2">{g.hint}</p>}
               <div className="rounded-xl border border-neutral-100 divide-y divide-neutral-100">
@@ -169,7 +169,7 @@ export function ShortcutsHelp({ open, onClose, scope }) {
                     <span className="flex items-center gap-1 shrink-0 w-32">
                       {it.keys.map((k, j) => (
                         <React.Fragment key={j}>
-                          {j > 0 && <span className="text-[10px] text-neutral-300">{it.keys.length === 2 && (it.keys[0] === "↑" || it.keys[0] === "J") ? "/" : "+"}</span>}
+                          {j > 0 && <span className="text-2xs text-neutral-300">{it.keys.length === 2 && (it.keys[0] === "↑" || it.keys[0] === "J") ? "/" : "+"}</span>}
                           <Key>{k}</Key>
                         </React.Fragment>
                       ))}

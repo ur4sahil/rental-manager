@@ -1329,10 +1329,10 @@ function AppInner() {
   className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
   <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
   {n.id === "messages" && unreadMessages > 0 && (
-  <span className="bg-danger-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
+  <span className="bg-danger-500 text-white rounded-full text-2xs font-bold px-1.5 py-0.5 min-w-[18px] text-center">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
   )}
   {n.id === "tasks" && pendingTasksCount > 0 && (
-  <span className="bg-warn-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">{pendingTasksCount > 99 ? "99+" : pendingTasksCount}</span>
+  <span className="bg-warn-500 text-white rounded-full text-2xs font-bold px-1.5 py-0.5 min-w-[18px] text-center">{pendingTasksCount > 99 ? "99+" : pendingTasksCount}</span>
   )}
   </button>
   {n.children && <button onClick={(e) => { e.stopPropagation(); setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); }}

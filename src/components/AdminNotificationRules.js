@@ -504,7 +504,7 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
           />
           {(draft.subject_template || draft.template) && (
             <Card padding="p-3" className="bg-neutral-50/50 border-neutral-200">
-              <div className="text-[11px] font-semibold text-neutral-500 uppercase mb-1">Preview (sample data)</div>
+              <div className="text-2xs font-semibold text-neutral-500 uppercase mb-1">Preview (sample data)</div>
               {draft.subject_template && (
                 <div className="text-sm font-semibold text-neutral-800 mb-2">{previewSubject}</div>
               )}
@@ -596,11 +596,11 @@ function VariableChips({ eventVars, extraVars, onAddExtra, onRemoveExtra, onInse
         {eventVars.map(v => (
           <button key={v} type="button"
             onClick={() => onInsert("{{" + v + "}}")}
-            className="text-[11px] tnum bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded hover:bg-brand-100 hover:text-brand-700"
+            className="text-2xs tnum bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded hover:bg-brand-100 hover:text-brand-700"
             title="Click to insert">{"{{" + v + "}}"}</button>
         ))}
         {(extraVars || []).map(v => (
-          <span key={v} className="inline-flex items-center gap-1 text-[11px] tnum bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">
+          <span key={v} className="inline-flex items-center gap-1 text-2xs tnum bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">
             <button type="button" onClick={() => onInsert("{{" + v + "}}")} className="hover:underline" title="Click to insert">{"{{" + v + "}}"}</button>
             <button type="button" onClick={() => onRemoveExtra(v)} className="text-brand-400 hover:text-danger-600" title="Remove">×</button>
           </span>
@@ -613,7 +613,7 @@ function VariableChips({ eventVars, extraVars, onAddExtra, onRemoveExtra, onInse
           className="w-48" />
         <Btn variant="secondary" size="xs" onClick={tryAdd}>+ Add variable</Btn>
       </div>
-      <div className="text-[11px] text-neutral-400 mt-1">
+      <div className="text-2xs text-neutral-400 mt-1">
         Custom variables only render if the call site actually carries that data field. Use them as reminders or for vars you've wired up downstream.
       </div>
     </div>
@@ -679,14 +679,14 @@ function RecipientList({ label, entries, onChange, allowPresets, literalsOnlyHin
           <Btn variant="secondary" size="xs" onClick={addLiteral}>+ Email</Btn>
         </div>
       </div>
-      {literalsOnlyHint && <div className="text-[11px] text-neutral-400 mt-1">{literalsOnlyHint}</div>}
+      {literalsOnlyHint && <div className="text-2xs text-neutral-400 mt-1">{literalsOnlyHint}</div>}
       {showPresets && (
         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1">
           {RECIPIENT_PRESETS.map((p, i) => (
             <button key={i} onClick={() => { addEntry({ kind: p.kind, value: p.value }); setShowPresets(false); }}
               className="text-left bg-white border border-neutral-200 hover:border-brand-300 rounded-lg px-3 py-2">
               <div className="text-xs font-semibold text-neutral-800">{p.label}</div>
-              <div className="text-[11px] text-neutral-500">{p.explain}</div>
+              <div className="text-2xs text-neutral-500">{p.explain}</div>
             </button>
           ))}
         </div>

@@ -253,7 +253,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         )}
         {mergeFields.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap px-3 py-1.5 border-b border-neutral-100 bg-white">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
+            <span className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
             {mergeFields.filter(f => f.name).map(f => (
               <button
                 key={f.name}
@@ -266,7 +266,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => insertMerge(f.name)}
                 title={"Drag onto the page or click to insert {{" + f.name + "}}"}
-                className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
+                className="text-2xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
               >
                 {"{{" + (f.label || f.name) + "}}"}
               </button>
@@ -300,7 +300,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
       {/* Merge fields row — click OR drag onto the canvas to insert */}
       {mergeFields.length > 0 && (
         <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-x border-neutral-100 bg-white">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
+          <span className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
           {mergeFields.filter(f => f.name).map(f => (
             <button
               key={f.name}
@@ -313,7 +313,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
               onMouseDown={e => e.preventDefault()}
               onClick={() => insertMerge(f.name)}
               title={"Drag onto the page or click to insert {{" + f.name + "}}"}
-              className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
+              className="text-2xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
             >
               {"{{" + (f.label || f.name) + "}}"}
             </button>

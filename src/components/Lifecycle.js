@@ -458,7 +458,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
       </div>
     );
   })()}
-  <div className="text-[11px] text-neutral-400 pt-1">Deposit posts as a credit on the tenant's ledger at move-out. No cash refund is auto-issued — process manually if/when refunding.</div>
+  <div className="text-2xs text-neutral-400 pt-1">Deposit posts as a credit on the tenant's ledger at move-out. No cash refund is auto-issued — process manually if/when refunding.</div>
   </div>
   <div className="flex justify-between mt-6">
   <Btn variant="ghost" onClick={() => setStep(2)}>← Back</Btn>
@@ -896,7 +896,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   return (
   <div key={s.id} className="flex-1">
   <div className={`h-2 rounded-full ${isComplete ? "bg-danger-500" : isCurrent ? "bg-danger-300" : "bg-neutral-100"}`} />
-  <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-danger-600 font-bold" : isComplete ? "text-danger-400" : "text-neutral-300"}`}>{s.label.split(" ")[0]}</div>
+  <div className={`text-center mt-1 text-2xs ${isCurrent ? "text-danger-600 font-bold" : isComplete ? "text-danger-400" : "text-neutral-300"}`}>{s.label.split(" ")[0]}</div>
   </div>
   );
   })}

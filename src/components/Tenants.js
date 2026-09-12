@@ -1386,15 +1386,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       forty rows by eye. */}
   <div className="grid grid-cols-3 gap-2 mb-3">
   <div className="bg-danger-50 rounded-xl px-3 py-2 text-center">
-  <div className="text-[11px] text-danger-600">Charged</div>
+  <div className="text-2xs text-danger-600">Charged</div>
   <div className="text-sm font-bold text-danger-700 tnum">{formatCurrency(charged)}</div>
   </div>
   <div className="bg-positive-50 rounded-xl px-3 py-2 text-center">
-  <div className="text-[11px] text-positive-700">Paid / credited</div>
+  <div className="text-2xs text-positive-700">Paid / credited</div>
   <div className="text-sm font-bold text-positive-700 tnum">{formatCurrency(paid)}</div>
   </div>
   <div className="bg-neutral-100 rounded-xl px-3 py-2 text-center">
-  <div className="text-[11px] text-neutral-500">Balance</div>
+  <div className="text-2xs text-neutral-500">Balance</div>
   <div className={"text-sm font-bold tnum " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-700" : "text-neutral-700")}>{formatCurrency(safeNum(selectedTenant.balance))}</div>
   </div>
   </div>
@@ -1402,7 +1402,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Aligned columns. The amount and the running balance used to be
       stacked in one right-hand block, which made a column of figures
       impossible to scan. */}
-  <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 pb-1 border-b border-brand-50">
+  <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-2xs font-semibold uppercase tracking-wide text-neutral-400 pb-1 border-b border-brand-50">
   <div>Transaction</div><div className="text-right w-24">Amount</div><div className="text-right w-24">Balance</div>
   </div>
   <div>
@@ -2342,8 +2342,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex items-center gap-1">
   <Badge status={t.lease_status} />
   {t.is_voucher && <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold">Voucher</span>}
-  {portalStatus === "active" && <span className="text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded-full font-semibold" title="Tenant has signed up for the portal">Portal Active</span>}
-  {portalStatus === "invited" && <span className="text-[10px] bg-highlight-50 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold" title="Invite sent, not yet accepted">Invited</span>}
+  {portalStatus === "active" && <span className="text-2xs bg-success-100 text-success-700 px-1.5 py-0.5 rounded-full font-semibold" title="Tenant has signed up for the portal">Portal Active</span>}
+  {portalStatus === "invited" && <span className="text-2xs bg-highlight-50 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold" title="Invite sent, not yet accepted">Invited</span>}
   </div>
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
