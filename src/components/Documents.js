@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -181,61 +181,62 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   </div>
 
   <div className="bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr>{["Document", "Property", "Type", "Date", "Tenant Visible", "Actions"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
-  </thead>
-  <tbody>
-  {filtered.map(d => (
-  <tr key={d.id} className="border-t border-neutral-100/60 hover:bg-brand-50/30">
-  <td className="px-3 py-2.5 font-medium text-neutral-800">📄 {d.name}</td>
-  <td className="px-3 py-2.5 text-neutral-400">{d.property}</td>
-  <td className="px-3 py-2.5"><span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
-  <td className="px-3 py-2.5 text-neutral-400">{d.uploaded_at?.slice(0, 10)}</td>
-  <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
-  <td className="px-3 py-2.5">
-  <div className="flex gap-2">
-  {d.url ? (
-  <>
-  <TextLink tone="brand" size="xs" onClick={async () => {
-  const isFullUrl = d.url && d.url.startsWith("http");
-  if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
-  const path = d.file_name || d.url;
-  if (!path) { showToast("No file path available.", "error"); return; }
-  const url = await getSignedUrl("documents", path);
-  if (url) window.open(url, "_blank", "noopener,noreferrer");
-  else showToast("Could not generate secure download link.", "error");
-  }}>View</TextLink>
-  <TextLink tone="positive" size="xs" onClick={async () => {
-  const isFullUrl = d.url && d.url.startsWith("http");
-  if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
-  const path = d.file_name || d.url;
-  if (!path) return;
-  const url = await getSignedUrl("documents", path);
-  if (url) window.open(url, "_blank", "noopener,noreferrer");
-  }}>Download</TextLink>
-  </>
-  ) : d.file_name ? (
-  <>
-  <TextLink tone="brand" size="xs" onClick={async () => {
-  const url = await getSignedUrl("documents", d.file_name);
-  if (url) window.open(url, "_blank", "noopener,noreferrer");
-  else showToast("Could not generate secure link for this file.", "error");
-  }}>View</TextLink>
-  </>
-  ) : (
-  <span className="text-xs text-neutral-400">No file</span>
-  )}
-  <TextLink tone="danger" size="xs" onClick={() => deleteDoc(d.id, d.name, d.file_name)}>Delete</TextLink>
-  </div>
-  </td>
-  </tr>
-  ))}
-  {filtered.length === 0 && (
-  <tr><td colSpan={6} className="px-3 py-8 text-center text-neutral-400">No documents yet. Upload one above.</td></tr>
-  )}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "document", label: "Document", className: "font-medium text-neutral-800",
+        render: d => (<>📄 {d.name}</>) },
+      { key: "property", label: "Property", className: "text-neutral-400",
+        render: d => (<>{d.property}</>) },
+      { key: "type", label: "Type",
+        render: d => (<>
+          <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span>
+        </>) },
+      { key: "date", label: "Date", className: "text-neutral-400",
+        render: d => (<>{d.uploaded_at?.slice(0, 10)}</>) },
+      { key: "tenant_visible", label: "Tenant Visible",
+        render: d => (<>{d.tenant_visible ? "✅" : "🔒"}</>) },
+      { key: "actions", label: "Actions",
+        render: d => (<>
+          <div className="flex gap-2">
+            {d.url ? (
+            <>
+            <TextLink tone="brand" size="xs" onClick={async () => {
+            const isFullUrl = d.url && d.url.startsWith("http");
+            if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
+            const path = d.file_name || d.url;
+            if (!path) { showToast("No file path available.", "error"); return; }
+            const url = await getSignedUrl("documents", path);
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            else showToast("Could not generate secure download link.", "error");
+            }}>View</TextLink>
+            <TextLink tone="positive" size="xs" onClick={async () => {
+            const isFullUrl = d.url && d.url.startsWith("http");
+            if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
+            const path = d.file_name || d.url;
+            if (!path) return;
+            const url = await getSignedUrl("documents", path);
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            }}>Download</TextLink>
+            </>
+            ) : d.file_name ? (
+            <>
+            <TextLink tone="brand" size="xs" onClick={async () => {
+            const url = await getSignedUrl("documents", d.file_name);
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            else showToast("Could not generate secure link for this file.", "error");
+            }}>View</TextLink>
+            </>
+            ) : (
+            <span className="text-xs text-neutral-400">No file</span>
+            )}
+            <TextLink tone="danger" size="xs" onClick={() => deleteDoc(d.id, d.name, d.file_name)}>Delete</TextLink>
+            </div>
+        </>) },
+    ]}
+    rows={filtered}
+    rowKey={d => d.id}
+    empty="Nothing to show"
+  />
   </div>
   </div>
   );
