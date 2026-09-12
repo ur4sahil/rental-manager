@@ -443,6 +443,36 @@ export function FileInput({ className = "", accept, ...props }) {
   );
 }
 
+// ---- COMPANY SCOPE ----
+// The active company id, provided once at the app root.
+//
+// Shareable/new-tab links have to name their company, because the app
+// strips ?company= from the address bar immediately after selecting one --
+// so by the time a user cmd-clicks a figure there is nothing left in the
+// URL to copy forward. The alternative was threading companyId through all
+// fifteen LedgerLink call sites, where forgetting one produces a link that
+// works for a single-company user and dumps a multi-company user at the
+// company selector. A context cannot be forgotten at a call site.
+export const CompanyScope = React.createContext(null);
+export function useCompanyScope() { return React.useContext(CompanyScope); }
+
+// ---- DRILL LINK ----
+// A figure or label that drills through to its detail. QuickBooks renders
+// these as ordinary text and only reveals the link on hover, which is what
+// keeps a report reading as a statement rather than as a page of hyperlinks.
+//
+// It went the other way first -- brand colour plus a permanent dotted
+// underline -- because nothing had marked the totals as clickable. That
+// over-corrected: every account name and every amount in the Balance Sheet
+// came out blue and underlined. Sahil: "unneccesary underlines and colours
+// coding in the reports". Discoverability now rides on the cursor and the
+// hover, as it does in QuickBooks.
+//
+// Every drillable figure in the app resolves its affordance from here, so
+// this constant is the only place the decision lives.
+export const DRILL_LINK =
+  "text-inherit no-underline hover:text-brand-700 hover:underline hover:decoration-solid underline-offset-2 cursor-pointer";
+
 // ---- TEXT LINK ----
 // Underline-on-hover button that mirrors the common `text-xs text-COLOR-600
 // hover:underline` pattern used for inline row actions (Edit / Delete /
@@ -581,12 +611,34 @@ export function DataTable({
   // A first column pinned while the rest scrolls, for reports with one
   // column per property.
   stickyFirstColumn = false,
+  // Per-row DOM attributes, as rowAttrs(row, index) => object. Keyboard
+  // navigation needs to find a row by index from document.activeElement,
+  // which needs a real attribute on the <tr>; the JE line editor carried
+  // data-je-line={i} for exactly that and lost it when it was flat-migrated
+  // here, silently breaking every shortcut that walks lines.
+  rowAttrs = null,
+  // Sorting lives in the primitive, not in a per-page SortTh. Pass
+  // sort={{ key, dir }} plus onSort(key), and give a column `sort: true`
+  // (it sorts by its own key) or `sort: "other_key"`.
+  //
+  // Tenants.js had its own SortTh, which is how its whole table got
+  // destroyed: the migration tool scans for literal <th>, saw one (the
+  // checkbox header) behind seven <SortTh> components, and emitted a
+  // one-column table. Every page that grows a sortable header from here
+  // on gets it from the same place, so there is nothing bespoke left to
+  // misread. It also puts aria-sort on the <th>, where it belongs --
+  // SortTh had it on the inner <button>, where assistive tech does not
+  // look for it.
+  sort = null,
+  onSort = null,
   scroll = true,
   className = "",
   ariaLabel,
 }) {
   const td = TD[density] || TD.normal;
   const th = TH[density] || TH.normal;
+  // `sort: true` means "sort by my own key"; a string names another field.
+  const sortKeyOf = c => (c.sort === true ? c.key : (typeof c.sort === "string" ? c.sort : null));
   const cols = columns.length || 1;
   const keyOf = (r, i) => (rowKey ? rowKey(r, i) : (r && r.id != null ? r.id : i));
 
@@ -619,6 +671,7 @@ export function DataTable({
       const main = (
         <tr
           key={keyOf(row, i)}
+          {...(rowAttrs ? rowAttrs(row, i) : null)}
           onClick={onRowClick ? () => onRowClick(row, i) : undefined}
           className={
             "border-t border-neutral-100 " +
@@ -671,8 +724,24 @@ export function DataTable({
                 stickyFirstColumn && c === columns[0] ? "sticky left-0 z-20 bg-neutral-50" : "",
                 c.thClassName || ""].filter(Boolean).join(" ")}
               style={c.width ? { width: c.width } : undefined}
+              aria-sort={sortKeyOf(c) && sort && sort.key === sortKeyOf(c)
+                ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
             >
-              {c.label}
+              {sortKeyOf(c) && onSort ? (
+                <button
+                  type="button"
+                  onClick={() => onSort(sortKeyOf(c))}
+                  className="inline-flex items-center gap-1 uppercase hover:text-neutral-700"
+                  aria-label={`Sort by ${c.label}`}
+                >
+                  {c.label}
+                  {sort && sort.key === sortKeyOf(c) && (
+                    <span className="material-icons-outlined text-[14px] leading-none">
+                      {sort.dir === "asc" ? "arrow_upward" : "arrow_downward"}
+                    </span>
+                  )}
+                </button>
+              ) : c.label}
             </th>
           ))}
         </tr>

@@ -2275,27 +2275,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {(() => {
   // Sort state for the tenant list. Name ascending matches how the list
   // was ordered before sorting existed, so the default view is unchanged.
-  const SortTh = ({ col, label, className = "px-4 py-3 text-left" }) => {
-    const active = tenantSort.key === col;
-    return (
-      <th className={className}>
-        <button
-          type="button"
-          onClick={() => setTenantSort(s => ({ key: col, dir: s.key === col && s.dir === "asc" ? "desc" : "asc" }))}
-          className="inline-flex items-center gap-1 uppercase hover:text-neutral-700"
-          aria-label={`Sort by ${label}${active ? (tenantSort.dir === "asc" ? ", ascending" : ", descending") : ""}`}
-          aria-sort={active ? (tenantSort.dir === "asc" ? "ascending" : "descending") : "none"}
-        >
-          {label}
-          {/* The inactive arrow is rendered but faint, so the columns do
-              not shift width when the sort moves between them. */}
-          <span className={`material-icons-outlined text-sm leading-none ${active ? "text-brand-600" : "text-neutral-300"}`}>
-            {active && tenantSort.dir === "desc" ? "arrow_downward" : "arrow_upward"}
-          </span>
-        </button>
-      </th>
-    );
-  };
 
   const ft = tenants.filter(t => {
   if (tenantFilter !== "all" && tenantFilter && t.lease_status !== tenantFilter) return false;
@@ -2395,15 +2374,47 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <DataTable
+    // Restored from the pre-migration markup. The flat migration emitted a
+    // ONE-column table here -- just the select-all checkbox -- because the
+    // other seven headers were <SortTh> components rather than literal
+    // <th>, so the tool never saw them and lifted only the first <td>.
+    // Name, Property, Email, Status, Rent, Balance and the row actions all
+    // disappeared from the table view, and nothing failed: it still
+    // rendered, built and linted.
     columns={[
-      { key: "actions", label: "Actions",
-        render: t => (<>
-          <Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" />
-        </>) },
+      // The select-all control lived in the <th>, so it went with the
+      // header. A column label takes a node, which is where it belongs.
+      { key: "select", thClassName: "w-8",
+        label: <Checkbox checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" />,
+        render: t => (
+          <span onClick={e => e.stopPropagation()}>
+            <Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" />
+          </span>
+        ) },
+      { key: "name", label: "Name", sort: true,
+        render: t => (
+          <CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-medium text-brand-600 hover:underline text-left">{t.name}</CardOpenButton>
+        ) },
+      { key: "property", label: "Property", sort: true, className: "text-neutral-500",
+        render: t => t.property },
+      { key: "email", label: "Email", sort: true, className: "text-neutral-400 text-xs",
+        render: t => t.email },
+      { key: "lease_status", label: "Status", sort: true,
+        render: t => <Badge status={t.lease_status} /> },
+      { key: "rent", label: "Rent", sort: true, align: "right", className: "font-semibold",
+        render: t => (t.rent ? formatCurrency(t.rent) : "\u2014") },
+      { key: "balance", label: "Balance", sort: true, align: "right",
+        className: t => `font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`,
+        render: t => (t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)) },
+      { key: "actions", label: "", align: "right",
+        render: t => <TenantActions t={t} /> },
     ]}
     rows={ft}
     rowKey={t => t.id}
-    empty="Nothing to show"
+    sort={tenantSort}
+    onSort={key => setTenantSort(sv => ({ key, dir: sv.key === key && sv.dir === "asc" ? "desc" : "asc" }))}
+    className={undefined}
+    empty="No tenants found"
   />
   </div>
   )}

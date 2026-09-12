@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable} from "../ui";
+import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
@@ -120,35 +120,33 @@ export function refLabelFull(reference) {
 // query, but window.location.search survives the login flow (same as the
 // existing ?company param). The hash carries the page (#acct_coa) so the
 // fresh tab lands on Accounting with the Chart of Accounts behind the modal.
-export function ledgerHref(ids, title) {
+export function ledgerHref(ids, title, companyId) {
   const arr = Array.isArray(ids) ? ids : [ids];
   // Carry the label too. Reconstructing a title from ids alone is fine for
   // one account but unreadable for a total: "TOTAL ASSETS" beats forty
   // account names concatenated into the modal header.
-  return "?ledger=" + encodeURIComponent(arr.join(","))
-    + (title ? "&ledgerTitle=" + encodeURIComponent(String(title).slice(0, 120)) : "")
-    + "#acct_coa";
+  // Carry the CURRENT query string forward rather than replacing it. An
+  // href beginning with "?" discards every existing param, so a fresh tab
+  // arrived with no ?company= and fell through to the company selector --
+  // "sometimes company switcher". Preserving it means the new tab lands in
+  // the same company the link was clicked in.
+  const params = new URLSearchParams(window.location.search);
+  if (companyId) params.set("company", companyId);
+  params.set("ledger", arr.join(","));
+  if (title) params.set("ledgerTitle", String(title).slice(0, 120));
+  else params.delete("ledgerTitle");
+  return "?" + params.toString() + "#acct_coa";
 }
 
-// Every drillable figure in the reports goes through this, so the
-// affordance lives here rather than being re-specified at each call site.
-//
-// It used to inherit the surrounding text colour with only
-// `hover:underline`, which meant a clickable total was pixel-identical to
-// plain text until the mouse happened to land on it. Sahil reported the
-// totals as "not clickable" while clicking the section HEADINGS ("Assets",
-// "Liabilities") -- reasonable, because nothing marked the totals as the
-// clickable thing. Brand colour plus a dotted underline is the app's
-// existing link language (see TextLink in ui.js).
-const LEDGER_LINK_BASE =
-  "text-brand-600 hover:text-brand-700 underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer";
-
+// Every drillable figure in the reports goes through DRILL_LINK (ui.js),
+// so the affordance is specified in exactly one place.
 export function LedgerLink({ ids, title, onOpenLedger, className = "", children }) {
   const arr = Array.isArray(ids) ? ids : [ids];
+  const companyId = useCompanyScope();
   return (
     <a
-      href={ledgerHref(arr, title)}
-      className={`${LEDGER_LINK_BASE} ${className}`}
+      href={ledgerHref(arr, title, companyId)}
+      className={`${DRILL_LINK} ${className}`}
       title={title}
       aria-label={title ? `Open ledger for ${title}` : "Open ledger"}
       onClick={e => {
@@ -396,7 +394,16 @@ export {
 // ============ ACCOUNT LEDGER VIEW ============
 // Full-screen drill-down showing every JE line for one or more accounts.
 // Clickable from COA, P&L, Balance Sheet, Trial Balance, JE lines, Dashboard.
-export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE }) {
+// linesLoaded/linesFailed are NOT cosmetic. The journal lines arrive in
+// ~19 pages after the accounts do, and this view derives every figure it
+// shows from them. Opened before they land -- which is exactly what a
+// deep-linked fresh tab does, since the boot effect fires the moment
+// acctAccounts is set -- it rendered DR $0.00 / CR $0.00 and an empty
+// ledger titled "Total for AR", indistinguishable from an account with no
+// activity. Sahil: "cmd click on ledger balances or totals, shows total of
+// AR =0". Same failure AcctReports already guards against; this view was
+// simply never handed the flags.
+export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false }) {
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [propertyFilter, setPropertyFilter] = useState("");
@@ -556,13 +563,15 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   </div>
   {/* Summary bar */}
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
+  {linesLoaded ? <>
   <span>DR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
+  </> : <span className="text-neutral-400">{linesFailed ? "Ledger failed to load \u2014 reopen to retry" : "Loading the ledger\u2026"}</span>}
   {/* Only a single-account ledger has a meaningful closing balance.
       Across accounts the figure would sum unlike things, so the count of
       accounts is shown instead of an authoritative-looking nonsense. */}
   {multiAccount
-    ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span>
+    ? (linesLoaded ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span> : null)
     : <span>Bal: <strong className={`tnum ${(groups[0]?.closing || 0) >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(groups[0]?.closing || 0, true)}</strong></span>}
   {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
@@ -630,13 +639,14 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
       // Debits and credits sum meaningfully across accounts; a combined
       // closing balance does not -- adding cash to receivables to income
       // produces a figure that looks authoritative and means nothing.
-      footer={multiAccount && allLines.length > 0
+      footer={multiAccount && linesLoaded && allLines.length > 0
         ? [{ label: `${groups.length} accounts \u00b7 ${allLines.length} entries`, strong: true,
              cells: [acctFmt(grandDr), acctFmt(grandCr), "\u2014"] }]
         : null}
       onRowClick={l => onViewJE && onViewJE(l.jeId)}
       rowKey={(l, i) => i}
-      empty="No transactions found for this period"
+      loading={!linesLoaded}
+      empty={linesFailed ? "Ledger failed to load \u2014 close and reopen to retry" : "No transactions found for this period"}
     />
   </div>
   </div>
@@ -1276,9 +1286,29 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
         render: (line, i) => (<>
           <Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
         </>) },
+      // The remove-line control. The flat migration dropped this column
+      // outright -- header, cells and all -- so there was no way to delete
+      // a line from a journal entry at all. Nothing caught it: the
+      // shortcuts test exercises removeLine() directly, and the table
+      // still rendered six tidy columns.
+      { key: "remove", label: "", thClassName: "w-8",
+        render: (line, i) => (
+          <TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="disabled:opacity-20">✕</TextLink>
+        ) },
     ]}
     rows={form.lines}
-    rowKey={line => line.id}
+    // Form lines have no id -- EMPTY_JE_LINE does not define one -- so
+    // keying on line.id gave every row the key `undefined`. Index is the
+    // correct key here: the rows ARE positional.
+    rowKey={(line, i) => i}
+    rowAttrs={(line, i) => ({ "data-je-line": i })}
+    // The Totals row was a <tfoot> the migration left behind, so a journal
+    // entry form showed no running debit/credit totals.
+    footer={[{ label: "Totals", strong: true, cells: [
+      <span className={`tnum ${validation.isValid ? "text-success-700" : "text-danger-600"}`}>{acctFmt(totalDebit)}</span>,
+      <span className={`tnum ${validation.isValid ? "text-success-700" : "text-danger-600"}`}>{acctFmt(totalCredit)}</span>,
+      "",
+    ] }]}
     empty="Nothing to show"
   />
   </div>
@@ -3166,6 +3196,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={tbData.filter(a => showZeros || a.debitBalance !== 0 || a.creditBalance !== 0)}
         rowKey={a => a.id}
+        footer={[{ label: "TOTALS", strong: true, cells: [
+          acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0)),
+          acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0)),
+        ] }]}
         empty="Nothing to show"
       />
     </div>)}
@@ -3222,6 +3256,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01)}
         rowKey={t => t.id}
+        footer={[{ label: "TOTALS", strong: true, cells: [
+          acctFmt(bsData.arAging?.current||0),
+          acctFmt(bsData.arAging?.days30||0),
+          acctFmt(bsData.arAging?.days60||0),
+          acctFmt(bsData.arAging?.days90||0),
+          acctFmt(bsData.arAging?.over90||0),
+          acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0)),
+        ] }]}
         empty="Nothing to show"
       />
       </div>
@@ -3671,6 +3713,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           ]}
           rows={data}
           rowKey={r => r.id}
+          footer={[{ label: "TOTAL FEES", strong: true, cells: [acctFmt(data.reduce((s, r) => s + r.fee, 0))] }]}
           empty="Nothing to show"
         />
         </>);
@@ -3746,6 +3789,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.amountDue,0)), ""] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -3817,6 +3861,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.total,0)), ""] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -3839,6 +3884,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL HELD", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.netHeld,0))] }]}
         empty="Nothing to show"
       /></>); })()}
     </div>)}
@@ -3881,6 +3927,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL DISTRIBUTED", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.amount,0))] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -3975,6 +4022,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={vendors}
         rowKey={(row, i) => i}
+        footer={[{ label: "TOTALS", strong: true, cells: [
+          acctFmt(data.summary.current),
+          acctFmt(data.summary.days30),
+          acctFmt(data.summary.days60),
+          acctFmt(data.summary.days90),
+          acctFmt(data.summary.over90),
+          acctFmt(data.summary.total),
+        ] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -3997,6 +4052,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.amount,0))] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -4013,6 +4069,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         ]}
         rows={data}
         rowKey={r => r.id}
+        footer={[{ label: "TOTAL OWED", strong: true, cells: [acctFmt(data.reduce((s,r)=>s+r.total,0))] }]}
         empty="Nothing to show"
       />); })()}
     </div>)}
@@ -5218,7 +5275,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} onRefresh={fetchAll} />}
   {/* Account Ledger Drill-Down */}
-  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>

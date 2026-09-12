@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
-import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink} from "./ui";
+import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink, CompanyScope} from "./ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
@@ -751,7 +751,15 @@ function AppInner() {
   // "?company=<id>#accounting" became "/" and the user landed on the
   // dashboard instead. Anyone sharing a link into a specific page was
   // silently redirected.
-  if (company) { window.history.replaceState({}, "", window.location.pathname + window.location.hash); handleSelectCompany(company, match.role, user); return; }
+  if (company) {
+  // Strip ONLY ?company=, keeping every other param. Replacing the whole
+  // search string deleted ?ledger= too, so a shared/cmd-clicked ledger
+  // link that carried a company silently lost the ledger it was for.
+  const rest = new URLSearchParams(window.location.search);
+  rest.delete("company");
+  const restQs = rest.toString();
+  window.history.replaceState({}, "", window.location.pathname + (restQs ? "?" + restQs : "") + window.location.hash);
+  handleSelectCompany(company, match.role, user); return; }
   }
   }
   // Only tenants auto-select their company (skip selector)
@@ -1288,6 +1296,7 @@ function AppInner() {
   const Page = pageComponents[effectivePage] || Dashboard;
 
   return (
+  <CompanyScope.Provider value={activeCompany?.id || null}>
   <div className="flex h-dvh safe-y safe-x bg-surface-muted font-body overflow-hidden">
   {/* Sidebar */}
   <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-50 fixed md:relative h-full safe-y`}>
@@ -1509,6 +1518,7 @@ function AppInner() {
   <ToastContainer toasts={toasts} removeToast={removeToast} />
   <ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} />
   </div>
+  </CompanyScope.Provider>
   );
 }
 

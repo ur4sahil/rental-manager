@@ -1,0 +1,754 @@
+{
+  "src/components/Accounting.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "date",
+          "number",
+          "description",
+          "reference",
+          "accountName",
+          "property",
+          "debit",
+          "credit",
+          "balance"
+        ],
+        "footer": "(computed)",
+        "groups": true,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "col0",
+          "col1"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "number",
+          "name",
+          "subtype",
+          "balance",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "class",
+          "tenant_vendor",
+          "memo",
+          "debit",
+          "credit",
+          "remove"
+        ],
+        "footer": "Totals",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "entry",
+          "date",
+          "property",
+          "description",
+          "source",
+          "status",
+          "amount",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "class",
+          "tenant_vendor",
+          "memo",
+          "debit",
+          "credit"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "debit",
+          "credit"
+        ],
+        "footer": "TOTALS",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "entry",
+          "description",
+          "memo",
+          "debit",
+          "credit",
+          "balance"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "current",
+          "1_30",
+          "31_60",
+          "61_90",
+          "91",
+          "total"
+        ],
+        "footer": "TOTALS",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "balance"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "col0",
+          "col1",
+          "col2",
+          "col3"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "entry",
+          "account",
+          "description",
+          "debit",
+          "credit"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "code",
+          "tenant_vendor",
+          "type",
+          "subtype",
+          "active"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "category",
+          "amount",
+          "of_total"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "tenant",
+          "rent",
+          "lease_end",
+          "status"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "revenue",
+          "expenses",
+          "noi",
+          "margin"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "last_tenant",
+          "days_vacant",
+          "est_lost_revenue"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "type",
+          "number",
+          "jurisdiction",
+          "expiry",
+          "days",
+          "status",
+          "fee"
+        ],
+        "footer": "TOTAL FEES",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "property",
+          "lease_end",
+          "days_left",
+          "rent"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "issue",
+          "status",
+          "cost",
+          "days"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "date",
+          "description",
+          "original",
+          "paid",
+          "due",
+          "days"
+        ],
+        "footer": "TOTAL",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "property",
+          "contact",
+          "total_owed",
+          "severity"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "entry",
+          "description",
+          "debit",
+          "credit",
+          "balance"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "vendor",
+          "amount",
+          "of_total"
+        ],
+        "footer": "TOTAL",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "property",
+          "received",
+          "returned",
+          "net_held"
+        ],
+        "footer": "TOTAL HELD",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "tenant",
+          "assessed",
+          "collected",
+          "outstanding",
+          "count"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "entry",
+          "description",
+          "amount"
+        ],
+        "footer": "TOTAL DISTRIBUTED",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "property",
+          "charged",
+          "collected",
+          "outstanding",
+          "rate"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "col0",
+          "col1",
+          "col2",
+          "col3",
+          "col4"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "current",
+          "prior",
+          "change"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "vendor",
+          "current",
+          "1_30",
+          "31_60",
+          "61_90",
+          "91",
+          "total"
+        ],
+        "footer": "TOTALS",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "vendor",
+          "description",
+          "ref",
+          "amount"
+        ],
+        "footer": "TOTAL",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "vendor",
+          "balance"
+        ],
+        "footer": "TOTAL OWED",
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "time",
+          "user",
+          "module",
+          "action",
+          "details"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "period",
+          "bank_balance",
+          "book_balance",
+          "difference",
+          "status"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "actual",
+          "budget",
+          "variance",
+          "variance"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Admin.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "time",
+          "user",
+          "role",
+          "module",
+          "action",
+          "details"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Banking.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "col0",
+          "rule_name",
+          "conditions",
+          "action",
+          "matched",
+          "status",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "account",
+          "class_property",
+          "memo",
+          "debit",
+          "credit"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "date",
+          "description",
+          "amount",
+          "status"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Documents.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "document",
+          "property",
+          "type",
+          "date",
+          "tenant_visible",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/HOA.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "property",
+          "hoa_company",
+          "amount",
+          "due_date",
+          "frequency",
+          "status",
+          "portal",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Insurance.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "property",
+          "provider",
+          "policy",
+          "premium",
+          "freq",
+          "coverage",
+          "expiry",
+          "portal",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Loans.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "property",
+          "lender",
+          "type",
+          "rate",
+          "monthly",
+          "balance",
+          "maturity",
+          "portal",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Payments.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "date",
+          "je",
+          "tenant",
+          "property",
+          "amount",
+          "type",
+          "method",
+          "col7"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Properties.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "address",
+          "type",
+          "status",
+          "rent",
+          "tenant",
+          "lease_end",
+          "owner",
+          "notes",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/QuickBooksImport.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "file",
+          "detected",
+          "contains",
+          "rows",
+          "col4"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "quickbooks_account",
+          "type",
+          "subtype",
+          "lines",
+          "net",
+          "action",
+          "target"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      },
+      {
+        "keys": [
+          "type",
+          "accounts",
+          "lines",
+          "debit",
+          "credit"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/TaxBills.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "installment",
+          "due",
+          "expected",
+          "paid",
+          "status",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/Tenants.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "select",
+          "name",
+          "property",
+          "email",
+          "lease_status",
+          "rent",
+          "balance",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [
+          "name",
+          "property",
+          "email",
+          "lease_status",
+          "rent",
+          "balance"
+        ]
+      }
+    ],
+    "printTables": [
+      {
+        "labels": [
+          "Date",
+          "Description",
+          "Type",
+          "Charges",
+          "Payments",
+          "Balance",
+          "Totals"
+        ],
+        "footer": "Totals"
+      }
+    ]
+  },
+  "src/components/Utilities.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "provider",
+          "property",
+          "amount",
+          "due",
+          "status",
+          "responsibility",
+          "login",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/utils/theme.js": {
+    "dataTables": [],
+    "printTables": [
+      {
+        "labels": [],
+        "footer": null
+      }
+    ]
+  }
+}

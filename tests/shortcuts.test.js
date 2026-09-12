@@ -95,7 +95,12 @@ assert("handler stands down for a modal or the palette",
   /document\.querySelector\('\[role="dialog"\]'\)\) return;/.test(banking));
 
 // ---- Journal entry handler ------------------------------------------
-assert("JE rows are addressable for the current-line lookup", /data-je-line=\{i\}/.test(accounting));
+// The attribute used to sit literally on a <tr>; the DataTable migration
+// dropped it (and this assertion is what caught that). It now comes from
+// the primitive's rowAttrs, so accept either spelling -- what matters is
+// that something puts data-je-line on the row.
+assert("JE rows are addressable for the current-line lookup",
+  /data-je-line=\{i\}/.test(accounting) || /rowAttrs=\{\(line, i\) => \(\{ "data-je-line": i \}\)\}/.test(accounting));
 assert("current line is read from focus, not mirrored state",
   /document\.activeElement\?\.closest\?\.\("tr\[data-je-line\]"\)/.test(accounting));
 assert("Cmd+Enter will not save an invalid or undescribed entry",
