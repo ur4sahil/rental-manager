@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, TextLink} from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -190,34 +190,39 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   )}
 
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-neutral-50 text-xs text-neutral-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Lender</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-right">Rate</th><th className="px-4 py-3 text-right">Monthly</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-left">Maturity</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
-  </thead>
-  <tbody>
-  {filtered.map(l => (
-  <tr key={l.id} className="border-t border-neutral-100 hover:bg-positive-50/40">
-  <td className="px-4 py-2.5 text-neutral-800">{l.property}</td>
-  <td className="px-4 py-2.5 font-medium text-neutral-800">{l.lender_name}</td>
-  <td className="px-4 py-2.5 text-neutral-500">{l.loan_type}</td>
-  <td className="px-4 py-2.5 text-right text-neutral-600">{safeNum(l.interest_rate).toFixed(2)}%</td>
-  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.monthly_payment)}</td>
-  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.current_balance)}</td>
-  <td className="px-4 py-2.5 text-neutral-400">{l.maturity_date || "—"}</td>
-  <td className="px-4 py-2.5 text-xs">
-  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
-  {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
-  </td>
-  <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
-  <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
-  <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "property", label: "Property", className: "text-neutral-800",
+        render: l => (<>{l.property}</>) },
+      { key: "lender", label: "Lender", className: "font-medium text-neutral-800",
+        render: l => (<>{l.lender_name}</>) },
+      { key: "type", label: "Type", className: "text-neutral-500",
+        render: l => (<>{l.loan_type}</>) },
+      { key: "rate", label: "Rate", align: "right", className: "text-neutral-600",
+        render: l => (<>{safeNum(l.interest_rate).toFixed(2)}%</>) },
+      { key: "monthly", label: "Monthly", align: "right", className: "font-semibold",
+        render: l => (<>{formatCurrency(l.monthly_payment)}</>) },
+      { key: "balance", label: "Balance", align: "right", className: "font-semibold",
+        render: l => (<>{formatCurrency(l.current_balance)}</>) },
+      { key: "maturity", label: "Maturity", className: "text-neutral-400",
+        render: l => (<>{l.maturity_date || "—"}</>) },
+      { key: "portal", label: "Portal", className: "text-xs",
+        render: l => (<>
+          {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
+            {l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
+            {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
+        </>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
+        render: l => (<>
+          {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
+            <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
+        </>) },
+    ]}
+    rows={filtered}
+    rowKey={l => l.id}
+    empty="Nothing to show"
+  />
   {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No loans found</div>}
   </div>
   </div>

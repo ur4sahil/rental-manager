@@ -11,7 +11,7 @@
 
 import React, { useState, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, Select, TextLink } from "../ui";
+import { Btn, Checkbox, FileInput, Select, TextLink, DataTable} from "../ui";
 import { formatCurrency, safeNum } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -379,34 +379,39 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       <FileInput key={pickerKey} aria-label="Choose QuickBooks .xlsx export files" accept=".xlsx" multiple onChange={e => addFiles(e.target.files)} />
 
       {files.length > 0 && (
-      <table className="w-full text-xs">
-        <thead><tr className="text-neutral-400 text-left">
-          <th className="py-1.5">FILE</th><th>DETECTED</th><th>CONTAINS</th><th className="text-right">ROWS</th><th></th>
-        </tr></thead>
-        <tbody>
-          {files.map((f, i) => (
-          <tr key={i} className="border-t border-neutral-100">
-            <td className="py-1.5 pr-3 text-neutral-800">{f.name}</td>
-            <td className="pr-3">
+      <DataTable
+        columns={[
+          { key: "file", label: "FILE", className: "pr-3 text-neutral-800",
+            render: (f, i) => (<>{f.name}</>) },
+          { key: "detected", label: "DETECTED", className: "pr-3",
+            render: (f, i) => (<>
               {f.error
-                ? <span className="text-danger-600">{f.error}</span>
-                : f.isAccountList
-                  ? <span className="text-success-700">Account List — account types</span>
-                  : <span className="text-neutral-500">{f.parsed.shape === "pl-detail" ? "Profit & Loss Detail" : "Transaction Report"}</span>}
-            </td>
-            <td className="pr-3">
+                              ? <span className="text-danger-600">{f.error}</span>
+                              : f.isAccountList
+                                ? <span className="text-success-700">Account List — account types</span>
+                                : <span className="text-neutral-500">{f.parsed.shape === "pl-detail" ? "Profit & Loss Detail" : "Transaction Report"}</span>}
+            </>) },
+          { key: "contains", label: "CONTAINS", className: "pr-3",
+            render: (f, i) => (<>
               {f.isAccountList ? <span className="text-neutral-400">—</span> :
-              <Select value={f.group} size="sm" disabled={!f.parsed || f.parsed.shape === "pl-detail"}
-                onChange={e => changeGroup(i, e.target.value)}>
-                {QB_FILE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
-              </Select>}
-            </td>
-            <td className="text-right pr-3 tnum text-neutral-700">{f.isAccountList ? f.count.toLocaleString() + " accounts" : (f.parsed ? f.parsed.rows.length.toLocaleString() : "—")}</td>
-            <td className="text-right"><TextLink tone="danger" size="xs" onClick={() => removeFile(i)}>Remove</TextLink></td>
-          </tr>
-          ))}
-        </tbody>
-      </table>
+                            <Select value={f.group} size="sm" disabled={!f.parsed || f.parsed.shape === "pl-detail"}
+                              onChange={e => changeGroup(i, e.target.value)}>
+                              {QB_FILE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                            </Select>}
+            </>) },
+          { key: "rows", label: "ROWS", align: "right", className: "pr-3 tnum text-neutral-700",
+            render: (f, i) => (<>
+              {f.isAccountList ? f.count.toLocaleString() + " accounts" : (f.parsed ? f.parsed.rows.length.toLocaleString() : "—")}
+            </>) },
+          { key: "col4", label: "", align: "right",
+            render: (f, i) => (<>
+              <TextLink tone="danger" size="xs" onClick={() => removeFile(i)}>Remove</TextLink>
+            </>) },
+        ]}
+        rows={files}
+        rowKey={f => f.id}
+        empty="Nothing to show"
+      />
       )}
 
       {files.some(f => f.parsed) && (
@@ -451,58 +456,60 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
         on each account's own transactions, with the evidence shown.
       </p>
       <div className="max-h-96 overflow-y-auto border border-neutral-100 rounded-lg">
-      <table className="w-full text-xs">
-        <thead className="bg-neutral-50 sticky top-0"><tr className="text-neutral-400 text-left">
-          <th className="px-2 py-1.5">QUICKBOOKS ACCOUNT</th><th className="px-2">TYPE</th><th className="px-2">SUBTYPE</th>
-          <th className="text-right">LINES</th><th className="text-right">NET</th><th className="px-2">ACTION</th><th className="px-2">TARGET</th>
-        </tr></thead>
-        <tbody>
-          {plan.accounts.map(a => (
-          <tr key={a.path} className="border-t border-neutral-100">
-            <td className="px-2 py-1.5 text-neutral-800 max-w-xs truncate" title={a.path}>
+      <DataTable
+        columns={[
+          { key: "quickbooks_account", label: "QUICKBOOKS ACCOUNT", className: "text-neutral-800 max-w-xs truncate",
+            render: a => (<>
               {a.path}
-              {a.role === "tenant_ar" && (
-                <span className="ml-1.5 text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full"
-                      title={a.roleReason || ""}>tenant AR</span>
-              )}
-              {a.roleReason && <div className="text-[10px] text-neutral-400 truncate" title={a.roleReason}>{a.roleReason}</div>}
-            </td>
-            <td className="px-2">
+                            {a.role === "tenant_ar" && (
+                              <span className="ml-1.5 text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded-full"
+                                    title={a.roleReason || ""}>tenant AR</span>
+                            )}
+                            {a.roleReason && <div className="text-[10px] text-neutral-400 truncate" title={a.roleReason}>{a.roleReason}</div>}
+            </>) },
+          { key: "type", label: "TYPE",
+            render: a => (<>
               <Select value={a.type} size="sm" onChange={e => updateAccount(a.path, { type: e.target.value, subtype: "" })}>
-                {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-              </Select>
-            </td>
-            <td className="px-2">
+                              {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </Select>
+            </>) },
+          { key: "subtype", label: "SUBTYPE",
+            render: a => (<>
               <Select value={a.subtype || ""} size="sm" onChange={e => updateAccount(a.path, { subtype: e.target.value })}>
-                <option value="">— none —</option>
-                {(ACCOUNT_SUBTYPE_OPTIONS[a.type] || []).map(t => <option key={t} value={t}>{t}</option>)}
-              </Select>
-            </td>
-            <td className="text-right tnum text-neutral-500">{a.lineCount}</td>
-            <td className="text-right tnum text-neutral-700">{formatCurrency(a.net)}</td>
-            <td className="px-2">
+                              <option value="">— none —</option>
+                              {(ACCOUNT_SUBTYPE_OPTIONS[a.type] || []).map(t => <option key={t} value={t}>{t}</option>)}
+                            </Select>
+            </>) },
+          { key: "lines", label: "LINES", align: "right", className: "tnum text-neutral-500",
+            render: a => (<>{a.lineCount}</>) },
+          { key: "net", label: "NET", align: "right", className: "tnum text-neutral-700",
+            render: a => (<>{formatCurrency(a.net)}</>) },
+          { key: "action", label: "ACTION",
+            render: a => (<>
               <Select value={a.action} size="sm" onChange={e => updateAccount(a.path, { action: e.target.value })}>
-                <option value="create">Create new</option>
-                <option value="map">Map to existing</option>
-                <option value="skip">Skip</option>
-              </Select>
-            </td>
-            <td className="px-2 min-w-48">
+                              <option value="create">Create new</option>
+                              <option value="map">Map to existing</option>
+                              <option value="skip">Skip</option>
+                            </Select>
+            </>) },
+          { key: "target", label: "TARGET", className: "min-w-48",
+            render: a => (<>
               {a.action === "create" && <span className="text-neutral-400 tnum">{a.code} {a.role === "tenant_ar" ? `AR - ${a.tenantName}` : a.leaf}</span>}
-              {a.action === "map" && (
-                <Select value={a.targetAccountId || ""} size="sm" onChange={e => updateAccount(a.path, { targetAccountId: e.target.value })}>
-                  <option value="">Choose an account…</option>
-                  {accounts.map(ex => <option key={ex.id} value={ex.id}>{ex.code} {ex.name}</option>)}
-                </Select>
-              )}
-              {a.action === "map" && a.suggestion && (
-                <div className="text-[10px] text-neutral-400 mt-0.5">{a.suggestion.reason}</div>
-              )}
-            </td>
-          </tr>
-          ))}
-        </tbody>
-      </table>
+                            {a.action === "map" && (
+                              <Select value={a.targetAccountId || ""} size="sm" onChange={e => updateAccount(a.path, { targetAccountId: e.target.value })}>
+                                <option value="">Choose an account…</option>
+                                {accounts.map(ex => <option key={ex.id} value={ex.id}>{ex.code} {ex.name}</option>)}
+                              </Select>
+                            )}
+                            {a.action === "map" && a.suggestion && (
+                              <div className="text-[10px] text-neutral-400 mt-0.5">{a.suggestion.reason}</div>
+                            )}
+            </>) },
+        ]}
+        rows={plan.accounts}
+        rowKey={a => a.id}
+        empty="Nothing to show"
+      />
       </div>
       <div className="flex justify-between">
         <Btn variant="secondary" onClick={() => setStep(1)}>Back</Btn>
@@ -543,28 +550,23 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
       <div>
         <p className="text-sm font-medium text-neutral-700 mb-2">Projected trial balance</p>
-        <table className="w-full text-xs">
-          <thead><tr className="text-neutral-400 text-left">
-            <th className="py-1">TYPE</th><th className="text-right">ACCOUNTS</th><th className="text-right">LINES</th>
-            <th className="text-right">DEBIT</th><th className="text-right">CREDIT</th>
-          </tr></thead>
-          <tbody>
-            {trialBalance.byType.map(t => (
-            <tr key={t.type} className="border-t border-neutral-100">
-              <td className="py-1 text-neutral-700">{t.type}</td>
-              <td className="text-right tnum text-neutral-500">{t.accounts}</td>
-              <td className="text-right tnum text-neutral-500">{t.lines}</td>
-              <td className="text-right tnum">{formatCurrency(t.debit)}</td>
-              <td className="text-right tnum">{formatCurrency(t.credit)}</td>
-            </tr>
-            ))}
-            <tr className="border-t-2 border-neutral-300 font-semibold text-neutral-800">
-              <td className="py-1" colSpan={3}>Total</td>
-              <td className="text-right tnum">{formatCurrency(trialBalance.debit)}</td>
-              <td className="text-right tnum">{formatCurrency(trialBalance.credit)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable
+          columns={[
+            { key: "type", label: "TYPE", className: "text-neutral-700",
+              render: t => (<>{t.type}</>) },
+            { key: "accounts", label: "ACCOUNTS", align: "right", className: "tnum text-neutral-500",
+              render: t => (<>{t.accounts}</>) },
+            { key: "lines", label: "LINES", align: "right", className: "tnum text-neutral-500",
+              render: t => (<>{t.lines}</>) },
+            { key: "debit", label: "DEBIT", align: "right", className: "tnum",
+              render: t => (<>{formatCurrency(t.debit)}</>) },
+            { key: "credit", label: "CREDIT", align: "right", className: "tnum",
+              render: t => (<>{formatCurrency(t.credit)}</>) },
+          ]}
+          rows={trialBalance.byType}
+          rowKey={t => t.id}
+          empty="Nothing to show"
+        />
         <p className={`text-xs mt-1 ${Math.abs(trialBalance.difference) < 0.005 ? "text-success-700" : "text-warn-700"}`}>
           {Math.abs(trialBalance.difference) < 0.005
             ? "Debits equal credits — the ledger balances."

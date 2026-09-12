@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -152,33 +152,38 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   )}
 
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-neutral-50 text-xs text-neutral-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Policy #</th><th className="px-4 py-3 text-right">Premium</th><th className="px-4 py-3 text-left">Freq.</th><th className="px-4 py-3 text-right">Coverage</th><th className="px-4 py-3 text-left">Expiry</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
-  </thead>
-  <tbody>
-  {filtered.map(p => (
-  <tr key={p.id} className={`border-t border-neutral-100 hover:bg-positive-50/40 ${expiryClass(p.expiration_date)}`}>
-  <td className="px-4 py-2.5 text-neutral-800">{p.property}</td>
-  <td className="px-4 py-2.5 font-medium text-neutral-800">{p.provider}</td>
-  <td className="px-4 py-2.5 text-neutral-500">{p.policy_number || "—"}</td>
-  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.premium_amount)}</td>
-  <td className="px-4 py-2.5 text-neutral-500">{p.premium_frequency}</td>
-  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.coverage_amount)}</td>
-  <td className="px-4 py-2.5 text-neutral-400">{p.expiration_date || "—"}</td>
-  <td className="px-4 py-2.5 text-xs">
-  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {p.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv_username || p.encryption_iv, companyId, p.encryption_salt); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId, p.encryption_salt); s.add(p.id); setShowCreds(new Set(s)); }}}>{showCreds.has(p.id) ? "Hide" : "Show"} login</TextLink>}
-  {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
-  </td>
-  <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  <TextLink tone="brand" size="xs" onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
-  <TextLink tone="danger" size="xs" onClick={() => deletePolicy(p.id)}>Delete</TextLink>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "property", label: "Property", className: "text-neutral-800",
+        render: p => (<>{p.property}</>) },
+      { key: "provider", label: "Provider", className: "font-medium text-neutral-800",
+        render: p => (<>{p.provider}</>) },
+      { key: "policy", label: "Policy #", className: "text-neutral-500",
+        render: p => (<>{p.policy_number || "—"}</>) },
+      { key: "premium", label: "Premium", align: "right", className: "font-semibold",
+        render: p => (<>{formatCurrency(p.premium_amount)}</>) },
+      { key: "freq", label: "Freq.", className: "text-neutral-500",
+        render: p => (<>{p.premium_frequency}</>) },
+      { key: "coverage", label: "Coverage", align: "right", className: "font-semibold",
+        render: p => (<>{formatCurrency(p.coverage_amount)}</>) },
+      { key: "expiry", label: "Expiry", className: "text-neutral-400",
+        render: p => (<>{p.expiration_date || "—"}</>) },
+      { key: "portal", label: "Portal", className: "text-xs",
+        render: p => (<>
+          {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
+            {p.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv_username || p.encryption_iv, companyId, p.encryption_salt); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId, p.encryption_salt); s.add(p.id); setShowCreds(new Set(s)); }}}>{showCreds.has(p.id) ? "Hide" : "Show"} login</TextLink>}
+            {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
+        </>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
+        render: p => (<>
+          <TextLink tone="brand" size="xs" onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="danger" size="xs" onClick={() => deletePolicy(p.id)}>Delete</TextLink>
+        </>) },
+    ]}
+    rows={filtered}
+    rowKey={p => p.id}
+    empty="Nothing to show"
+  />
   {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No insurance policies found</div>}
   </div>
   </div>

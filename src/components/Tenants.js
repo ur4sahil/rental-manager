@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -2376,28 +2376,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   {tenantView === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr>
-  <th className="px-3 py-3 text-left w-8"><Checkbox checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
-  <SortTh col="name" label="Name" /><SortTh col="property" label="Property" /><SortTh col="email" label="Email" /><SortTh col="lease_status" label="Status" /><SortTh col="rent" label="Rent" className="px-4 py-3 text-right" /><SortTh col="balance" label="Balance" className="px-4 py-3 text-right" /><th className="px-4 py-3 text-right">Actions</th>
-  </tr>
-  </thead>
-  <tbody>
-  {ft.map(t => (
-  <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
-  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
-  <td className="px-4 py-2.5 font-medium text-brand-600"><CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-medium text-brand-600">{t.name}</CardOpenButton></td>
-  <td className="px-4 py-2.5 text-neutral-500">{t.property}</td>
-  <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
-  <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
-  <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
-  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</td>
-  <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "actions", label: "Actions",
+        render: t => (<>
+          <Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" />
+        </>) },
+    ]}
+    rows={ft}
+    rowKey={t => t.id}
+    empty="Nothing to show"
+  />
   </div>
   )}
   {tenantView === "compact" && (

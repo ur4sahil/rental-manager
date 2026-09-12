@@ -3,7 +3,7 @@
 // page lives under Properties in the sidebar nav.
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink} from "../ui";
+import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink, DataTable} from "../ui";
 import { formatLocalDate, formatCurrency, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -256,52 +256,46 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                   <div className="text-[10px] text-neutral-500 uppercase tracking-wide">{jurisdiction} · {rows.length} {rows.length === 1 ? "bill" : "bills"}</div>
                 </div>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-neutral-50/40 text-xs text-neutral-400 uppercase">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium">Installment</th>
-                    <th className="px-4 py-2 text-left font-medium">Due</th>
-                    <th className="px-4 py-2 text-right font-medium">Expected</th>
-                    <th className="px-4 py-2 text-right font-medium">Paid</th>
-                    <th className="px-4 py-2 text-left font-medium">Status</th>
-                    <th className="px-4 py-2 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(b => {
-                    const chip = statusChip(b.status, b.due_date);
-                    return (
-                      <tr key={b.id} className="border-t border-neutral-100/60">
-                        <td className="px-4 py-2.5">
-                          <div className="text-sm font-medium text-neutral-700">{b.installment_label}</div>
-                          <div className="text-[10px] text-neutral-400">{b.tax_year}</div>
-                        </td>
-                        <td className="px-4 py-2.5 tnum text-xs text-neutral-600">{b.due_date}</td>
-                        <td className="px-4 py-2.5 text-right tnum text-xs text-neutral-600">{b.expected_amount ? formatCurrency(b.expected_amount) : "—"}</td>
-                        <td className="px-4 py-2.5 text-right tnum text-xs text-neutral-600">{b.paid_amount ? formatCurrency(b.paid_amount) : (b.status === "paid" ? "✓" : "—")}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${chip.cls}`}>{chip.label}</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          <div className="flex items-center gap-2 justify-end">
-                            {b.status === "pending" && (
-                              <TextLink tone="success" size="xs" onClick={() => setMarkPaidBill({ bill: b, paidDate: formatLocalDate(new Date()), paidAmount: b.expected_amount || "", paidNotes: "" })} className="font-semibold">Mark paid</TextLink>
-                            )}
-                            {b.status === "paid" && (
-                              <TextLink tone="neutral" size="xs" onClick={() => handleUnpay(b)}>Undo</TextLink>
-                            )}
-                            {b.status === "pending" && (
-                              <TextLink tone="neutral" size="xs" onClick={() => handleSkip(b)}>Skip</TextLink>
-                            )}
-                            <TextLink tone="brand" size="xs" onClick={() => setEditBill({ bill: b, due_date: b.due_date, expected_amount: b.expected_amount || "", installment_label: b.installment_label })}>Edit</TextLink>
-                            <TextLink tone="danger" size="xs" underline={false} onClick={() => handleDelete(b)}  title="Delete">✕</TextLink>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <DataTable
+                columns={[
+                  { key: "installment", label: "Installment",
+                    render: b => (<>
+                      <div className="text-sm font-medium text-neutral-700">{b.installment_label}</div>
+                                                <div className="text-[10px] text-neutral-400">{b.tax_year}</div>
+                    </>) },
+                  { key: "due", label: "Due", className: "tnum text-xs text-neutral-600",
+                    render: b => (<>{b.due_date}</>) },
+                  { key: "expected", label: "Expected", align: "right", className: "tnum text-xs text-neutral-600",
+                    render: b => (<>{b.expected_amount ? formatCurrency(b.expected_amount) : "—"}</>) },
+                  { key: "paid", label: "Paid", align: "right", className: "tnum text-xs text-neutral-600",
+                    render: b => (<>
+                      {b.paid_amount ? formatCurrency(b.paid_amount) : (b.status === "paid" ? "✓" : "—")}
+                    </>) },
+                  { key: "status", label: "Status",
+                    render: b => { const chip = statusChip(b.status, b.due_date); return (<>
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${chip.cls}`}>{chip.label}</span>
+                    </>); } },
+                  { key: "actions", label: "Actions", align: "right",
+                    render: b => (<>
+                      <div className="flex items-center gap-2 justify-end">
+                                                  {b.status === "pending" && (
+                                                    <TextLink tone="success" size="xs" onClick={() => setMarkPaidBill({ bill: b, paidDate: formatLocalDate(new Date()), paidAmount: b.expected_amount || "", paidNotes: "" })} className="font-semibold">Mark paid</TextLink>
+                                                  )}
+                                                  {b.status === "paid" && (
+                                                    <TextLink tone="neutral" size="xs" onClick={() => handleUnpay(b)}>Undo</TextLink>
+                                                  )}
+                                                  {b.status === "pending" && (
+                                                    <TextLink tone="neutral" size="xs" onClick={() => handleSkip(b)}>Skip</TextLink>
+                                                  )}
+                                                  <TextLink tone="brand" size="xs" onClick={() => setEditBill({ bill: b, due_date: b.due_date, expected_amount: b.expected_amount || "", installment_label: b.installment_label })}>Edit</TextLink>
+                                                  <TextLink tone="danger" size="xs" underline={false} onClick={() => handleDelete(b)}  title="Delete">✕</TextLink>
+                                                </div>
+                    </>) },
+                ]}
+                rows={rows}
+                rowKey={b => b.id}
+                empty="Nothing to show"
+              />
             </div>
           );
         })}

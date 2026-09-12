@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -2361,51 +2361,42 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <Btn variant="accent-fill" size="sm" icon="add" onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }}>New Rule</Btn>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-neutral-50 border-b border-neutral-200">
-          <tr>
-            <th className="px-3 py-2.5 w-12 text-center text-xs font-semibold text-neutral-500">#</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">RULE NAME</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CONDITIONS</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">ACTION</th>
-            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">MATCHED</th>
-            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">STATUS</th>
-            <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTIONS</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rules.map(r => {
-            const cond = r.condition_json || {};
-            const act = r.action_json || {};
-            const conditions = cond.conditions || [];
-            const lines = act.lines || [];
-            return (
-            <tr key={r.id} className="border-b border-neutral-100 hover:bg-neutral-50">
-              <td className="px-3 py-3 text-center"><span className="tnum text-xs text-neutral-400">{r.priority}</span></td>
-              <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
-              <td className="px-3 py-3 text-xs text-neutral-500 max-w-48">
-                <span className="text-accent-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
-                {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
-                {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
-              </td>
-              <td className="px-3 py-3 text-xs">
-                {act.type === "exclude" ? <span className="text-danger-600 font-medium">Exclude ({act.exclude_reason})</span>
-                  : <span className="text-info-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-highlight-500 ml-1">(split)</span>}</span>}
-              </td>
-              <td className="px-3 py-3 text-center text-xs text-neutral-400">{r.apply_count || 0}</td>
-              <td className="px-3 py-3 text-center">
-                <Chip tone={r.enabled ? "success" : "neutral"} onClick={() => toggleRule(r)}>{r.enabled ? "On" : "Off"}</Chip>
-              </td>
-              <td className="px-3 py-3 text-right">
-                <TextLink tone="brand" size="xs" onClick={() => startEditRule(r)} className="mr-2">Edit</TextLink>
-                <TextLink tone="neutral" size="xs" onClick={() => duplicateRule(r)} className="mr-2">Copy</TextLink>
-                <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteRule(r.id)}>Delete</TextLink>
-              </td>
-            </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <DataTable
+        columns={[
+          { key: "col0", label: "#", align: "center",
+            render: r => (<><span className="tnum text-xs text-neutral-400">{r.priority}</span></>) },
+          { key: "rule_name", label: "RULE NAME",
+            render: r => (<>
+              <span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded">auto-add</span>}
+            </>) },
+          { key: "conditions", label: "CONDITIONS", className: "text-xs text-neutral-500 max-w-48",
+            render: (r, i) => { const cond = r.condition_json || {}; const act = r.action_json || {}; const conditions = cond.conditions || []; const lines = act.lines || []; return (<>
+              <span className="text-accent-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
+                              {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
+                              {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
+            </>); } },
+          { key: "action", label: "ACTION", className: "text-xs",
+            render: r => { const cond = r.condition_json || {}; const act = r.action_json || {}; const conditions = cond.conditions || []; const lines = act.lines || []; return (<>
+              {act.type === "exclude" ? <span className="text-danger-600 font-medium">Exclude ({act.exclude_reason})</span>
+                                : <span className="text-info-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-highlight-500 ml-1">(split)</span>}</span>}
+            </>); } },
+          { key: "matched", label: "MATCHED", align: "center", className: "text-xs text-neutral-400",
+            render: r => (<>{r.apply_count || 0}</>) },
+          { key: "status", label: "STATUS", align: "center",
+            render: r => (<>
+              <Chip tone={r.enabled ? "success" : "neutral"} onClick={() => toggleRule(r)}>{r.enabled ? "On" : "Off"}</Chip>
+            </>) },
+          { key: "actions", label: "ACTIONS", align: "right",
+            render: r => (<>
+              <TextLink tone="brand" size="xs" onClick={() => startEditRule(r)} className="mr-2">Edit</TextLink>
+                              <TextLink tone="neutral" size="xs" onClick={() => duplicateRule(r)} className="mr-2">Copy</TextLink>
+                              <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteRule(r.id)}>Delete</TextLink>
+            </>) },
+        ]}
+        rows={rules}
+        rowKey={r => r.id}
+        empty="Nothing to show"
+      />
       {rules.length === 0 && (
         <div className="py-8 text-center text-neutral-400">
           <div className="text-3xl mb-2">📋</div>
@@ -2665,38 +2656,25 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           )}
 
           {/* Journal lines */}
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-neutral-400">
-                <th className="text-left font-medium py-1">ACCOUNT</th>
-                <th className="text-left font-medium py-1">CLASS / PROPERTY</th>
-                <th className="text-left font-medium py-1">MEMO</th>
-                <th className="text-right font-medium py-1">DEBIT</th>
-                <th className="text-right font-medium py-1">CREDIT</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.lines.map(l => {
-                const isBank = l.account_id === feed?.gl_account_id;
-                return (
-                <tr key={l.id} className="border-t border-brand-100/60">
-                  <td className={`py-1 pr-3 ${isBank ? "text-neutral-500" : "text-neutral-800 font-medium"}`}>
-                    {acctLabel(l)}{isBank && <span className="ml-1.5 text-neutral-400">(bank side)</span>}
-                  </td>
-                  <td className="py-1 pr-3 text-neutral-500">{className_(l.class_id) || d.je?.property || "—"}</td>
-                  <td className="py-1 pr-3 text-neutral-500 max-w-xs truncate" title={l.memo || ""}>{l.memo || "—"}</td>
-                  <td className="py-1 text-right tnum text-neutral-700">{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</td>
-                  <td className="py-1 text-right tnum text-neutral-700">{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</td>
-                </tr>
-                );
-              })}
-              <tr className="border-t border-brand-200 font-semibold text-neutral-700">
-                <td className="py-1" colSpan={3}>Total</td>
-                <td className="py-1 text-right tnum">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.debit), 0))}</td>
-                <td className="py-1 text-right tnum">{formatCurrency(d.lines.reduce((s, l) => s + safeNum(l.credit), 0))}</td>
-              </tr>
-            </tbody>
-          </table>
+          <DataTable
+            columns={[
+              { key: "account", label: "ACCOUNT", className: l => { const isBank = l.account_id === feed?.gl_account_id; return (`pr-3 ${isBank ? "text-neutral-500" : "text-neutral-800 font-medium"}`); },
+                render: l => { const isBank = l.account_id === feed?.gl_account_id; return (<>
+                  {acctLabel(l)}{isBank && <span className="ml-1.5 text-neutral-400">(bank side)</span>}
+                </>); } },
+              { key: "class_property", label: "CLASS / PROPERTY", className: "pr-3 text-neutral-500",
+                render: l => (<>{className_(l.class_id) || d.je?.property || "—"}</>) },
+              { key: "memo", label: "MEMO", className: "pr-3 text-neutral-500 max-w-xs truncate",
+                render: l => (<>{l.memo || "—"}</>) },
+              { key: "debit", label: "DEBIT", align: "right", className: "tnum text-neutral-700",
+                render: l => (<>{safeNum(l.debit) ? formatCurrency(safeNum(l.debit)) : ""}</>) },
+              { key: "credit", label: "CREDIT", align: "right", className: "tnum text-neutral-700",
+                render: l => (<>{safeNum(l.credit) ? formatCurrency(safeNum(l.credit)) : ""}</>) },
+            ]}
+            rows={d.lines}
+            rowKey={l => l.id}
+            empty="Nothing to show"
+          />
 
           {/* Bank-side context */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-neutral-500 pt-1 border-t border-brand-100">
@@ -2973,17 +2951,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="bg-info-50 text-info-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.length}</strong> total</div>
       </div>
       <div className="max-h-64 overflow-y-auto rounded-xl border border-neutral-200">
-        <table className="w-full text-xs">
-          <thead className="bg-neutral-50 sticky top-0"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
-          <tbody>{wizPreview.slice(0, 50).map((r, i) => (
-            <tr key={i} className={`border-t ${r.valid ? "" : "bg-danger-50/50"}`}>
-              <td className="px-3 py-1.5">{r.date || "—"}</td>
-              <td className="px-3 py-1.5 truncate max-w-48">{r.description}</td>
-              <td className={`px-3 py-1.5 text-right tnum ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
-              <td className="px-3 py-1.5 text-center">{r.valid ? <span className="text-success-600">✓</span> : <span className="text-danger-500" title="Invalid date or amount">✗</span>}</td>
-            </tr>
-          ))}</tbody>
-        </table>
+        <DataTable
+          columns={[
+            { key: "date", label: "Date",
+              render: r => (<>{r.date || "—"}</>) },
+            { key: "description", label: "Description", className: "truncate max-w-48",
+              render: r => (<>{r.description}</>) },
+            { key: "amount", label: "Amount", align: "right", className: r => (`tnum ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`),
+              render: r => (<>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</>) },
+            { key: "status", label: "Status", align: "center",
+              render: r => (<>
+                {r.valid ? <span className="text-success-600">✓</span> : <span className="text-danger-500" title="Invalid date or amount">✗</span>}
+              </>) },
+          ]}
+          rows={wizPreview.slice(0, 50)}
+          rowKey={r => r.id}
+          empty="Nothing to show"
+        />
       </div>
       {wizPreview.length > 50 && <p className="text-xs text-neutral-400">Showing first 50 of {wizPreview.length} rows</p>}
       <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(3)}>← Back</TextLink><Btn variant="dark" size="sm" onClick={() => setWizStep(5)}>Continue →</Btn></div>

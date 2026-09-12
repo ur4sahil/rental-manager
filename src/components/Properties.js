@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -3664,45 +3664,42 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {viewMode === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr>
-  {visibleCols.includes("address") && <th className="px-4 py-3 text-left">Address</th>}
-  {visibleCols.includes("type") && <th className="px-4 py-3 text-left">Type</th>}
-  {visibleCols.includes("status") && <th className="px-4 py-3 text-left">Status</th>}
-  {visibleCols.includes("rent") && <th className="px-4 py-3 text-right">Rent</th>}
-  {visibleCols.includes("tenant") && <th className="px-4 py-3 text-left">Tenant</th>}
-  {visibleCols.includes("lease_end") && <th className="px-4 py-3 text-left">Lease End</th>}
-  {visibleCols.includes("owner_name") && <th className="px-4 py-3 text-left">Owner</th>}
-  {visibleCols.includes("notes") && <th className="px-4 py-3 text-left">Notes</th>}
-  <th className="px-4 py-3 text-right">Actions</th>
-  </tr>
-  </thead>
-  <tbody>
-  {filtered.map(p => (
-  <tr key={p.id} {...clickable(() => openPropertyDetail(p))} className="border-t border-brand-50/50 hover:bg-brand-50/30/50 cursor-pointer">
-  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800"><CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="font-medium text-neutral-800">{p.address}</CardOpenButton></td>}
-  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-neutral-500">{p.type}</td>}
-  {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
-  {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
-  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-neutral-500">{formatAllTenants(p) || "—"}</td>}
-  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-neutral-400">{p.lease_end || "—"}</td>}
-  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-neutral-500">{p.owner_name || "—"}</td>}
-  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-neutral-400 max-w-32 truncate">{p.notes || "—"}</td>}
-  <td className="px-4 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-  {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
-  {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
-  {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
-  {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
-  {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
-  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" className="mr-2" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>PM</TextLink>}
-  {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" className="mr-2" onClick={() => removePM(p)}>-PM</TextLink>}
-  <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)}>TL</TextLink>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "address", label: "Address", className: "font-medium text-neutral-800",
+        render: p => (<>
+          <CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="font-medium text-neutral-800">{p.address}</CardOpenButton>
+        </>) },
+      { key: "type", label: "Type", className: "text-neutral-500",
+        render: p => (<>{p.type}</>) },
+      { key: "status", label: "Status",
+        render: p => (<><Badge status={p.status} label={p.status} /></>) },
+      { key: "rent", label: "Rent", align: "right", className: "font-semibold",
+        render: p => (<>${safeNum(p.rent).toLocaleString()}</>) },
+      { key: "tenant", label: "Tenant", className: "text-neutral-500",
+        render: p => (<>{formatAllTenants(p) || "—"}</>) },
+      { key: "lease_end", label: "Lease End", className: "text-neutral-400",
+        render: p => (<>{p.lease_end || "—"}</>) },
+      { key: "owner", label: "Owner", className: "text-neutral-500",
+        render: p => (<>{p.owner_name || "—"}</>) },
+      { key: "notes", label: "Notes", className: "text-xs text-neutral-400 max-w-32 truncate",
+        render: p => (<>{p.notes || "—"}</>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
+        render: p => (<>
+          {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
+            {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
+            {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
+            {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
+            {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
+            {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" className="mr-2" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>PM</TextLink>}
+            {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" className="mr-2" onClick={() => removePM(p)}>-PM</TextLink>}
+            <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)}>TL</TextLink>
+        </>) },
+    ]}
+    rows={filtered}
+    rowKey={p => p.id}
+    empty="Nothing to show"
+  />
   {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
   </div>
   )}

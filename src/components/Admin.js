@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1480,31 +1480,31 @@ function AuditTrail({ companyId }) {
 
   {/* Log Table */}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr>
-  <th className="px-4 py-3 text-left">Time</th>
-  <th className="px-4 py-3 text-left">User</th>
-  <th className="px-4 py-3 text-left">Role</th>
-  <th className="px-4 py-3 text-left">Module</th>
-  <th className="px-4 py-3 text-left">Action</th>
-  <th className="px-4 py-3 text-left">Details</th>
-  </tr>
-  </thead>
-  <tbody>
-  {paged.map(log => (
-  <tr key={log.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 text-xs text-neutral-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
-  <td className="px-4 py-2.5 text-neutral-700 font-medium text-xs">{log.user_email}</td>
-  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>{log.user_role}</span></td>
-  <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
-  <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-neutral-100 text-neutral-700"}`}>{log.action}</span></td>
-  <td className="px-4 py-2.5 text-xs text-neutral-500 max-w-xs truncate">{log.details}</td>
-  </tr>
-  ))}
-  {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-neutral-400">No audit logs found</td></tr>}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "time", label: "Time", className: "text-xs text-neutral-400 whitespace-nowrap",
+        render: log => (<>{new Date(log.created_at).toLocaleString()}</>) },
+      { key: "user", label: "User", className: "text-neutral-700 font-medium text-xs",
+        render: log => (<>{log.user_email}</>) },
+      { key: "role", label: "Role",
+        render: log => (<>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>{log.user_role}</span>
+        </>) },
+      { key: "module", label: "Module", className: "text-xs",
+        render: log => (<>
+          <span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span>
+        </>) },
+      { key: "action", label: "Action",
+        render: log => (<>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-neutral-100 text-neutral-700"}`}>{log.action}</span>
+        </>) },
+      { key: "details", label: "Details", className: "text-xs text-neutral-500 max-w-xs truncate",
+        render: log => (<>{log.details}</>) },
+    ]}
+    rows={paged}
+    rowKey={log => log.id}
+    empty="Nothing to show"
+  />
   </div>
 
   {/* Pagination */}

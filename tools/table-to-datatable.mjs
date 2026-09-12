@@ -54,10 +54,38 @@ const tbody = block.slice(block.indexOf("<tbody"), block.lastIndexOf("</tbody>")
 
 // The row variable, taken from the .map() that built the rows. Guessing
 // "r" meant every lifted body referenced an undefined name.
-const rowVar = (/\.map\(\s*\(?\s*([A-Za-z_$][\w$]*)/.exec(tbody) || [, "row"])[1];
+// The map parameter may be DESTRUCTURED -- .map(([vendor, d]) => ...) is
+// common for Object.entries() tables -- so capture a bracketed or braced
+// pattern as well as a plain identifier. Matching only identifiers made
+// the tool fall back to "row" and every lifted body then referenced the
+// destructured names, which did not exist.
+const rowVar = (/\.map\(\s*\(?\s*(\[[^\]]*\]|\{[^}]*\}|[A-Za-z_$][\w$]*)/.exec(tbody) || [, "row"])[1];
 // The array being mapped, so the rows={} prop is filled in rather than
 // left as a comment for someone to guess at.
 const rowsExpr = (/\{\s*(\(?[A-Za-z_$][^\n]*?\)?)\s*\.map\(/.exec(tbody) || [, "/* rows */"])[1];
+
+// PREAMBLE. Many tables compute per-row values between the .map() and the
+// <tr>:
+//   {rows.map(r => { const chip = statusChip(r); return (<tr>...
+// Those statements are not inside any cell, so lifting only the cells
+// left every render referencing an undefined name -- 38 eslint errors
+// across 8 tables on the first pass through Accounting.js. Captured here
+// and replayed inside each render that needs it, which also keeps every
+// cell self-contained.
+let preamble = "";
+{
+  const m = /\.map\(\s*\(?[^)]*\)?\s*=>\s*\{/.exec(tbody);
+  if (m) {
+    const from = m.index + m[0].length;
+    const ret = tbody.indexOf("return", from);
+    if (ret > from) {
+      const body = tbody.slice(from, ret).trim();
+      // Only simple declarations; anything else is left alone rather than
+      // replayed blindly.
+      if (body && /^(const|let|var)\s/.test(body) && !/\breturn\b/.test(body)) preamble = body;
+    }
+  }
+}
 const cells = [];
 
 // Find the end of a <td ...> opening tag, tracking brace depth and
@@ -136,11 +164,27 @@ headers.forEach((h, i) => {
   const wrapped = inline
     ? `<>${body}</>`
     : `<>\n        ${body.split("\n").join("\n        ")}\n      </>`;
-  console.log(`      render: ${rowVar} => (${wrapped}) },`);
+  // Replay the preamble only in the renders that actually reference one of
+  // its names, so unrelated cells stay one-liners.
+  const declared = [...preamble.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)].map(x => x[1]);
+  const needs = declared.some(nm => new RegExp(`(?<![\\w$.])${nm}(?![\\w$])`).test(body));
+  const destructured = /^[[{]/.test(rowVar);
+  const idxArg = /(?<![\w$.])i(?![\w$])/.test(body)
+    ? `(${rowVar}, i)`
+    : (destructured ? `(${rowVar})` : rowVar);
+  if (needs) {
+    console.log(`      render: ${idxArg} => { ${preamble.replace(/\n\s*/g, " ")} return (${wrapped}); } },`);
+  } else {
+    console.log(`      render: ${idxArg} => (${wrapped}) },`);
+  }
 });
 console.log("  ]}");
 console.log(`  rows={${rowsExpr}}`);
-console.log(`  rowKey={${rowVar} => ${rowVar}.id}`);
+console.log(/^[[{]/.test(rowVar)
+  // A destructured row has no .id to key on; the index is the honest
+  // choice rather than inventing a key.
+  ? "  rowKey={(row, i) => i}"
+  : `  rowKey={${rowVar} => ${rowVar}.id}`);
 console.log('  empty="Nothing to show"');
 console.log("/>");
 console.log(`\n// lifted from ${file}:${startLine + 1}-${endLine + 1}`);

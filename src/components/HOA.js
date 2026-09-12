@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -181,33 +181,37 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   )}
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
-  </thead>
-  <tbody>
-  {filtered.map(h => (
-  <tr key={h.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 text-neutral-800">{h.property}</td>
-  <td className="px-4 py-2.5 font-medium text-neutral-800">{h.hoa_name}</td>
-  <td className="px-4 py-2.5 text-right font-semibold">${safeNum(h.amount).toLocaleString()}</td>
-  <td className="px-4 py-2.5 text-neutral-400">{h.due_date}</td>
-  <td className="px-4 py-2.5 text-neutral-500 capitalize">{h.frequency}</td>
-  <td className="px-4 py-2.5"><Badge status={h.status} /></td>
-  <td className="px-4 py-2.5 text-xs">
-  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {h.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv_username || h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}}>{showCreds.has(h.id) ? "Hide" : "Show"} login</TextLink>}
-  {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
-  </td>
-  <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
-  <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
-  <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "property", label: "Property", className: "text-neutral-800",
+        render: h => (<>{h.property}</>) },
+      { key: "hoa_company", label: "HOA Company", className: "font-medium text-neutral-800",
+        render: h => (<>{h.hoa_name}</>) },
+      { key: "amount", label: "Amount", align: "right", className: "font-semibold",
+        render: h => (<>${safeNum(h.amount).toLocaleString()}</>) },
+      { key: "due_date", label: "Due Date", className: "text-neutral-400",
+        render: h => (<>{h.due_date}</>) },
+      { key: "frequency", label: "Frequency", className: "text-neutral-500 capitalize",
+        render: h => (<>{h.frequency}</>) },
+      { key: "status", label: "Status",
+        render: h => (<><Badge status={h.status} /></>) },
+      { key: "portal", label: "Portal", className: "text-xs",
+        render: h => (<>
+          {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
+            {h.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv_username || h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}}>{showCreds.has(h.id) ? "Hide" : "Show"} login</TextLink>}
+            {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
+        </>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
+        render: h => (<>
+          {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
+            <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
+        </>) },
+    ]}
+    rows={filtered}
+    rowKey={h => h.id}
+    empty="Nothing to show"
+  />
   {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No HOA payments found</div>}
   </div>
   </div>

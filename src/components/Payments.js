@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, PageHeader } from "../ui";
+import { Input, Btn, Select, PageHeader, DataTable} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -133,36 +133,31 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
       the outer overflow-hidden simply cut ~223px of columns off at
       390px wide, with no way to reach them. */}
   <div className="overflow-x-auto">
-  <table className="w-full min-w-[640px] text-sm">
-  <thead className="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wider">
-  <tr>
-  <th className="px-4 py-3 text-left">Date</th>
-  <th className="px-4 py-3 text-left">JE #</th>
-  <th className="px-4 py-3 text-left">Tenant</th>
-  <th className="px-4 py-3 text-left">Property</th>
-  <th className="px-4 py-3 text-right">Amount</th>
-  <th className="px-4 py-3 text-left">Type</th>
-  <th className="px-4 py-3 text-left">Method</th>
-  <th className="px-4 py-3"></th>
-  </tr>
-  </thead>
-  <tbody>
-  {payments.map(p => (
-  <tr key={p.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors">
-  <td className="px-4 py-3 text-neutral-500">{p.date}</td>
-  <td className="px-4 py-3 tnum text-xs text-positive-600">{p.number || "—"}</td>
-  <td className="px-4 py-3 font-medium text-neutral-800">{p.tenant || "—"}</td>
-  <td className="px-4 py-3 text-neutral-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
-  <td className="px-4 py-3 text-right font-semibold tnum text-positive-600">{formatCurrency(p.amount)}</td>
-  <td className="px-4 py-3 capitalize text-neutral-500 text-xs">{p.type?.replace("_", " ")}</td>
-  <td className="px-4 py-3 text-neutral-400 text-xs">{p.method}</td>
-  <td className="px-4 py-3">
-  <Btn variant="success-fill" size="xs" onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="py-0.5">Receipt</Btn>
-  </td>
-  </tr>
-  ))}
-  </tbody>
-  </table>
+  <DataTable
+    columns={[
+      { key: "date", label: "Date", className: "text-neutral-500",
+        render: p => (<>{p.date}</>) },
+      { key: "je", label: "JE #", className: "tnum text-xs text-positive-600",
+        render: p => (<>{p.number || "—"}</>) },
+      { key: "tenant", label: "Tenant", className: "font-medium text-neutral-800",
+        render: p => (<>{p.tenant || "—"}</>) },
+      { key: "property", label: "Property", className: "text-neutral-400 text-xs",
+        render: p => (<>{p.property?.split(",")[0] || "—"}</>) },
+      { key: "amount", label: "Amount", align: "right", className: "font-semibold tnum text-positive-600",
+        render: p => (<>{formatCurrency(p.amount)}</>) },
+      { key: "type", label: "Type", className: "capitalize text-neutral-500 text-xs",
+        render: p => (<>{p.type?.replace("_", " ")}</>) },
+      { key: "method", label: "Method", className: "text-neutral-400 text-xs",
+        render: p => (<>{p.method}</>) },
+      { key: "col7", label: "",
+        render: p => (<>
+          <Btn variant="success-fill" size="xs" onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="py-0.5">Receipt</Btn>
+        </>) },
+    ]}
+    rows={payments}
+    rowKey={p => p.id}
+    empty="Nothing to show"
+  />
   </div>
   {payments.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No payment transactions found</div>}
   </div>
