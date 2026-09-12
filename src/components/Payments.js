@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, PageHeader, DataTable} from "../ui";
+import { Input, Btn, Select, PageHeader, DataTable, TabBar} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -107,9 +107,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["payments", "Payments"], ["autopay", "Autopay & Recurring"]].map(([id, label]) => (
-  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
-  ))}
+  <TabBar tabs={[["payments", "Payments"], ["autopay", "Autopay & Recurring"]]} active={payTab} onChange={setPayTab} size="md" />
   </div>
 
   {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}

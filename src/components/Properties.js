@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -3119,9 +3119,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Tab Navigation */}
   <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
-  {[["overview","Details"],["documents","Documents"],["licenses","Licenses"],["workorders","Work Orders"],["history","History"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "licenses" ? ` (${propertyLicenses.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
-  ))}
+  <TabBar size="lg" active={propertyDetailTab}
+    tabs={[["overview","Details"],["documents","Documents"],["licenses","Licenses"],["workorders","Work Orders"],["history","History"]]}
+    onChange={id => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} />
   </div>
 
   {/* Details Tab — comprehensive property info */}

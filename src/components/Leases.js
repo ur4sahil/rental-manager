@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
@@ -372,9 +372,14 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   )}
 
   <div className="flex gap-1 mb-4 border-b border-brand-50 overflow-x-auto">
-  {[["active","Active"],["expiring","Expiring"],["expired","Expired"],["renewed","Renewed"],["terminated","Terminated"],["all","All"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
-  ))}
+  <TabBar size="sm" active={activeTab} onChange={setActiveTab} tabs={[
+    { id: "active", label: "Active" },
+    { id: "expiring", label: "Expiring", count: expiringSoon.length || null },
+    { id: "expired", label: "Expired" },
+    { id: "renewed", label: "Renewed" },
+    { id: "terminated", label: "Terminated" },
+    { id: "all", label: "All" },
+  ]} />
   </div>
 
   {showTemplateForm && (

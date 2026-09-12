@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable} from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable, TabBar} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1362,9 +1362,7 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   </div>
   )}
   <div className="flex gap-1 mb-4 border-b border-brand-50 overflow-x-auto">
-  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["notifications", "Notifications"], ["settings", "Settings"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
-  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
-  ))}
+  <TabBar tabs={[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["notifications", "Notifications"], ["settings", "Settings"], ["errors", "Error Log"]] : [])]} active={adminTab} onChange={setAdminTab} size="md" />
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
   {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}

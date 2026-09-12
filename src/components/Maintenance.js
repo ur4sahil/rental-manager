@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -923,9 +923,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   )}
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["vendors","Vendors"],["invoices","Invoices"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
-  ))}
+  <TabBar tabs={[["vendors","Vendors"],["invoices","Invoices"]]} active={activeTab} onChange={setActiveTab} size="md" />
   </div>
 
   {/* New Vendor Form */}

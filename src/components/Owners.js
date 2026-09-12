@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TabBar} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -295,9 +295,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["owners","Owners"],["statements","Statements"],["distributions","Distributions"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
-  ))}
+  <TabBar tabs={[["owners","Owners"],["statements","Statements"],["distributions","Distributions"]]} active={activeTab} onChange={setActiveTab} size="md" />
   </div>
 
   {/* Owner Form */}
@@ -614,9 +612,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
       entirely, so the tab existed but could not be read or reached.
       whitespace-nowrap on the buttons stops the labels wrapping mid-word. */}
   <div className="flex gap-1 mb-5 border-b border-brand-50 overflow-x-auto">
-  {[["overview","🏠 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
-  ))}
+  <TabBar tabs={[["overview","🏠 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]]} active={activeTab} onChange={setActiveTab} size="md" />
   </div>
 
   {/* OVERVIEW TAB */}

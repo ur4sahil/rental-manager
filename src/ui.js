@@ -7,7 +7,20 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 // ============================================================
 
 // ---- BUTTON ----
-const BTN_BASE = "inline-flex items-center justify-center font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+// The keyboard focus ring.
+//
+// Btn, IconBtn and TextLink had NO focus state -- all 576 of them -- so
+// keyboard and screen-reader users could not see where they were in the
+// app at all. focus-visible rather than focus, so a mouse click does not
+// leave a ring behind; ring-offset so the ring reads against a filled
+// button as well as a white card.
+//
+// brand-400 specifically: it is visible both on white and on a brand-600
+// fill. The ramp had no 400 step, which is a large part of why this was
+// never done -- there was no right colour to reach for.
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1";
+
+const BTN_BASE = "inline-flex items-center justify-center font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed " + FOCUS_RING;
 const BTN_VARIANTS = {
   primary:   "bg-brand-600 text-white hover:bg-brand-700",
   secondary: "text-brand-600 border border-brand-200 hover:bg-brand-50 bg-white",
@@ -59,7 +72,7 @@ export function Btn({ variant = "primary", size = "md", className = "", icon, ty
 // ---- ICON BUTTON ----
 export function IconBtn({ icon, className = "", title, ...props }) {
   return (
-    <button className={`w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors ${className}`} title={title} {...props}>
+    <button className={`w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors ${FOCUS_RING} ${className}`} title={title} {...props}>
       <span className="material-icons-outlined text-lg">{icon}</span>
     </button>
   );
@@ -174,12 +187,22 @@ export function Badge({ status, label, color, className = "" }) {
 }
 
 // ---- PAGE HEADER ----
-export function PageHeader({ title, subtitle, children }) {
+// `size="section"` is the same header one step down, for a sub-page inside
+// a section -- Chart of Accounts, Journal Entries, Reports and Bank
+// Transactions all sit under Accounting rather than being top-level pages.
+// Six of those had hand-written their own title/subtitle/actions row at
+// text-lg, which is why they drifted from each other and from this.
+const HEADER_SIZE = {
+  page:    { wrap: "mb-5", title: "text-xl md:text-2xl", sub: "text-xs" },
+  section: { wrap: "mb-4", title: "text-lg",             sub: "text-sm" },
+};
+export function PageHeader({ title, subtitle, children, size = "page" }) {
+  const z = HEADER_SIZE[size] || HEADER_SIZE.page;
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
+    <div className={`flex flex-col md:flex-row md:items-center justify-between gap-2 ${z.wrap}`}>
       <div>
-        <h2 className="text-xl md:text-2xl font-display font-bold text-neutral-800">{title}</h2>
-        {subtitle && <p className="text-xs text-neutral-400 mt-0.5">{subtitle}</p>}
+        <h2 className={`${z.title} font-display font-bold text-neutral-800`}>{title}</h2>
+        {subtitle && <p className={`${z.sub} text-neutral-400 mt-0.5`}>{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}
     </div>
@@ -203,16 +226,48 @@ export function EmptyState({ icon = "inbox", title, subtitle }) {
 }
 
 // ---- TAB BAR ----
-export function TabBar({ tabs, active, onChange, size = "md" }) {
-  const sizeClass = size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm";
+// Tabs.
+//
+// This component existed and NOTHING used it, because it rendered filled
+// pills while every tab bar in the app is an UNDERLINE bar -- which is
+// also what QuickBooks uses. So eleven pages each hand-wrote the same
+// `border-b-2` button and drifted: px-3 vs px-4 vs px-5, py-1.5 vs py-2 vs
+// py-3, text-xs vs text-sm, and only some of them with a hover state.
+//
+// `tabs` takes either [id, label] pairs or { id, label, icon, count }
+// objects, because several bars show an icon and several append a count
+// ("Expiring (3)") -- both of which had been spelled into the label by
+// hand at the call site.
+const TAB_SIZE = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2 text-sm",
+  lg: "px-4 py-3 text-sm",
+};
+export function TabBar({ tabs, active, onChange, size = "md", variant = "underline", className = "" }) {
+  const pad = TAB_SIZE[size] || TAB_SIZE.md;
+  const items = tabs.map(t => (Array.isArray(t) ? { id: t[0], label: t[1] } : t));
+  const wrap = variant === "pill"
+    ? "flex gap-1 overflow-x-auto"
+    : "flex gap-1 overflow-x-auto border-b border-neutral-200";
   return (
-    <div className="flex gap-1 overflow-x-auto">
-      {tabs.map(([id, label]) => (
-        <button key={id} onClick={() => onChange(id)}
-          className={`${sizeClass} font-medium rounded-lg whitespace-nowrap transition-colors ${active === id ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>
-          {label}
-        </button>
-      ))}
+    <div className={`${wrap} ${className}`} role="tablist">
+      {items.map(t => {
+        const on = active === t.id;
+        const look = variant === "pill"
+          ? `rounded-lg ${on ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`
+          // -mb-px pulls the active underline onto the container's border
+          // so the two read as one line rather than stacking into two.
+          : `border-b-2 -mb-px ${on ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`;
+        return (
+          <button key={t.id} type="button" role="tab" aria-selected={on}
+            onClick={() => onChange(t.id)}
+            className={`${pad} font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1.5 ${look} ${FOCUS_RING}`}>
+            {t.icon && <span className="material-icons-outlined text-base">{t.icon}</span>}
+            {t.label}
+            {t.count != null && <span className="text-2xs text-neutral-400">({t.count})</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -443,6 +498,38 @@ export function FileInput({ className = "", accept, ...props }) {
   );
 }
 
+// ---- SEARCH TRIGGER ----
+// The visible entry point to the command palette.
+//
+// The palette already existed and was good, but it was reachable ONLY by
+// Cmd/Ctrl-K -- nothing on screen said so, so for anyone who had not been
+// told, the app had no search. QuickBooks puts a search box in the top bar
+// and that is where people look for it.
+//
+// It is a BUTTON that looks like a text field, not a real input. The
+// palette owns the query, the filtering and the keyboard handling; a
+// second input here would either duplicate all of that or have to forward
+// every keystroke into it. Looking like a field is the affordance; being
+// one would be a second implementation.
+export function SearchTrigger({ onOpen, hint = "K", placeholder = "Search or jump to…", className = "" }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${placeholder} (keyboard shortcut ${hint})`}
+      className={"group flex items-center gap-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left " +
+        "hover:border-brand-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 " +
+        "focus-visible:ring-offset-1 transition-colors " + className}
+    >
+      <span className="material-icons-outlined text-base text-neutral-400 group-hover:text-brand-500">search</span>
+      <span className="flex-1 truncate text-xs text-neutral-400">{placeholder}</span>
+      <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-lg border border-neutral-200 bg-white px-1.5 py-0.5 text-2xs font-semibold text-neutral-400">
+        {hint}
+      </kbd>
+    </button>
+  );
+}
+
 // ---- COMPANY SCOPE ----
 // The active company id, provided once at the app root.
 //
@@ -471,7 +558,8 @@ export function useCompanyScope() { return React.useContext(CompanyScope); }
 // Every drillable figure in the app resolves its affordance from here, so
 // this constant is the only place the decision lives.
 export const DRILL_LINK =
-  "text-inherit no-underline hover:text-brand-700 hover:underline hover:decoration-solid underline-offset-2 cursor-pointer";
+  "text-inherit no-underline hover:text-brand-700 hover:underline hover:decoration-solid underline-offset-2 cursor-pointer rounded " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1";
 
 // ---- TEXT LINK ----
 // Underline-on-hover button that mirrors the common `text-xs text-COLOR-600
@@ -493,7 +581,7 @@ export function TextLink({ tone = "brand", size = "xs", underline = true, classN
   };
   const sizes = { xs: "text-xs", sm: "text-sm", md: "text-base", lg: "text-lg", xl: "text-xl" };
   return (
-    <button className={`${tones[tone] || tones.brand} ${sizes[size] || sizes.xs}${underline ? " hover:underline" : ""} ${className}`} {...props}>
+    <button className={`${tones[tone] || tones.brand} ${sizes[size] || sizes.xs}${underline ? " hover:underline" : ""} ${FOCUS_RING} rounded ${className}`} {...props}>
       {children}
     </button>
   );

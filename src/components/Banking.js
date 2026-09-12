@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -2165,15 +2165,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // --- RENDER ---
   return (
   <div className="space-y-4">
-  {/* Header. On mobile the title block stacks above the action row so
-      the buttons get the full width and don't pile into a vertical
-      stack to the right of the subtitle. All buttons share size="sm"
-      so they match height. */}
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-    <div>
-      <h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3>
-      <p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p>
-    </div>
+  {/* PageHeader already stacks the title above the actions on mobile, so
+      the hand-written flex-col md:flex-row that used to be here is gone.
+      All buttons share size="sm" so they match height. */}
+  <PageHeader size="section" title="Bank Transactions" subtitle="Import, review, and categorize bank transactions">
     <div className="flex flex-wrap items-center gap-2">
       <ShortcutsHint onClick={() => openShortcuts("review")} className="mr-1" />
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
@@ -2188,7 +2183,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       }} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <Btn variant="dark" size="sm" icon="upload_file" onClick={startImport}>Import CSV</Btn>
     </div>
-  </div>
+  </PageHeader>
 
   {/* Connection Banners */}
   {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
@@ -2347,10 +2342,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* Tabs */}
   {feeds.length > 0 && (<>
   <div className="flex gap-1 border-b border-neutral-200">
-    {[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]].map(([id, label]) => (
-    <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); setTxnPage(0); }}
-      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
-    ))}
+    <TabBar tabs={[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]]} active={activeTab} onChange={id => {setActiveTab(id); setSelectedTxns(new Set()); setTxnPage(0);}} size="lg" />
   </div>
 
   {/* Rules Tab Content */}

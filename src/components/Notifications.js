@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill } from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar} from "../ui";
 import { normalizeEmail, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Spinner } from "./shared";
@@ -447,12 +447,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
       <DevicePushPanel companyId={companyId} userProfile={userProfile} showToast={showToast} />
 
       <div className="flex gap-1 mb-4 border-b border-brand-50">
-        {[["activity", "Activity"], ["preferences", "Preferences"], ["history", "History"]].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>
-            {label}
-          </button>
-        ))}
+        <TabBar tabs={[["activity", "Activity"], ["preferences", "Preferences"], ["history", "History"]]} active={activeTab} onChange={setActiveTab} size="md" />
       </div>
 
       {/* ─── ACTIVITY ─── */}

@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
-import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink, CompanyScope} from "./ui";
+import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink, CompanyScope, SearchTrigger} from "./ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
@@ -37,7 +37,7 @@ import { Messages } from "./components/Messages";
 import { CompanySelector, PendingRequestsPanel, PendingPMAssignments } from "./components/CompanySelector";
 import PropertyImport from "./components/PropertyImport";
 import { CommandPalette } from "./components/CommandPalette";
-import { ShortcutsHelp, useShortcutsHost } from "./components/KeyboardShortcuts";
+import { ShortcutsHelp, useShortcutsHost, MOD } from "./components/KeyboardShortcuts";
 import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
 import { InsuranceTracker } from "./components/Insurance";
@@ -1361,8 +1361,16 @@ function AppInner() {
       the page's own H1). On small screens we truncate so long company
       names don't push the avatar + bell off-screen. Falls back to the
       page label if no company is active yet. */}
-  <div className="flex-1 min-w-0 text-sm font-semibold text-neutral-700 truncate">
+  {/* Company name, then the search box. The name keeps its place -- it is
+      the thing you most need to be sure of before touching the books --
+      but it no longer takes the whole bar, because the palette needs a
+      visible home. On small screens the search collapses to its icon
+      rather than squeezing the name out. */}
+  <div className="min-w-0 shrink text-sm font-semibold text-neutral-700 truncate">
   {activeCompany?.name || (effectivePage || page).replace(/_/g, " ")}
+  </div>
+  <div className="flex-1 min-w-0 max-w-md">
+  <SearchTrigger onOpen={() => setPaletteOpen(true)} hint={`${MOD}K`} />
   </div>
   <div className="relative">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>

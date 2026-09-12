@@ -7,10 +7,18 @@
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;
   --color-brand-300: #a5b4fc;
+  /* 400 and 900 were the two gaps in the ramp. 400 is what a focus ring
+     wants -- visible on white and on a brand-600 button without the ring
+     disappearing into either -- and its absence is why focus rings were
+     never added. 900 gives the darkest step a name so nothing reaches for
+     an arbitrary hex. Both are the indigo values the rest of the ramp
+     already follows. */
+  --color-brand-400: #818cf8;
   --color-brand-500: #6366f1;
   --color-brand-600: #4f46e5;
   --color-brand-700: #4338ca;
   --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
 
   /* Surface tokens */
   --color-surface: #ffffff;

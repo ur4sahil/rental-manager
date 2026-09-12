@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope} from "../ui";
+import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -1029,16 +1029,10 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
 
   return (
   <div className="space-y-4">
-  <div className="flex items-center justify-between mb-4">
-  <div>
-  <h3 className="text-lg font-semibold text-neutral-900">Chart of Accounts</h3>
-  <p className="text-sm text-neutral-400">Manage your account structure</p>
-  </div>
-  <div className="flex gap-2">
+  <PageHeader size="section" title="Chart of Accounts" subtitle="Manage your account structure">
   <Btn variant={showInactive ? "secondary" : "slate"} size="sm" onClick={() => setShowInactive(!showInactive)}>{showInactive ? "Hide Inactive" : "Show Inactive"}</Btn>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Account</Btn>
-  </div>
-  </div>
+  </PageHeader>
   <div className="flex flex-wrap gap-2 mb-4">
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
   <FilterPill key={t} tone="positive" active={filter === t} onClick={() => setFilter(t)}>{t}</FilterPill>
@@ -1425,10 +1419,9 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
 
   return (
   <div className="space-y-4">
-  <div className="flex items-center justify-between mb-4">
-  <div><h3 className="text-lg font-semibold text-neutral-900">Journal Entries</h3><p className="text-sm text-neutral-400">Record and manage financial transactions</p></div>
+  <PageHeader size="section" title="Journal Entries" subtitle="Record and manage financial transactions">
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>
-  </div>
+  </PageHeader>
   {/* Filter row — flex-wrap so mobile can stack the property Select +
       date pickers below the status pills instead of overlapping them.
       ml-auto pushed the Select to the right edge with no room to wrap;
@@ -1617,10 +1610,9 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 
   return (
   <div className="space-y-4">
-  <div className="flex items-center justify-between mb-4">
-  <div><h3 className="text-lg font-semibold text-neutral-900">Class Tracking</h3><p className="text-sm text-neutral-400">Track by unit, property, or department</p></div>
+  <PageHeader size="section" title="Class Tracking" subtitle="Track by unit, property, or department">
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Class</Btn>
-  </div>
+  </PageHeader>
   <div className="flex flex-wrap gap-2 mb-4">
   {PERIODS.map(p => <FilterPill key={p} tone="positive" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   </div>
@@ -2896,9 +2888,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     const favReports = allReports.filter(r => favorites.includes(r.id));
     return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-neutral-900">Reports</h3><p className="text-sm text-neutral-400">Run financial and property reports</p></div>
-      </div>
+      <PageHeader size="section" title="Reports" subtitle="Run financial and property reports" />
 
       {/* Search */}
       <div className="relative mb-5">
@@ -2909,9 +2899,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-neutral-200">
-        {[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]].map(([id,label]) => (
-          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
-        ))}
+        <TabBar tabs={[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]]} active={catalogTab} onChange={setCatalogTab} size="md" />
       </div>
 
       {/* Search results */}
@@ -5725,9 +5713,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div>
   {/* Tabs: Reconcile / Period Lock */}
   <div className="flex gap-1 mb-4 border-b border-neutral-200">
-    {[["reconcile", "Reconcile"], ["period_lock", "Period Lock"]].map(([id, label]) => (
-      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500"}`}>{label}</button>
-    ))}
+    <TabBar tabs={[["reconcile", "Reconcile"], ["period_lock", "Period Lock"]]} active={reconTab} onChange={setReconTab} size="md" />
   </div>
 
   {/* Period Lock Tab */}

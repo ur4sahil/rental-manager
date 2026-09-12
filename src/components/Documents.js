@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable} from "../ui";
+import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
@@ -2307,13 +2307,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {/* Tabbed bar — underline-style, Zoho/Docs convention */}
   <div className="flex items-center border-b border-neutral-100 mb-5 gap-6">
-  {[["create","Create","add_circle_outline"],["templates","Templates","description"],["history","History",generatedDocs.length > 0 ? "history" : "history"]].map(([id,label,icon]) => (
-  <button key={id} onClick={() => setTab(id)} className={"flex items-center gap-1.5 pb-2 -mb-px text-sm font-medium border-b-2 transition-colors " + (tab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500 hover:text-neutral-700")}>
-  <span className="material-icons-outlined text-base">{icon}</span>
-  {label}
-  {id === "history" && generatedDocs.length > 0 && <span className={"text-2xs px-1.5 py-0.5 rounded-full " + (tab === id ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500")}>{generatedDocs.length}</span>}
-  </button>
-  ))}
+  <TabBar active={tab} onChange={setTab} tabs={[
+    { id: "create", label: "Create", icon: "add_circle_outline" },
+    { id: "templates", label: "Templates", icon: "description" },
+    // The count was a pill inside the button; TabBar renders it from
+    // `count`, so it comes back as data instead of markup. It was dropped
+    // entirely by the first pass, along with all three icons -- a
+    // three-element [id, label, icon] tuple is not the [id, label] pair
+    // TabBar reads, and the extra element went silently nowhere.
+    { id: "history", label: "History", icon: "history", count: generatedDocs.length || null },
+  ]} />
   </div>
 
   {/* ---- CREATE TAB ---- */}
