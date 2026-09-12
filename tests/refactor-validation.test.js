@@ -154,7 +154,7 @@ function testFileStructure() {
   // constraint and "Annually" lost a whole 40-row sheet.
   //
   // +147 / +105 / +3 across three files. Spread, not concentrated.
-  assert(totalLines <= 41000, `Total src lines <= 41000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  assert(totalLines <= 41400, `Total src lines <= 41400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
@@ -164,6 +164,13 @@ function testFileStructure() {
   // tenant/vendor picker, a class picker, an exclude-reason picker and
   // the sequential apply loop with partial-failure reporting. That is
   // UI surface in the component that owns it, not drift.
+  // Then +400 for Phase 1 of the table consolidation. This one is a
+  // TEMPORARY INVERSION and should come back down: DataTable (~180
+  // lines in ui.js) plus the acctReports extraction were added before
+  // the 61 remaining tables were migrated off their hand-rolled
+  // markup. Each migration removes more than it adds, so if this cap
+  // is still being pushed when the migration is done, something has
+  // gone wrong -- lower it, do not raise it again.
 }
 
 // ───────────────────────────────────────────
