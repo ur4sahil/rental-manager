@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
+import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
@@ -3230,8 +3230,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Tenant Balance Summary */}
     {reportId === "customer_balance_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Tenant Balance Summary</p></div>
-      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
-      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right tnum font-semibold ${t.balance < 0 ? "text-positive-600" : t.balance > 0 ? "text-danger-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
+      <DataTable
+        columns={[
+          { key: "tenant", label: "Tenant", className: "text-neutral-700",
+            render: t => (<>{t.tenant}</>) },
+          { key: "balance", label: "Balance", align: "right", className: t => (`tnum font-semibold ${t.balance < 0 ? "text-positive-600" : t.balance > 0 ? "text-danger-600" : ""}`),
+            render: t => (<>{acctFmt(t.balance, true)}</>) },
+        ]}
+        rows={(bsData.arByTenant||[])}
+        rowKey={t => t.id}
+        empty="Nothing to show"
+      />
     </div>)}
 
     {/* Journal */}
@@ -3437,8 +3446,27 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "rent_roll" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Rent Roll</p></div>
       {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total Units</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-700">{occ}</div><div className="text-xs text-neutral-400">Occupied</div></div><div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-600">{data.length-occ}</div><div className="text-xs text-neutral-400">Vacant</div></div><div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-info-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-neutral-400">Monthly Rent</div></div></div>
-      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right tnum">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
+      <DataTable
+        columns={[
+          { key: "property", label: "Property", className: "text-neutral-700",
+            render: r => (<>{r.property}</>) },
+          { key: "tenant", label: "Tenant",
+            render: r => (<>
+              {r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}
+            </>) },
+          { key: "rent", label: "Rent", align: "right", className: "tnum",
+            render: r => (<>{r.rent > 0 ? acctFmt(r.rent) : "—"}</>) },
+          { key: "lease_end", label: "Lease End", className: "text-xs text-neutral-400",
+            render: r => (<>{r.leaseEnd||"—"}</>) },
+          { key: "status", label: "Status",
+            render: r => (<>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span>
+            </>) },
+        ]}
+        rows={data}
+        rowKey={r => r.id}
+        empty="Nothing to show"
+      /></>); })()}
     </div>)}
 
     {/* NOI by Property */}

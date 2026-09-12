@@ -585,7 +585,11 @@ export function DataTable({
           td,
           ALIGN[col.align] || ALIGN.left,
           col.align === "right" ? "tnum" : "",
-          col.className || "",
+          // A className may be a FUNCTION of the row. Several tables colour
+          // a cell by its own value -- an overdue balance in red, a
+          // negative figure in danger -- and forcing those to a static
+          // string would silently drop the conditional styling.
+          (typeof col.className === "function" ? col.className(row, i) : col.className) || "",
         ].filter(Boolean).join(" ")}
         style={col.width ? { width: col.width } : undefined}
       >

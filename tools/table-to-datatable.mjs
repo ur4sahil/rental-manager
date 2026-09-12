@@ -40,7 +40,10 @@ const mapped = /\[((?:\s*"[^"]*",?\s*)+)\]\s*\.map\(/.exec(block);
 if (mapped) {
   headers = [...mapped[1].matchAll(/"([^"]*)"/g)].map(m => m[1]);
 } else {
-  headers = [...block.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)]
+  // <th(?=[\s>]) matters: "<thead ...>" also begins with "<th", so a bare
+  // /<th[^>]*>/ matched the THEAD tag and captured the first header as
+  // '<tr><th className="...">Property'.
+  headers = [...block.matchAll(/<th(?=[\s>])[^>]*>([\s\S]*?)<\/th>/g)]
     .map(m => m[1].trim())
     .filter(h => !/\.map\(|=>/.test(h));   // never a code fragment
 }
@@ -54,25 +57,65 @@ const tbody = block.slice(block.indexOf("<tbody"), block.lastIndexOf("</tbody>")
 const rowVar = (/\.map\(\s*\(?\s*([A-Za-z_$][\w$]*)/.exec(tbody) || [, "row"])[1];
 // The array being mapped, so the rows={} prop is filled in rather than
 // left as a comment for someone to guess at.
-const rowsExpr = (/\{\s*([A-Za-z_$][\w$.?\[\]]*)\s*\.map\(/.exec(tbody) || [, "rows"])[1];
+const rowsExpr = (/\{\s*(\(?[A-Za-z_$][^\n]*?\)?)\s*\.map\(/.exec(tbody) || [, "/* rows */"])[1];
 const cells = [];
-const re = /<td([^>]*)>/g;
-let m;
-while ((m = re.exec(tbody))) {
-  const attrs = m[1];
-  let i = re.lastIndex, d = 1;
+
+// Find the end of a <td ...> opening tag, tracking brace depth and
+// quotes. A plain /<td([^>]*)>/ stops at the first ">", but JSX
+// classNames routinely contain a template literal with a comparison in
+// it -- className={`... ${t.balance > 0 ? "x" : ""}`} -- so the tag
+// "ended" mid-attribute and the cell body began halfway through an
+// expression, producing output that could not compile.
+function endOfTag(str, from) {
+  let i = from, depth = 0, q = null;
+  while (i < str.length) {
+    const c = str[i];
+    if (q) { if (c === q && str[i - 1] !== "\\") q = null; i++; continue; }
+    if (c === '"' || c === "'" || c === "`") { q = c; i++; continue; }
+    if (c === "{") { depth++; i++; continue; }
+    if (c === "}") { depth--; i++; continue; }
+    if (c === ">" && depth === 0) return i;
+    i++;
+  }
+  return -1;
+}
+
+let pos = 0;
+while (cells.length < headers.length) {
+  const open = tbody.indexOf("<td", pos);
+  if (open < 0) break;
+  if (!/[\s>]/.test(tbody[open + 3] || "")) { pos = open + 3; continue; }
+  const tagEnd = endOfTag(tbody, open + 3);
+  if (tagEnd < 0) break;
+  const attrs = tbody.slice(open + 3, tagEnd);
+  // Body ends at the matching </td>, counting nested <td> (none in
+  // practice, but a table inside a cell would otherwise break it).
+  let i = tagEnd + 1, d = 1;
   while (i < tbody.length && d > 0) {
-    if (tbody.startsWith("<td", i)) { d++; i += 3; continue; }
+    if (/^<td[\s>]/.test(tbody.slice(i, i + 4))) { d++; i += 3; continue; }
     if (tbody.startsWith("</td>", i)) { d--; if (!d) break; i += 5; continue; }
     i++;
   }
-  cells.push({ attrs, body: tbody.slice(re.lastIndex, i).trim() });
-  re.lastIndex = i;
-  if (cells.length >= headers.length) break;   // first row is the template
+  cells.push({ attrs, body: tbody.slice(tagEnd + 1, i).trim() });
+  pos = i + 5;
 }
 
+let ROWVAR = "row";
 const align = (attrs) => (/text-right/.test(attrs) ? ', align: "right"' : /text-center/.test(attrs) ? ', align: "center"' : "");
 const cls = (attrs) => {
+  // A dynamic className -- className={`... ${cond ? "a" : "b"}`} -- is
+  // emitted as a FUNCTION so the conditional styling survives. Stripping
+  // it to its static parts silently dropped, for example, the red on an
+  // overdue balance.
+  const dyn = /className=\{(`[\s\S]*?`|[^}]*)\}/.exec(attrs);
+  if (dyn) {
+    const expr = dyn[1]
+      // DataTable owns padding and alignment; carrying them through would
+      // reintroduce the 24 densities this exists to remove.
+      .replace(/\b(px|py|p)-[0-9.]+\s*/g, "")
+      .replace(/\btext-(left|right|center)\s*/g, "");
+    return `, className: ${ROWVAR} => (${expr})`;
+  }
   // Keep only classes that are not padding or alignment -- DataTable owns
   // those, and carrying them through would reintroduce the 24 densities.
   const c = (/className="([^"]*)"/.exec(attrs) || [, ""])[1]
@@ -81,6 +124,7 @@ const cls = (attrs) => {
 };
 const key = (h, i) => (h || `col${i}`).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `col${i}`;
 
+ROWVAR = rowVar;
 console.log(`// ${file}:${lineArg}-${endLine + 1}  (${headers.length} columns, ${cells.length} cells lifted)`);
 console.log("<DataTable");
 console.log("  columns={[");
