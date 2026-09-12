@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { printTheme } from "../utils/theme";
+import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId } from "../utils/accounting";
@@ -744,13 +744,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     const sorted = [...ledgerData].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     const dateFrom = escapeHtml(sorted.length > 0 ? sorted[0].date : today);
     const dateTo = escapeHtml(sorted.length > 0 ? sorted[sorted.length - 1].date : today);
-    const rows = sorted.map(e => {
+    // Values only; printTable in utils/theme.js owns the markup, the
+    // paddings and the borders, so every printed table in the app shares
+    // one density instead of hand-writing padding:6px 10px here.
+    const ledgerRows = sorted.map(e => {
       const isCredit = e.type === "payment" || e.type === "credit";
-      const date = escapeHtml(e.date || "");
-      const desc = escapeHtml(e.description || "");
-      const type = escapeHtml(e.type || "");
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight}">${date}</td><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight}">${desc}</td><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight};text-transform:capitalize">${type}</td><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight};text-align:right">${isCredit?"":"$"+Math.abs(safeNum(e.amount)).toFixed(2)}</td><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight};text-align:right">${isCredit?"$"+Math.abs(safeNum(e.amount)).toFixed(2):""}</td><td style="padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight};text-align:right;font-weight:600">$${safeNum(e.balance).toFixed(2)}</td></tr>`;
-    }).join("");
+      return {
+        date: escapeHtml(e.date || ""),
+        desc: escapeHtml(e.description || ""),
+        type: escapeHtml(e.type || ""),
+        charge: isCredit ? "" : "$" + Math.abs(safeNum(e.amount)).toFixed(2),
+        payment: isCredit ? "$" + Math.abs(safeNum(e.amount)).toFixed(2) : "",
+        balance: "$" + safeNum(e.balance).toFixed(2),
+      };
+    });
     const totalCharges = sorted.filter(e => e.type !== "payment" && e.type !== "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
     const totalPayments = sorted.filter(e => e.type === "payment" || e.type === "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
     const safeTenantName = escapeHtml(tenant.name || "");
@@ -764,11 +771,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         <div><strong>Tenant:</strong> ${safeTenantName}<br><strong>Property:</strong> ${safeProperty}</div>
         <div style="text-align:right"><strong>Period:</strong> ${dateFrom} to ${dateTo}<br><strong>Current Balance:</strong> <span style="color:${safeNum(tenant.balance)>0?"${printTheme.danger}":"${printTheme.success}"};font-weight:bold">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</span></div>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="background:${printTheme.surfaceMuted}"><th style="padding:8px 10px;text-align:left;border-bottom:2px solid ${printTheme.borderMed}">Date</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid ${printTheme.borderMed}">Description</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid ${printTheme.borderMed}">Type</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid ${printTheme.borderMed}">Charges</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid ${printTheme.borderMed}">Payments</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid ${printTheme.borderMed}">Balance</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr style="background:${printTheme.surfaceMuted};font-weight:bold"><td colspan="3" style="padding:8px 10px;text-align:right">Totals</td><td style="padding:8px 10px;text-align:right;color:${printTheme.danger}">$${totalCharges.toFixed(2)}</td><td style="padding:8px 10px;text-align:right;color:${printTheme.success}">$${totalPayments.toFixed(2)}</td><td style="padding:8px 10px;text-align:right">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</td></tr></tfoot>
-      </table>
+      ${printTable({
+        columns: [
+          { label: "Date", render: r => r.date },
+          { label: "Description", render: r => r.desc },
+          { label: "Type", render: r => r.type },
+          { label: "Charges", align: "right", render: r => r.charge },
+          { label: "Payments", align: "right", render: r => r.payment },
+          { label: "Balance", align: "right", render: r => r.balance },
+        ],
+        rows: ledgerRows,
+        footer: [{ label: "Totals", cells: [
+          `<span style="color:${printTheme.danger}">$${totalCharges.toFixed(2)}</span>`,
+          `<span style="color:${printTheme.success}">$${totalPayments.toFixed(2)}</span>`,
+          `$${safeNum(Math.abs(tenant.balance)).toFixed(2)}`,
+        ] }],
+      })}
       <div style="margin-top:24px;text-align:center;font-size:11px;color:${printTheme.inkSubtle}">Generated on ${escapeHtml(today)} by ${companyName}</div>
     </div>`;
     const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");

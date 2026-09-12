@@ -104,5 +104,36 @@ ok(count(h, "tr") === 3, "no detail rows when nothing is expanded");
 h = render({ columns: cols, rows, stickyFirstColumn: true });
 ok(/sticky left-0/.test(h), "the first column is pinned when asked");
 
+// ---- printTable: the print/PDF mirror ----------------------------
+// Six tables in this app are HTML STRINGS for print, not React, so
+// DataTable cannot reach them. printTable gives them the same single
+// source for density, borders and footer alignment.
+const themeOut = babel.transformFileSync(path.join(__dirname, "..", "src", "utils", "theme.js"),
+  { presets: [["@babel/preset-env", { targets: { node: "current" }, modules: "commonjs" }]], configFile: false });
+const tm = { exports: {} };
+new Function("module", "exports", "require", themeOut.code)(tm, tm.exports, require);
+const { printTable } = tm.exports;
+
+const pcols = [
+  { label: "Date", render: r => r.date },
+  { label: "Description", render: r => r.desc },
+  { label: "Amount", align: "right", render: r => r.amt },
+];
+let ph = printTable({ columns: pcols, rows: [{ date: "2026-09-01", desc: "Rent", amt: "$1,741.00" }] });
+ok((ph.match(/<th[ >]/g) || []).length === 3, "printTable emits one th per column");
+ok(/text-align:right/.test(ph), "printTable right-aligns where asked");
+ok(/Rent/.test(ph) && /1,741/.test(ph), "printTable renders the values");
+
+// An empty printed table must SAY it is empty, or the reader cannot tell
+// it from a rendering failure.
+ph = printTable({ columns: pcols, rows: [] });
+ok(/Nothing to show/.test(ph), "printTable states when there is nothing to print");
+ok(/colspan="3"/.test(ph), "the empty row spans every column");
+
+// Footer alignment is computed, never hand-written -- the same rule as
+// DataTable, for the same reason.
+ph = printTable({ columns: pcols, rows: [{ date: "x", desc: "y", amt: "1" }], footer: [{ label: "Totals", cells: ["$1.00"] }] });
+ok(/colspan="2"/.test(ph), "footer label spans the columns the cells do not cover");
+
 console.log(`\n✅ Passed: ${pass}\n❌ Failed: ${fail}`);
 process.exit(fail ? 1 : 0);
