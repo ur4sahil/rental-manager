@@ -588,71 +588,56 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   </div>
   {/* Desktop: Table view */}
   <div className="flex-1 overflow-auto hidden sm:block">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase sticky top-0">
-  <tr>
-  <th className="px-4 py-2.5 text-left">Date</th>
-  <th className="px-3 py-2.5 text-left">JE #</th>
-  <th className="px-3 py-2.5 text-left">Description</th>
-  <th className="px-3 py-2.5 text-left">Ref</th>
-  {multiAccount && <th className="px-3 py-2.5 text-left">Account</th>}
-  <th className="px-3 py-2.5 text-left">Property</th>
-  <th className="px-3 py-2.5 text-right">Debit</th>
-  <th className="px-3 py-2.5 text-right">Credit</th>
-  <th className="px-3 py-2.5 text-right">Balance</th>
-  </tr>
-  </thead>
-  {/* One <tbody> per account: its own heading, its own rows, its own
-      subtotal. A stack of ledgers rather than one interleaved list. */}
-  {groups.map(g => (
-  <tbody key={g.accountId}>
-  {multiAccount && (
-  <tr className="bg-neutral-100/80">
-    <td colSpan={COLS} className="px-4 py-2 text-xs font-bold text-neutral-700 border-t-2 border-neutral-300">
-      {g.code ? g.code + " · " : ""}{g.name}
-      <span className="ml-2 font-normal text-neutral-400">{g.rows.length} {g.rows.length === 1 ? "entry" : "entries"}</span>
-    </td>
-  </tr>
-  )}
-  {g.rows.map((l, i) => (
-  <tr key={i} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
-  <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
-  <td className="px-3 py-2 text-xs text-brand-600 tnum">{l.number || "—"}</td>
-  <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
-  <td className="px-3 py-2 text-xs text-neutral-400" title={l.reference || ""}>{refLabel(l.reference)}</td>
-  {multiAccount && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
-  <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
-  <td className="px-3 py-2 text-right tnum text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
-  <td className="px-3 py-2 text-right tnum text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
-  <td className={`px-3 py-2 text-right tnum text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
-  </tr>
-  ))}
-  {multiAccount && (
-  <tr className="bg-neutral-50 font-semibold">
-    <td colSpan={COLS - 3} className="px-4 py-2 text-xs text-neutral-600 border-t border-neutral-300">Total for {g.code ? g.code + " · " : ""}{g.name}</td>
-    <td className="px-3 py-2 text-right tnum text-xs border-t border-neutral-300">{acctFmt(g.totalDr)}</td>
-    <td className="px-3 py-2 text-right tnum text-xs border-t border-neutral-300">{acctFmt(g.totalCr)}</td>
-    <td className={`px-3 py-2 text-right tnum text-xs border-t border-neutral-300 ${g.closing < 0 ? "text-danger-600" : "text-neutral-900"}`}>{acctFmt(g.closing, true)}</td>
-  </tr>
-  )}
-  </tbody>
-  ))}
-  <tbody>
-  {/* Grand total. Debits and credits sum meaningfully across accounts;
-      a combined CLOSING BALANCE does not -- adding cash to receivables
-      to income produces a number that looks authoritative and means
-      nothing -- so that cell is deliberately left blank. */}
-  {multiAccount && allLines.length > 0 && (
-  <tr className="bg-brand-50/60 font-bold">
-    <td colSpan={COLS - 3} className="px-4 py-2.5 text-xs text-neutral-800 border-t-2 border-neutral-800">{groups.length} accounts · {allLines.length} entries</td>
-    <td className="px-3 py-2.5 text-right tnum text-xs border-t-2 border-neutral-800">{acctFmt(grandDr)}</td>
-    <td className="px-3 py-2.5 text-right tnum text-xs border-t-2 border-neutral-800">{acctFmt(grandCr)}</td>
-    <td className="px-3 py-2.5 text-right text-[11px] font-normal text-neutral-400 border-t-2 border-neutral-800">—</td>
-  </tr>
-  )}
-  {allLines.length === 0 && <tr><td colSpan={COLS} className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</td></tr>}
-  </tbody>
-  </table>
+    <DataTable
+      stickyHeader
+      scroll={false}
+      columns={[
+        { key: "date", label: "Date", className: "text-xs text-neutral-500 whitespace-nowrap",
+          render: l => l.date },
+        { key: "number", label: "JE #", className: "text-xs text-brand-600 tnum",
+          render: l => l.number || "\u2014" },
+        { key: "description", label: "Description", className: "text-neutral-700 text-xs max-w-xs truncate",
+          render: l => (<span title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</span>) },
+        { key: "reference", label: "Ref", className: "text-xs text-neutral-400",
+          render: l => <span title={l.reference || ""}>{refLabel(l.reference)}</span> },
+        // The Account column exists only in a multi-account ledger. Kept as
+        // a conditional entry in the spec rather than a conditional <th> and
+        // a conditional <td>, which is how the header and body once
+        // disagreed about the column count.
+        ...(multiAccount ? [{ key: "accountName", label: "Account", className: "text-xs text-neutral-500",
+          render: l => l.accountName }] : []),
+        { key: "property", label: "Property", className: "text-xs text-neutral-400",
+          render: l => l.property?.split(",")[0] || "\u2014" },
+        { key: "debit", label: "Debit", align: "right", className: "text-xs",
+          render: l => (l.debit > 0 ? acctFmt(l.debit) : "") },
+        { key: "credit", label: "Credit", align: "right", className: "text-xs",
+          render: l => (l.credit > 0 ? acctFmt(l.credit) : "") },
+        { key: "balance", label: "Balance", align: "right",
+          className: l => `text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`,
+          render: l => acctFmt(l.balance, true) },
+      ]}
+      // One group per account: its own heading, its own rows, its own
+      // subtotal. A stack of ledgers rather than one interleaved list.
+      groups={groups.map(g => ({
+        key: g.accountId,
+        label: multiAccount ? `${g.code ? g.code + " \u00b7 " : ""}${g.name}` : null,
+        rows: g.rows,
+        footer: multiAccount
+          ? { label: `Total for ${g.code ? g.code + " \u00b7 " : ""}${g.name}`,
+              cells: [acctFmt(g.totalDr), acctFmt(g.totalCr), acctFmt(g.closing, true)] }
+          : null,
+      }))}
+      // Debits and credits sum meaningfully across accounts; a combined
+      // closing balance does not -- adding cash to receivables to income
+      // produces a figure that looks authoritative and means nothing.
+      footer={multiAccount && allLines.length > 0
+        ? [{ label: `${groups.length} accounts \u00b7 ${allLines.length} entries`, strong: true,
+             cells: [acctFmt(grandDr), acctFmt(grandCr), "\u2014"] }]
+        : null}
+      onRowClick={l => onViewJE && onViewJE(l.jeId)}
+      rowKey={(l, i) => i}
+      empty="No transactions found for this period"
+    />
   </div>
   </div>
   </div>
