@@ -2904,6 +2904,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   // cannot be trusted until the lines have arrived. Trial Balance and
   // General Ledger are excluded: they come from a database aggregate and
   // are correct the moment the page opens.
+  // Reports with enough columns to earn the full screen width.
+  const WIDE_REPORTS = [
+    "pl_by_class",        // one column per property
+    "pl_compare",         // period columns side by side
+    "budget_vs_actual",
+    "gl", "journal", "txn_by_date", "audit_log",
+    "ar_aging_detail", "open_invoices", "unpaid_bills",
+    "account_list", "recon_summary",
+    "rent_roll", "rent_collection", "work_orders_summary",
+    "security_deposits", "noi_by_property",
+  ];
   const RPC_BACKED = ["tb", "gl"];
   // Reports that read no journal lines at all -- verified by reading each
   // one: getRentRoll, getVacancyReport, getLeaseExpirations and
@@ -3017,7 +3028,19 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     </div>
 
     {/* Report Content */}
-    <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6" data-report-content>
+    {/* Financial statements are DOCUMENTS and read best at a constrained
+        width -- a P&L stretched across a 27-inch monitor puts the account
+        name at the far left and its figure at the far right, with a foot
+        of blank paper between them. QuickBooks centres them for the same
+        reason.
+
+        The matrix and detail reports are the exception and keep the full
+        width, because they genuinely have the columns to fill it: P&L by
+        Property has one column per property (40+ on this data), and the
+        ledger/journal/transaction lists are wide by nature. Constraining
+        those would force a horizontal scroll on data that fits today. */}
+    <div className={"bg-white rounded-xl shadow-sm border border-neutral-200 p-6 " +
+      (WIDE_REPORTS.includes(reportId) ? "" : "max-w-4xl mx-auto")} data-report-content>
 
     {/* The ledger is still arriving. Reports that add it up in the
         browser would otherwise render a confident $0.00 -- a wrong
