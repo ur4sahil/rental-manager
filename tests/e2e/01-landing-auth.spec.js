@@ -4,6 +4,18 @@
 const { test, expect } = require('@playwright/test');
 const { login, assertNoHorizontalOverflow, collectConsoleErrors, waitForToast } = require('./helpers');
 
+// This file is the only one that tests the LOGGED-OUT surface, so it must
+// opt out of the project-wide signed-in storageState.
+//
+// Without this, every test here ran as the admin: page.goto('/') landed in
+// the Dashboard and the landing page was never rendered. Nine of the
+// fifteen failed, and the failures were misleading rather than obviously
+// wrong -- 'text=Housify' matched the SIDEBAR logo, so the brand assertion
+// passed and only the hero, the role cards and the footer failed. The
+// login tests then timed out clicking a "Sign In" button that does not
+// exist inside the app.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe('Landing Page', () => {
   test('renders hero section with all elements', async ({ page }) => {
     await page.goto('/');
@@ -106,47 +118,37 @@ test.describe('Authentication', () => {
   test('PM signup form shows correct fields', async ({ page }) => {
     await page.goto('/');
     // Click "Get Started" under Property Manager
+    // Asserted, not guarded. This was `if (await pmLink.isVisible())
+    // { ... }`, which passes when the button is GONE -- and it was gone
+    // for every run of this file, because the whole file was running
+    // signed in and never saw the landing page at all.
     const pmLink = page.locator('text=Get Started').first();
-    if (await pmLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await pmLink.click();
-      await page.waitForTimeout(1000);
-      // Should have email and password fields at minimum
-      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
-      await expect(page.locator('input[type="password"]')).toBeVisible();
-    }
+    await expect(pmLink, 'no "Get Started" on the landing page').toBeVisible({ timeout: 10000 });
+    await pmLink.click();
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('input[type="password"]')).toBeVisible();
   });
 
   test('Tenant signup form shows invite code field', async ({ page }) => {
     await page.goto('/');
     // Click tenant signup button ("Enter Invite Code →" or "Tenant")
     const tenantBtn = page.locator('button:has-text("Tenant"), button:has-text("Enter Invite Code")').first();
-    if (await tenantBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await tenantBtn.click();
-      await page.waitForTimeout(1000);
-      // Should show email/password + invite code input
-      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
-      // Look for invite code label
-      await expect(page.locator('label:has-text("Invite Code")')).toBeVisible({ timeout: 3000 });
-      // Should have at least 3 inputs total (name, email, password) + invite code
-      const inputs = page.locator('input');
-      const count = await inputs.count();
-      expect(count).toBeGreaterThanOrEqual(4);
-    }
+    await expect(tenantBtn, 'no tenant signup entry point on the landing page').toBeVisible({ timeout: 10000 });
+    await tenantBtn.click();
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('label:has-text("Invite Code")')).toBeVisible({ timeout: 5000 });
+    // name, email, password + invite code
+    expect(await page.locator('input').count()).toBeGreaterThanOrEqual(4);
   });
 
   test('back to sign in link works from signup', async ({ page }) => {
     await page.goto('/');
     const pmBtn = page.locator('button:has-text("Property Manager")').first();
-    if (await pmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await pmBtn.click();
-      await page.waitForTimeout(500);
-      const backLink = page.locator('text=Sign In').last();
-      if (await backLink.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await backLink.click();
-        await page.waitForTimeout(500);
-        // Should be on login form
-        await expect(page.locator('input[type="email"]')).toBeVisible();
-      }
-    }
+    await expect(pmBtn, 'no Property Manager signup button').toBeVisible({ timeout: 10000 });
+    await pmBtn.click();
+    const backLink = page.locator('text=Sign In').last();
+    await expect(backLink, 'no way back to Sign In from signup').toBeVisible({ timeout: 5000 });
+    await backLink.click();
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
   });
 });
