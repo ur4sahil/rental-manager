@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar} from "../ui";
+import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -336,7 +336,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   </div>
   {woPhotos.length === 0 ? (
-  <div className="text-center py-8 text-neutral-400">No photos yet.</div>
+  <EmptyState size="compact" title={"No photos yet."} />
   ) : (
   <div className="grid grid-cols-2 gap-3">
   {woPhotos.map(p => (
@@ -699,7 +699,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   </div>
   ))}
-  {inspections.length === 0 && <div className="text-center py-12 text-neutral-400">No inspections yet. Create one above.</div>}
+  {inspections.length === 0 && <EmptyState size="page" title={"No inspections yet. Create one above."} />}
   </div>
   </div>
   );
@@ -1037,7 +1037,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   );
   })}
-  {filteredVendors.length === 0 && <div className="text-center py-10 text-neutral-400">No vendors found</div>}
+  {filteredVendors.length === 0 && <EmptyState size="inline" title={"No vendors found"} />}
   </div>
   </div>
   )}
@@ -1074,7 +1074,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   );
   })}
-  {invoices.length === 0 && <div className="text-center py-10 text-neutral-400">No invoices yet</div>}
+  {invoices.length === 0 && <EmptyState size="inline" title={"No invoices yet"} />}
   </div>
   )}
   </div>

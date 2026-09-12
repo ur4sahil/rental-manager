@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -184,7 +184,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
     rowKey={p => p.id}
     empty="Nothing to show"
   />
-  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No insurance policies found</div>}
+  {filtered.length === 0 && <EmptyState size="compact" title={"No insurance policies found"} />}
   </div>
   </div>
   );

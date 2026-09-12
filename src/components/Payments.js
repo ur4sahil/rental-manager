@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, PageHeader, DataTable, TabBar} from "../ui";
+import { Input, Btn, Select, PageHeader, DataTable, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -157,7 +157,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
     empty="Nothing to show"
   />
   </div>
-  {payments.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No payment transactions found</div>}
+  {payments.length === 0 && <EmptyState size="compact" title={"No payment transactions found"} />}
   </div>
   </>)}
   </div>
@@ -410,7 +410,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   </div>
   ))}
-  {schedules.length === 0 && <div className="text-center py-12 text-neutral-400">No autopay schedules yet. Create one above.</div>}
+  {schedules.length === 0 && <EmptyState size="page" title={"No autopay schedules yet. Create one above."} />}
   </div>
   </div>
   );

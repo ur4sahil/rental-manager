@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar} from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
@@ -433,7 +433,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <span className={"text-sm " + (item.checked ? "line-through text-neutral-400" : "text-neutral-700")}>{item.item}</span>
   </div>
   ))}
-  {items.length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No checklist items on this lease.</div>}
+  {items.length === 0 && <EmptyState size="inline" title={"No checklist items on this lease."} />}
   </div>
   </Modal>
   );
@@ -528,7 +528,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
   );
   })}
-  {filteredLeases.length === 0 && <div className="text-center py-10 text-neutral-400">No leases found</div>}
+  {filteredLeases.length === 0 && <EmptyState size="inline" title={"No leases found"} />}
   </div>
 
   {/* Rent Increase Modal */}

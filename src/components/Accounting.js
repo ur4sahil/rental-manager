@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar} from "../ui";
+import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -608,7 +608,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   </div>
   {/* Mobile: Card view */}
   <div className="sm:hidden">
-  {allLines.length === 0 && <div className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</div>}
+  {allLines.length === 0 && <EmptyState size="compact" title={"No transactions found for this period"} />}
   {allLines.map((l, i) => (
   <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-brand-50/40 transition-colors active:bg-brand-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
@@ -3309,7 +3309,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">AR Aging Detail</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => {
         const rows = getOpenInvoices(asOfDate);
-        if (!rows.length) return <p className="text-center py-8 text-neutral-400">No open AR balances</p>;
+        if (!rows.length) return <EmptyState size="compact" title={"No open AR balances"} />;
         // Group by tenant and tag each charge with its bucket
         const bucketLabel = (days) => days < 30 ? "Current" : days < 60 ? "1-30" : days < 90 ? "31-60" : days < 120 ? "61-90" : "91+";
         const byTenant = rows.reduce((m, r) => { (m[r.tenant] = m[r.tenant] || []).push(r); return m; }, {});
@@ -3726,7 +3726,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Vacancy Report */}
     {reportId === "vacancy" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Vacancy Report</p></div>
-      {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No vacant properties</p> : (<DataTable
+      {(() => { const data = getVacancyReport(); return data.length === 0 ? <EmptyState size="compact" title={"No vacant properties"} /> : (<DataTable
         columns={[
           { key: "property", label: "Property", className: "text-neutral-700",
             render: r => (<>{r.property}</>) },
@@ -3746,7 +3746,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* License Compliance */}
     {reportId === "license_compliance" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">License Compliance Report</p><p className="text-xs text-neutral-400 mt-0.5">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getLicenseCompliance(); if (data.length === 0) return <p className="text-center py-8 text-neutral-400">No licenses on file</p>;
+      {(() => { const data = getLicenseCompliance(); if (data.length === 0) return <EmptyState size="compact" title={"No licenses on file"} />;
         const counts = data.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, {});
         return (<>
         <div className="grid grid-cols-5 gap-3 mb-4">
@@ -3789,7 +3789,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Lease Expirations */}
     {reportId === "lease_expirations" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Lease Expiration Schedule</p></div>
-      {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No leases expiring in the next 180 days</p> : (<DataTable
+      {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <EmptyState size="compact" title={"No leases expiring in the next 180 days"} /> : (<DataTable
         columns={[
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
@@ -3836,7 +3836,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Open Invoices */}
     {reportId === "open_invoices" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid charges</p> : (<DataTable
+      {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <EmptyState size="compact" title={"No unpaid charges"} /> : (<DataTable
         columns={[
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
@@ -3863,7 +3863,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Collections Report */}
     {reportId === "collections" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Collections Report</p></div>
-      {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding balances</p> : (<DataTable
+      {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <EmptyState size="compact" title={"No outstanding balances"} /> : (<DataTable
         columns={[
           { key: "tenant", label: "Tenant", className: "text-neutral-700 font-medium",
             render: r => (<>{r.tenant}</>) },
@@ -3889,7 +3889,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Customer Balance Detail */}
     {reportId === "customer_balance_detail" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Tenant Balance Detail</p></div>
-      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`tnum text-sm font-bold ${t.totalBalance < 0 ? "text-positive-600" : "text-danger-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
+      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <EmptyState size="compact" title={"No tenant balances"} /> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`tnum text-sm font-bold ${t.totalBalance < 0 ? "text-positive-600" : "text-danger-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
       <DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400",
@@ -3935,7 +3935,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Security Deposit Ledger */}
     {reportId === "security_deposits" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Security Deposit Ledger</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No security deposits held</p> : (<><DataTable
+      {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <EmptyState size="compact" title={"No security deposits held"} /> : (<><DataTable
         columns={[
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
@@ -3958,7 +3958,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Late Fee Report */}
     {reportId === "late_fees" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Late Fee Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No late fees in this period</p> : (<DataTable
+      {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <EmptyState size="compact" title={"No late fees in this period"} /> : (<DataTable
         columns={[
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
@@ -3980,7 +3980,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Owner Distributions */}
     {reportId === "owner_distributions" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Owner Distribution Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No distributions in this period</p> : (<DataTable
+      {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <EmptyState size="compact" title={"No distributions in this period"} /> : (<DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400",
             render: r => (<>{r.date}</>) },
@@ -4069,7 +4069,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* AP Aging Summary */}
     {reportId === "ap_aging_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">AP Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding payables</p> : (<DataTable
+      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <EmptyState size="compact" title={"No outstanding payables"} /> : (<DataTable
         columns={[
           { key: "vendor", label: "Vendor", className: "text-neutral-700",
             render: ([vendor, d]) => (<>{vendor}</>) },
@@ -4103,7 +4103,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Unpaid Bills */}
     {reportId === "unpaid_bills" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Unpaid Bills</p></div>
-      {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid bills found</p> : (<DataTable
+      {(() => { const data = getUnpaidBills(); return data.length === 0 ? <EmptyState size="compact" title={"No unpaid bills found"} /> : (<DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400 text-xs",
             render: r => (<>{r.date}</>) },
@@ -4126,7 +4126,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Vendor Balance Summary */}
     {reportId === "vendor_balance_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Vendor Balance Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding vendor balances</p> : (<DataTable
+      {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <EmptyState size="compact" title={"No outstanding vendor balances"} /> : (<DataTable
         columns={[
           { key: "vendor", label: "Vendor", className: "text-neutral-700",
             render: r => (<>{r.vendor}</>) },
@@ -4144,7 +4144,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "audit_log" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Audit Log</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <Btn variant="slate" size="sm" className="mb-3" onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }}>Refresh</Btn>
-      {auditData.length === 0 ? <p className="text-center py-8 text-neutral-400">No audit entries in this period</p> : (<DataTable
+      {auditData.length === 0 ? <EmptyState size="compact" title={"No audit entries in this period"} /> : (<DataTable
         columns={[
           { key: "time", label: "Time", className: "text-xs text-neutral-400 whitespace-nowrap",
             render: r => (<>{new Date(r.created_at).toLocaleString()}</>) },
@@ -4171,7 +4171,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "recon_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Reconciliation Summary</p></div>
       <Btn variant="slate" size="sm" className="mb-3" onClick={async () => { const d = await getReconSummary(); setReconData(d); }}>Refresh</Btn>
-      {reconData.length === 0 ? <p className="text-center py-8 text-neutral-400">No reconciliations found</p> : (<DataTable
+      {reconData.length === 0 ? <EmptyState size="compact" title={"No reconciliations found"} /> : (<DataTable
         columns={[
           { key: "period", label: "Period", className: "text-neutral-700",
             render: r => (<>{r.period}</>) },
@@ -4206,7 +4206,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-neutral-600 w-48 truncate">{a.code||"•"} {a.name}</span><Input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right tnum" /></div>;
         })}</div>
       </div>)}
-      {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-neutral-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<DataTable
+      {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <EmptyState size="compact" title={'No budgets set. Click "Edit Budgets" to set monthly amounts.'} /> : (<DataTable
         columns={[
           { key: "account", label: "Account", className: "text-neutral-700",
             render: a => (<>{a.name}</>) },
@@ -5338,7 +5338,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           </div>
         );
         })}
-        {journalEntries.length === 0 && <p className="text-sm text-neutral-400 text-center py-8">No journal entries yet</p>}
+        {journalEntries.length === 0 && <EmptyState size="compact" title={"No journal entries yet"} />}
       </div>
     </div>
 
@@ -5794,7 +5794,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   </div>
   );
   })}
-  {reconciliations.length === 0 && <div className="text-center py-8 text-neutral-400">No reconciliations yet</div>}
+  {reconciliations.length === 0 && <EmptyState size="compact" title={"No reconciliations yet"} />}
   </div>
   </div>
   )}

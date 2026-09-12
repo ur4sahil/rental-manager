@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -212,7 +212,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     rowKey={h => h.id}
     empty="Nothing to show"
   />
-  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No HOA payments found</div>}
+  {filtered.length === 0 && <EmptyState size="compact" title={"No HOA payments found"} />}
   </div>
   </div>
   );

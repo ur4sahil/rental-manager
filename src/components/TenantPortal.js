@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, FileInput, Input, PageHeader, Select, Textarea } from "../ui";
+import { Btn, FileInput, Input, PageHeader, Select, Textarea, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -147,7 +147,7 @@ function SetupCardForm({ clientSecret, onSuccess, onError, busy, setBusy }) {
       <Btn type="submit" variant="primary" size="lg" className="w-full mt-4" disabled={!stripe || busy}>
         {busy ? "Saving…" : "Save card for autopay"}
       </Btn>
-      <div className="text-xs text-neutral-400 text-center mt-3">No charge today. We'll auto-charge rent on the 1st of each month.</div>
+      <EmptyState size="inline" title={"No charge today. We'll auto-charge rent on the 1st of each month."} className="mt-3" />
     </form>
   );
 }
@@ -761,7 +761,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-positive-100 text-positive-700" : w.status === "in_progress" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{w.status}</span>
   </div>
   ))}
-  {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-neutral-400 text-sm">No recent activity</div>}
+  {payments.length === 0 && workOrders.length === 0 && <EmptyState size="inline" title={"No recent activity"} />}
   </div>
   </div>
   )}
@@ -1030,7 +1030,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       </div>
       );
     })}
-    {rows.length === 0 && <div className="text-center py-8 text-neutral-400">No ledger entries yet</div>}
+    {rows.length === 0 && <EmptyState size="compact" title={"No ledger entries yet"} />}
     </div>
     {payments.filter(p => p.status === "paid").length > 0 && (
       <>
@@ -1098,7 +1098,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   </div>
   ))}
-  {workOrders.length === 0 && <div className="text-center py-8 text-neutral-400">No maintenance requests</div>}
+  {workOrders.length === 0 && <EmptyState size="compact" title={"No maintenance requests"} />}
   </div>
   </div>
   )}
@@ -1125,7 +1125,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <Btn variant="secondary" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</Btn>
   </div>
   ))}
-  {documents.length === 0 && <div className="text-center py-8 text-neutral-400">No documents uploaded yet</div>}
+  {documents.length === 0 && <EmptyState size="compact" title={"No documents uploaded yet"} />}
   </div>
   {showTenantDocUpload && <DocUploadModal onClose={() => setShowTenantDocUpload(false)} companyId={companyId} property={tenantData?.property || ""} tenant={tenantData?.name || ""} showToast={showToast} isTenantUpload onUploaded={async () => { const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("uploaded_at", { ascending: false }); setDocuments(data || []); }} />}
   </div>

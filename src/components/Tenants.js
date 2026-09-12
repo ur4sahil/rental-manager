@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
@@ -1372,7 +1372,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   )}
-  {ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transactions yet</div> : (() => {
+  {ledger.length === 0 ? <EmptyState size="inline" title={"No transactions yet"} /> : (() => {
   // A charge raises what is owed, a payment or credit lowers it.
   // Everything else -- a write-off, an adjustment -- is a charge-side
   // movement, which is why "Bad debt" used to show as green money in.
@@ -1545,7 +1545,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   })}
   </div>
   {/* Uploaded docs list */}
-  {tenantDocs.length === 0 ? <div className="text-center py-4 text-neutral-400 text-sm">No documents uploaded for this tenant</div> : (
+  {tenantDocs.length === 0 ? <EmptyState size="inline" title={"No documents uploaded for this tenant"} /> : (
   <div className="space-y-2">
   {tenantDocs.map(d => (
   <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
@@ -1799,7 +1799,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {archivedDetail.activeTab === "ledger" && (
-  <div>{archivedDetail.ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transaction history</div> : (
+  <div>{archivedDetail.ledger.length === 0 ? <EmptyState size="inline" title={"No transaction history"} /> : (
   <div className="space-y-1">
   {archivedDetail.ledger.map((e, i) => (
   <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
@@ -1818,7 +1818,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {archivedDetail.activeTab === "payments" && (
-  <div>{archivedDetail.payments.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No payments on file</div> : (
+  <div>{archivedDetail.payments.length === 0 ? <EmptyState size="inline" title={"No payments on file"} /> : (
   <div className="space-y-1">
   {archivedDetail.payments.map(p => (
   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
@@ -1834,7 +1834,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {archivedDetail.activeTab === "docs" && (
-  <div>{archivedDetail.docs.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No documents</div> : (
+  <div>{archivedDetail.docs.length === 0 ? <EmptyState size="inline" title={"No documents"} /> : (
   <div className="space-y-2">
   {archivedDetail.docs.map(d => (
   <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
@@ -1853,7 +1853,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {archivedDetail.activeTab === "messages" && (
-  <div>{archivedDetail.messages.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No messages</div> : (
+  <div>{archivedDetail.messages.length === 0 ? <EmptyState size="inline" title={"No messages"} /> : (
   <div className="space-y-2 max-h-96 overflow-y-auto">
   {archivedDetail.messages.map((m) => {
     const role = m.sender_role || (m.sender === "admin" ? "admin" : "tenant");
@@ -1871,7 +1871,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {archivedDetail.activeTab === "workorders" && (
-  <div>{archivedDetail.workOrders.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No maintenance history</div> : (
+  <div>{archivedDetail.workOrders.length === 0 ? <EmptyState size="inline" title={"No maintenance history"} /> : (
   <div className="space-y-2">
   {archivedDetail.workOrders.map(w => (
   <div key={w.id} className="bg-neutral-50 rounded-lg px-4 py-3">
@@ -2433,7 +2433,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  {ft.length === 0 && <div className="text-center py-8 text-neutral-400">No tenants found</div>}
+  {ft.length === 0 && <EmptyState size="compact" title={"No tenants found"} />}
   </>;
   })()}
   </>)}

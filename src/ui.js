@@ -249,11 +249,30 @@ export function SectionTitle({ children, className = "" }) {
 }
 
 // ---- EMPTY STATE ----
-export function EmptyState({ icon = "inbox", title, subtitle }) {
+// "Nothing here yet."
+//
+// This component existed and three places used it. Seventy-one others
+// hand-wrote a centred grey line, with the padding picked per site --
+// py-4, py-6, py-8, py-12 -- and sometimes text-sm, sometimes not. Bare
+// grey text is what makes an app feel unfinished.
+//
+// The sizes exist because one size is genuinely wrong: a 16rem-tall empty
+// state with a 36px icon inside a small dashboard card is worse than the
+// grey line it replaced. So `inline` is for a panel inside a card and
+// drops the icon entirely, `compact` for a section, `page` for a whole
+// empty page. Migrating the 71 mapped their old padding onto these:
+// py-4/py-6 -> inline, py-8 -> compact, py-12 and up -> page.
+const EMPTY_SIZE = {
+  inline:  { wrap: "py-4",  icon: null,       title: "text-sm" },
+  compact: { wrap: "py-8",  icon: "text-2xl", title: "text-sm font-medium" },
+  page:    { wrap: "py-16", icon: "text-4xl", title: "text-sm font-medium" },
+};
+export function EmptyState({ icon = "inbox", title, subtitle, size = "page", className = "" }) {
+  const z = EMPTY_SIZE[size] || EMPTY_SIZE.page;
   return (
-    <div className="text-center py-16 text-neutral-400">
-      <span className="material-icons-outlined text-4xl mb-2">{icon}</span>
-      {title && <p className="text-sm font-medium">{title}</p>}
+    <div className={`text-center text-neutral-400 ${z.wrap} ${className}`}>
+      {z.icon && icon && <span className={`material-icons-outlined mb-2 ${z.icon}`}>{icon}</span>}
+      {title && <p className={z.title}>{title}</p>}
       {subtitle && <p className="text-xs mt-1">{subtitle}</p>}
     </div>
   );

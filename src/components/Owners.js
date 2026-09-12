@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TabBar} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -367,7 +367,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   );
   })}
-  {owners.length === 0 && <div className="text-center py-12 text-neutral-400">No owners yet. Add one above.</div>}
+  {owners.length === 0 && <EmptyState size="page" title={"No owners yet. Add one above."} />}
   </div>
   )}
 
@@ -422,7 +422,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   </div>
   ))}
-  {statements.length === 0 && <div className="text-center py-8 text-neutral-400">No statements generated yet</div>}
+  {statements.length === 0 && <EmptyState size="compact" title={"No statements generated yet"} />}
   </div>
   )}
 
@@ -480,7 +480,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   </div>
   ))}
-  {distributions.length === 0 && <div className="text-center py-8 text-neutral-400">No distributions yet</div>}
+  {distributions.length === 0 && <EmptyState size="compact" title={"No distributions yet"} />}
   </div>
   )}
   </div>
@@ -519,7 +519,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   {wo.notes && <div className="text-xs text-neutral-400 mt-1">{wo.notes}</div>}
   </div>
   ))}
-  {workOrders.length === 0 && <div className="text-center py-8 text-neutral-400">No maintenance activity</div>}
+  {workOrders.length === 0 && <EmptyState size="compact" title={"No maintenance activity"} />}
   </div>
   );
 }
@@ -632,7 +632,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {p.rent && <div className="text-sm font-bold text-positive-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
   </div>
   ))}
-  {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned yet</div>}
+  {properties.length === 0 && <EmptyState size="compact" title={"No properties assigned yet"} />}
   </div>
 
   {/* Recent statements */}
@@ -671,7 +671,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   </div>
   ))}
-  {statements.length === 0 && <div className="text-center py-8 text-neutral-400">No statements yet</div>}
+  {statements.length === 0 && <EmptyState size="compact" title={"No statements yet"} />}
   </div>
   )}
 
@@ -726,7 +726,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   </div>
   ))}
-  {distributions.length === 0 && <div className="text-center py-8 text-neutral-400">No distributions yet</div>}
+  {distributions.length === 0 && <EmptyState size="compact" title={"No distributions yet"} />}
   </div>
   )}
 
@@ -753,7 +753,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {p.rent && <div className="text-sm">Rent: <span className="font-bold text-positive-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
   </div>
   ))}
-  {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned</div>}
+  {properties.length === 0 && <EmptyState size="compact" title={"No properties assigned"} />}
   </div>
   )}
   </div>

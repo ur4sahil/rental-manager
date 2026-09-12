@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable} from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -223,7 +223,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     rowKey={l => l.id}
     empty="Nothing to show"
   />
-  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No loans found</div>}
+  {filtered.length === 0 && <EmptyState size="compact" title={"No loans found"} />}
   </div>
   </div>
   );

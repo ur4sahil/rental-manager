@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -2759,7 +2759,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {actionMode === "match" && (
           <div>
             {matchLoading && <div className="text-xs text-neutral-400 py-4 text-center">Searching for matches...</div>}
-            {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-neutral-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
+            {!matchLoading && matchCandidates.length === 0 && <EmptyState size="inline" title={"No matching journal entries found within 10 days."} />}
             {!matchLoading && matchCandidates.length > 0 && (
             <div className="space-y-2 max-h-48 overflow-y-auto">
               <p className="text-xs text-neutral-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>

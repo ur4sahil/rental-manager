@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar, Switch} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar, Switch, EmptyState} from "../ui";
 import { normalizeEmail, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Spinner } from "./shared";
@@ -497,9 +497,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
       {activeTab === "preferences" && (
         <div className="space-y-3">
           {settings.length === 0 && (
-            <div className="text-center py-12 text-neutral-400 text-sm">
-              No notification rules configured for this company yet.
-            </div>
+            <EmptyState size="page" title={"No notification rules configured for this company yet."} />
           )}
           {settings.map(s => {
             const info = eventLabels[s.event_type] || { label: s.event_type, icon: "📧", desc: "" };
@@ -585,9 +583,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
       {activeTab === "history" && (
         <div>
           {logs.length === 0 ? (
-            <div className="text-center py-12 text-neutral-400 text-sm">
-              No notifications sent yet.
-            </div>
+            <EmptyState size="page" title={"No notifications sent yet."} />
           ) : (
             ["Today", "Yesterday", "Earlier"].map(bucket => (
               logGroups[bucket].length > 0 && (

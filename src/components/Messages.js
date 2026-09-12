@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { supabase } from "../supabase";
-import { Btn, Input, PageHeader, Textarea, TextLink} from "../ui";
+import { Btn, Input, PageHeader, Textarea, TextLink, EmptyState} from "../ui";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -504,7 +504,7 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
           </div>
           <div className="flex-1 overflow-y-auto">
             {convoList.length === 0 && (
-              <div className="text-center p-6 text-sm text-neutral-400">No tenants match.</div>
+              <EmptyState size="inline" title={"No tenants match."} />
             )}
             {convoList.map(({ tenant, lastMsg, unread }) => {
               const isActive = tenant.id === selectedId;

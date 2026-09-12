@@ -483,7 +483,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   );
   })}
   {users.length === 0 && (
-  <div className="text-center py-10 text-neutral-400">No team members added yet. Click + Add User to get started.</div>
+  <EmptyState size="inline" title={"No team members added yet. Click + Add User to get started."} />
   )}
   </div>
   </div>

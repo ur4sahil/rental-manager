@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { PageHeader, TextLink} from "../ui";
+import { PageHeader, TextLink, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, priorityColors } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Badge, StatCard, Spinner } from "./shared";
@@ -171,7 +171,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
       return daysUntil >= 0 && daysUntil <= 90;
     });
     if (expiring.length === 0) {
-      return <div className="text-sm text-neutral-400 text-center py-4">No upcoming lease expirations in the next 90 days</div>;
+      return <EmptyState size="inline" title={"No upcoming lease expirations in the next 90 days"} />;
     }
     return expiring.map(t => (
       <div key={t.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
@@ -195,7 +195,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
   </div>
   ))}
-  {workOrders.length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No recent maintenance</div>}
+  {workOrders.length === 0 && <EmptyState size="inline" title={"No recent maintenance"} />}
   </div>
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Utilities Due</h3>
@@ -211,7 +211,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   </div>
   </div>
   ))}
-  {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No pending utilities</div>}
+  {utilities.filter(u => u.status === "pending").length === 0 && <EmptyState size="inline" title={"No pending utilities"} />}
   </div>
   {licensesDue.length > 0 && (() => {
   const LIC_LABELS = { rental_license: "Rental License", rental_registration: "Rental Registration", lead_paint: "Lead Paint Cert", lead_risk_assessment: "Lead Risk Assessment", fire_inspection: "Fire Inspection", bbl: "Business License (BBL)", other: "License" };

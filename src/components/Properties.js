@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -3536,7 +3536,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Ledger */}
   {historicalTenantDetail.activeTab === "ledger" && (
   <div>
-  {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transaction history</div> : (
+  {historicalTenantDetail.ledger.length === 0 ? <EmptyState size="inline" title={"No transaction history"} /> : (
   <div className="space-y-1">
   {historicalTenantDetail.ledger.map((e, i) => (
   <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
@@ -3558,7 +3558,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Documents */}
   {historicalTenantDetail.activeTab === "docs" && (
   <div>
-  {historicalTenantDetail.docs.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No documents</div> : (
+  {historicalTenantDetail.docs.length === 0 ? <EmptyState size="inline" title={"No documents"} /> : (
   <div className="space-y-2">
   {historicalTenantDetail.docs.map(d => (
   <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
@@ -3580,7 +3580,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Messages */}
   {historicalTenantDetail.activeTab === "messages" && (
   <div>
-  {historicalTenantDetail.messages.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No messages</div> : (
+  {historicalTenantDetail.messages.length === 0 ? <EmptyState size="inline" title={"No messages"} /> : (
   <div className="space-y-2 max-h-64 overflow-y-auto">
   {historicalTenantDetail.messages.map((m, i) => (
   <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
@@ -3700,7 +3700,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
     rowKey={p => p.id}
     empty="Nothing to show"
   />
-  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
+  {filtered.length === 0 && <EmptyState size="compact" title={"No properties found"} />}
   </div>
   )}
 
@@ -3721,7 +3721,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {isReadOnly(p) && <span className="text-xs text-highlight-400">🔒</span>}
   </div>
   ))}
-  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
+  {filtered.length === 0 && <EmptyState size="compact" title={"No properties found"} />}
   </div>
   )}
 
@@ -3759,7 +3759,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   ))}
-  {timelineData.length === 0 && <p className="text-sm text-neutral-400 text-center py-4">No activity found.</p>}
+  {timelineData.length === 0 && <EmptyState size="inline" title={"No activity found."} />}
   </div>
   </Modal>
   )}

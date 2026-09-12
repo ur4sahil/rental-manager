@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -267,7 +267,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {showAudit && (
   <Modal title={`Audit Log — ${showAudit.provider}`} onClose={() => setShowAudit(null)}>
   {auditLog.length === 0 ? (
-  <div className="text-center text-neutral-400 py-6">No audit entries yet</div>
+  <EmptyState size="inline" title={"No audit entries yet"} />
   ) : (
   <div className="space-y-3">
   {auditLog.map((a, i) => (
@@ -505,7 +505,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   />
   </div>
   )}
-  {fu.length === 0 && <div className="text-center py-8 text-neutral-400">No utility bills found</div>}
+  {fu.length === 0 && <EmptyState size="compact" title={"No utility bills found"} />}
   </>;
   })()}
   </>)}
