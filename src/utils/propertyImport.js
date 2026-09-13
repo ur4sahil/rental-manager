@@ -276,6 +276,12 @@ function addListValidation(ws, colIdx, rowCount, values) {
 export async function buildTemplate(ExcelJS, {
   companyName = "", properties = [], tenants = [], owners = [], blankRows = 25,
   mode = "edit",
+  // Existing rows for the six one-to-many sheets, keyed by sheet key.
+  // Without these the sheets came down as headers over blank rows, so the
+  // workbook could ADD a loan or an insurance policy but never show or
+  // correct one that already existed -- "bulk edit" was add-only for six
+  // of the eight sheets.
+  extras = {},
 } = {}) {
   const isAdd = mode === "add";
   const dropId = (cols) => isAdd ? cols.filter(c => c.key !== "id") : cols;
@@ -330,13 +336,22 @@ export async function buildTemplate(ExcelJS, {
     taxFrequency: TAX_FREQUENCY, recurringFrequency: RECURRING_FREQUENCY,
     yesNo: ["Yes", "No"],
   };
-  for (const { sheet, columns } of EXTRA_SHEETS) {
+  for (const { sheet, columns, key } of EXTRA_SHEETS) {
     const ws = wb.addWorksheet(sheet, { views: [{ state: "frozen", ySplit: 1 }] });
     writeHeader(ws, columns);
-    for (let i = 0; i < blankRows; i++) styleRow(ws, i + 2, columns, null);
+    // Existing rows first, so the sheet can be corrected rather than only
+    // appended to; blank rows after them for new entries.
+    const rows = isAdd ? [] : (extras[key] || []);
+    rows.forEach((r, i) => {
+      const row = ws.getRow(i + 2);
+      columns.forEach((c, ci) => { row.getCell(ci + 1).value = r[c.key] ?? null; });
+      styleRow(ws, i + 2, columns, r);
+    });
+    for (let i = 0; i < blankRows; i++) styleRow(ws, rows.length + i + 2, columns, null);
+    const validated = rows.length + blankRows;
     columns.forEach((c, ci) => {
       const opts = c.list ? LISTS[c.list] : null;
-      if (opts && opts.length) addListValidation(ws, ci + 1, blankRows, opts);
+      if (opts && opts.length) addListValidation(ws, ci + 1, validated, opts);
     });
   }
 

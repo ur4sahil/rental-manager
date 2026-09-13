@@ -57,6 +57,34 @@ export default function PropertyImport({ companyId, companyName, properties = []
       supabase.from("acct_accounts").select("id,tenant_id").eq("company_id", companyId).not("tenant_id", "is", null),
     ]);
 
+    // The six one-to-many sheets, loaded so "bulk edit" can actually EDIT
+    // them. They came down as blank sheets before, which made the
+    // workbook add-only for utilities, HOA dues, loans, insurance, taxes
+    // and recurring rent.
+    //
+    // A SECOND Promise.all rather than widening the first to ten: this
+    // repo's rule is 3-5 parallel Supabase queries, because ten or more
+    // causes statement timeouts.
+    const [{ data: utilRows }, { data: hoaRows }, { data: loanRows },
+           { data: insRows }, { data: taxRows }, { data: recRows }] = await Promise.all([
+      supabase.from("utilities").select("property,provider,responsibility,amount,due_date")
+        .eq("company_id", companyId).is("archived_at", null),
+      supabase.from("hoa_payments").select("property,hoa_name,amount,frequency,due_date,notes")
+        .eq("company_id", companyId).is("archived_at", null),
+      supabase.from("property_loans").select("property,lender_name,loan_type,account_number,original_amount,current_balance,interest_rate,monthly_payment,escrow_included,escrow_amount,loan_start_date,maturity_date")
+        .eq("company_id", companyId).is("archived_at", null),
+      supabase.from("property_insurance").select("property,provider,policy_number,coverage_amount,premium_amount,premium_frequency,expiration_date,notes")
+        .eq("company_id", companyId).is("archived_at", null),
+      supabase.from("property_taxes").select("property,county,jurisdiction,parcel_id,tax_year,annual_tax_amount,assessed_value,billing_frequency,next_due_date,escrow_paid_by_lender,records_url")
+        .eq("company_id", companyId).is("archived_at", null),
+      supabase.from("recurring_journal_entries").select("property,tenant_name,amount,frequency,day_of_month,start_date")
+        .eq("company_id", companyId),
+    ]);
+    const extras = {
+      utilities: utilRows || [], hoas: hoaRows || [], loan: loanRows || [],
+      insurance: insRows || [], taxes: taxRows || [], recurring: recRows || [],
+    };
+
     // Ledger recency per tenant. This is what decides Current vs Past --
     // balance looks like a clean signal on this data but is a coincidence
     // of it: someone paid up in full looks identical to someone who left.
@@ -115,6 +143,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       properties: (props || []).map(p => ({ ...p, short_name: p.short_name || p.address })),
       tenants: tenantRows,
       owners: [...new Set((owners || []).map(o => o.name).filter(Boolean))],
+      extras,
     };
   }
 
@@ -126,6 +155,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       setExisting(data);
       const wb = await buildTemplate(ExcelJS, {
         companyName, properties: data.properties, tenants: data.tenants, owners: data.owners,
+        extras: data.extras || {},
         mode,
       });
       const buf = await wb.xlsx.writeBuffer();
