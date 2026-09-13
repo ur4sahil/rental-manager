@@ -464,18 +464,7 @@ function AppInner() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // `replace` is for the BOOT path. The browser already has a history
-  // entry for the URL it just loaded; pushing another for the same page
-  // duplicates it, so the first Back press goes from the page to itself
-  // and appears to do nothing. That is why Back after an F5 on a report
-  // returned to the report instead of the catalogue.
-  function setPage(p, action, { replace } = {}) {
-    setPageAction(action || null);
-    setPageRaw(p);
-    const st = { page: p, screen: "app" };
-    if (replace) window.history.replaceState(st, "", pageUrl(p));
-    else window.history.pushState(st, "", pageUrl(p));
-  }
+  function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", pageUrl(p)); }
   // Sweep stale page-scoped params whenever the settled page does not own
   // them -- boot and Back/Forward do not go through setPage.
   useEffect(() => {
