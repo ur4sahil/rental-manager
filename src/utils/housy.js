@@ -7,6 +7,10 @@
 // change.
 export const HOUSY = {
   name: "Housy",
+  // Standalone billing -- nav and page header. Kept separate from `name`
+  // because that one appears mid-sentence ("Ask Housy", "Housy is
+  // reading this"), where the suffix reads as clumsy.
+  menuLabel: "Housy AI",
   // What it is, in the user's terms, not ours. Shown on the review queue
   // and wherever a proposal appears.
   tagline: "reads your documents and proposes what to fill in",

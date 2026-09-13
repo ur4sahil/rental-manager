@@ -128,7 +128,7 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
 
   return (
     <div className="flex flex-col gap-0">
-      <PageHeader title={HOUSY.name} subtitle={`${HOUSY.name} ${HOUSY.tagline}. Nothing is saved until you approve it.`} />
+      <PageHeader title={HOUSY.menuLabel} subtitle={`${HOUSY.name} ${HOUSY.tagline}. Nothing is saved until you approve it.`} />
 
       <TabBar active={tab} onChange={t => { setTab(t); setOpen(null); }} tabs={[
         { id: "proposed", label: "Needs review", count: counts.proposed || null },

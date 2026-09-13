@@ -46,6 +46,7 @@ import { InsuranceTracker } from "./components/Insurance";
 import { TaxBills } from "./components/TaxBills";
 import { LateFees } from "./components/LateFees";
 import PublicSignPage from "./components/PublicSignPage";
+import { HOUSY } from "./utils/housy";
 
 // ============ SENTRY INITIALIZATION ============
 Sentry.init({
@@ -206,7 +207,7 @@ const ALL_NAV = [
     { id: "acct_reports",    label: "Reports",           icon: "assessment" },
   ]},
   { id: "doc_builder", label: "Document Builder", icon: "description" },
-  { id: "housy", label: "Housy", icon: "auto_awesome" },
+  { id: "housy", label: HOUSY.menuLabel, icon: "auto_awesome" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "owners", label: "Owners", icon: "person" },
