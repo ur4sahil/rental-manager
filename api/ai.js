@@ -6,6 +6,8 @@
 //                                 { companyId, sourceTable, sourceId, sourceName, text }
 //   POST /api/ai?action=search    { companyId, query, limit, sourceId }
 //   POST /api/ai?action=enqueue   { companyId, kind, subjectTable, subjectId, input, priority }
+//   POST /api/ai?action=job-status{ companyId, jobId }
+//   POST /api/ai?action=jobs      { companyId, status, limit }
 //
 // Worker-facing (x-worker-token, NOT company-scoped):
 //   POST /api/ai?action=claim     { worker, kinds }
@@ -111,6 +113,30 @@ module.exports = async function handler(req, res) {
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
       return res.status(202).json({ ok: true, job });
+    }
+
+    // ---- poll one job --------------------------------------------------
+    // Company-scoped: a job id alone must not let one company read
+    // another's work.
+    if (action === "job-status") {
+      const { jobId } = body;
+      if (!jobId) return res.status(400).json({ error: "jobId is required" });
+      const { data, error } = await sb.from("ai_jobs")
+        .select("*").eq("id", jobId).eq("company_id", companyId).maybeSingle();
+      if (error) return res.status(500).json({ error: error.message });
+      if (!data) return res.status(404).json({ error: "no such job for this company" });
+      return res.status(200).json({ ok: true, job: data });
+    }
+
+    // ---- list the review queue -----------------------------------------
+    if (action === "jobs") {
+      const { status = null, limit = 50 } = body;
+      let q = sb.from("ai_jobs").select("*").eq("company_id", companyId)
+        .order("created_at", { ascending: false }).limit(Math.min(Number(limit) || 50, 200));
+      if (status) q = q.eq("status", status);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true, jobs: data || [] });
     }
 
     // ---- worker claims one job -----------------------------------------
