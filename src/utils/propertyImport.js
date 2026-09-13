@@ -53,10 +53,27 @@ export const PROPERTY_COLUMNS = [
   { key: "bedrooms",       header: "Beds",           width: 7,  numeric: true, integer: true },
   { key: "bathrooms",      header: "Baths",          width: 7,  numeric: true },
   { key: "sqft",           header: "Sq Ft",          width: 9,  numeric: true, integer: true },
+  { key: "year_built",     header: "Year Built",     width: 11, numeric: true, integer: true,
+    note: "Drives the lead paint rule: built before 1978 means a certificate is required. Leave blank if you do not know — blank is reported as unknown, not guessed." },
   { key: "owner_name",     header: "Owner",          width: 20, list: "owners" },
   { key: "rent",           header: "Monthly Rent",   width: 13, numeric: true },
   { key: "security_deposit", header: "Deposit",      width: 11, numeric: true },
   { key: "notes",          header: "Notes",          width: 30 },
+  // Licences. One per property per type, so these are plain columns
+  // rather than a separate sheet -- filling 41 properties through the
+  // wizard one at a time is why the licence table was empty.
+  { key: "license_number",     header: "Rental License #",   width: 20,
+    note: "As printed on the license, e.g. HOU-2059-2026-SFR." },
+  { key: "license_jurisdiction", header: "License Issuer",   width: 24,
+    note: "The county or city that issued it." },
+  { key: "license_issue_date", header: "License Issued",     width: 14, date: true },
+  { key: "license_expiry_date", header: "License Expires",   width: 14, date: true,
+    note: "What the renewal reminders count down to. Required if you give any other license field." },
+  { key: "license_fee",        header: "License Fee",        width: 12, numeric: true },
+  { key: "lead_cert_number",   header: "Lead Cert #",        width: 18,
+    note: "Only for properties built before 1978." },
+  { key: "lead_cert_expiry",   header: "Lead Cert Expires",  width: 16, date: true },
+
 ];
 
 export const TENANT_COLUMNS = [

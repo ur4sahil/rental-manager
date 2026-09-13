@@ -462,10 +462,60 @@ export default function PropertyImport({ companyId, companyName, properties = []
           county: r.county || null, short_name: r.short_name || null,
           type: r.type || null, status: r.status || null,
           bedrooms: r.bedrooms, bathrooms: r.bathrooms, sqft: r.sqft,
+          year_built: r.year_built,
           owner_name: r.owner_name || "", rent: r.rent, security_deposit: r.security_deposit,
           notes: r.notes || "",
         };
         Object.keys(patch).forEach(k => { if (patch[k] === null || patch[k] === undefined) delete patch[k]; });
+
+        // Licences from the spreadsheet. Keyed on (property_id,
+        // license_type) so re-importing updates rather than duplicating,
+        // and so a rental licence and a lead certificate coexist.
+        //
+        // expiry_date is NOT NULL and is what the reminder cron counts
+        // down to, so a row with other licence fields but no expiry is
+        // reported rather than written half-formed.
+        const licenceRows = [];
+        if (r.license_number || r.license_jurisdiction || r.license_issue_date || r.license_expiry_date || r.license_fee) {
+          if (!r.license_expiry_date) {
+            done.failed.push({ what: u.newAddress, why: "License Expires is required when any other license field is filled" });
+          } else {
+            licenceRows.push({
+              license_type: "rental_license",
+              license_number: r.license_number || null,
+              jurisdiction: r.license_jurisdiction || null,
+              issue_date: r.license_issue_date || null,
+              expiry_date: r.license_expiry_date,
+              fee_amount: r.license_fee ?? null,
+              status: "active",
+            });
+          }
+        }
+        if (r.lead_cert_number || r.lead_cert_expiry) {
+          if (!r.lead_cert_expiry) {
+            done.failed.push({ what: u.newAddress, why: "Lead Cert Expires is required when a lead certificate number is given" });
+          } else {
+            licenceRows.push({
+              license_type: "lead_paint",
+              license_number: r.lead_cert_number || null,
+              jurisdiction: null,
+              issue_date: null,
+              expiry_date: r.lead_cert_expiry,
+              fee_amount: null,
+              status: "active",
+            });
+          }
+        }
+        for (const lrow of licenceRows) {
+          const { data: lfound } = await supabase.from("property_licenses").select("id")
+            .eq("company_id", companyId).eq("property_id", Number(u.id))
+            .eq("license_type", lrow.license_type).is("archived_at", null).limit(1);
+          const lhit = (lfound || [])[0];
+          const { error: lerr } = lhit
+            ? await supabase.from("property_licenses").update(lrow).eq("id", lhit.id).eq("company_id", companyId)
+            : await supabase.from("property_licenses").insert([{ ...lrow, company_id: companyId, property_id: Number(u.id) }]);
+          if (lerr) done.failed.push({ what: u.newAddress, why: `license (${lrow.license_type}): ${lerr.message}` });
+        }
         if (Object.keys(patch).length) {
           const { error } = await supabase.from("properties").update(patch)
             .eq("id", u.id).eq("company_id", companyId);
