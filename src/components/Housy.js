@@ -31,7 +31,12 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
     if (!companyId) return;
     const q = supabase.from("ai_jobs").select("*").eq("company_id", companyId)
       .order("created_at", { ascending: false }).limit(200);
-    const { data, error } = tab === "all" ? await q : await q.eq("status", tab);
+    // "working" is a VIEW over two real statuses, not a status itself --
+    // filtering on it directly would silently return nothing.
+    const { data, error } =
+      tab === "all"     ? await q :
+      tab === "working" ? await q.in("status", ["queued", "running"]) :
+                          await q.eq("status", tab);
     if (error) { pmError("PM-8006", { raw: error, context: "load Housy jobs", silent: true }); setJobs([]); return; }
     setJobs(data || []);
   }, [companyId, tab]);
@@ -116,7 +121,10 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
 
   if (jobs === null) return <Spinner />;
 
-  const counts = { proposed: jobs.filter(j => j.status === "proposed").length };
+  const counts = {
+    proposed: jobs.filter(j => j.status === "proposed").length,
+    working: jobs.filter(j => j.status === "queued" || j.status === "running").length,
+  };
 
   return (
     <div className="flex flex-col gap-0">
@@ -124,6 +132,7 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
 
       <TabBar active={tab} onChange={t => { setTab(t); setOpen(null); }} tabs={[
         { id: "proposed", label: "Needs review", count: counts.proposed || null },
+        { id: "working", label: "In progress", count: counts.working || null },
         { id: "done", label: "Applied" },
         { id: "rejected", label: "Rejected" },
         { id: "failed", label: "Failed" },
@@ -132,8 +141,12 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
 
       {jobs.length === 0 ? (
         <EmptyState size="compact" icon={HOUSY.icon}
-          title={tab === "proposed" ? `Nothing waiting for you` : `Nothing here`}
-          subtitle={tab === "proposed" ? `${HOUSY.name} will queue suggestions here as documents arrive.` : undefined} />
+          title={tab === "proposed" ? `Nothing waiting for you`
+               : tab === "working"  ? `Nothing in progress`
+               : `Nothing here`}
+          subtitle={tab === "proposed" ? `${HOUSY.name} will queue suggestions here as documents arrive.`
+                  : tab === "working"  ? `Documents ${HOUSY.name} is still reading appear here until a proposal is ready.`
+                  : undefined} />
       ) : (
         <DataTable
           columns={[

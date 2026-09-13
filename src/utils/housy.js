@@ -30,6 +30,11 @@ export const HOUSY_JOB_KINDS = {
 };
 
 export const HOUSY_STATUS = {
+  // A job exists before the model has run: long documents are queued and
+  // picked up by the worker on the box, because a 12-page lease takes
+  // ~2 minutes to read and cannot be an HTTP request anyone waits on.
+  queued:    { label: "Queued",       tone: "neutral" },
+  running:   { label: "Reading\u2026",    tone: "info" },
   proposed:  { label: "Needs review", tone: "warn" },
   approved:  { label: "Approved",     tone: "success" },
   rejected:  { label: "Rejected",     tone: "neutral" },
