@@ -8,6 +8,7 @@ import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
+import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../utils/housy";
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 
 // ============ DOCUMENTS ============
@@ -19,8 +20,51 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const [form, setForm] = useState({ name: "", property: "", tenant: "", type: "Lease", tenant_visible: false });
   const fileRef = useRef();
   const [uploading, setUploading] = useState(false);
+  // Which document Housy is currently reading, so only that row shows a
+  // busy state rather than disabling the whole table.
+  const [housyBusy, setHousyBusy] = useState(null);
 
   useEffect(() => { fetchDocs(); }, [companyId]);
+
+  // Send a document to Housy to read.
+  //
+  // The PDF's text is extracted HERE, in the browser, and only the text
+  // is sent -- the file itself never leaves storage. The job is then
+  // queued rather than awaited: a 12-page lease takes the model about two
+  // minutes, which is far past what any HTTP request survives.
+  async function readWithHousy(d) {
+    const path = d.file_name || d.url;
+    if (!path) { showToast("This record has no file attached.", "error"); return; }
+    setHousyBusy(d.id);
+    try {
+      const signed = await getSignedUrl("documents", path);
+      if (!signed) { showToast("Could not open the file.", "error"); return; }
+      const resp = await fetch(signed);
+      const bytes = new Uint8Array(await resp.arrayBuffer());
+
+      const text = await extractPdfText(bytes);
+      // A scanned page has no text layer at all. Say so plainly rather
+      // than queueing an empty job that fails two minutes later.
+      if (!text || text.length < 40) {
+        showToast(`No readable text in this PDF — it looks like a scan, which ${HOUSY.name} cannot read yet.`, "error");
+        return;
+      }
+
+      const kind = housyKindForDocument(d);
+      const r = await queueHousyJob({
+        companyId, kind, subjectTable: "documents", subjectId: String(d.id),
+        sourceName: d.name, text, userEmail: userProfile?.email,
+      });
+      if (!r.ok) { showToast(`Could not queue it: ${r.error}`, "error"); return; }
+
+      logAudit("create", "housy", `Queued ${kind} for ${d.name}`, d.id, userProfile?.email, userRole, companyId);
+      showToast(`${HOUSY.name} is reading "${d.name}". It will appear on the Housy page when ready — nothing is saved until you approve it.`, "success");
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "read document with Housy" });
+    } finally {
+      setHousyBusy(null);
+    }
+  }
 
   async function fetchDocs() {
   const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(500);
@@ -228,6 +272,13 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
             </>
             ) : (
             <span className="text-xs text-neutral-400">No file</span>
+            )}
+            {(d.file_name || d.url) && /\.pdf$/i.test(d.file_name || d.url || "") && (
+              <TextLink tone="brand" size="xs" disabled={housyBusy === d.id}
+                title={`Have ${HOUSY.name} read this and propose what to fill in`}
+                onClick={() => readWithHousy(d)}>
+                {housyBusy === d.id ? "Reading…" : `Ask ${HOUSY.name}`}
+              </TextLink>
             )}
             <TextLink tone="danger" size="xs" onClick={() => deleteDoc(d.id, d.name, d.file_name)}>Delete</TextLink>
             </div>

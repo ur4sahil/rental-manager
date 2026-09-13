@@ -57,3 +57,69 @@ export function proposalCoverage(output) {
   const filled = keys.filter(k => output[k] !== null && output[k] !== undefined && output[k] !== "").length;
   return { filled, total: keys.length };
 }
+
+/**
+ * Which kind of job a document should become.
+ *
+ * Inferred from the document's own type and name rather than asked,
+ * because the two cases are visually obvious to a person and a dropdown
+ * for it would be friction on every upload. Falls back to licence
+ * extraction, which is the shorter read and the cheaper mistake.
+ */
+export function housyKindForDocument(doc) {
+  const hay = `${doc?.type || ""} ${doc?.name || ""}`.toLowerCase();
+  if (/lease|tenancy|rental agreement/.test(hay)) return "abstract_lease";
+  return "extract_license";
+}
+
+/**
+ * Pull the text out of a PDF in the browser.
+ *
+ * The model needs text, and the file in storage is a PDF. Doing this
+ * client-side keeps the bytes off the server entirely -- only the
+ * extracted text is sent, which is both smaller and less of the
+ * document than uploading it would be.
+ *
+ * Returns "" rather than throwing for a PDF with no text layer (a scan),
+ * so the caller can say something useful instead of showing a stack.
+ */
+export async function extractPdfText(bytes) {
+  const pdfjsLib = await import("pdfjs-dist");
+  // Same pinning as Documents' preview: CRA's bundler emits a
+  // /static/media/ path for the new URL(...) form that 404s in
+  // production, and cdnjs lags this package's version.
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdn.jsdelivr.net/npm/pdfjs-dist@" + pdfjsLib.version + "/build/pdf.worker.min.mjs";
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pages.push(content.items.map(it => it.str).join(" "));
+  }
+  return pages.join("\n\n").replace(/[ \t]+/g, " ").trim();
+}
+
+/**
+ * Queue a document for Housy to read.
+ *
+ * Returns { ok, job, error }. Never throws: the caller is a click
+ * handler, and an unhandled rejection there shows the user nothing.
+ */
+export async function queueHousyJob({ companyId, kind, subjectTable, subjectId, sourceName, text, userEmail, priority = 0 }) {
+  try {
+    const res = await fetch("/api/ai?action=enqueue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        companyId, kind, subjectTable, subjectId, priority, userEmail,
+        input: { text, source_name: sourceName || null },
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: body?.error || `HTTP ${res.status}` };
+    return { ok: true, job: body.job };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
