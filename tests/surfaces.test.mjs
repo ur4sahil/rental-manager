@@ -59,6 +59,22 @@ for (const recipe of RETIRED) {
     `reappeared in: ${hits.join(", ")}`);
 }
 
+// ---- elevation -------------------------------------------------------
+// Two levels, not five. The app used Tailwind's stock sm/md/lg/xl/2xl --
+// five guesses at the two states that exist: a surface at rest and
+// something floating above the page. 61 shadow-sm sat alongside 70
+// shadow-card for the same kind of card.
+const SHADOWS = files.flatMap(f =>
+  [...readFileSync(f, "utf8").matchAll(/\bshadow-(sm|md|lg|xl|2xl|card|pop)\b/g)].map(m => m[1]));
+const offScale = [...new Set(SHADOWS.filter(s => !["card", "pop"].includes(s)))];
+assert("elevation uses only the two declared levels", offScale.length === 0,
+  `off-scale shadows still in use: ${offScale.map(s => "shadow-" + s).join(", ")}`);
+const ui2 = readFileSync(path.join(ROOT, "src/index.css"), "utf8");
+for (const t of ["--shadow-card", "--shadow-pop"]) {
+  assert(`${t} is declared once`, (ui2.match(new RegExp(t + ":", "g")) || []).length === 1,
+    "declared twice means the later one wins and editing the documented value does nothing");
+}
+
 // And the shared recipe really is shared, rather than everything having
 // drifted somewhere new.
 const shared = files.reduce((n, f) =>

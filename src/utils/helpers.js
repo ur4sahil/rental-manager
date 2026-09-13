@@ -371,22 +371,26 @@ export const COUNTY_TAX_SCHEDULES = {
     { label: "2nd half (DC)",    month: 9, day: 15 },
   ],
 
-  // MD — statewide pattern: annual bill issued July 1, semi-annual
-  // option for all classes but LLCs/investment pay annually by Sept 30
-  // or split Sept 30 + Dec 31. Baltimore City is slightly unique; see
-  // below. Everything else shares the same default schedule.
-  "Anne Arundel County|MD":     [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Baltimore County|MD":        [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Calvert County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Charles County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Frederick County|MD":        [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Harford County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Howard County|MD":           [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Montgomery County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Prince George's County|MD":  [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "St. Mary's County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  // Baltimore City — same statutory schedule; discount programs differ.
-  "Baltimore City|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  // MD — the annual bill is issued 1 July and an LLC pays it in ONE
+  // payment by 30 September. The semi-annual split (30 Sep + 31 Dec) is
+  // an option for owner-occupied classes, not how these properties are
+  // paid, and generating two halves meant every Maryland property showed
+  // a second bill that is never paid.
+  //
+  // Sahil, 2026-09-12: "Maryland LLC need to pay all tax together."
+  // Applies to every Maryland property.
+  "Anne Arundel County|MD":      [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Baltimore County|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Calvert County|MD":           [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Charles County|MD":           [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Frederick County|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Harford County|MD":           [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Howard County|MD":            [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Montgomery County|MD":        [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Prince George's County|MD":   [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "St. Mary's County|MD":        [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Baltimore City|MD":           [{ label: "Annual (MD)", month: 9, day: 30 }],
+
 
   // VA standard NoVA/surrounding counties: Jun 5 + Dec 5.
   "Loudoun County|VA":          [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],

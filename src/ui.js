@@ -146,7 +146,7 @@ export function Alert({ tone = "info", icon, title, children, className = "" }) 
 //     47x  rounded-xl  border border-neutral-200
 //     47x  rounded-3xl shadow-card
 //     39x  rounded-3xl border border-brand-50
-//     21x  rounded-xl  shadow-sm
+//     21x  rounded-xl  shadow-card
 //     21x  rounded-xl  border border-brand-100
 //     12x  rounded-xl  border border-neutral-100
 //
@@ -168,7 +168,7 @@ export const SURFACE = {
   // A recessed area INSIDE a card: a filter strip, a nested summary.
   inset:  "bg-neutral-50 rounded-xl border border-neutral-100",
   // Floating above everything: menus, popovers, dialogs.
-  overlay: "bg-white rounded-xl border border-neutral-200 shadow-lg",
+  overlay: "bg-white rounded-xl border border-neutral-200 shadow-pop",
 };
 
 // Card padding, named.
@@ -533,7 +533,7 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
           tabIndex={-1}>✕</button>
       )}
       {open && (
-        <div ref={listRef} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+        <div ref={listRef} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-pop max-h-56 overflow-y-auto">
           {showNewOption && (
             <button type="button" data-idx={0}
               onMouseDown={(e) => { e.preventDefault(); select("__new__"); }}

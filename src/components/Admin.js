@@ -357,7 +357,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
 
   {/* Add / Edit form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
   {/* Basic info */}
@@ -781,7 +781,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
       {otherTasks.length > 0 && (
         <div className="space-y-2">
           {otherTasks.map((t, i) => (
-            <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
+            <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-card transition-all">
               <span className="text-xl">{t.icon}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
@@ -1622,7 +1622,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
   </Btn>
 
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6 mb-4">
   <PageHeader title="Profile" />
 
   {/* Avatar */}
@@ -1669,7 +1669,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Password Reset */}
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-2">Password</h3>
   <p className="text-xs text-neutral-400 mb-3">We'll send a password reset link to your email.</p>
   <Btn variant="slate" size="sm" onClick={sendPasswordReset} disabled={resetSent}>
@@ -1678,7 +1678,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Preferences */}
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-3">Preferences</h3>
   <div className="flex items-center justify-between py-2">
   <div>
@@ -1690,14 +1690,14 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* 2FA */}
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6 mb-4">
   <h3 className="font-semibold text-neutral-800 mb-2">Two-Factor Authentication</h3>
   <p className="text-xs text-neutral-400 mb-3">Add an extra layer of security to your account.</p>
   <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-400 text-center">Coming Soon</div>
   </div>
 
   {/* Delete Account */}
-  <div className="bg-white rounded-xl border border-danger-100 shadow-sm p-6">
+  <div className="bg-white rounded-xl border border-danger-100 shadow-card p-6">
   <h3 className="font-semibold text-danger-600 mb-2">Delete Account</h3>
   <p className="text-xs text-neutral-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
   {!showDeleteConfirm ? (

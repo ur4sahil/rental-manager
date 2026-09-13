@@ -341,7 +341,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <Btn onClick={() => setShowForm(!showForm)}>+ New Schedule</Btn>
   </div>
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <h3 className="font-semibold text-neutral-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>
@@ -383,7 +383,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   )}
   <div className="space-y-3">
   {schedules.map(s => (
-  <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.enabled ? "border-brand-50" : "border-brand-100 opacity-60"}`}>
+  <div key={s.id} className={`bg-white rounded-xl border shadow-card p-4 ${s.enabled ? "border-brand-50" : "border-brand-100 opacity-60"}`}>
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-neutral-800">{s.tenant}</div>

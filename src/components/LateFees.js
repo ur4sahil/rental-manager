@@ -219,7 +219,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   )}
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <h3 className="font-semibold text-neutral-700 mb-1">New Late Fee Rule</h3>
   <p className="text-xs text-neutral-400 mb-3">Grace period, fee type and amount are pre-filled as suggested defaults from your company settings — adjust them as needed. Give the rule a name to save it.</p>
   <div className="grid grid-cols-2 gap-3">
@@ -243,7 +243,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   {flagged.map(p => {
   const pastGrace = rules.length > 0 && p.daysLate > rules[0]?.grace_days;
   return (
-  <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${pastGrace ? "border-danger-200" : "border-notice-100"}`}>
+  <div key={p.id} className={`bg-white rounded-xl border shadow-card p-4 ${pastGrace ? "border-danger-200" : "border-notice-100"}`}>
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{p.tenant}</div><div className="text-xs text-neutral-400">{p.property}</div></div>
   <div className="text-right"><div className="font-bold text-danger-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-danger-500" : "text-notice-500"}`}>{p.daysLate} days late</div></div>

@@ -307,7 +307,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
 
   {showAccountForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h3 className="font-semibold text-subtle-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
@@ -336,7 +336,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ) : (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
   {utilAccounts.map(acct => (
-  <div key={acct.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4">
+  <div key={acct.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex items-start justify-between mb-2">
   <div><div className="font-semibold text-subtle-800 text-sm">{acct.provider_display}</div><div className="text-xs text-subtle-400">{acct.property}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (acct.last_check_status === "success" ? "bg-positive-100 text-positive-700" : acct.last_check_status === "failed" ? "bg-danger-100 text-danger-700" : "bg-subtle-100 text-subtle-500")}>{acct.last_check_status || "never"}</span>
@@ -361,7 +361,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-subtle-700 mb-3">Fetched Bills</h3>
   <div className="space-y-2">
   {autoBills.map(bill => (
-  <div key={bill.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex items-center gap-4">
+  <div key={bill.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 flex items-center gap-4">
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
@@ -383,7 +383,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ) : (
   <div className="space-y-2">
   {autoJobs.map(job => (
-  <div key={job.id} className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 flex items-center gap-4">
+  <div key={job.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 flex items-center gap-4">
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-subtle-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-positive-100 text-positive-700" : job.status === "failed" ? "bg-danger-100 text-danger-700" : job.status === "running" ? "bg-info-100 text-info-700" : "bg-subtle-100 text-subtle-500")}>{job.status}</span>
   {job.error_message && <div className="text-xs text-danger-500 max-w-xs truncate">{job.error_message}</div>}
@@ -409,7 +409,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </Select>
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-lg ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-lg ${utilView === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
@@ -424,7 +424,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>

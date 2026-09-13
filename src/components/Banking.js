@@ -2291,7 +2291,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       </button>
       {isMenuOpen && <>
         <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
-        <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
+        <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-pop py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
           <MenuItem onClick={() => { setGlMapModal({ feedId: feed.id, feedName: feed.account_name || "Bank Account" }); setGlMapValue(feed.gl_account_id || ""); setFeedMenuOpen(null); }} tone="neutral" icon="link">Change GL Mapping</MenuItem>
           {feed.status === "inactive" ? (
           <MenuItem onClick={() => { reactivateFeed(feed.id); setFeedMenuOpen(null); }} tone="positive" icon="link">Reactivate</MenuItem>
@@ -2387,7 +2387,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <p className="text-xs mt-1 mb-4">Rules auto-categorize imported transactions. Start with a template or create your own!</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-left max-w-3xl mx-auto">
             {RENTAL_RULE_PRESETS.map((preset, i) => (
-              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-accent-100 rounded-xl p-3 hover:border-accent-300 hover:shadow-sm transition-all text-left">
+              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-accent-100 rounded-xl p-3 hover:border-accent-300 hover:shadow-card transition-all text-left">
                 <p className="text-sm font-semibold text-neutral-700">{preset.name}</p>
                 <p className="text-xs text-neutral-400 mt-1">{preset.description}</p>
                 <div className="flex gap-1 mt-2">
@@ -2848,7 +2848,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* New Account Modal */}
   {showNewAccount && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+  <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-pop">
     <h3 className="font-semibold text-neutral-800 mb-4">Add Bank Account</h3>
     <div className="space-y-3">
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
@@ -2871,7 +2871,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* Import CSV Wizard Modal */}
   {showImportWizard && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+  <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-pop">
     <div className="p-6">
     <div className="flex items-center justify-between mb-4">
       <h3 className="font-semibold text-neutral-800">Import Bank Transactions</h3>
@@ -3013,7 +3013,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {showRuleDrawer && (
   <>
   <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} />
-  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto safe-y">
+  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-pop z-50 overflow-y-auto safe-y">
     <div className="sticky top-0 bg-white border-b border-neutral-200 px-5 py-4 flex items-center justify-between z-10">
       <h3 className="text-lg font-bold text-neutral-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
       <TextLink tone="neutral" size="xl" underline={false} onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }}>✕</TextLink>
@@ -3200,7 +3200,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.plaid_account_id]);
     return (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-pop max-w-lg w-full max-h-[90vh] overflow-y-auto">
       <div className="p-6">
         <div className="flex items-center gap-3 mb-1">
           <span className="text-2xl">🏦</span>
@@ -3376,7 +3376,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* consumes another Teller plan slot. */}
   {connectChooser && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-pop max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔗</span>
         <h3 className="text-lg font-bold text-neutral-800">Connect Bank</h3>
@@ -3419,7 +3419,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* window). Empty = import everything new since the last sync. */}
   {syncDateModal && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-pop max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔄</span>
         <h3 className="text-lg font-bold text-neutral-800">Sync Bank Transactions</h3>
@@ -3450,7 +3450,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* account name/code like everywhere else in the app. */}
   {glMapModal && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-xl border border-neutral-200 shadow-lg max-w-md w-full p-6">
+    <div className="bg-white rounded-xl border border-neutral-200 shadow-pop max-w-md w-full p-6">
       <div className="flex items-center gap-3 mb-1">
         <span className="text-2xl">🔗</span>
         <h3 className="text-lg font-bold text-neutral-800">Map to GL Account</h3>

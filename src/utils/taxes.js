@@ -92,6 +92,47 @@ export async function generateBillsForProperty({
     : null;
   const perInstallment = annual != null ? annual / schedule.length : null;
 
+  // Retire installments the schedule no longer has.
+  //
+  // Maryland moved from two halves (30 Sep + 31 Dec) to one annual bill
+  // due 30 Sep. The generator dedups by due_date, so the September row is
+  // reused -- but the December row is left behind, and the property then
+  // shows an annual bill AND a second half that is never paid.
+  //
+  // Strictly bounded, because this DELETES something the user can see:
+  //   - auto_generated only; a manually added bill is never touched
+  //   - status "pending" and no paid_date; anything paid or skipped stays
+  //   - only rows for THIS tax year whose due date is not in the schedule
+  // and it archives (archived_at) rather than deleting, per the repo's
+  // soft-delete rule.
+  let retired = 0;
+  {
+    const keepDates = resolveDueDates(schedule, year).map(d => d.dueDate);
+    const { data: stale, error: staleErr } = await supabase
+      .from("property_tax_bills")
+      .select("id, due_date, installment_label")
+      .eq("company_id", companyId)
+      .eq("property", propertyAddress)
+      .eq("tax_year", year)
+      .eq("auto_generated", true)
+      .eq("status", "pending")
+      .is("paid_date", null)
+      .is("archived_at", null);
+    if (staleErr) {
+      pmError("PM-8006", { raw: staleErr, context: "read superseded tax bills", silent: true });
+    } else {
+      for (const row of (stale || [])) {
+        if (keepDates.includes(row.due_date)) continue;
+        const { error } = await supabase
+          .from("property_tax_bills")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", row.id);
+        if (error) pmError("PM-8006", { raw: error, context: "archive superseded tax bill " + row.due_date, silent: true });
+        else retired++;
+      }
+    }
+  }
+
   let created = 0, updated = 0, skipped = 0;
   // Bills are identified by their absolute due date, not by tax_year +
   // label. The tax_year label stays on the row for display, but the
@@ -148,7 +189,7 @@ export async function generateBillsForProperty({
     }
     created++;
   }
-  return { created, updated, skipped };
+  return { created, updated, skipped, retired };
 }
 
 /**

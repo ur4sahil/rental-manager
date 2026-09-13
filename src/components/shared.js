@@ -65,7 +65,7 @@ export function Badge({ status, label }) {
 
 export function StatCard({ label, value, sub, color = "text-neutral-800", onClick }) {
   return (
-  <div onClick={onClick} className={"bg-white rounded-xl border border-neutral-200 shadow-card p-4" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
+  <div onClick={onClick} className={"bg-white rounded-xl border border-neutral-200 shadow-card p-4" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-pop transition-all" : "")}>
   <div className="text-xs text-neutral-400 font-medium uppercase tracking-widest mb-1">{label}</div>
   <div className={`text-2xl font-display font-bold ${color}`}>{value}</div>
   {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
@@ -152,7 +152,7 @@ export function ToastContainer({ toasts, removeToast }) {
   <div key={t.id}
        // An error interrupts; a success does not.
        role={t.type === "error" ? "alert" : undefined}
-       className={"flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
+       className={"flex items-start gap-3 px-4 py-3 rounded-xl shadow-pop border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
   {t.isError ? (<>
     <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : "warning"}</span>
     <div className="flex-1 min-w-0">
@@ -302,7 +302,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   if (!entry) return null;
   return (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+  <div className="bg-white rounded-xl shadow-pop max-w-md w-full p-6">
   <div className="text-center mb-4">
   <div className="w-14 h-14 bg-brand-100 rounded-xl flex items-center justify-center mx-auto mb-3">
   <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>

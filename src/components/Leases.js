@@ -440,7 +440,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   })()}
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <h3 className="font-display font-semibold text-neutral-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Apply Template</label>
@@ -495,7 +495,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const sc = { active: "bg-positive-100 text-positive-700", expired: "bg-danger-100 text-danger-700", renewed: "bg-info-100 text-info-700", terminated: "bg-neutral-100 text-neutral-500", draft: "bg-warn-100 text-warn-700" };
   const dc = { held: "bg-highlight-100 text-highlight-700", partial_return: "bg-warn-100 text-warn-700", returned: "bg-positive-100 text-positive-700", forfeited: "bg-danger-100 text-danger-700" };
   return (
-  <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-danger-200" : "border-brand-50")}>
+  <div key={l.id} className={"bg-white rounded-xl border shadow-card p-4 " + (isExpired ? "border-danger-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-3">
   <div><div className="text-sm font-bold text-neutral-800">{l.tenant_name}</div><div className="text-xs text-neutral-400">{l.property}</div></div>
   <div className="flex items-center gap-2">

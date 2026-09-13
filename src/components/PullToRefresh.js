@@ -186,7 +186,7 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
         className="pointer-events-none absolute left-1/2 top-0 z-50 md:hidden"
         style={{ transform: "translateX(-50%) translateY(-48px)", opacity: 0 }}
       >
-        <div className="w-10 h-10 rounded-full bg-white shadow-lg border border-brand-100 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-white shadow-pop border border-brand-100 flex items-center justify-center">
           <span
             className="p2r-icon material-icons-outlined text-brand-600 text-xl"
             style={{ transition: "transform 80ms linear" }}

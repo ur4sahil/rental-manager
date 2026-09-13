@@ -1184,7 +1184,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   {activePanel && selectedTenant && activePanel === "lease" && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
+  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop">
   <div className="px-5 py-4 border-b border-brand-50 flex items-center justify-between bg-brand-600 text-white">
   <div>
   <div className="font-bold">{selectedTenant.name}</div>
@@ -1276,7 +1276,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* ===== TENANT DETAIL VIEW ===== */}
   {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
+  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop overflow-y-auto">
   {/* Header */}
   <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-6 text-white">
   <div className="flex items-center justify-between">
@@ -1697,7 +1697,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {archivedTenants.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-neutral-200"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+  <div key={t.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-card transition-all" onClick={async () => {
     // Fan-out fetch for the full tenant history so the detail panel
     // renders in one shot. Scope each query by tenant_id where the
     // table has it, falling back to escaped name ilike otherwise —
@@ -1972,7 +1972,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2 items-center">
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","\u25A6","Cards"],["table","\u2630","Table"],["compact","\u2261","Compact"]].map(([m,icon,label]) => (
-  <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-lg ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-lg ${tenantView === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   {/* Sort control, not just clickable table headers. The list defaults to
@@ -2213,8 +2213,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   {showForm && editingTenant && (
   <div className={editReturnTo
-    ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-xl shadow-2xl p-4 overflow-y-auto safe-y"
-    : "bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4"}>
+    ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-xl shadow-pop p-4 overflow-y-auto safe-y"
+    : "bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4"}>
   <h3 className="font-semibold text-neutral-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2 grid grid-cols-6 gap-3">
@@ -2333,7 +2333,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => {
   const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
   return (
-  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-warn-50/60 border-warn-200" /* tinted, not faded: opacity-60 on the whole card dragged every colour inside it below contrast -- 24 failures on this page alone -- because opacity blends the TEXT too, not just the background */ : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} {...clickable(() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); })} className={"rounded-xl shadow-card border p-4 cursor-pointer hover:shadow-pop transition-all " + (t.doc_status === "pending_docs" ? "bg-warn-50/60 border-warn-200" /* tinted, not faded: opacity-60 on the whole card dragged every colour inside it below contrast -- 24 failures on this page alone -- because opacity blends the TEXT too, not just the background */ : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
@@ -2440,7 +2440,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) fetchTenantDocs(selectedTenant); }} />}
   {savingTenant && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
-  <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="bg-white rounded-xl shadow-pop px-8 py-6 flex flex-col items-center gap-3">
   <Spinner />
   <div className="text-sm font-medium text-neutral-700">Setting up tenant...</div>
   <div className="text-xs text-neutral-400">Creating accounts, lease & posting entries</div>

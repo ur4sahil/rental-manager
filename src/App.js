@@ -464,7 +464,18 @@ function AppInner() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", pageUrl(p)); }
+  // `replace` is for the BOOT path. The browser already has a history
+  // entry for the URL it just loaded; pushing another for the same page
+  // duplicates it, so the first Back press goes from the page to itself
+  // and appears to do nothing. That is why Back after an F5 on a report
+  // returned to the report instead of the catalogue.
+  function setPage(p, action, { replace } = {}) {
+    setPageAction(action || null);
+    setPageRaw(p);
+    const st = { page: p, screen: "app" };
+    if (replace) window.history.replaceState(st, "", pageUrl(p));
+    else window.history.pushState(st, "", pageUrl(p));
+  }
   // Sweep stale page-scoped params whenever the settled page does not own
   // them -- boot and Back/Forward do not go through setPage.
   useEffect(() => {
@@ -863,6 +874,12 @@ function AppInner() {
   const deepLink = deepLinkRef.current;
   const hashPage = window.location.hash.replace("#", "");
   if (deepLink) {
+    // Pushes deliberately. Replacing here was tried on 2026-09-12 to make
+    // Back-after-F5 return to the report catalogue instead of the report;
+    // it made things WORSE -- with no app entry of its own, one Back press
+    // left the app entirely and landed on the company selector. The
+    // duplicate entry is the lesser problem. Revisit only with a real
+    // router, where boot is a route match rather than a history write.
     setPage(deepLink);
     deepLinkRef.current = null; // one-shot — don't replay on re-auth
   } else if (hashPage && !isScreenHash(hashPage)) {
@@ -1310,7 +1327,7 @@ function AppInner() {
   <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-50 fixed md:relative h-full safe-y`}>
   <div className="px-5 py-4 border-b border-brand-50">
   <div className="flex items-center gap-2">
-  <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
+  <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-pop shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
   <span className="font-display font-extrabold text-lg tracking-tight text-brand-900">Housify</span>
@@ -1391,7 +1408,7 @@ function AppInner() {
       cards that establish their own stacking context (e.g. the tenant
       portal's purple banner was partially eclipsing the menu at z-40). */}
   <div className="fixed inset-0 z-[90]" onClick={() => setShowUserMenu(false)} />
-  <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-[95]">
+  <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-pop py-1 w-48 z-[95]">
     <MenuItem onClick={() => { setShowUserMenu(false); setShowUserProfile(true); }} tone="neutral" icon="person">Profile</MenuItem>
     {userRole !== "tenant" && <MenuItem onClick={() => { setShowUserMenu(false); switchCompany(); }} tone="neutral" icon="swap_horiz">Switch Company</MenuItem>}
     {userRole !== "tenant" && <MenuItem onClick={() => { setShowUserMenu(false); setPage("admin"); }} tone="neutral" icon="settings">Settings</MenuItem>}
@@ -1526,7 +1543,7 @@ function AppInner() {
   {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
   {showUserProfile && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-  <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+  <div className="bg-white rounded-xl shadow-pop w-full max-w-md max-h-[90vh] overflow-y-auto">
   <UserProfile currentUser={currentUser} onBack={() => setShowUserProfile(false)} showToast={showToast} showConfirm={showConfirm} />
   </div>
   </div>

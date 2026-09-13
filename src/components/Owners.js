@@ -300,7 +300,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   {/* Owner Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3><Btn variant="ghost" onClick={resetForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">

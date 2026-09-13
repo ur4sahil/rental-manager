@@ -27,12 +27,22 @@ const check = (name, cond, detail = "") => {
 
 // --- the reported bug ---------------------------------------------------
 const charles = findCountySchedule("Charles", "MD");
-check("bare 'Charles' MD resolves", charles.schedule && charles.schedule.length === 2,
+check("bare 'Charles' MD resolves", charles.schedule && charles.schedule.length === 1,
   `reason=${charles.reason} key=${charles.key}`);
 check("...and it is Charles County, not something else", charles.key === "Charles County|MD");
-check("...with BOTH Maryland installments", charles.schedule &&
-  charles.schedule.map(s => `${s.month}/${s.day}`).join(",") === "9/30,12/31",
+// Maryland is ONE annual payment due 30 Sep, not two halves. Sahil:
+// "Maryland LLC need to pay all tax together." Generating a 31 Dec second
+// half put a bill on every MD property that is never paid.
+check("Maryland is a single annual bill", charles.schedule &&
+  charles.schedule.map(s => `${s.month}/${s.day}`).join(",") === "9/30",
   JSON.stringify(charles.schedule));
+check("...labelled as annual, not a half",
+  charles.schedule && /annual/i.test(charles.schedule[0].label));
+// Every MD county must agree -- a split one would quietly reintroduce it.
+const mdSplit = Object.entries(COUNTY_TAX_SCHEDULES)
+  .filter(([k]) => k.endsWith("|MD")).filter(([, v]) => v.length !== 1);
+check("no Maryland county still has a split schedule", mdSplit.length === 0,
+  mdSplit.map(([k]) => k).join(", "));
 
 // --- every bare county actually present in the data ----------------------
 for (const c of ["Anne Arundel", "Harford", "Howard", "Prince George's"]) {

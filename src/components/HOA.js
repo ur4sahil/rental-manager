@@ -155,7 +155,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>

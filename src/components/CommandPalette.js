@@ -152,7 +152,7 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
     <div className="fixed inset-0 z-[4000] flex items-start justify-center pt-[12vh] px-4"
          onMouseDown={onClose} role="dialog" aria-modal="true" aria-label="Command palette">
       <div className="absolute inset-0 bg-neutral-900/40 backdrop-blur-sm" />
-      <div className="relative w-full max-w-xl bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden"
+      <div className="relative w-full max-w-xl bg-white rounded-xl shadow-pop border border-neutral-200 overflow-hidden"
            onMouseDown={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-neutral-100">
           <span className="material-icons-outlined text-neutral-400 text-lg">search</span>

@@ -85,7 +85,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
     if (!ok) { guardRelease("regenerateTaxBills"); return; }
     try {
       setGenerating(true);
-      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0, ambiguous: 0 };
+      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0, ambiguous: 0, retired: 0 };
       const year = new Date().getFullYear();
       for (const p of properties) {
         if (!p.county) { totals.noCounty++; continue; }
@@ -103,8 +103,9 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
         totals.created += r.created || 0;
         totals.updated += r.updated || 0;
         totals.skipped += r.skipped || 0;
+        totals.retired += r.retired || 0;
       }
-      showToast(`Generated ${totals.created}, backfilled ${totals.updated}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.ambiguous} ambiguous county, ${totals.noCounty} missing county.`, "success");
+      showToast(`Generated ${totals.created}, backfilled ${totals.updated}${totals.retired ? `, retired ${totals.retired} superseded` : ""}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.ambiguous} ambiguous county, ${totals.noCounty} missing county.`, "success");
       logAudit("update", "property_tax_bills", `Bulk regeneration for ${year}: +${totals.created}`, "", userProfile?.email, userRole, companyId);
       fetchAll();
     } finally { setGenerating(false); guardRelease("regenerateTaxBills"); }
@@ -255,7 +256,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
           const prop = properties.find(p => p.address === addr);
           const jurisdiction = prop?.county && prop?.state ? `${prop.county}, ${prop.state}` : "—";
           return (
-            <div key={addr} className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
+            <div key={addr} className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 bg-neutral-50/60">
                 <div>
                   <div className="text-sm font-semibold text-neutral-800">{propertyLabel(addr)}</div>
@@ -310,7 +311,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
       {/* Mark Paid modal */}
       {markPaidBill && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setMarkPaidBill(null)}>
-          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-pop w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Mark bill paid</h3>
             <p className="text-xs text-neutral-500 mb-4">{markPaidBill.bill.installment_label} · {propertyLabel(markPaidBill.bill.property)}</p>
             <div className="space-y-3">
@@ -340,7 +341,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
       {/* Edit modal */}
       {editBill && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setEditBill(null)}>
-          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-pop w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Edit bill</h3>
             <p className="text-xs text-neutral-500 mb-4">{propertyLabel(editBill.bill.property)} · {editBill.bill.tax_year}</p>
             <div className="space-y-3">

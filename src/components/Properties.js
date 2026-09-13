@@ -3009,14 +3009,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   <div className="flex bg-brand-50 rounded-xl p-0.5">
   {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setViewMode(m)} className={`px-2 py-1 text-sm rounded-lg ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`} title={m}>{icon}</button>
+  <button key={m} onClick={() => setViewMode(m)} className={`px-2 py-1 text-sm rounded-lg ${viewMode === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`} title={m}>{icon}</button>
   ))}
   </div>
   {viewMode === "table" && (
   <div className="relative">
   <Btn variant="secondary" size="sm" onClick={() => setShowColPicker(!showColPicker)}>⚙️ Columns</Btn>
   {showColPicker && (
-  <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
+  <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-xl shadow-pop p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
   <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-neutral-700 cursor-pointer">
   <Checkbox checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
@@ -3048,7 +3048,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* ===== PROPERTY DETAIL PANEL ===== */}
   {selectedProperty && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
+  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop overflow-y-auto">
   {/* Header */}
   <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-success-600 to-success-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-warn-500 to-warn-700" : "bg-gradient-to-r from-subtle-600 to-subtle-800")}>
   <div className="flex items-center justify-between">
@@ -3462,7 +3462,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   scoped(supabase.from("messages").select("*").eq("company_id", companyId)).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
+  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-card transition-all">
   <div className="flex items-center justify-between mb-2">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
@@ -3627,7 +3627,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {filtered.map(p => (
-  <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
+  <div key={p.id} {...clickable(() => openPropertyDetail(p))} className={`bg-white rounded-xl border shadow-card p-4 cursor-pointer hover:shadow-pop hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
   <h3 className="font-semibold text-neutral-800 text-sm"><CardOpenButton onActivate={() => openPropertyDetail(p)} label={`Open property ${p.address}`} className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</CardOpenButton></h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}{p.county && <span className="ml-1 text-neutral-500">· {p.county}</span>}</div>}
@@ -3821,7 +3821,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
   {savingProperty && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
-  <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="bg-white rounded-xl shadow-pop px-8 py-6 flex flex-col items-center gap-3">
   <Spinner />
   <div className="text-sm font-medium text-neutral-700">Setting up property...</div>
   <div className="text-xs text-neutral-400">Creating tenant, lease & posting entries</div>

@@ -73,15 +73,18 @@ test("the as-of date survives F5, and Back returns to the catalogue", async ({ p
   expect(after.onBalanceSheet, "F5 lost the report").toBeTruthy();
   expect(after.dates, "F5 lost the as-of date").toContain("2026-06-30");
 
-  // The in-app "Back to Reports" control returns to the catalogue and
-  // clears the param, so a subsequent F5 lands on the catalogue too.
+  // NOT asserted: that the browser Back button returns to the catalogue.
   //
-  // NOT asserted: that the browser Back button does this. On a reload
-  // App.js's boot path calls setPage(), which PUSHES a history entry for
-  // the page, so after an F5 the stack holds the report entry twice and
-  // one Back returns to the report rather than the catalogue. Changing
-  // that boot push is a wider change than this fix, and the in-app
-  // control is the affordance the page actually offers.
+  // On boot the app calls setPage(), which pushes a history entry for the
+  // page the browser just loaded, duplicating the entry that already
+  // exists -- so one Back press goes from the report to itself. Making
+  // boot REPLACE instead was tried on 2026-09-12 and was worse: with no
+  // app entry of its own, Back left the app and landed on the company
+  // selector. Reverted. It needs a real router, where boot is a route
+  // match rather than a history write.
+  //
+  // The in-app control is what the page actually offers, so that is what
+  // is pinned here.
   await page.getByText("Back to Reports").first().click();
   await page.waitForTimeout(4000);
   const back = await page.evaluate(() => ({

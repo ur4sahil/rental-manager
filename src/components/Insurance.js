@@ -119,9 +119,9 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{activePolicies.length}</div><div className="text-xs text-neutral-400">Active Policies</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-neutral-400">Total Premium (Annual)</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">{expiringSoon}</div><div className="text-xs text-neutral-400">Expiring Soon (90 days)</div></div>
+  <div className="rounded-xl shadow-card border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{activePolicies.length}</div><div className="text-xs text-neutral-400">Active Policies</div></div>
+  <div className="rounded-xl shadow-card border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-neutral-400">Total Premium (Annual)</div></div>
+  <div className="rounded-xl shadow-card border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">{expiringSoon}</div><div className="text-xs text-neutral-400">Expiring Soon (90 days)</div></div>
   </div>
 
   {showForm && (

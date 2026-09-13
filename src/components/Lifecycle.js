@@ -808,7 +808,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-danger-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-danger-100 shadow-card p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Start Eviction Case</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
@@ -868,7 +868,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {/* Case Detail Panel */}
   {selectedCase && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-2xl overflow-y-auto">
+  <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-pop overflow-y-auto">
   <div className="bg-gradient-to-r from-danger-600 to-danger-800 p-6 text-white">
   <div className="flex items-center justify-between">
   <div>
@@ -997,7 +997,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const curIdx = stageIdx(c.current_stage);
   const daysActive = Math.ceil((new Date() - new Date(c.created_at)) / 86400000);
   return (
-  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 cursor-pointer hover:border-danger-200 hover:shadow-md transition-all">
+  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 cursor-pointer hover:border-danger-200 hover:shadow-pop transition-all">
   <div className="flex justify-between items-start">
   <div>
   <div className="flex items-center gap-2 mb-1">

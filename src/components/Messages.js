@@ -126,7 +126,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
                 <span className="material-icons-outlined text-sm">delete</span>
               </button>
             )}
-            <div className={"max-w-sm rounded-xl px-4 py-2 shadow-sm " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
+            <div className={"max-w-sm rounded-xl px-4 py-2 shadow-card " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
               {m.message && <div className="text-sm whitespace-pre-wrap break-words">{m.message}</div>}
               {m.attachment_url && <AttachmentChip url={m.attachment_url} name={m.attachment_name} outgoing={outgoing} />}
               <div className={"flex items-center gap-1.5 text-2xs mt-1 " + (outgoing ? "text-brand-100" : "text-neutral-400")}>
@@ -224,7 +224,7 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
         </div>
       )}
       {showEmoji && (
-        <div ref={pickerWrapRef} className="absolute bottom-full left-0 mb-2 z-50 shadow-xl rounded-xl overflow-hidden">
+        <div ref={pickerWrapRef} className="absolute bottom-full left-0 mb-2 z-50 shadow-pop rounded-xl overflow-hidden">
           <Suspense fallback={<div className="bg-white border border-neutral-200 rounded-xl px-4 py-6 text-sm text-neutral-500">Loading emoji picker…</div>}>
             <EmojiPicker onEmojiClick={insertEmoji} width={320} height={400} searchPlaceHolder="Search emojis…" previewConfig={{ showPreview: false }} skinTonesDisabled lazyLoadEmojis />
           </Suspense>

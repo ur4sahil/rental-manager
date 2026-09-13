@@ -265,7 +265,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   // above the first one means losing your place and scrolling back to
   // check which entry you are actually changing.
   const renderRecurringForm = () => (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
@@ -319,7 +319,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   ) : (
   <div className="space-y-2">
   {entries.map(e => (
-  <div key={e.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (e.status === "paused" ? "opacity-60 border-subtle-200" : "border-subtle-100")}>
+  <div key={e.id} className={"bg-white rounded-xl border shadow-card p-4 " + (e.status === "paused" ? "opacity-60 border-subtle-200" : "border-subtle-100")}>
   {/* Mobile: stack title block, then amount+status, then actions.
       Desktop (md+): keep the original single-row horizontal layout. */}
   <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
@@ -1274,7 +1274,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   </div>
   </div>
   {showNewAcct !== null && (
-  <div className="bg-brand-50 rounded-xl p-3 mb-3 border-2 border-brand-400 shadow-lg">
+  <div className="bg-brand-50 rounded-xl p-3 mb-3 border-2 border-brand-400 shadow-pop">
   <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account (for line {showNewAcct + 1})</div>
   <div className="grid grid-cols-3 gap-2">
   <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newAcctForm.type} onChange={e => setNewAcctForm({...newAcctForm, type: e.target.value})} className="text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
@@ -2965,7 +2965,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {searchQuery && filteredReports && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {filteredReports.map(r => (
-        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-pop transition-all bg-white">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span>
@@ -2984,7 +2984,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div>{favReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {favReports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-pop transition-all bg-white">
             <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
             <TextLink tone="warn" size="xs" underline={false} onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }}><span className="material-icons-outlined text-lg">star</span></TextLink></div>
           </div>))}
@@ -2997,7 +2997,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div>{customReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {customReports.map(c => (
-          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-pop transition-all bg-white">
             <div className="flex items-start justify-between">
               <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
                 <p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{c.name}</p>
@@ -3023,7 +3023,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         {!collapsedCats[cat.category] && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {cat.reports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-pop transition-all bg-white">
             <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
             <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-warn-400 hover:text-warn-500" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
           </div>))}
@@ -3302,7 +3302,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "gl" && glAccount && (<div>
       <div className="text-center mb-4"><p className="text-xs text-neutral-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-neutral-900 mt-1">{glAccount.name}</h4><p className="text-sm text-neutral-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-neutral-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="tnum font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
-      <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
+      <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-pop p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <DataTable
         columns={[
           { key: "date", label: "Date", align: "center", className: "text-neutral-400",
@@ -5337,7 +5337,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   )}
   {/* QuickBooks-style metric cards */}
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-pop transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Revenue</span>
         <span className="w-10 h-10 rounded-lg bg-success-50 flex items-center justify-center">
@@ -5347,7 +5347,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalRevenue)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-pop transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Expenses</span>
         <span className="w-10 h-10 rounded-lg bg-danger-50 flex items-center justify-center">
@@ -5357,7 +5357,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalExpenses)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-pop transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Net Income</span>
         <span className="w-10 h-10 rounded-lg bg-info-50 flex items-center justify-center">
@@ -5367,7 +5367,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className={`text-2xl font-bold tnum ${plData.netIncome >= 0 ? "text-neutral-900" : "text-danger-600"}`}>{acctFmt(plData.netIncome)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-pop transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Assets</span>
         <span className="w-10 h-10 rounded-lg bg-accent-50 flex items-center justify-center">
@@ -5384,15 +5384,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       pill to min-width and the labels clipped at "New Journal En",
       "Recurring Entri", "Run Repo". */}
   <div className="flex flex-row flex-nowrap gap-3 mb-6 overflow-x-auto">
-    <button onClick={() => setActiveTab("journal")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("journal")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-card transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-brand-600 text-lg shrink-0">add_circle</span>
       <span className="whitespace-nowrap">New Journal Entry</span>
     </button>
-    <button onClick={() => setActiveTab("recurring")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("recurring")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-card transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-brand-600 text-lg shrink-0">autorenew</span>
       <span className="whitespace-nowrap">Recurring Entries</span>
     </button>
-    <button onClick={() => setActiveTab("reports")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("reports")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-card transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-brand-600 text-lg shrink-0">assessment</span>
       <span className="whitespace-nowrap">Run Reports</span>
     </button>
@@ -5844,7 +5844,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {/* Reconcile Tab */}
   {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <h3 className="font-display font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Account</label>

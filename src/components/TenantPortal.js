@@ -1065,7 +1065,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </Btn>
   </div>
   {showMaintForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
   <h4 className="font-medium text-neutral-700 mb-3">Submit a Maintenance Request</h4>
   <label className="text-xs font-medium text-neutral-400 mb-1 block">What's the issue? *</label>
   <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />
