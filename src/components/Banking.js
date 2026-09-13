@@ -8,6 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { checkPeriodLock } from "../utils/accounting";
 import { Spinner } from "./shared";
+import { HOUSY, queueHousyJob } from "../utils/housy";
 import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 
 // --- Account type constants (kept local for backward compat) ---
@@ -1610,6 +1611,58 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // Sequential on purpose, not Promise.all: each accept posts a journal
   // entry, and firing dozens concurrently both hammers the database and
   // makes a partial failure impossible to describe afterwards.
+  // Queue the selected transactions for Housy to code.
+  //
+  // This does NOT post anything. Each result comes back as a suggestion on
+  // the transaction -- the same shape the rules engine writes -- so it
+  // pre-fills the Categorise form and you still confirm it. The model
+  // proposing an account is not the model touching the books.
+  //
+  // Queued rather than awaited: even at a couple of seconds each, fifty
+  // transactions is minutes, and no HTTP request survives that.
+  async function bulkAskHousy() {
+    const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    if (!selected.length) return;
+
+    // The model picks from THESE, and an account code it did not get from
+    // this list is rejected server-side rather than written.
+    const chart = accounts.map(a => ({ code: a.code, name: a.name, type: a.type }));
+    const classNames = (classes || []).map(c => c.name).filter(Boolean);
+    if (!chart.length) { showToast("No chart of accounts to code against.", "error"); return; }
+
+    setBulkBusy({ done: 0, total: selected.length });
+    let queued = 0, failed = 0;
+    for (const t of selected) {
+      const r = await queueHousyJob({
+        companyId, kind: "categorise_txn",
+        subjectTable: "bank_feed_transaction", subjectId: String(t.id),
+        userEmail: userProfile?.email,
+        // Short text, so these run in seconds rather than the minutes a
+        // lease takes. Priority above document reads for that reason.
+        priority: 5,
+        input: {
+          date: t.posted_date,
+          direction: t.direction,
+          amount: Math.abs(safeNum(t.amount)),
+          description: t.bank_description_clean || t.bank_description_raw || "",
+          payee: t.payee_normalized || t.payee_raw || "",
+          accounts: chart,
+          classes: classNames,
+        },
+      });
+      r.ok ? queued++ : failed++;
+      setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
+    }
+    setBulkBusy(null);
+    setSelectedTxns(new Set());
+    logAudit("create", "housy", `Queued ${queued} transactions for coding`, null, userProfile?.email, "", companyId);
+    showToast(
+      failed
+        ? `Queued ${queued}; ${failed} could not be queued.`
+        : `${HOUSY.name} is coding ${queued} transaction${queued === 1 ? "" : "s"}. Suggestions appear here as it finishes — nothing is posted until you confirm.`,
+      failed ? "error" : "success");
+  }
+
   async function bulkApply({ accountId, accountName, classId, entityType, entityId, entityName }) {
     const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
     if (selected.length === 0) return;
@@ -1748,7 +1801,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // --- Filtering ---
   const filtered = transactions.filter(t => {
     if (activeTab === "for_review" && t.status !== "for_review") return false;
-    if (activeTab === "recognized" && !(t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude"))) return false;
+    if (activeTab === "recognized" && !(t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude" || t.suggestion_status === "suggested_ai"))) return false;
     if (activeTab === "categorized" && !["categorized", "matched", "posted"].includes(t.status)) return false;
     if (activeTab === "excluded" && t.status !== "excluded") return false;
     if (activeTab === "rules") return false; // Rules tab shows rules, not transactions
@@ -2155,7 +2208,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const feedTxns = selectedFeed === "all" ? transactions : transactions.filter(t => t.bank_account_feed_id === selectedFeed);
   const counts = {
     for_review: feedTxns.filter(t => t.status === "for_review").length,
-    recognized: feedTxns.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude")).length,
+    recognized: feedTxns.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude" || t.suggestion_status === "suggested_ai")).length,
     categorized: feedTxns.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
     excluded: feedTxns.filter(t => t.status === "excluded").length,
   };
@@ -2490,6 +2543,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         onClick={() => (activeTab === "categorized" ? bulkAmend(bulkForm) : bulkApply(bulkForm))}>
         {bulkBusy ? "Applying…" : `${activeTab === "categorized" ? "Re-categorise" : "Categorise"} ${selectedTxns.size}`}
       </Btn>
+      {activeTab !== "categorized" && (
+        <Btn variant="secondary" size="sm" disabled={!!bulkBusy || !selectedTxns.size}
+          title={`Have ${HOUSY.name} propose an account for each — nothing is posted until you confirm`}
+          onClick={bulkAskHousy}>
+          {bulkBusy ? "Queueing…" : `Ask ${HOUSY.name} (${selectedTxns.size})`}
+        </Btn>
+      )}
     </div>
 
     {/* Exclude with a stated reason. This used to hardcode "duplicate"
@@ -2557,6 +2617,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.bank_description_clean || txn.bank_description_raw}
         {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
+        {txn.suggestion_status === "suggested_ai" && (() => {
+          const c = txn.raw_payload_json?._suggestion?.confidence;
+          // The confidence is the MODEL'S own and is not calibrated -- it
+          // said 1.0 on a licence whose zip it got wrong. Shown because a
+          // reviewer deserves to know how sure it claimed to be, never
+          // used to decide anything.
+          return <span className="ml-1.5 text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full"
+            title={c == null ? "Proposed by Housy" : `Housy proposed this, self-rated ${Math.round(c * 100)}% — review it`}>Housy</span>;
+        })()}
         </>) },
       { key: "payee", label: "PAYEE", className: "text-neutral-500 truncate max-w-32",
         render: txn => txn.payee_normalized || "—" },
@@ -2587,7 +2656,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         render: txn => <>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</> },
       { key: "action", label: "ACTION", align: "right", className: "whitespace-nowrap",
         render: txn => { const isExpanded = expandedTxn === txn.id; return (<span onClick={e => e.stopPropagation()}>
-        {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</TextLink>}
+        {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" || txn.suggestion_status === "suggested_ai" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
         {txn.status === "excluded" && <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>}
         </span>); } },

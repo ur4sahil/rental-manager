@@ -64,6 +64,62 @@ function workerAuthorised(req) {
   return safeEqual(req.headers["x-worker-token"], expected);
 }
 
+
+// Turn a categorise_txn result into a suggestion on the bank transaction.
+//
+// The model returns an account CODE, never an id. Codes are short, stable
+// and checkable against the chart of accounts, so an invented one is
+// caught here instead of being written to the books. An id would have
+// invited a hallucination that looks exactly like a real uuid.
+async function applySuggestion(sb, job, output) {
+  const code = output.account_code == null ? "" : String(output.account_code).trim();
+  if (!code) return { written: false, reason: "model declined to pick an account" };
+
+  const { data: accounts } = await sb.from("acct_accounts")
+    .select("id, code, name").eq("company_id", job.company_id);
+  const account = (accounts || []).find(a => String(a.code).trim() === code);
+  // An unknown code is the model inventing one. Refuse it rather than
+  // guessing at what it meant.
+  if (!account) return { written: false, reason: `no account with code "${code}"` };
+
+  let classId = null;
+  const className = output.class_name == null ? "" : String(output.class_name).trim();
+  if (className) {
+    const { data: classes } = await sb.from("acct_classes")
+      .select("id, name").eq("company_id", job.company_id);
+    const hit = (classes || []).find(c =>
+      String(c.name).trim().toLowerCase() === className.toLowerCase());
+    // A class that does not match is dropped, not invented: the account is
+    // the part that matters, and a wrong property is worse than none.
+    classId = hit ? hit.id : null;
+  }
+
+  const { data: txn } = await sb.from("bank_feed_transaction")
+    .select("id, raw_payload_json, status").eq("id", job.subject_id)
+    .eq("company_id", job.company_id).maybeSingle();
+  if (!txn) return { written: false, reason: "the transaction no longer exists" };
+  // Do not overwrite a decision a human already made.
+  if (txn.status !== "for_review") return { written: false, reason: `transaction is ${txn.status}` };
+
+  const payload = { ...(txn.raw_payload_json || {}) };
+  payload._suggestion = {
+    type: "assign",
+    accountId: account.id,
+    accountName: account.name,
+    classId,
+    memo: output.memo ? String(output.memo).slice(0, 120) : "",
+    source: "housy",
+    confidence: typeof output.confidence === "number" ? output.confidence : null,
+  };
+
+  const { error } = await sb.from("bank_feed_transaction").update({
+    suggestion_status: "suggested_ai",
+    raw_payload_json: payload,
+  }).eq("id", txn.id).eq("company_id", job.company_id);
+  if (error) return { written: false, reason: error.message };
+  return { written: true, account: account.code, classId };
+}
+
 module.exports = async function handler(req, res) {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -166,6 +222,13 @@ module.exports = async function handler(req, res) {
       const { worker, jobId, output = null, model = null, durationMs = null,
               confidence = null, error: jobError = null } = body;
       if (!worker || !jobId) return res.status(400).json({ error: "worker and jobId are required" });
+
+      // Read the job BEFORE completing it: complete_ai_job clears the claim,
+      // and a categorise_txn result needs the job's company and subject to
+      // know which transaction it belongs to.
+      const { data: job } = await sb.from("ai_jobs")
+        .select("id, kind, company_id, subject_table, subject_id").eq("id", jobId).maybeSingle();
+
       const { data, error } = await sb.rpc("complete_ai_job", {
         p_id: jobId, p_worker: String(worker), p_output: output, p_model: model,
         p_duration: durationMs, p_confidence: confidence, p_error: jobError,
@@ -173,7 +236,22 @@ module.exports = async function handler(req, res) {
       if (error) return res.status(500).json({ error: error.message });
       // false means the job was reclaimed by another worker while this one
       // was still running, so this result is stale and must be discarded.
-      return res.status(200).json({ ok: true, recorded: data === true });
+      if (data !== true) return res.status(200).json({ ok: true, recorded: false });
+
+      // A coded transaction becomes a SUGGESTION on the transaction itself,
+      // in the same shape the rules engine already writes, rather than a
+      // second thing to approve in Housy's queue.
+      //
+      // Why: the Banking screen already has a reviewed accept path that
+      // builds the posting decision, the lines and the journal entry.
+      // Duplicating that here would be a second, less-tested route into
+      // the books. A suggestion is inert -- it only pre-fills a form -- so
+      // the human gate stays exactly where it already is.
+      if (job && job.kind === "categorise_txn" && !jobError && output) {
+        const applied = await applySuggestion(sb, job, output);
+        return res.status(200).json({ ok: true, recorded: true, suggestion: applied });
+      }
+      return res.status(200).json({ ok: true, recorded: true });
     }
 
     if (action === "extract-license") {
