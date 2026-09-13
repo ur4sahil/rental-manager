@@ -17,13 +17,13 @@ test("report params do not follow you to another page", async ({ page }) => {
 
   const onReport = await page.evaluate(() => location.href);
   console.log("on the report :", onReport.replace(/^https?:\/\/[^/]+/, ""));
-  expect(onReport, "the report is not in the URL").toContain("report=");
+  expect(onReport, "the report is not in the URL").toContain("/accounting/reports/balance-sheet");
 
   await page.locator('nav button:has-text("Dashboard")').first().click();
   await page.waitForTimeout(4000);
   const onDashboard = await page.evaluate(() => location.href);
   console.log("on dashboard  :", onDashboard.replace(/^https?:\/\/[^/]+/, ""));
-  expect(onDashboard).toContain("#dashboard");
+  expect(onDashboard).toContain("/dashboard");
   for (const p of ["report=", "asOf=", "period=", "from=", "to="]) {
     expect(onDashboard, `"${p}" followed you off the Reports page`).not.toContain(p);
   }
@@ -43,6 +43,6 @@ test("stale report params are swept on load", async ({ page }) => {
   expect(after.url, "stale report params survived the load").not.toContain("report=");
   expect(after.url).not.toContain("asOf=");
   // and it is still the page the hash asked for, not the dashboard
-  expect(after.url).toContain("#acct_qbimport");
+  expect(after.url).toContain("/accounting/import-from-quickbooks");
   expect(after.heading.toLowerCase()).toContain("quickbooks");
 });

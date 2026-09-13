@@ -9,7 +9,7 @@ import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructu
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
 import { AUDIT_ACTIONS, AUDIT_MODULES, logAudit } from "./utils/audit";
-import { pageUrl, sweptUrl } from "./utils/pageParams";
+import { pageUrl, sweptUrl, pageForPath, normalizeLegacyUrl } from "./utils/routes";
 import { queueNotification } from "./utils/notifications";
 import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings, clearMembershipCache } from "./utils/company";
 import { COMPANY_DEFAULTS } from "./config";
@@ -268,9 +268,8 @@ const pageComponents = {
   leases: LeaseManagement,
   // LateFees is the per-tenant late-fee application page. Rule DEFAULTS
   // live on the Admin Settings tab, but the per-tenant apply flow needs
-  // its own route (it was silently dropped from the map during an
-  // earlier refactor — the component itself is still live). Hash
-  // route #latefees now renders it again.
+  // its own route (it was silently dropped from this map during an
+  // earlier refactor — the component itself is still live).
   latefees: LateFees,
   vendors: VendorManagement,
   owners: OwnerManagement,
@@ -382,54 +381,14 @@ function ResetPasswordScreen({ currentUser, showToast }) {
   );
 }
 
-// Every value setScreen() is ever called with, plus the initial `screen`
-// state ("loading") and the legacy camelCase spelling older builds wrote.
-// setScreen() pushes the screen name into the URL hash, so any of these can
-// be sitting in `location.hash` — none of them is a page id, and treating
-// one as a page id silently dumps the user on the Dashboard. Both deep-link
-// guards read THIS list so they can never drift out of sync with the
-// setScreen() call sites again (they previously checked "companySelect"
-// while setScreen wrote "company_select", so it sailed straight through).
-const SCREEN_HASHES = new Set([
-  "loading",
-  "landing",
-  "login",
-  "set_password",
-  "reset_password",
-  "company_select",
-  "app",
-  // Legacy spelling — still honored so old bookmarks/history entries that
-  // carry it are not mistaken for a page.
-  "companySelect",
-]);
-function isScreenHash(h) { return SCREEN_HASHES.has(h); }
-
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
-  // Capture the very first hash the user landed on. Push notification
-  // clicks open URLs like /#messages or /#payments to deep-link into
-  // a module. The app's normal flow then transitions through
-  // setScreen("login") / "companySelect", and EACH of those calls
-  // `history.pushState(... "#" + screen)` which clobbers the
-  // deep-link hash. By the time setScreen("app") fires post-login,
-  // the URL hash is "#login" and the deep-link is gone — that's why
-  // a /#messages push click was landing on Dashboard. Stash the
-  // original hash on first mount and replay it post-auth.
-  const initialDeepLink = (() => {
-    const h = window.location.hash.replace("#", "");
-    if (!h) return null;
-    // Filter out values that are screen names, not pages, so we don't
-    // bounce a user who reloaded mid-login back to the login screen.
-    if (isScreenHash(h)) return null;
-    // Supabase's recovery / magic-link hash lands here as
-    // "access_token=...&type=recovery&...". detectSessionInUrl usually
-    // clears it before this runs, but if a version bump ever changes
-    // that, don't let it be captured as a deep-link page id.
-    if (h.includes("access_token=") || h.includes("type=recovery")) return null;
-    return h;
-  })();
-  const deepLinkRef = useRef(initialDeepLink);
-  const [page, setPageRaw] = useState(() => initialDeepLink || "dashboard");
+  // The page is read off the path, here and again after auth resolves.
+  // It used to need a deepLinkRef, because a /#messages push click had
+  // its hash overwritten by every setScreen() on the way through login
+  // and the landing page had to be stashed at mount and replayed. A path
+  // survives the auth round trip on its own.
+  const [page, setPageRaw] = useState(() => pageForPath(window.location.pathname) || "dashboard");
 
   // Read by the "?" handler, which is bound once and so cannot close over
   // a live `page` value.
@@ -472,7 +431,12 @@ function AppInner() {
     if (next) window.history.replaceState(window.history.state, "", next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
-  function setScreen(s) { setScreenRaw(s); screenRef.current = s; if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
+  // A screen is not a place: "login" and "company_select" are states of
+  // the auth flow, not somewhere to link to. Writing them as "#" + s left
+  // "/accounting/reports#company_select" in the URL bar after a refresh.
+  // The entry still carries the screen in its STATE, so Back through
+  // login behaves as before; pushState with no url leaves the address.
+  function setScreen(s) { setScreenRaw(s); screenRef.current = s; if (s !== "app") window.history.pushState({ screen: s }, ""); }
   // Mirror `screen` into a ref so the auth-state-change subscriber
   // (which closes over state values from its mount-time render) can
   // read the CURRENT screen when deciding whether to re-route. Without
@@ -481,8 +445,20 @@ function AppInner() {
   // the company selector.
   const screenRef = useRef("loading");
 
+  // Back / Forward. ONE handler: there were two bound to this event with
+  // different fallbacks, which is a race waiting to happen. The entry
+  // usually carries the page in its state; entries pushed before this
+  // deploy, or by a link paste, carry nothing and the PATH says where the
+  // entry was. Only when that says nothing either is Dashboard the answer
+  // -- the old router jumped to it for every stateless entry.
   useEffect(() => {
-  const onPop = (e) => { if (e.state?.page) setPageRaw(e.state.page); if (e.state?.screen) setScreenRaw(e.state.screen); };
+  const onPop = (e) => {
+    const fromPath = pageForPath(window.location.pathname);
+    if (e.state?.page) setPageRaw(e.state.page);
+    else if (fromPath) setPageRaw(fromPath);
+    else if (screenRef.current === "app") setPageRaw("dashboard");
+    if (e.state?.screen) setScreenRaw(e.state.screen);
+  };
   window.addEventListener("popstate", onPop);
   return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -571,21 +547,6 @@ function AppInner() {
   const [activeCompany, setActiveCompany] = useState(null);
   const [companySettings, setCompanySettings] = useState({ ...COMPANY_DEFAULTS });
 
-  // Browser back button support
-  useEffect(() => {
-  const handlePopState = (e) => {
-  if (e.state?.page) {
-  setPageRaw(e.state.page);
-  } else if (e.state?.screen) {
-  setScreenRaw(e.state.screen);
-  } else {
-  // No state — go to dashboard or landing
-  if (screen === "app") setPageRaw("dashboard");
-  }
-  };
-  window.addEventListener("popstate", handlePopState);
-  return () => window.removeEventListener("popstate", handlePopState);
-  }, [screen]);
   const [companyRole, setCompanyRole] = useState("");
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [missingRPCs, setMissingRPCs] = useState([]);
@@ -754,11 +715,9 @@ function AppInner() {
   }
   if (match) {
   const { data: company } = await supabase.from("companies").select("*").eq("id", urlCompanyId).maybeSingle();
-  // Keep the hash. window.location.pathname is just "/", so replacing
-  // with it dropped the deep-link fragment as well as the query string:
-  // "?company=<id>#accounting" became "/" and the user landed on the
-  // dashboard instead. Anyone sharing a link into a specific page was
-  // silently redirected.
+  // Keep the path: it is the page now. (Under the hash router this line
+  // rebuilt the URL from pathname — just "/" — so "?company=<id>#accounting"
+  // became "/" and every shared deep link landed on the dashboard.)
   if (company) {
   // Strip ONLY ?company=, keeping every other param. Replacing the whole
   // search string deleted ?ledger= too, so a shared/cmd-clicked ledger
@@ -856,34 +815,28 @@ function AppInner() {
   setUserProfile({ name: userForProfile?.email?.split("@")[0] || "User", email: userForProfile?.email, role: role });
   fetchUserRoleForCompany(userForProfile, company.id); // async — role + real name update via setState after fetch
   setScreen("app");
-  // Prefer the deep-link captured on first mount (push-click hash)
-  // over the current location.hash, which has been clobbered by
-  // every setScreen() transition since landing. Falls back to the
-  // current hash for in-session navigation, then dashboard.
-  const deepLink = deepLinkRef.current;
-  const hashPage = window.location.hash.replace("#", "");
-  if (deepLink) {
-    // Pushes deliberately. Replacing here was tried on 2026-09-12 to make
-    // Back-after-F5 return to the report catalogue instead of the report;
-    // it made things WORSE -- with no app entry of its own, one Back press
-    // left the app entirely and landed on the company selector. The
-    // duplicate entry is the lesser problem. Revisit only with a real
-    // router, where boot is a route match rather than a history write.
-    setPage(deepLink);
-    deepLinkRef.current = null; // one-shot — don't replay on re-auth
-  } else if (hashPage && !isScreenHash(hashPage)) {
-    setPageRaw(hashPage);
+  // NOTE (2026-09-12): boot ADOPTS the page with setPageRaw rather than
+  // calling setPage. Under the old hash router, boot called setPage,
+  // which PUSHED a history entry for the URL the browser had just
+  // loaded -- duplicating it, so one Back press went from a page to
+  // itself. Switching that push to a replace was tried and was worse:
+  // with no entry of its own the app fell out of history entirely on
+  // Back. Adopting the path, as below, is the version that is right.
+  // Land on whatever the path names, ADOPTING it rather than navigating:
+  // setPage() would rebuild the path from the page id, and a page that
+  // addresses something below itself would lose it — an F5 on
+  // /accounting/reports/balance-sheet has to come back on the Balance
+  // Sheet, not the catalogue.
+  const pathPage = pageForPath(window.location.pathname);
+  if (pathPage) {
+    setPageRaw(pathPage);
   } else {
-    // The hash is a screen name (or empty). That happens on a SECOND
-    // routing pass: getSession().then(routeSignedIn) and the
-    // onAuthStateChange INITIAL_SESSION handler can both reach
-    // autoSelectCompany, and the loser re-runs setScreen("company_select")
-    // — pushing "#company_select" over the page the first pass had
-    // already resolved. deepLinkRef is one-shot, so it is null by then
-    // and hard-coding "dashboard" here yanked the user off the page they
-    // had just landed on. `page` was seeded from the deep link at mount
-    // and updated by the first pass, so it is the right answer; re-push
-    // it to repair the clobbered hash too.
+    // The path names no page (a bare "/"). `page` was seeded from it at
+    // mount and updated by any navigation since, so it is the right
+    // answer; re-push so the URL names it too. Hard-coding "dashboard"
+    // yanked the user off the page they had just landed on, because this
+    // runs a SECOND time whenever getSession().then(routeSignedIn) and
+    // the INITIAL_SESSION handler both reach autoSelectCompany.
     setPage(pageRef.current || "dashboard");
   }
   }
@@ -1552,5 +1505,13 @@ export default function App() {
     const token = path.slice("/sign/".length).split(/[?#]/)[0];
     return <ErrorBoundary><PublicSignPage token={token} /></ErrorBoundary>;
   }
+  // Rewrite a legacy "/#acct_reports" URL to "/accounting/reports" BEFORE
+  // AppInner renders: it resolves its first page from the path in a
+  // useState initialiser, which runs after this line. replaceState, so
+  // the old link is corrected in place with no reload. Permanent, not
+  // transitional — those links are in bookmarks, in sent emails and in
+  // push payloads already delivered. After the /sign/ check on purpose:
+  // a signing link carries no page hash and must never be routed.
+  if (typeof window !== "undefined") normalizeLegacyUrl();
   return <ErrorBoundary><AppInner /></ErrorBoundary>;
 }

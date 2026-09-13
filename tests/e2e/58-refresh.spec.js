@@ -38,7 +38,7 @@ test("F5 keeps the open report, its period and its as-of date", async ({ page })
   console.log(`after  F5: ${after.url.replace(/\?[^#]*/, "?…")}`);
   console.log(`           back on the catalogue: ${after.onCatalogue}   still on the Balance Sheet: ${after.onBalanceSheet}`);
 
-  expect(after.url, "the report is not named in the URL, so a reload has nothing to restore").toContain("report=");
+  expect(after.url, "the report is not named in the URL, so a reload has nothing to restore").toContain("/accounting/reports/balance-sheet");
   expect(after.onBalanceSheet, "F5 lost the report that was open").toBeTruthy();
   expect(after.onCatalogue, "F5 fell back to the catalogue").toBeFalsy();
 });
@@ -91,9 +91,9 @@ test("the as-of date survives F5, and Back returns to the catalogue", async ({ p
     onCatalogue: /Run financial and property reports/.test(document.body.innerText),
     url: location.href,
   }));
-  console.log(`after "Back to Reports": catalogue=${back.onCatalogue}  report= in url: ${/report=/.test(back.url)}`);
+  console.log(`after "Back to Reports": catalogue=${back.onCatalogue}  report in url: ${/reports\//.test(back.url)}`);
   expect(back.onCatalogue, "Back to Reports did not return to the catalogue").toBeTruthy();
-  expect(back.url, "the report param was left behind, so F5 would reopen it").not.toContain("report=");
+  expect(back.url, "the report was left in the path, so F5 would reopen it").not.toContain("/balance-sheet");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(10000);

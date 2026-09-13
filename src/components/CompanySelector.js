@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import { Input, Select, Btn, TextLink, MenuItem} from "../ui";
 import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
+import { pathForPage } from "../utils/routes";
 import { logAudit } from "../utils/audit";
 import { Spinner } from "./shared";
 import { UserProfile } from "./Admin";
@@ -401,7 +402,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
-  <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
+  <a href={window.location.origin + pathForPage("dashboard") + "?company=" + encodeURIComponent(c.id)} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
   {c.memberRole === "admin" && (
   <div className="relative">
   <button onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === c.id ? null : c.id); }} disabled={deleting === c.id} className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 disabled:opacity-50" aria-label="More actions">

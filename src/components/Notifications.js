@@ -110,7 +110,7 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
       const res = await fetch("/api/notifications?action=push", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
-        body: JSON.stringify({ company_id: companyId, user_email: userProfile.email, title: "Housify test", body: "Push is working on this device.", url: "/#notifications" }),
+        body: JSON.stringify({ company_id: companyId, user_email: userProfile.email, title: "Housify test", body: "Push is working on this device.", url: "/notifications" }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { showToast("Test push failed: " + (j.error || res.status), "error"); return; }

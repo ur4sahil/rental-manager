@@ -1,4 +1,10 @@
 {
+  "rewrites": [
+    {
+      "source": "/((?!api(?:/|$)|static/|sw\\.js|manifest\\.json|robots\\.txt|favicon\\.ico|asset-manifest\\.json|[^/]+\\.[^/]+$).*)",
+      "destination": "/index.html"
+    }
+  ],
   "redirects": [
     {
       "source": "/(.*)",

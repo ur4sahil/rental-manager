@@ -541,7 +541,7 @@ test.describe('Command palette', () => {
     // Running a command closes the palette and actually routes.
     await expect(page.locator(PALETTE)).toHaveCount(0, { timeout: 10000 });
     await expect(heading(page, 'vendors')).toBeVisible({ timeout: 60000 });
-    expect(await page.evaluate(() => window.location.hash)).toBe('#vendors');
+    expect(await page.evaluate(() => window.location.pathname)).toBe('/vendors');
   });
 });
 
@@ -603,7 +603,7 @@ test.describe('Sidebar navigation', () => {
 
     await child.first().click();
     await expect(page.locator('main h2:text-is("Insurance")')).toBeVisible({ timeout: 60000 });
-    expect(await page.evaluate(() => window.location.hash)).toBe('#insurance');
+    expect(await page.evaluate(() => window.location.pathname)).toBe('/insurance');
   });
 
   test('expanding Accounting reveals its nine sub-pages', async ({ page }) => {

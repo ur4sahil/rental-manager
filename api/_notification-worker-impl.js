@@ -55,7 +55,7 @@ const DEFAULTS = {
 
 This is a reminder that your rent of {{amount}} for {{property}} is due on {{due_date}}.
 
-You can pay through your tenant portal: {{app_url}}/#tenant_portal
+You can pay through your tenant portal: {{app_url}}/portal
 
 — {{company_name}}`,
   },
@@ -66,7 +66,7 @@ You can pay through your tenant portal: {{app_url}}/#tenant_portal
 
 Your rent for {{property}} is past due. Current balance: {{balance}}.
 
-Please pay as soon as possible to avoid late fees: {{app_url}}/#tenant_portal
+Please pay as soon as possible to avoid late fees: {{app_url}}/portal
 
 — {{company_name}}`,
   },
@@ -90,7 +90,7 @@ We received your payment of {{amount}} on {{date}}. Thank you.
     body:
 `{{tenant}} paid {{amount}} on {{date}} for {{property}}.
 
-View in Housify: {{app_url}}/#payments
+View in Housify: {{app_url}}/payments
 
 — {{company_name}}`,
   },
@@ -106,7 +106,7 @@ View in Housify: {{app_url}}/#payments
 
 Your scheduled rent payment of {{amount}} on {{date}} could not be processed: {{error}}.
 
-Please update your card on file in your tenant portal so the next charge can run successfully: {{app_url}}/#tenant_autopay
+Please update your card on file in your tenant portal so the next charge can run successfully: {{app_url}}/portal/autopay
 
 — {{company_name}}`,
   },
@@ -118,7 +118,7 @@ Please update your card on file in your tenant portal so the next charge can run
 Amount attempted: {{amount}}
 Property: {{property}}
 
-The tenant has been emailed to update their card. View in Housify: {{app_url}}/#payments
+The tenant has been emailed to update their card. View in Housify: {{app_url}}/payments
 
 — {{company_name}}`,
   },
@@ -165,7 +165,7 @@ Your lease for {{property}} expires on {{end_date}}. Please contact us to discus
 
 {{preview}}
 
-Reply at {{app_url}}/#messages
+Reply at {{app_url}}/messages
 
 — {{company_name}}`,
   },
@@ -218,7 +218,7 @@ Your security deposit settlement details:
 
 Welcome to {{property}}, official as of {{move_in_date}}.
 
-Your tenant portal: {{app_url}}/#tenant_portal
+Your tenant portal: {{app_url}}/portal
 
 — {{company_name}}`,
   },
@@ -236,14 +236,14 @@ Your move-out from {{property}} on {{moveOutDate}} has been processed. You'll re
     body:
 `A request from your team needs your review.
 
-Open the dashboard: {{app_url}}/#tasks
+Open the dashboard: {{app_url}}/tasks
 
 — {{company_name}}`,
   },
   approval_request: {
     subject: "Approval needed — {{summary}}",
     body:
-`A request needs your review: {{app_url}}/#tasks
+`A request needs your review: {{app_url}}/tasks
 
 — {{company_name}}`,
   },
@@ -252,7 +252,7 @@ Open the dashboard: {{app_url}}/#tasks
     body:
 `Your owner statement for {{period}} is available.
 
-View it in your owner portal: {{app_url}}/#owner_portal
+View it in your owner portal: {{app_url}}/owner
 
 — {{company_name}}`,
   },
