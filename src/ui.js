@@ -944,6 +944,8 @@ export function DataTable({
   // property; with forty of them an unpinned total is off-screen, which
   // reads as "this report has no totals".
   stickyLastColumn = false,
+  // Scale a wide table down to fit a narrow screen; see FitToWidth below.
+  fitToWidth = false,
   // Per-row DOM attributes, as rowAttrs(row, index) => object. Keyboard
   // navigation needs to find a row by index from document.activeElement,
   // which needs a real attribute on the <tr>; the JE line editor carried
@@ -1151,5 +1153,60 @@ export function DataTable({
 
   // Wide content scrolls inside its own container so the page body never
   // scrolls sideways.
-  return scroll ? <div className="overflow-x-auto">{table}</div> : table;
+  // fitToWidth: on a narrow screen, scale a wide table down so the WHOLE
+  // thing is visible, then let the reader pinch in.
+  //
+  // A wide crosstab -- P&L by Property with a column per property -- sits
+  // in its own overflow-x container on a phone, so pinch-zooming the page
+  // does not help: the columns are clipped inside a box, and the figures
+  // come out cut in half ("$26,10"). Sahil: "we should zoom out the
+  // reports to a decent level and let the user zoom in with pinch if
+  // needed."
+  //
+  // Scale rather than shrink the type, because scaling keeps the column
+  // proportions and the tabular alignment intact; reducing font-size
+  // reflows and re-wraps. transform-origin is top-left so the table stays
+  // anchored, and the wrapper's height is scaled to match or the layout
+  // keeps the unscaled height and leaves a gap beneath.
+  if (!fitToWidth) {
+    return scroll ? <div className="overflow-x-auto">{table}</div> : table;
+  }
+  return <FitToWidth>{table}</FitToWidth>;
+}
+
+// Measures its content against the space available and scales it down to
+// fit, never up. Re-measures on resize and rotation.
+function FitToWidth({ children, minScale = 0.45 }) {
+  const boxRef = React.useRef(null);
+  const innerRef = React.useRef(null);
+  const [scale, setScale] = React.useState(1);
+  const [h, setH] = React.useState(null);
+
+  React.useEffect(() => {
+    const measure = () => {
+      const box = boxRef.current, inner = innerRef.current;
+      if (!box || !inner) return;
+      const avail = box.clientWidth;
+      // scrollWidth of the UNSCALED content: read it at scale 1.
+      const natural = inner.scrollWidth;
+      if (!avail || !natural) return;
+      const next = natural <= avail ? 1 : Math.max(minScale, avail / natural);
+      setScale(next);
+      setH(next < 1 ? Math.ceil(inner.scrollHeight * next) : null);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (ro && boxRef.current) ro.observe(boxRef.current);
+    window.addEventListener("orientationchange", measure);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener("orientationchange", measure); };
+  }, [minScale, children]);
+
+  return (
+    <div ref={boxRef} className="overflow-x-auto" style={h ? { height: h } : undefined}>
+      <div ref={innerRef}
+        style={scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` } : undefined}>
+        {children}
+      </div>
+    </div>
+  );
 }

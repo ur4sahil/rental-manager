@@ -3690,6 +3690,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           // With one column per property an unpinned TOTAL is off-screen,
           // which reads as "this report has no totals".
           stickyLastColumn
+          // On a phone this is the widest thing in the app: a column per
+          // property plus a TOTAL. Scaled to fit so the whole report is
+          // readable at a glance, then pinch to zoom into a figure.
+          fitToWidth
           columns={[
             { key: "label", label: "", thClassName: "min-w-48",
               className: r => (r.bold ? boldLabelCls : labelCls),

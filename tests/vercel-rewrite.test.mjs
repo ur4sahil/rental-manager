@@ -7,8 +7,12 @@
 //   /api/*      the Vercel serverless functions -- Teller mTLS, Plaid,
 //               Stripe webhooks, the notification worker and the crons.
 //               Swallowing these breaks bank sync and every cron job.
-//   /sign/*     the public signing route, which App.js handles before any
-//               auth bootstrapping so anonymous signers can reach it.
+// /sign/* is the opposite case and is asserted the other way: it is a
+// CLIENT route -- App.js renders PublicSignPage for it before any auth
+// bootstrapping, and there is no api/sign*.js -- so it MUST reach
+// index.html or the page cannot exist at all. (This file originally
+// asserted the reverse, on the assumption that "public route" meant
+// "server route". It does not.)
 //
 // `npx serve -s build` fakes an SPA fallback for everything, so serving
 // the build locally proves NOTHING about this file. It has to be asserted
@@ -47,16 +51,25 @@ const toRegExp = (src) => new RegExp("^" + src
   .replace(/:\w+/g, "[^/]+")
   .replace(/(?<!\.)\*/g, ".*") + "$");
 
-for (const danger of ["/api/teller-sync-transactions", "/api/notifications", "/sign/abc123token"]) {
+for (const danger of ["/api/teller-sync-transactions", "/api/notifications"]) {
   const caught = shellRules.filter(r => { try { return toRegExp(r.source).test(danger); } catch { return false; } });
   assert(`${danger} is NOT rewritten to the SPA shell`, caught.length === 0,
     `matched by: ${caught.map(r => r.source).join(", ")}`);
 }
 
-for (const appPath of ["/dashboard", "/accounting/reports", "/accounting/chart-of-accounts", "/tenants"]) {
+for (const appPath of ["/dashboard", "/accounting/reports", "/accounting/chart-of-accounts",
+                       "/tenants", "/sign/abc123token"]) {
   const caught = shellRules.filter(r => { try { return toRegExp(r.source).test(appPath); } catch { return false; } });
   assert(`${appPath} IS rewritten to the SPA shell`, caught.length > 0,
     "a hard refresh on this path would 404");
+}
+
+// Static assets must pass through too, or the shell is served in place of
+// its own JavaScript and the app cannot load itself.
+for (const asset of ["/static/js/main.abc123.js", "/sw.js", "/manifest.json", "/favicon.ico"]) {
+  const caught = shellRules.filter(r => { try { return toRegExp(r.source).test(asset); } catch { return false; } });
+  assert(`${asset} is served as a file, not the shell`, caught.length === 0,
+    `matched by: ${caught.map(r => r.source).join(", ")}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
