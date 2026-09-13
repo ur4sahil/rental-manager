@@ -85,7 +85,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
     if (!ok) { guardRelease("regenerateTaxBills"); return; }
     try {
       setGenerating(true);
-      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0 };
+      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0, ambiguous: 0 };
       const year = new Date().getFullYear();
       for (const p of properties) {
         if (!p.county) { totals.noCounty++; continue; }
@@ -93,12 +93,18 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
           companyId, propertyAddress: p.address, propertyId: p.id,
           county: p.county, state: p.state, taxYear: year,
         });
+        // "ambiguous" is NOT "out of area" -- it means the county name
+        // matches more than one jurisdiction (a bare "Baltimore" in MD is
+        // both a County and a City) and needs a human to disambiguate.
+        // Lumping it under noSchedule told the user the property was out
+        // of area, which is a different and misleading thing.
+        if (r.reason === "ambiguous") { totals.ambiguous++; continue; }
         if (r.reason === "no_schedule_for_jurisdiction") { totals.noSchedule++; continue; }
         totals.created += r.created || 0;
         totals.updated += r.updated || 0;
         totals.skipped += r.skipped || 0;
       }
-      showToast(`Generated ${totals.created}, backfilled ${totals.updated}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.noCounty} missing county.`, "success");
+      showToast(`Generated ${totals.created}, backfilled ${totals.updated}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.ambiguous} ambiguous county, ${totals.noCounty} missing county.`, "success");
       logAudit("update", "property_tax_bills", `Bulk regeneration for ${year}: +${totals.created}`, "", userProfile?.email, userRole, companyId);
       fetchAll();
     } finally { setGenerating(false); guardRelease("regenerateTaxBills"); }

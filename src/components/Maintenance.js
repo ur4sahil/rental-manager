@@ -328,7 +328,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <TextLink tone="neutral" size="xl" underline={false} onClick={() => setViewingPhotos(null)}>✕</TextLink>
   </div>
   <div className="p-6">
-  <div className="bg-brand-50/30 rounded-3xl p-4 mb-4">
+  <div className="bg-brand-50/30 rounded-xl p-4 mb-4">
   <div className="text-xs font-semibold text-neutral-500 mb-2">Upload New Photo</div>
   <div className="flex gap-2">
   <Input type="file" accept="image/*" ref={photoRef} className="flex-1" />
@@ -340,7 +340,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   ) : (
   <div className="grid grid-cols-2 gap-3">
   {woPhotos.map(p => (
-  <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-brand-50">
+  <div key={p.id} className="relative group rounded-xl overflow-hidden border border-brand-50">
   <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
   <Btn variant="danger-fill" onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100">Delete</Btn>
@@ -459,7 +459,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="text-xs text-neutral-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
   {/* WO Bulk Action Bar */}
   {selectedWOs.size > 0 && (
-  <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
+  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 mb-3 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
   <Btn variant="purple" size="sm" onClick={() => bulkUpdateWOStatus("in_progress")}>In Progress</Btn>

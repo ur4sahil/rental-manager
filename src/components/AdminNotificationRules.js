@@ -397,7 +397,7 @@ function RuleEditor({ companyId, userProfile, showToast, showConfirm, eventType,
         <div className="text-xs text-neutral-500">{eventMeta?.desc}</div>
 
         {/* Master toggle */}
-        <div className="flex items-center justify-between bg-brand-50/40 border border-brand-100 rounded-2xl p-3">
+        <div className="flex items-center justify-between bg-brand-50/40 border border-brand-100 rounded-xl p-3">
           <div>
             <div className="text-sm font-semibold text-neutral-800">Rule active</div>
             <div className="text-xs text-neutral-500">When off, no email/push/in-app fires for this event.</div>

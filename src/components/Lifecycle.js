@@ -318,7 +318,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   if (completed) return (
   <div className="max-w-xl mx-auto text-center py-20">
-  <div className="w-16 h-16 bg-success-50 text-success-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+  <div className="w-16 h-16 bg-success-50 text-success-600 rounded-xl flex items-center justify-center mx-auto mb-4">
   <span className="material-icons-outlined text-3xl">check_circle</span>
   </div>
   <PageHeader title="Move-Out Complete" />
@@ -384,7 +384,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
   <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  className="w-40" />
   </div>
-  <div className="bg-brand-50/30 rounded-2xl p-4 space-y-2 text-sm">
+  <div className="bg-brand-50/30 rounded-xl p-4 space-y-2 text-sm">
   <div className="flex justify-between"><span className="text-neutral-400">Property</span><span className="font-medium text-neutral-700">{selectedTenant.property}</span></div>
   <div className="flex justify-between"><span className="text-neutral-400">Monthly Rent</span><span className="font-medium text-neutral-700">${safeNum(selectedTenant.rent)}</span></div>
   <div className="flex justify-between"><span className="text-neutral-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
@@ -405,7 +405,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
-  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-success-50 border-success-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
+  <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${item.checked ? "bg-success-50 border-success-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
   <span className={`material-icons-outlined text-lg ${item.checked ? "text-success-600" : "text-neutral-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
   <span className={`flex-1 text-sm ${item.checked ? "text-success-700 font-medium" : "text-neutral-500"}`}>{item.label}</span>
   </div>
@@ -422,7 +422,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {step === 3 && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
-  <div className="bg-brand-50/30 rounded-2xl p-4 mb-4">
+  <div className="bg-brand-50/30 rounded-xl p-4 mb-4">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Original Deposit</span><span className="font-bold text-neutral-700">${depositAmount.toFixed(2)}</span></div>
   </div>
   <h4 className="text-sm font-semibold text-neutral-500 mb-2">Deductions</h4>
@@ -446,7 +446,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
       posted automatically. If deductions exceed the deposit, the
       tenant AR tips positive (they owe the excess), which Step 4's
       AR settlement handles. */}
-  <div className="bg-success-50 rounded-2xl p-4 mt-4 space-y-1">
+  <div className="bg-success-50 rounded-xl p-4 mt-4 space-y-1">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>
   {(() => {
     const netCredit = safeNum(depositAmount) - safeNum(totalDeductions);
@@ -471,7 +471,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {step === 4 && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-6">
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
-  <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-danger-50" : "bg-success-50"}`}>
+  <div className={`rounded-xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-danger-50" : "bg-success-50"}`}>
   <div className="text-sm text-neutral-400">Current Balance</div>
   <div className={`text-2xl font-display font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</div>
   </div>
@@ -482,7 +482,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   { value: "waive", label: "Write Off (Bad Debt)", desc: "Post as bad debt expense and zero out balance", icon: "money_off" },
   { value: "collections", label: "Send to Collections", desc: "Mark tenant for external collections agency", icon: "gavel" },
   ].map(opt => (
-  <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${arAction === opt.value ? "border-brand-300 bg-brand-50" : "border-brand-50 hover:border-brand-200"}`}>
+  <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-all ${arAction === opt.value ? "border-brand-300 bg-brand-50" : "border-brand-50 hover:border-brand-200"}`}>
   <span className={`material-icons-outlined ${arAction === opt.value ? "text-brand-600" : "text-neutral-400"}`}>{opt.icon}</span>
   <div><div className="text-sm font-semibold text-neutral-700">{opt.label}</div><div className="text-xs text-neutral-400">{opt.desc}</div></div>
   </div>
@@ -520,7 +520,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   })()}
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">AR Action</span><span className="font-semibold text-neutral-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "—"}</span></div>
   </div>
-  <div className="bg-warn-50 rounded-2xl p-3 mt-4 text-xs text-warn-700">
+  <div className="bg-warn-50 rounded-xl p-3 mt-4 text-xs text-warn-700">
   <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
   This will terminate the lease, update property to vacant, and post all accounting entries. This cannot be undone.
   </div>
@@ -879,9 +879,9 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <button onClick={() => setSelectedCase(null)} className="text-white/70 hover:text-white text-2xl">✕</button>
   </div>
   <div className="grid grid-cols-3 gap-2 mt-4">
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Stage</div><div className="text-sm font-bold capitalize">{selectedCase.current_stage?.replace(/_/g, " ")}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Costs</div><div className="text-sm font-bold">{formatCurrency(selectedCase.total_costs)}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedCase.status}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Stage</div><div className="text-sm font-bold capitalize">{selectedCase.current_stage?.replace(/_/g, " ")}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Costs</div><div className="text-sm font-bold">{formatCurrency(selectedCase.total_costs)}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedCase.status}</div></div>
   </div>
   </div>
 

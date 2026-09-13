@@ -703,7 +703,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* Tenant Header — kept above the tab content as a persistent
       summary (balance/rent/lease end). The tab strip itself moved to
       the left sidebar; navigation is driven by initialTab prop now. */}
-  <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-3xl p-5 mb-5 text-white">
+  <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-2xl p-5 mb-5 text-white">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-lg font-bold">{tenantData.name}</div>
@@ -739,7 +739,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   ))}
   </div>
   {safeNum(tenantData.balance) > 0 && (
-  <div className="bg-danger-50 border border-danger-100 rounded-3xl p-4 flex items-center justify-between">
+  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4 flex items-center justify-between">
   <div>
   <div className="text-sm font-semibold text-danger-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
   <div className="text-xs text-danger-600">Please make a payment to avoid late fees.</div>
@@ -812,7 +812,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <label className="text-xs text-neutral-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-neutral-400">$</span>
-  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg tnum" placeholder="0.00" min="0" max="999999.99" step="0.01" />
+  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-lg pl-7 pr-3 py-2.5 text-lg tnum" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
   <Btn variant="slate" size="xs" onClick={() => setPaymentAmount(String(tenantData.rent || 0))}>Full Rent (${safeNum(tenantData.rent)})</Btn>
@@ -837,7 +837,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     <div className="grid grid-cols-1 gap-2">
     {opts.map(o => (
       <button key={o.id} type="button" onClick={() => setPayMethod(o.id)}
-        className={"text-left rounded-2xl border p-3 transition-colors " + (payMethod === o.id ? "border-brand-600 bg-brand-50/40" : "border-brand-100 bg-white hover:border-brand-300")}>
+        className={"text-left rounded-lg border p-3 transition-colors " + (payMethod === o.id ? "border-brand-600 bg-brand-50/40" : "border-brand-100 bg-white hover:border-brand-300")}>
       <div className="flex items-start justify-between">
         <div>
         <div className="text-sm font-semibold text-neutral-800">{o.label}</div>
@@ -919,13 +919,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
     </div>
     <span className="bg-positive-100 text-positive-700 text-xs font-bold rounded-full px-2 py-1">Active</span>
     </div>
-    <div className="bg-brand-50/40 rounded-2xl p-4 space-y-2">
+    <div className="bg-brand-50/40 rounded-xl p-4 space-y-2">
     <div className="flex justify-between text-sm"><span className="text-neutral-400">Card</span><span className="tnum text-neutral-700 capitalize">{stripeAutopay.card_brand || "card"} •••• {stripeAutopay.card_last4 || "????"}</span></div>
     <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-neutral-700">${safeNum(stripeAutopay.amount).toLocaleString()}/month</span></div>
     <div className="flex justify-between text-sm"><span className="text-neutral-400">Next Charge</span><span className="font-medium text-neutral-700">{stripeAutopay.next_charge_date || "—"}</span></div>
     </div>
     {stripeAutopay.last_error && (
-      <div className="mt-3 bg-danger-50 border border-danger-100 rounded-2xl p-3">
+      <div className="mt-3 bg-danger-50 border border-danger-100 rounded-xl p-3">
         <div className="text-sm font-semibold text-danger-800">Last charge failed</div>
         <div className="text-xs text-danger-600 mt-1">{stripeAutopay.last_error}</div>
         <div className="text-xs text-danger-500 mt-2">Update your card to keep autopay running.</div>
@@ -1009,7 +1009,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       <span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export
     </Btn>
     </div>
-    <div className="bg-white border border-brand-50 rounded-2xl overflow-hidden">
+    <div className="bg-white border border-brand-50 rounded-xl overflow-hidden">
     <div className="hidden md:grid grid-cols-[1fr_2fr_auto_auto_auto] gap-4 px-4 py-2 text-xs font-semibold text-neutral-400 bg-neutral-50/50 border-b border-brand-50">
     <div>Date</div><div>Description</div>
     <div className="text-right">Charge</div>
@@ -1037,7 +1037,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       <h3 className="font-semibold text-neutral-700 mt-6 mb-3">Receipts</h3>
       <div className="space-y-2">
       {payments.filter(p => p.status === "paid").map(p => (
-        <div key={p.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
+        <div key={p.id} className="bg-white border border-brand-50 rounded-xl px-4 py-3 flex justify-between items-center">
         <div>
           <div className="text-sm font-medium text-neutral-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
           <div className="text-xs text-neutral-400">{p.date} · {p.method}</div>
@@ -1084,7 +1084,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   )}
   <div className="space-y-2">
   {workOrders.map(w => (
-  <div key={w.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
+  <div key={w.id} className="bg-white border border-brand-50 rounded-xl px-4 py-3">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-medium text-neutral-800">{w.issue}</div>
@@ -1112,7 +1112,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   <div className="space-y-2">
   {documents.map(d => (
-  <div key={d.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white border border-brand-50 rounded-xl px-4 py-3 flex justify-between items-center">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center text-brand-600 text-lg">
   {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "📄"}
@@ -1138,7 +1138,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       Desktop reverts to a fixed calc since the flex chain breaks
       desktop's normal page-flow scroll layout. */}
   {activeTab === "messages" && (
-  <div className="bg-white md:rounded-3xl md:border md:border-brand-50 overflow-hidden flex flex-col flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-320px)]" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+  <div className="bg-white md:rounded-xl md:border md:border-brand-50 overflow-hidden flex flex-col flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-320px)]" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
   <MessageThread
     messages={messages}
     viewerRole="tenant"

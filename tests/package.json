@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -75,7 +75,9 @@
     "test:proplabel": "node property-label.test.mjs",
     "test:type": "node type-scale.test.mjs",
     "test:surfaces": "node surfaces.test.mjs",
-    "test:sw": "node sw-cache.test.mjs"
+    "test:sw": "node sw-cache.test.mjs",
+    "test:rewrite": "node vercel-rewrite.test.mjs",
+    "test:county": "node county-schedule.test.mjs"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

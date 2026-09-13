@@ -126,7 +126,7 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
                 <span className="material-icons-outlined text-sm">delete</span>
               </button>
             )}
-            <div className={"max-w-sm rounded-2xl px-4 py-2 shadow-sm " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
+            <div className={"max-w-sm rounded-xl px-4 py-2 shadow-sm " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
               {m.message && <div className="text-sm whitespace-pre-wrap break-words">{m.message}</div>}
               {m.attachment_url && <AttachmentChip url={m.attachment_url} name={m.attachment_name} outgoing={outgoing} />}
               <div className={"flex items-center gap-1.5 text-2xs mt-1 " + (outgoing ? "text-brand-100" : "text-neutral-400")}>
@@ -224,8 +224,8 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
         </div>
       )}
       {showEmoji && (
-        <div ref={pickerWrapRef} className="absolute bottom-full left-0 mb-2 z-50 shadow-xl rounded-2xl overflow-hidden">
-          <Suspense fallback={<div className="bg-white border border-neutral-200 rounded-2xl px-4 py-6 text-sm text-neutral-500">Loading emoji picker…</div>}>
+        <div ref={pickerWrapRef} className="absolute bottom-full left-0 mb-2 z-50 shadow-xl rounded-xl overflow-hidden">
+          <Suspense fallback={<div className="bg-white border border-neutral-200 rounded-xl px-4 py-6 text-sm text-neutral-500">Loading emoji picker…</div>}>
             <EmojiPicker onEmojiClick={insertEmoji} width={320} height={400} searchPlaceHolder="Search emojis…" previewConfig={{ showPreview: false }} skinTonesDisabled lazyLoadEmojis />
           </Suspense>
         </div>
@@ -492,7 +492,7 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
         // PullToRefresh's isInsideNestedScroll detect it and bail,
         // so swiping in the thread no longer triggers a page reload.
         // Desktop (md:) reverts to the original h-[calc(100dvh-180px)].
-        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-180px)]"
+        className="bg-white md:rounded-xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row flex-1 min-h-0 md:flex-none md:h-[calc(100dvh-180px)]"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         {/* LEFT PANE — conversation list. Full-width on mobile when no

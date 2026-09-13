@@ -125,7 +125,12 @@ async function confirmDialog(page, action = 'Delete') {
 // "Vacant", "Total Rent") — matched on the exact label so "Total" does
 // not also pick up "Total Rent".
 async function propertyStat(page, label) {
-  const tile = page.locator('main div.rounded-3xl.text-center')
+  // NOT selected by border radius. These matched `rounded-3xl`, which no
+  // longer exists in app chrome: the radius scale was declared and cards
+  // moved to rounded-xl, so the selector silently matched nothing.
+  // Selecting a card by its corner couples the test to a styling
+  // decision it does not care about.
+  const tile = page.locator('main div.text-center')
     .filter({ has: page.locator(`div.text-xs:text-is("${label}")`) }).first();
   const txt = await tile.innerText();
   return Number(txt.replace(/[^0-9]/g, ''));
@@ -479,7 +484,12 @@ test('maintenance: work-order status pills stay consistent with the visible list
   await expect(page.locator('main button:text-is("+ New Work Order")')).toBeVisible({ timeout: 30000 });
 
   const counter = page.locator('main').getByText(/^\d+ of \d+ work orders$/);
-  const woCards = page.locator('main div.rounded-3xl.shadow-card:has(input[type="checkbox"])');
+  // NOT selected by border radius. These matched `rounded-3xl`, which no
+  // longer exists in app chrome: the radius scale was declared and cards
+  // moved to rounded-xl, so the selector silently matched nothing.
+  // Selecting a card by its corner couples the test to a styling
+  // decision it does not care about.
+  const woCards = page.locator('main div.shadow-card:has(input[type="checkbox"])');
   // Addressed positionally: the pill labels carry a CSS `capitalize`,
   // so their textContent is "in progress", not "In Progress", and a
   // text-is() match on the rendered casing silently never fires.

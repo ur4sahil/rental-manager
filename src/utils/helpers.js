@@ -424,6 +424,46 @@ export const COUNTY_TAX_SCHEDULES = {
   ],
 };
 
+// Look up a tax schedule tolerantly.
+//
+// COUNTY_TAX_SCHEDULES is keyed "Charles County|MD", but properties store
+// the county as the user or the import typed it -- "Charles". A bare
+// equality lookup therefore missed 66 of 79 properties with a county set
+// (Anne Arundel, Charles, Harford, Howard, Prince George's), generated no
+// tax bills for any of them, and reported them to the user as
+// "out-of-area", which is not what happened.
+//
+// Ambiguity is NOT resolved by guessing. Maryland has both a "Baltimore
+// County" and a "Baltimore City"; a bare "Baltimore" matches both, and
+// picking one would silently file bills against the wrong jurisdiction's
+// due dates. That returns { ambiguous } so the caller can say so.
+export function findCountySchedule(county, state) {
+  const st = String(state || "").trim().toUpperCase();
+  const raw = String(county || "").trim().replace(/\s+/g, " ");
+  if (!raw || !st) return { schedule: null, key: null, reason: "missing_input" };
+
+  // Exact first -- the cheap, unambiguous case.
+  const exact = COUNTY_TAX_SCHEDULES[raw + "|" + st];
+  if (exact) return { schedule: exact, key: raw + "|" + st, reason: "exact" };
+
+  // Otherwise compare on the bare name, with any County/City suffix
+  // removed from BOTH sides, case-insensitively.
+  const bare = (v) => v.replace(/\s+(County|City|Parish|Borough)$/i, "").toLowerCase();
+  const want = bare(raw);
+  const matches = Object.keys(COUNTY_TAX_SCHEDULES).filter(k => {
+    const [name, keySt] = k.split("|");
+    return keySt === st && bare(name) === want;
+  });
+  if (matches.length === 1) {
+    return { schedule: COUNTY_TAX_SCHEDULES[matches[0]], key: matches[0], reason: "normalised" };
+  }
+  if (matches.length > 1) {
+    return { schedule: null, key: null, reason: "ambiguous", candidates: matches };
+  }
+  return { schedule: null, key: null, reason: "no_schedule_for_jurisdiction" };
+}
+
+
 // Best-effort ZIP → {state, county} lookup for the DMV + Richmond + York PA
 // operating area. Fed to tests/backfill-property-county.js for legacy rows;
 // NOT authoritative — the wizard dropdown + validation is the source of

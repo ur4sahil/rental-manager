@@ -129,7 +129,7 @@ export function Modal({ title, onClose, children, labelledBy }) {
        onMouseDown={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>
   <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy || titleId} tabIndex={-1}
        className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-lg max-h-[90vh] overflow-y-auto">
-  <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
+  <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-xl">
   <h3 id={titleId} className="font-display font-bold text-neutral-800 text-lg">{title}</h3>
   <IconBtn icon="close" onClick={onClose} aria-label="Close dialog" />
   </div>
@@ -302,9 +302,9 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   if (!entry) return null;
   return (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+  <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
   <div className="text-center mb-4">
-  <div className="w-14 h-14 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+  <div className="w-14 h-14 bg-brand-100 rounded-xl flex items-center justify-center mx-auto mb-3">
   <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
   </div>
   <h3 className="text-lg font-display font-bold text-neutral-800">Set Up Recurring Rent</h3>

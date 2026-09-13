@@ -2848,7 +2848,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* New Account Modal */}
   {showNewAccount && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+  <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
     <h3 className="font-semibold text-neutral-800 mb-4">Add Bank Account</h3>
     <div className="space-y-3">
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
@@ -2871,7 +2871,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* Import CSV Wizard Modal */}
   {showImportWizard && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+  <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
     <div className="p-6">
     <div className="flex items-center justify-between mb-4">
       <h3 className="font-semibold text-neutral-800">Import Bank Transactions</h3>

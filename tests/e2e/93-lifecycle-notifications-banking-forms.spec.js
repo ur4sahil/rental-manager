@@ -418,7 +418,12 @@ test.describe('Late fees', () => {
     await expect(page.getByText('5.5% of rent', { exact: false }).first()).toBeVisible();
 
     // Delete → archive, not a hard drop.
-    const card = page.locator('main div.rounded-2xl').filter({ hasText: ruleName }).first();
+    // Was 'main div.rounded-2xl'. Selecting a card by its border radius
+    // couples the test to a styling choice, and it broke the moment the
+    // late-fee card moved onto the shared radius scale. Match the card by
+    // its content instead, which is what the test actually means.
+    const card = page.locator('main div').filter({ hasText: ruleName })
+      .filter({ has: page.locator('button, a') }).last();
     await card.locator('button:has-text("Delete")').click();
     await confirmDialog(page, 'Confirm');
     await expect(page.getByText(ruleName, { exact: false })).toHaveCount(0, { timeout: 20000 });

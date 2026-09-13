@@ -143,7 +143,7 @@ export function ShortcutsHelp({ open, onClose, scope }) {
     <div className="fixed inset-0 z-[4100] flex items-start justify-center pt-[8vh] px-4 overflow-y-auto"
          onMouseDown={onClose} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
       <div className="absolute inset-0 bg-neutral-900/40 backdrop-blur-sm" />
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-neutral-200 mb-10"
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-neutral-200 mb-10"
            onMouseDown={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
           <div>

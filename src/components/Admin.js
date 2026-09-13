@@ -387,7 +387,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
 
   {/* Module picker — only shown for customizable roles */}
   {isCustomizable && (
-  <div className="border border-brand-100 rounded-2xl p-3 bg-brand-50/20">
+  <div className="border border-brand-100 rounded-xl p-3 bg-brand-50/20">
   <div className="flex items-center justify-between mb-2">
   <div className="text-xs font-semibold text-neutral-700">Module access <span className="ml-1 text-neutral-400 font-normal">· {customPages.length} of {ALL_NAV_FLAT.length}</span></div>
   <div className="flex gap-2 text-xs">
@@ -1697,7 +1697,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Delete Account */}
-  <div className="bg-white rounded-2xl border border-danger-100 shadow-sm p-6">
+  <div className="bg-white rounded-xl border border-danger-100 shadow-sm p-6">
   <h3 className="font-semibold text-danger-600 mb-2">Delete Account</h3>
   <p className="text-xs text-neutral-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
   {!showDeleteConfirm ? (

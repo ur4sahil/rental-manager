@@ -1305,11 +1305,11 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
         </>) },
       { key: "debit", label: "Debit",
         render: (line, i) => (<>
-          <Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
+          <Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
         </>) },
       { key: "credit", label: "Credit",
         render: (line, i) => (<>
-          <Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
+          <Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
         </>) },
       // The remove-line control. The flat migration dropped this column
       // outright -- header, cells and all -- so there was no way to delete
@@ -1337,8 +1337,8 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
     empty="Nothing to show"
   />
   </div>
-  {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
-  {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
+  {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-lg px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
+  {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-lg px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
   <Btn variant="slate" onClick={onClose}>Cancel</Btn>
   <div className="flex gap-2">

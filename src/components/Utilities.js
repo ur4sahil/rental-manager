@@ -407,9 +407,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <option value="all">All Properties</option>
   {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
   </Select>
-  <div className="flex bg-brand-50 rounded-2xl p-0.5">
+  <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-lg ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>

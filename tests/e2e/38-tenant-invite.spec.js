@@ -84,7 +84,13 @@ async function cleanup() {
 function tenantCard(page, name) {
   // Use the name-only portion (without "ZZZ-E2E " prefix) to sidestep
   // Playwright's text-selector tokenization; match partial by getByText.
-  return page.locator('div.rounded-3xl', { has: page.getByText(name, { exact: false }) }).first();
+  // NOT selected by border radius. These matched `rounded-3xl`, which no
+  // longer exists in app chrome: the radius scale was declared and cards
+  // moved to rounded-xl, so the selector silently matched nothing.
+  // Selecting a card by its corner couples the test to a styling
+  // decision it does not care about.
+  return page.locator('div.shadow-card, main div[class*="border"]')
+    .filter({ has: page.getByText(name, { exact: false }) }).first();
 }
 
 test.describe('Tenant Invite to Portal', () => {

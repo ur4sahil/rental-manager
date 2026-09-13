@@ -2369,7 +2369,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
   {catTemplates.map(t => (
   <button key={t.id} onClick={() => startDocument(t, mode)} disabled={mode === "prefill" && !prefillProperty}
-  className="bg-white rounded-2xl border border-neutral-100 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+  className="bg-white rounded-lg border border-neutral-100 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
   <div className="font-semibold text-neutral-800 text-sm">{t.name}</div>
   <div className="text-xs text-neutral-400 mt-1">{t.description}</div>
   <div className="text-xs text-brand-600 mt-2">{(t.fields || []).length} fields</div>

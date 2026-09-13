@@ -1332,7 +1332,7 @@ function AppInner() {
   const isExpanded = expandedNav.has(n.id);
   return (
   <div key={n.id}>
-  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-neutral-500 hover:bg-brand-50/50 hover:text-neutral-700"}`}>
+  <div className={`flex items-center rounded-lg mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-neutral-500 hover:bg-brand-50/50 hover:text-neutral-700"}`}>
   <button onClick={() => { setPage(n.id); setSidebarOpen(false); }}
   className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
   <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
@@ -1381,7 +1381,7 @@ function AppInner() {
   <SearchTrigger onOpen={() => setPaletteOpen(true)} hint={`${MOD}K`} />
   </div>
   <div className="relative">
-  <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
+  <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
   <span className="hidden md:inline text-xs font-semibold text-neutral-700">{userProfile?.name || currentUser?.email?.split("@")[0] || "User"}</span>
   <span className="material-icons-outlined text-sm text-neutral-400">expand_more</span>
@@ -1526,7 +1526,7 @@ function AppInner() {
   {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
   {showUserProfile && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+  <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
   <UserProfile currentUser={currentUser} onBack={() => setShowUserProfile(false)} showToast={showToast} showConfirm={showConfirm} />
   </div>
   </div>

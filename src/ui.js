@@ -418,9 +418,9 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
   const bgMap = { indigo: "bg-brand-50", green: "bg-success-50", red: "bg-danger-50", amber: "bg-warn-50", purple: "bg-highlight-50" };
   const textMap = { indigo: "text-brand-600", green: "text-success-600", red: "text-danger-600", amber: "text-warn-600", purple: "text-highlight-600" };
   return (
-    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
+    <div className={`${SURFACE.raised} ${PAD.card}`}>
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 ${bgMap[color]} rounded-2xl flex items-center justify-center`}>
+        <div className={`w-10 h-10 ${bgMap[color]} rounded-lg flex items-center justify-center`}>
           <span className={`material-icons-outlined ${textMap[color]}`}>{icon}</span>
         </div>
         <div>
@@ -436,7 +436,7 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
 // ---- BULK ACTION BAR ----
 export function BulkBar({ count, label = "item", children, onDeselect }) {
   return (
-    <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+    <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
       <span className="text-sm font-medium text-brand-800">{count} {label}{count > 1 ? "s" : ""} selected</span>
       <div className="flex gap-2">
         {children}

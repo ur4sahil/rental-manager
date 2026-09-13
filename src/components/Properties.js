@@ -2956,7 +2956,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4 space-y-3">
   <h3 className="font-semibold text-neutral-800">Pending Approval</h3>
   {reviewableRequests.map(req => (
-  <div key={req.id} className="border border-warn-100 rounded-3xl p-4 bg-warn-50/30">
+  <div key={req.id} className="border border-warn-100 rounded-xl p-4 bg-warn-50/30">
   <div className="flex items-start justify-between gap-3">
   <div>
   <div className="flex items-center gap-2 mb-1">
@@ -3009,14 +3009,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   <div className="flex bg-brand-50 rounded-xl p-0.5">
   {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setViewMode(m)} className={`px-2 py-1 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`} title={m}>{icon}</button>
+  <button key={m} onClick={() => setViewMode(m)} className={`px-2 py-1 text-sm rounded-lg ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`} title={m}>{icon}</button>
   ))}
   </div>
   {viewMode === "table" && (
   <div className="relative">
   <Btn variant="secondary" size="sm" onClick={() => setShowColPicker(!showColPicker)}>⚙️ Columns</Btn>
   {showColPicker && (
-  <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
+  <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
   <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-neutral-700 cursor-pointer">
   <Checkbox checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
@@ -3060,10 +3060,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <IconBtn icon="close" onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white" />
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
   </div>
   </div>
 
@@ -3253,7 +3253,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-warning-700 mb-2">These files were uploaded but never got attached to a property. Attach them here if they belong to this property.</div>
   <div className="space-y-1.5">
   {orphanDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-white rounded-md px-3 py-2 text-sm">
+  <div key={d.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm">
   <div className="flex items-center gap-2 min-w-0">
   <span className="material-icons-outlined text-neutral-400 text-base flex-shrink-0">insert_drive_file</span>
   <div className="truncate">
@@ -3821,7 +3821,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
   {savingProperty && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
-  <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
   <Spinner />
   <div className="text-sm font-medium text-neutral-700">Setting up property...</div>
   <div className="text-xs text-neutral-400">Creating tenant, lease & posting entries</div>

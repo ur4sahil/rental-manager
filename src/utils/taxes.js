@@ -9,7 +9,7 @@
 //   expected_amount if the user hasn't paid yet.
 // - Manually-added bills (auto_generated=false) are left alone.
 import { supabase } from "../supabase";
-import { COUNTY_TAX_SCHEDULES } from "./helpers";
+import { findCountySchedule } from "./helpers";
 import { pmError } from "./errors";
 
 /** YYYY-MM-DD for a local date (no UTC shift). */
@@ -73,10 +73,18 @@ export async function generateBillsForProperty({
     return { created: 0, updated: 0, skipped: 0, reason: "missing_input" };
   }
   const year = Number(taxYear) || new Date().getFullYear();
-  const key = county + "|" + state;
-  const schedule = COUNTY_TAX_SCHEDULES[key];
+  // Tolerant lookup. Properties store the county as typed -- "Charles",
+  // not "Charles County" -- and an exact key match missed 66 of the 79
+  // properties that HAVE a county, generating no bills for any of them
+  // while reporting them as out-of-area.
+  const found = findCountySchedule(county, state);
+  const schedule = found.schedule;
   if (!schedule || schedule.length === 0) {
-    return { created: 0, updated: 0, skipped: 0, reason: "no_schedule_for_jurisdiction" };
+    // "ambiguous" is reported separately: a bare "Baltimore" in MD matches
+    // both Baltimore County and Baltimore City, whose bills are filed with
+    // different jurisdictions. Guessing would be worse than declining.
+    return { created: 0, updated: 0, skipped: 0, reason: found.reason,
+             candidates: found.candidates || null };
   }
 
   const annual = expectedAnnualAmount != null && !Number.isNaN(Number(expectedAnnualAmount))

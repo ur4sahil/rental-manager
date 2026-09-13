@@ -375,7 +375,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Your Companies */}
   {loadError && (
-  <div className="mb-4 rounded-2xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800">
+  <div className="mb-4 rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-800">
   <div className="font-semibold mb-1">Couldn't load your companies</div>
   <div className="text-danger-700 mb-2">{loadError}</div>
   <Btn size="sm" variant="secondary" onClick={() => fetchCompanies()}>Try again</Btn>
@@ -468,7 +468,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="text-xs text-brand-200">Start a new LLC or org</div>
   </Btn>
   <button onClick={() => { setShowJoin(true); setShowCreate(false); }}
-  className="bg-white border-2 border-brand-200 text-brand-700 rounded-3xl p-4 text-center hover:border-brand-400 transition-colors">
+  className="bg-white border-2 border-brand-200 text-brand-700 rounded-lg p-4 text-center hover:border-brand-400 transition-colors">
   <div className="text-2xl mb-1">{"\u{1F517}"}</div>
   <div className="text-sm font-semibold">Join Company</div>
   <div className="text-xs text-neutral-400">Enter code or search</div>
@@ -550,7 +550,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   return (
   <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-danger-200 w-full max-w-md">
-  <div className="px-6 py-4 border-b border-danger-100 bg-danger-50/60 rounded-t-3xl">
+  <div className="px-6 py-4 border-b border-danger-100 bg-danger-50/60 rounded-t-xl">
   <h3 className="font-display font-bold text-danger-700 text-lg flex items-center gap-2">
   <span className="material-icons-outlined text-xl">{isHard ? "delete_forever" : "archive"}</span>
   {isHard ? "Permanently delete" : "Archive"} "{deleteModal.company.name}"?

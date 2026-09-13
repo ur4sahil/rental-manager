@@ -752,7 +752,7 @@ function PreviewStep({ plan, busy, progress, onBack, onCommit }) {
     )}
 
     {plan.renames.length > 0 && (
-      <div className="rounded-2xl border-2 border-warning-300 bg-warning-50/50 p-4">
+      <div className="rounded-xl border-2 border-warning-300 bg-warning-50/50 p-4">
         <div className="text-sm font-semibold text-warning-800 mb-1">
           {plan.renames.length} address{plan.renames.length === 1 ? "" : "es"} will change
         </div>
@@ -774,7 +774,7 @@ function PreviewStep({ plan, busy, progress, onBack, onCommit }) {
     )}
 
     {plan.errors.length > 0 && (
-      <div className="rounded-2xl border-2 border-danger-300 bg-danger-50/50 p-4">
+      <div className="rounded-xl border-2 border-danger-300 bg-danger-50/50 p-4">
         <div className="text-sm font-semibold text-danger-700 mb-1">
           {plan.errors.length} row{plan.errors.length === 1 ? "" : "s"} will be skipped
         </div>
@@ -829,7 +829,7 @@ function PreviewStep({ plan, busy, progress, onBack, onCommit }) {
 function DoneStep({ result, onAgain }) {
   return (
   <div className="space-y-4">
-    <div className="rounded-2xl border-2 border-success-300 bg-success-50/50 p-5">
+    <div className="rounded-xl border-2 border-success-300 bg-success-50/50 p-5">
       <div className="text-base font-semibold text-success-800 mb-2">Import complete</div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         <Stat label="Properties created" value={result.created} tone="good" />
@@ -845,7 +845,7 @@ function DoneStep({ result, onAgain }) {
         only the username and password are missing, and saying so beats
         leaving someone to discover it when a bill is due. */}
     {(result.credFailures || []).length > 0 && (
-      <div className="rounded-2xl border-2 border-warn-300 bg-warn-50/50 p-4">
+      <div className="rounded-xl border-2 border-warn-300 bg-warn-50/50 p-4">
         <div className="text-sm font-semibold text-warn-800 mb-1">
           {result.credFailures.length} login{result.credFailures.length === 1 ? "" : "s"} could not be saved
         </div>
@@ -861,7 +861,7 @@ function DoneStep({ result, onAgain }) {
     )}
 
     {result.failed.length > 0 && (
-      <div className="rounded-2xl border border-danger-200 bg-danger-50/40 p-4">
+      <div className="rounded-xl border border-danger-200 bg-danger-50/40 p-4">
         <div className="text-sm font-semibold text-danger-700 mb-1">{result.failed.length} row{result.failed.length === 1 ? "" : "s"} failed</div>
         <div className="max-h-40 overflow-y-auto text-xs divide-y divide-danger-100">
           {result.failed.map((f, i) => (

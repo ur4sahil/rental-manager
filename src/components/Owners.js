@@ -505,7 +505,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   return (
   <div className="space-y-2">
   {workOrders.map(wo => (
-  <div key={wo.id} className="bg-white border border-brand-50 rounded-2xl p-4">
+  <div key={wo.id} className="bg-white border border-brand-50 rounded-xl p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{wo.issue}</div>

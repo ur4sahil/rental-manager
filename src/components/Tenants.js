@@ -1205,7 +1205,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* LEASE */}
   {activePanel === "lease" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className="bg-white border border-brand-50 rounded-3xl p-4 mb-4">
+  <div className="bg-white border border-brand-50 rounded-xl p-4 mb-4">
   <h4 className="font-semibold text-neutral-700 mb-3">Lease Details</h4>
   <div className="space-y-2 text-sm">
   {[
@@ -1224,7 +1224,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   {leaseModal === "renew" && (
-  <div className="bg-brand-50 rounded-3xl p-4 mb-3 border border-brand-100">
+  <div className="bg-brand-50 rounded-xl p-4 mb-3 border border-brand-100">
   <div className="text-sm font-semibold text-brand-700 mb-2">Enter New Lease End Date</div>
   <Input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="mb-2" />
   <div className="flex gap-2">
@@ -1234,7 +1234,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {leaseModal === "notice" && (
-  <div className="bg-notice-50 rounded-3xl p-4 mb-3 border border-notice-100">
+  <div className="bg-notice-50 rounded-xl p-4 mb-3 border border-notice-100">
   <div className="text-sm font-semibold text-notice-700 mb-2">Select Notice Period</div>
   <div className="flex gap-2 mb-2">
   <FilterPill tone="notice" active={leaseInput === "30"} onClick={() => setLeaseInput("30")} className="flex-1 py-2 text-sm">30 Days</FilterPill>
@@ -1290,13 +1290,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <IconBtn icon="close" onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white" />
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "\u2014"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : formatCurrency(0)}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "\u2014"}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "\u2014"}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : formatCurrency(0)}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
+  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "\u2014"}</div></div>
   </div>
   {selectedTenant.is_voucher && (
-  <div className="mt-3 bg-white/10 rounded-2xl px-4 py-3">
+  <div className="mt-3 bg-white/10 rounded-lg px-4 py-3">
   <div className="flex items-center gap-2 mb-2"><span className="text-xs bg-highlight-400 text-white px-2 py-0.5 rounded-full font-bold">VOUCHER</span><span className="text-sm text-brand-200">{selectedTenant.voucher_number || ""}</span></div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
   <div><span className="text-brand-300">Voucher Portion</span><div className="font-bold text-white">{formatCurrency(selectedTenant.voucher_portion || 0)}</div></div>
@@ -1606,16 +1606,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Actions tab */}
   {activePanel === "actions" && (
   <div className="grid grid-cols-2 gap-3">
-  <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-3xl p-4 text-center hover:bg-brand-50/50 transition-all">
+  <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-lg p-4 text-center hover:bg-brand-50/50 transition-all">
   <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
   </button>
-  <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-3xl p-4 text-center hover:bg-highlight-100 transition-all">
+  <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-lg p-4 text-center hover:bg-highlight-100 transition-all">
   <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
   </button>
   {/* The renewal form renders inside the Lease panel, so switching to it
       is what makes this button do anything. Without that the click set
       the state and nothing appeared. */}
-  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }} className="bg-positive-50 rounded-3xl p-4 text-center hover:bg-positive-100 transition-all">
+  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }} className="bg-positive-50 rounded-lg p-4 text-center hover:bg-positive-100 transition-all">
   <div className="text-2xl mb-1">{"\u{1F504}"}</div><div className="text-sm font-semibold text-positive-700">Renew Lease</div>
   </button>
   {/* Only a current tenant can be moved out. This used to navigate
@@ -1633,10 +1633,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       return;
     }
     setPage("moveout");
-  }} className="bg-notice-50 rounded-3xl p-4 text-center hover:bg-notice-100 transition-all">
+  }} className="bg-notice-50 rounded-lg p-4 text-center hover:bg-notice-100 transition-all">
   <div className="text-2xl mb-1"><span className="material-icons-outlined text-notice-600">exit_to_app</span></div><div className="text-sm font-semibold text-notice-700">Move-Out</div>
   </button>
-  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-danger-50 rounded-3xl p-4 text-center hover:bg-danger-100 transition-all">
+  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-danger-50 rounded-lg p-4 text-center hover:bg-danger-100 transition-all">
   <div className="text-2xl mb-1">{"\u{1F4E6}"}</div><div className="text-sm font-semibold text-danger-700">Archive Tenant</div>
   </button>
   </div>
@@ -1970,9 +1970,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex items-center justify-between mb-3">
   <PageHeader title="Tenants" />
   <div className="flex gap-2 items-center">
-  <div className="flex bg-brand-50 rounded-2xl p-0.5">
+  <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","\u25A6","Cards"],["table","\u2630","Table"],["compact","\u2261","Compact"]].map(([m,icon,label]) => (
-  <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-lg ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   {/* Sort control, not just clickable table headers. The list defaults to
@@ -2023,7 +2023,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   {/* Bulk action bar */}
   {selectedTenants.size > 0 && (
-  <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
   <Btn variant="notice" size="sm" onClick={() => setBulkAction("notice")}>Send Notice</Btn>
@@ -2213,7 +2213,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   {showForm && editingTenant && (
   <div className={editReturnTo
-    ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-2xl shadow-2xl p-4 overflow-y-auto safe-y"
+    ? "fixed z-[60] inset-x-3 top-4 bottom-4 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-3xl bg-white rounded-xl shadow-2xl p-4 overflow-y-auto safe-y"
     : "bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-4"}>
   <h3 className="font-semibold text-neutral-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
@@ -2226,7 +2226,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1 items-center"><Input type="number" min="0" step="0.01" placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-0 focus:border-brand-300 focus:outline-none" /><Select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="border border-brand-100 rounded-2xl px-2 py-2 text-sm w-12 shrink-0 focus:outline-none"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1 items-center"><Input type="number" min="0" step="0.01" placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-0 focus:border-brand-300 focus:outline-none" /><Select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="border border-brand-100 rounded-lg px-2 py-2 text-sm w-12 shrink-0 focus:outline-none"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
   {["active", "current", "notice", "past", "expired", "inactive"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
@@ -2440,7 +2440,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) fetchTenantDocs(selectedTenant); }} />}
   {savingTenant && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
-  <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
   <Spinner />
   <div className="text-sm font-medium text-neutral-700">Setting up tenant...</div>
   <div className="text-xs text-neutral-400">Creating accounts, lease & posting entries</div>

@@ -744,7 +744,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         </div>
 
         {!doc && (
-          <div className="border border-brand-100 rounded-2xl p-4 bg-white">
+          <div className="border border-brand-100 rounded-xl p-4 bg-white">
             <div className="text-sm font-semibold text-neutral-700 mb-2">Send Lease for Signature</div>
             <p className="text-xs text-neutral-400 mb-3">Both parties will receive a secure magic link by email. No account required to sign. Links expire in 30 days.</p>
             <div className="space-y-2 mb-3">

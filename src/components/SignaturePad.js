@@ -119,7 +119,7 @@ export default function SignaturePad({
   const contact = companyContactEmail || "the sender directly";
 
   return (
-    <div className="border border-brand-100 rounded-2xl p-4 bg-white">
+    <div className="border border-brand-100 rounded-xl p-4 bg-white">
       {signerLabel && <div className="text-sm font-semibold text-neutral-700 mb-2">Signing as: {signerLabel}{signerName ? " — " + signerName : ""}</div>}
 
       <div className="flex gap-2 mb-3">
