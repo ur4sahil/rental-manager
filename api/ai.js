@@ -8,6 +8,7 @@
 //   POST /api/ai?action=enqueue   { companyId, kind, subjectTable, subjectId, input, priority }
 //   POST /api/ai?action=job-status{ companyId, jobId }
 //   POST /api/ai?action=jobs      { companyId, status, limit }
+//   POST /api/ai?action=ask       { companyId, question, sourceId, limit }  (synchronous)
 //
 // Worker-facing (x-worker-token, NOT company-scoped):
 //   POST /api/ai?action=claim     { worker, kinds }
@@ -24,7 +25,7 @@
 // the same submit-and-poll shape OpenAI Batch and Vertex LRO use.
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
-const { aiConfigured } = require("./_ai");
+const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
 const { extractLicense } = require("./_ai-extract");
 
@@ -191,6 +192,20 @@ module.exports = async function handler(req, res) {
     if (action === "enqueue") {
       const { kind, subjectTable = null, subjectId = null, input = {}, priority = 0 } = body;
       if (!kind) return res.status(400).json({ error: "kind is required" });
+
+      // Ingest the text for retrieval at the same time. A document Housy
+      // has read should be answerable questions about, and doing it here
+      // means the chunk store fills as a side effect of normal use rather
+      // than needing its own pass over everything.
+      //
+      // Failure is not fatal: the extraction is the job the user asked
+      // for, and retrieval is a bonus on top of it.
+      if (input && input.text && subjectTable && subjectId) {
+        await ingestChunks(sb, {
+          companyId, sourceTable: subjectTable, sourceId: subjectId,
+          sourceName: input.source_name, text: input.text,
+        }).catch(() => {});
+      }
       const { data: job, error } = await sb.from("ai_jobs").insert([{
         company_id: companyId,
         kind,
@@ -227,6 +242,60 @@ module.exports = async function handler(req, res) {
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true, jobs: data || [] });
+    }
+
+    // ---- ask a question of the documents --------------------------------
+    // SYNCHRONOUS, unlike everything else here, and deliberately.
+    // Retrieval sends a handful of passages rather than a whole document,
+    // so the prompt is small and the answer comes back in seconds -- well
+    // inside the ~100s an HTTP request survives. Queueing it would mean a
+    // spinner and a poll for something that is effectively instant.
+    if (action === "ask") {
+      if (!aiConfigured()) return res.status(503).json({ error: "no model endpoint configured (AI_BASE_URL)" });
+      const { question, sourceId = null, limit = 6 } = body;
+      if (!question || !String(question).trim()) return res.status(400).json({ error: "question is required" });
+
+      const { data: chunks, error: sErr } = await sb.rpc("search_doc_chunks", {
+        p_company_id: companyId, p_query: String(question), p_limit: Math.min(Number(limit) || 6, 10),
+        p_source_id: sourceId,
+      });
+      if (sErr) return res.status(500).json({ error: sErr.message });
+      // No passage means no grounded answer is possible. Say so rather
+      // than letting the model answer from nothing, which is exactly how
+      // it invents a clause that was never in the lease.
+      if (!chunks || !chunks.length) {
+        return res.status(200).json({ ok: true, answer: null, chunks: [],
+          reason: "nothing in the documents matched that question" });
+      }
+
+      const passages = chunks.map((c, i) =>
+        `[${i + 1}] from ${c.source_name || c.source_table}:\n${c.content}`).join("\n\n");
+
+      const r = await askJson({
+        system:
+          "Answer the question using ONLY the passages below. They are excerpts from " +
+          "the user's own property documents.\n" +
+          // The failure that matters here is a confident answer drawn from
+          // general knowledge of leases rather than from THIS lease.
+          "If the passages do not contain the answer, say so in `answer` and set " +
+          "`found` to false. Do not answer from general knowledge about leases.\n" +
+          "`quote` must be copied VERBATIM from a passage -- it is what the reader " +
+          "checks you against. `passage` is which numbered passage you used.",
+        schemaHint: '{"answer":string,"found":boolean,"quote":string|null,"passage":number|null}',
+        prompt: `Passages:\n${passages}\n\nQuestion: ${question}`,
+      });
+      if (!r.ok) return res.status(502).json({ error: r.error || "the model did not answer" });
+
+      return res.status(200).json({
+        ok: true,
+        answer: r.data?.answer || null,
+        found: r.data?.found !== false,
+        quote: r.data?.quote || null,
+        passage: r.data?.passage ?? null,
+        chunks: chunks.map(c => ({ source_name: c.source_name, source_table: c.source_table,
+                                   source_id: c.source_id, content: c.content, rank: c.rank })),
+        model: r.model, durationMs: r.durationMs,
+      });
     }
 
     // ---- worker claims one job -----------------------------------------

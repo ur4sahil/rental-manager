@@ -26,9 +26,17 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
   const [open, setOpen] = useState(null);   // the proposal being reviewed
   const [edits, setEdits] = useState({});   // reviewer's corrections
   const [busy, setBusy] = useState(false);
+  // Ask-a-question state. Separate from the review queue: asking is
+  // synchronous, because retrieval sends a few passages rather than a
+  // whole document and the answer comes back in seconds.
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState(null);
 
   const load = useCallback(async () => {
     if (!companyId) return;
+    // The ask tab has no job list behind it.
+    if (tab === "ask") { setJobs([]); return; }
     const q = supabase.from("ai_jobs").select("*").eq("company_id", companyId)
       .order("created_at", { ascending: false }).limit(200);
     // "working" is a VIEW over two real statuses, not a status itself --
@@ -119,6 +127,27 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
     return { ok: false, error: `nothing knows how to apply a "${job.kind}" proposal yet` };
   }
 
+  async function ask(e) {
+    e?.preventDefault?.();
+    const q = question.trim();
+    if (!q || asking) return;
+    setAsking(true);
+    setAnswer(null);
+    try {
+      const res = await fetch("/api/ai?action=ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, question: q }),
+      });
+      const body = await res.json();
+      if (!res.ok) { showToast(body?.error || `Could not ask: HTTP ${res.status}`, "error"); return; }
+      setAnswer(body);
+    } catch (err) {
+      pmError("PM-8006", { raw: err, context: "ask Housy a question" });
+    } finally {
+      setAsking(false);
+    }
+  }
+
   if (jobs === null) return <Spinner />;
 
   const counts = {
@@ -131,6 +160,7 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
       <PageHeader title={HOUSY.menuLabel} subtitle={`${HOUSY.name} ${HOUSY.tagline}. Nothing is saved until you approve it.`} />
 
       <TabBar active={tab} onChange={t => { setTab(t); setOpen(null); }} tabs={[
+        { id: "ask", label: "Ask" },
         { id: "proposed", label: "Needs review", count: counts.proposed || null },
         { id: "working", label: "In progress", count: counts.working || null },
         { id: "done", label: "Applied" },
@@ -139,7 +169,51 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
         { id: "all", label: "All" },
       ]} className="mb-4" />
 
-      {jobs.length === 0 ? (
+      {tab === "ask" ? (
+        <Card>
+          <form onSubmit={ask} className="flex gap-2 items-end">
+            <FormField label={`Ask ${HOUSY.name} about your documents`} className="flex-1">
+              <Input value={question} onChange={e => setQuestion(e.target.value)}
+                placeholder="Does the lease at 100 Oak Street allow pets?" />
+            </FormField>
+            <Btn type="submit" variant="primary" disabled={asking || !question.trim()}>
+              {asking ? "Reading…" : "Ask"}
+            </Btn>
+          </form>
+          <p className="text-2xs text-neutral-400 mt-2">
+            {HOUSY.name} answers only from documents it has read. Ask it to read one from
+            the Documents page first.
+          </p>
+
+          {answer && (
+            <div className="mt-4 border-t border-neutral-200 pt-4">
+              {answer.answer == null || answer.found === false ? (
+                <p className="text-sm text-neutral-500">
+                  {answer.answer || answer.reason || "Nothing in your documents answers that."}
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-neutral-800 whitespace-pre-wrap">{answer.answer}</p>
+                  {/* The quote is the point: it is what lets a reader check
+                      the answer against the document instead of trusting it. */}
+                  {answer.quote && (
+                    <blockquote className="mt-3 text-xs text-neutral-600 border-l-2 border-brand-300 pl-3 italic">
+                      “{answer.quote}”
+                    </blockquote>
+                  )}
+                  {(answer.chunks || []).length > 0 && (
+                    <p className="text-2xs text-neutral-400 mt-3">
+                      From {answer.chunks[Math.max(0, (answer.passage || 1) - 1)]?.source_name
+                            || answer.chunks[0]?.source_name || "your documents"}
+                      {answer.durationMs ? ` · ${Math.round(answer.durationMs / 1000)}s` : ""}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </Card>
+      ) : jobs.length === 0 ? (
         <EmptyState size="compact" icon={HOUSY.icon}
           title={tab === "proposed" ? `Nothing waiting for you`
                : tab === "working"  ? `Nothing in progress`
