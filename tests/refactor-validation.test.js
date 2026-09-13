@@ -169,7 +169,16 @@ function testFileStructure() {
   // scale, the SURFACE recipes and TabBar's rebuild all land in ui.js,
   // which is where this bound WANTS weight to go -- the components they
   // replace were duplicated across a dozen page files.
-  assert(totalLines <= 42600, `Total src lines <= 42600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 42700 on 2026-09-12: the hash router became a path router.
+  // src/utils/routes.js is the id <-> path table (45 pages, 31 report
+  // slugs), the page-scoped-param rules absorbed from pageParams.js
+  // (deleted), and the legacy "#page" redirect. Net +94 across src, and
+  // App.js came DOWN 39 lines -- the deep-link stash and one of the two
+  // rival popstate handlers both stopped being necessary once the page
+  // lived in the path. A 45-row routing table cannot be smaller than a
+  // 45-row routing table; the alternative to this raise was deleting
+  // comments that explain why the routes are shaped as they are.
+  assert(totalLines <= 42700, `Total src lines <= 42700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

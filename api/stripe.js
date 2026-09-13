@@ -153,7 +153,7 @@ async function notifyPaymentEvent(sb, kind, ctx) {
   const body = kind === "succeeded"
     ? "$" + Number(amount || 0).toFixed(2) + (property ? " · " + String(property).split(",")[0].trim() : "")
     : (ctx.error || "Card was declined") + (property ? " · " + String(property).split(",")[0].trim() : "");
-  const url = kind === "succeeded" ? "/#tenant_ledger" : "/#tenant_autopay";
+  const url = kind === "succeeded" ? "/portal/ledger" : "/portal/autopay";
   const payload = JSON.stringify({ title, body, url });
 
   for (const email of byRole.keys()) {

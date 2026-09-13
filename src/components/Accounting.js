@@ -5,6 +5,7 @@ import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
+import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -115,11 +116,10 @@ export function refLabelFull(reference) {
 // <a href> so the browser handles new-tab clicks natively, while a plain
 // left-click is intercepted to open the modal in place (current behavior).
 //
-// The account id(s) live in the SEARCH string (?ledger=…), NOT the hash:
-// AppInner replays the deep-link hash post-auth and would clobber a hash
-// query, but window.location.search survives the login flow (same as the
-// existing ?company param). The hash carries the page (#acct_coa) so the
-// fresh tab lands on Accounting with the Chart of Accounts behind the modal.
+// The account id(s) stay in the SEARCH string (?ledger=…) rather than the
+// path: they are an instruction to open something, not the address of a
+// screen. The PATH carries the page, so the fresh tab lands on the Chart
+// of Accounts with the ledger opened over it.
 export function ledgerHref(ids, title, companyId) {
   const arr = Array.isArray(ids) ? ids : [ids];
   // Carry the label too. Reconstructing a title from ids alone is fine for
@@ -135,7 +135,7 @@ export function ledgerHref(ids, title, companyId) {
   params.set("ledger", arr.join(","));
   if (title) params.set("ledgerTitle", String(title).slice(0, 120));
   else params.delete("ledgerTitle");
-  return "?" + params.toString() + "#acct_coa";
+  return pathForPage("acct_coa") + "?" + params.toString();
 }
 
 // Every drillable figure in the reports goes through DRILL_LINK (ui.js),
@@ -1879,22 +1879,23 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
   const allReports = REPORT_CATALOG.flatMap(c => c.reports);
 
   // ---- the open report lives in the URL ---------------------------------
-  // It used to live only in component state, so the hash was just
-  // "#acct_reports" whether you were looking at the catalogue or at a
-  // Balance Sheet as of a particular date. F5 therefore had nothing to
-  // restore and always dumped you back on the catalogue -- "Refresh
-  // doesnt work at all!". Same reason a drill-down into a ledger and back
-  // landed on the catalogue rather than the statement.
+  // It used to live only in component state, so the URL said "Reports"
+  // whether you were on the catalogue or on a Balance Sheet as of a
+  // particular date -- F5 had nothing to restore and always dumped you
+  // back on the catalogue ("Refresh doesnt work at all!").
   //
-  // Query params rather than a hash path, to match ?company= and ?ledger=
-  // which already survive the login flow (AppInner replays the hash after
-  // auth and would clobber a hash query).
+  // WHICH report is part of the address, so it is a path segment:
+  // /accounting/reports/balance-sheet. The date it is run for is a
+  // parameter OF that screen, so period/asOf/from/to stay query params
+  // (utils/routes.js is what stops them following you off this page).
   const reportUrl = (reportId, opts = {}) => {
     const q = new URLSearchParams(window.location.search);
-    if (reportId) q.set("report", reportId); else { q.delete("report"); q.delete("period"); q.delete("asOf"); q.delete("from"); q.delete("to"); }
+    if (!reportId) { q.delete("period"); q.delete("asOf"); q.delete("from"); q.delete("to"); }
     for (const [k, v] of Object.entries(opts)) { if (v) q.set(k, v); else q.delete(k); }
     const qs = q.toString();
-    return window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+    const base = pathForPage("acct_reports");
+    const path = reportId ? base + "/" + reportSlug(reportId) : base;
+    return path + (qs ? "?" + qs : "");
   };
   // Opening a report PUSHES, so Back returns to the catalogue. Changing a
   // period or a date REPLACES, so fiddling with the as-of date does not
@@ -1915,7 +1916,9 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
   useEffect(() => {
     const apply = () => {
       const q = new URLSearchParams(window.location.search);
-      const id = q.get("report") || "";
+      // The slug under /accounting/reports names the report; a legacy
+      // "?report=bs" was folded into the path before this component ran.
+      const id = reportIdFromSlug(subPathFor("acct_reports", window.location.pathname));
       if (id === reportUrlApplied.current) return;
       reportUrlApplied.current = id;
       if (!id) { setActiveView("catalog"); setCurrentReport(null); return; }
@@ -4421,13 +4424,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     setLedgerView({ accountIds: ids, title });
     if (!ledgerNavRef.current) {
       ledgerNavRef.current = true;
-      // Stamp the entry we are leaving before pushing. App.js's popstate
-      // handler reads e.state.page and falls back to "dashboard" when the
-      // state is null -- and the entry is null whenever the app was reached
-      // by a plain URL with a hash, which is every shared link and every
-      // fresh tab. Without this, Back out of a ledger landed on the
-      // Dashboard instead of the report it was drilled from.
-      const here = { page: window.location.hash.replace("#", "") || "accounting", screen: "app" };
+      // Stamp the entry we are leaving before pushing, so Back out of a
+      // ledger returns to the report rather than to whatever a stateless
+      // history entry falls back to.
+      const here = { page: pageForPath(window.location.pathname) || "accounting", screen: "app" };
       window.history.replaceState({ ...(window.history.state || {}), ...here }, "", window.location.href);
       window.history.pushState({ ...here, acctLedger: true }, "", window.location.href);
     }

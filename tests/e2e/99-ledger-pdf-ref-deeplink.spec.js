@@ -39,7 +39,7 @@ test('ledger: anchor rows + normal-click modal + PDF/CSV buttons', async ({ page
   await expect(link).toBeVisible({ timeout: 8000 });
   const href = await link.getAttribute('href');
   expect(href).toContain('?ledger=');
-  expect(href).toContain('#acct_coa');
+  expect(href).toContain('/accounting/chart-of-accounts');
 
   // 2. Plain left-click opens the modal in place — URL must NOT change
   const urlBefore = page.url();

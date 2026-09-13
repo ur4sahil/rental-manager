@@ -29,14 +29,14 @@
       "name": "Tenants",
       "short_name": "Tenants",
       "description": "View all tenants",
-      "url": "/?page=tenants",
+      "url": "/tenants",
       "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
     },
     {
       "name": "Bank Transactions",
       "short_name": "Banking",
       "description": "Review bank transactions",
-      "url": "/?page=accounting",
+      "url": "/accounting/bank-transactions",
       "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
     }
   ]
