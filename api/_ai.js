@@ -1,4 +1,4 @@
-// The single path to the model. Everything AI goes through here.
+// Housy — the single path to the model. Everything AI goes through here.
 //
 // Server-side only, and deliberately so: the model endpoint is on the
 // Oracle VPS behind a Cloudflare tunnel, and its URL is not something to

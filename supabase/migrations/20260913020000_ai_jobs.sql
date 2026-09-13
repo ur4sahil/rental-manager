@@ -84,3 +84,14 @@ CREATE POLICY ai_jobs_update ON public.ai_jobs
 
 COMMENT ON TABLE public.ai_jobs IS
   'AI proposals awaiting human review. output = what the model proposed; applied = what was actually written after any human edit.';
+
+-- Grants, without which ai_jobs is invisible to the app.
+--
+-- RLS decides WHICH rows a role may see; a GRANT decides whether the role
+-- may touch the table at all. With policies but no grant, PostgREST
+-- returns an empty list rather than an error, and this repo's
+-- try/catch + `data || []` idiom turns that into "the queue is empty".
+-- That is exactly what happened while building: a seeded proposal sat
+-- plainly in the table and rendered as an empty page.
+GRANT SELECT, INSERT, UPDATE ON public.ai_jobs TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.ai_jobs TO service_role;

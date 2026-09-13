@@ -28,6 +28,7 @@ import { Utilities } from "./components/Utilities";
 import { Accounting, AcctBankReconciliation } from "./components/Accounting";
 import { BankTransactions } from "./components/Banking";
 import { Documents, DocumentBuilder } from "./components/Documents";
+import { Housy } from "./components/Housy";
 import { LeaseManagement, ESignatureModal } from "./components/Leases";
 import { OwnerManagement, OwnerPortal, OwnerMaintenanceView } from "./components/Owners";
 import { TenantPortal } from "./components/TenantPortal";
@@ -159,13 +160,13 @@ let _toastIdCounter = 0;
 const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_qbimport","acct_reconcile","acct_classes","acct_reports"];
 
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees","housy"] },
   // Manager sits between admin and the customizable staff roles. Can
   // review / approve requests submitted by staff who've been explicitly
   // assigned to them via manager_email. Can't administer the company
   // (no members page, no role edits).
-  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting",...ACCT_SUB_PAGES,"payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   // Tenant sees the portal split into per-tab sidebar items, mirroring
@@ -205,6 +206,7 @@ const ALL_NAV = [
     { id: "acct_reports",    label: "Reports",           icon: "assessment" },
   ]},
   { id: "doc_builder", label: "Document Builder", icon: "description" },
+  { id: "housy", label: "Housy", icon: "auto_awesome" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "owners", label: "Owners", icon: "person" },
@@ -278,6 +280,7 @@ const pageComponents = {
   moveout: MoveOutWizard,
   evictions: EvictionWorkflow,
   doc_builder: DocumentBuilder,
+  housy: Housy,
   tenant_portal: TenantPortal,
   // Tenant sidebar pages all route to TenantPortal with a baked
   // initialTab. activeTab inside TenantPortal syncs from the prop on

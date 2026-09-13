@@ -28,6 +28,7 @@ export const PAGE_PATHS = {
   acct_qbimport: "/accounting/import-from-quickbooks", acct_reconcile: "/accounting/reconcile",
   acct_classes: "/accounting/class-tracking", acct_reports: "/accounting/reports",
   documents: "/documents", doc_builder: "/document-builder", vendors: "/vendors",
+  housy: "/housy",
   owners: "/owners", notifications: "/notifications", messages: "/messages", admin: "/admin",
   // "/portal", not "/tenant-portal": its audience has only one portal.
   tenant_portal: "/portal", tenant_overview: "/portal/overview", tenant_pay: "/portal/pay",
