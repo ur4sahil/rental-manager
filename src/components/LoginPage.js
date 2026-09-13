@@ -122,7 +122,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const { data: { session } } = await supabase.auth.getSession();
   const orphanToken = session?.access_token;
   if (orphanToken) {
-  await fetch("/api/cleanup-orphan-signup", {
+  await fetch("/api/account?action=cleanup-orphan-signup", {
   method: "POST",
   headers: { "Content-Type": "application/json", "Authorization": "Bearer " + orphanToken },
   body: JSON.stringify({ inviteCode: inviteCode.trim().toUpperCase() }),

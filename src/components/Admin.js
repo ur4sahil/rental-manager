@@ -1593,7 +1593,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
     const { data: { session } } = await supabase.auth.getSession();
     const tok = session?.access_token;
     if (tok) {
-      const resp = await fetch("/api/self-delete-account", {
+      const resp = await fetch("/api/account?action=self-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
       });
