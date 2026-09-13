@@ -14,7 +14,18 @@
 //         never cached. Financial/auth data must stay fresh.
 //   • push + notificationclick: unchanged from v1.
 
-const CACHE_NAME = "housify-v4";
+// Bumped by scripts/stamp-sw.js at build time (npm run build), which
+// rewrites __BUILD_ID__ with the current commit sha.
+//
+// It used to be the literal "housify-v4", with a comment two lines up
+// claiming it "bumps per deploy via the build step". No build step
+// existed and nothing had bumped it since v4 was written. Because
+// activate() only deletes caches whose name DIFFERS from this one, the
+// app shell cached under housify-v4 was never evicted -- every deploy
+// since has been layered on top of a stale offline fallback, and the
+// only thing keeping users current was that navigation happens to be
+// network-first.
+const CACHE_NAME = "housify-__BUILD_ID__";
 const APP_SHELL = [
   "/",
   "/index.html",

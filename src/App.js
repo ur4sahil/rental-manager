@@ -9,6 +9,7 @@ import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructu
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
 import { AUDIT_ACTIONS, AUDIT_MODULES, logAudit } from "./utils/audit";
+import { pageUrl, sweptUrl } from "./utils/pageParams";
 import { queueNotification } from "./utils/notifications";
 import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings, clearMembershipCache } from "./utils/company";
 import { COMPANY_DEFAULTS } from "./config";
@@ -463,7 +464,14 @@ function AppInner() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
+  function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", pageUrl(p)); }
+  // Sweep stale page-scoped params whenever the settled page does not own
+  // them -- boot and Back/Forward do not go through setPage.
+  useEffect(() => {
+    const next = sweptUrl(page);
+    if (next) window.history.replaceState(window.history.state, "", next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
   function setScreen(s) { setScreenRaw(s); screenRef.current = s; if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
   // Mirror `screen` into a ref so the auth-state-change subscriber
   // (which closes over state values from its mount-time render) can

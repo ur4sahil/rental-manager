@@ -43,7 +43,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
+    "build": "craco build && node scripts/stamp-sw.js",
     "test": "craco test",
     "eject": "react-scripts eject"
   },

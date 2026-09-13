@@ -4761,7 +4761,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   // Auto-sync property classes (only on first load, not every re-fetch)
   if (!window._propClassesSynced || window._propClassesSyncedFor !== companyId) {
-  const { data: allProps } = await supabase.from("properties").select("id, address, type, rent").eq("company_id", companyId);
+  // archived_at IS NULL: an archived property should not mint a new class,
+  // and including them is what produced duplicates here -- sandbox-llc has
+  // four ARCHIVED properties at "100 Oak Street" beside the live one, all
+  // sharing one address, so the batch below proposed the same class name
+  // five times. Existing classes are left alone either way; this only
+  // governs what gets CREATED.
+  const { data: allProps, error: propsErr } = await supabase.from("properties")
+    .select("id, address, type, rent").eq("company_id", companyId).is("archived_at", null);
+  if (propsErr) pmError("PM-4006", { raw: propsErr, context: "load properties for class sync", silent: true });
   if (allProps && allProps.length > 0) {
   const existingNames = new Set(classes.map(c => c.name));
   const colors = chartPalette;
@@ -4773,14 +4781,34 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // existed by name -- orphaning every journal line and property that
   // referenced it. The column now defaults to gen_random_uuid()::text,
   // so an insert still gets an id and a conflict leaves the key alone.
-  const newClasses = missing.map(p => ({
+  // De-duplicate by name. Postgres rejects an ON CONFLICT command that
+  // would touch the same row twice -- SQLSTATE 21000, "ON CONFLICT DO
+  // UPDATE command cannot affect row a second time" -- and it rejects the
+  // WHOLE batch, so a single repeated address meant NO classes were
+  // created for that company at all. Filtering archived properties above
+  // removes today's cause; this makes the batch safe regardless, because
+  // two live properties may legitimately share an address string.
+  const seen = new Set();
+  const newClasses = missing.filter(p => {
+    const key = p.address;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(p => ({
   name: p.address,
   description: `${p.type || "Property"} · ${formatCurrency(p.rent || 0)}/mo`,
   color: pickColor(p.address),
   is_active: true,
   company_id: companyId,
   }));
-  await supabase.from("acct_classes").upsert(newClasses, { onConflict: "company_id,name" });
+  // The error was never read. supabase-js does not throw on a 500, it
+  // returns { error }, so this failed silently on every accounting load
+  // and the missing classes looked like a data problem rather than a
+  // failed write.
+  if (newClasses.length > 0) {
+    const { error: upErr } = await supabase.from("acct_classes").upsert(newClasses, { onConflict: "company_id,name" });
+    if (upErr) pmError("PM-4006", { raw: upErr, context: `auto-create ${newClasses.length} property classes`, silent: true });
+  }
   // Re-fetch classes after sync
   const { data: updatedClasses } = await supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name");
   if (updatedClasses) classes.splice(0, classes.length, ...updatedClasses);
