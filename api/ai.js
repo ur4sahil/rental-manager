@@ -1,25 +1,59 @@
 // AI actions. One dispatcher, like api/daily-reminders.js.
 //
+// Browser-facing (company-scoped, normal auth):
 //   POST /api/ai?action=ingest    { companyId, sourceTable, sourceId, sourceName, text }
 //   POST /api/ai?action=extract-license
 //                                 { companyId, sourceTable, sourceId, sourceName, text }
 //   POST /api/ai?action=search    { companyId, query, limit, sourceId }
+//   POST /api/ai?action=enqueue   { companyId, kind, subjectTable, subjectId, input, priority }
 //
-// Nothing here writes to a business table. `extract-license` produces an
-// ai_jobs row with status 'proposed'; applying it is a separate, human
-// action. A confidently wrong licence number on a property you are
-// renting out is a filing problem, not a UI bug.
+// Worker-facing (x-worker-token, NOT company-scoped):
+//   POST /api/ai?action=claim     { worker, kinds }
+//   POST /api/ai?action=complete  { worker, jobId, output, model, durationMs, confidence, error }
+//
+// Nothing here writes to a business table. A finished job lands as
+// status 'proposed'; applying it is a separate, human action. A
+// confidently wrong licence number on a property you are renting out is
+// a filing problem, not a UI bug.
+//
+// WHY A QUEUE AT ALL: a 12-page lease is 121 seconds of prefill on the
+// box, and Cloudflare kills an origin request at ~100s. Long work cannot
+// be a request someone waits on, so it becomes a row a worker claims --
+// the same submit-and-poll shape OpenAI Batch and Vertex LRO use.
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { aiConfigured } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
 const { extractLicense } = require("./_ai-extract");
 
+// Actions the WORKER calls. These carry no companyId -- the worker serves
+// every company -- and are authenticated by a shared secret instead.
+const WORKER_ACTIONS = new Set(["claim", "complete"]);
+
 function admin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+// Constant-time compare. A length-dependent early return leaks the token
+// one character at a time to anyone willing to measure response times.
+function safeEqual(a, b) {
+  const A = Buffer.from(String(a || ""));
+  const B = Buffer.from(String(b || ""));
+  if (A.length !== B.length) return false;
+  let diff = 0;
+  for (let i = 0; i < A.length; i++) diff |= A[i] ^ B[i];
+  return diff === 0;
+}
+
+function workerAuthorised(req) {
+  const expected = process.env.AI_WORKER_TOKEN || "";
+  // Refuse rather than default-open: an unset secret must not mean
+  // "anyone may drain the queue".
+  if (!expected || expected.length < 24) return false;
+  return safeEqual(req.headers["x-worker-token"], expected);
 }
 
 module.exports = async function handler(req, res) {
@@ -29,11 +63,17 @@ module.exports = async function handler(req, res) {
 
   const action = String(req.query?.action || "");
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
-  const { companyId } = body;
-  if (!companyId) return res.status(400).json({ error: "companyId is required" });
 
   const sb = admin();
   if (!sb) return res.status(500).json({ error: "server is not configured for database access" });
+
+  const isWorker = WORKER_ACTIONS.has(action);
+  if (isWorker) {
+    if (!workerAuthorised(req)) return res.status(401).json({ error: "unauthorized" });
+  } else if (!body.companyId) {
+    return res.status(400).json({ error: "companyId is required" });
+  }
+  const { companyId } = body;
 
   try {
     if (action === "ingest") {
@@ -51,6 +91,57 @@ module.exports = async function handler(req, res) {
       });
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true, chunks: data || [] });
+    }
+
+    // ---- queue a job for the worker ------------------------------------
+    // Returns immediately with the row. Nothing runs the model here; that
+    // is the whole point.
+    if (action === "enqueue") {
+      const { kind, subjectTable = null, subjectId = null, input = {}, priority = 0 } = body;
+      if (!kind) return res.status(400).json({ error: "kind is required" });
+      const { data: job, error } = await sb.from("ai_jobs").insert([{
+        company_id: companyId,
+        kind,
+        status: "queued",
+        subject_table: subjectTable,
+        subject_id: subjectId === null ? null : String(subjectId),
+        input,
+        priority,
+        created_by: body.userEmail || null,
+      }]).select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(202).json({ ok: true, job });
+    }
+
+    // ---- worker claims one job -----------------------------------------
+    if (action === "claim") {
+      const { worker, kinds = null } = body;
+      if (!worker) return res.status(400).json({ error: "worker is required" });
+      const { data, error } = await sb.rpc("claim_ai_job", {
+        p_worker: String(worker),
+        p_kinds: Array.isArray(kinds) && kinds.length ? kinds : null,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      const job = Array.isArray(data) ? data[0] : data;
+      // 204 means "nothing to do" -- an ordinary, frequent answer, not an
+      // error the worker should log or back off hard on.
+      if (!job) return res.status(204).end();
+      return res.status(200).json({ ok: true, job });
+    }
+
+    // ---- worker reports a result ---------------------------------------
+    if (action === "complete") {
+      const { worker, jobId, output = null, model = null, durationMs = null,
+              confidence = null, error: jobError = null } = body;
+      if (!worker || !jobId) return res.status(400).json({ error: "worker and jobId are required" });
+      const { data, error } = await sb.rpc("complete_ai_job", {
+        p_id: jobId, p_worker: String(worker), p_output: output, p_model: model,
+        p_duration: durationMs, p_confidence: confidence, p_error: jobError,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      // false means the job was reclaimed by another worker while this one
+      // was still running, so this result is stale and must be discarded.
+      return res.status(200).json({ ok: true, recorded: data === true });
     }
 
     if (action === "extract-license") {

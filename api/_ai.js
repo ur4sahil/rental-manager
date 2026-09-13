@@ -8,15 +8,18 @@
 // Ollama's /api/generate, not a chat API: these are extraction and
 // drafting jobs with one instruction and one document, not conversations.
 //
-// SPEED IS THE DESIGN CONSTRAINT, not an afterthought. Prefill on this
-// box runs 20-30 tok/s and degrades with length, so a whole lease is
-// ~9.5 minutes before the first token. Every caller must send RETRIEVED
-// passages, not whole documents -- see doc_chunks. The timeout below is
-// generous because the work is queued and reviewed later, never awaited
-// by someone staring at a spinner.
+// SPEED IS THE DESIGN CONSTRAINT, not an afterthought. Measured on the
+// dedicated box (idle, 2026-09-13): prefill 57-79 tok/s, so a 12-page
+// lease is 7,146 prompt tokens and 121 seconds -- 30/30 correct, but
+// PAST CLOUDFLARE'S ~100s ORIGIN TIMEOUT. That is why long work is
+// queued through ai_jobs and claimed by a worker ON the box, rather
+// than awaited over HTTP. Streaming does not rescue it: prefill
+// finishes before the first token, so nothing flows during the slow
+// part. Short calls may still go straight through this function.
 const AI_BASE = process.env.AI_BASE_URL || "";
-const AI_MODEL = process.env.AI_MODEL || "gemma3:27b";
+const AI_MODEL = process.env.AI_MODEL || "gemma4:e2b";
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 10 * 60 * 1000);
+const AI_TOKEN = process.env.AI_TOKEN || "";
 
 /** Is the model reachable at all? Callers use this to fail loudly. */
 function aiConfigured() {
@@ -55,7 +58,11 @@ async function askJson({ system, prompt, schemaHint, model = AI_MODEL, temperatu
   try {
     const res = await fetch(`${AI_BASE.replace(/\/$/, "")}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // The gate in front of Ollama rejects anything without this.
+        ...(AI_TOKEN ? { Authorization: `Bearer ${AI_TOKEN}` } : {}),
+      },
       body: JSON.stringify({
         model, prompt: full, stream: false, format: "json",
         // temperature 0: extraction must be reproducible. The same
