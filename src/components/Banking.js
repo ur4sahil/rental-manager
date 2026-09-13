@@ -1621,14 +1621,35 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // Queued rather than awaited: even at a couple of seconds each, fifty
   // transactions is minutes, and no HTTP request survives that.
   async function bulkAskHousy() {
-    const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
-    if (!selected.length) return;
+    // Rules first, model second. A transaction the deterministic rules
+    // engine already answered is left alone: a rule is exact and was
+    // written by a person, where the model is a guess that measured 5/5 on
+    // five cases and will not stay there. Skipping them also means the
+    // model only ever sees the long tail, which is the only part worth
+    // spending two seconds of inference on.
+    const all = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    const selected = all.filter(t => !t.suggestion_status);
+    const skipped = all.length - selected.length;
+    if (!selected.length) {
+      showToast(skipped ? `All ${skipped} already have a suggestion from a rule.` : "Nothing selected.", "info");
+      return;
+    }
 
     // The model picks from THESE, and an account code it did not get from
     // this list is rejected server-side rather than written.
-    const chart = accounts.map(a => ({ code: a.code, name: a.name, type: a.type }));
-    const classNames = (classes || []).map(c => c.name).filter(Boolean);
-    if (!chart.length) { showToast("No chart of accounts to code against.", "error"); return; }
+    //
+    // Only income and expense accounts. Of this company's 75 accounts, 46
+    // are Assets -- bank and property accounts a transaction can never be
+    // coded to, because money moving between your own accounts is a
+    // TRANSFER and has its own flow. Sending all 75 measured 2/5; the
+    // model answered "6000 Bank Charges" for everything it was unsure of.
+    // Handing a 5B model 75 options where 22 are real is a signal problem,
+    // not a reasoning one.
+    const CODEABLE = new Set(["Revenue", "Expense", "Other Income"]);
+    const chart = accounts
+      .filter(a => CODEABLE.has(a.type))
+      .map(a => ({ code: a.code, name: a.name, type: a.type }));
+    if (!chart.length) { showToast("No income or expense accounts to code against.", "error"); return; }
 
     setBulkBusy({ done: 0, total: selected.length });
     let queued = 0, failed = 0;
@@ -1647,7 +1668,6 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           description: t.bank_description_clean || t.bank_description_raw || "",
           payee: t.payee_normalized || t.payee_raw || "",
           accounts: chart,
-          classes: classNames,
         },
       });
       r.ok ? queued++ : failed++;
@@ -1656,10 +1676,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     setBulkBusy(null);
     setSelectedTxns(new Set());
     logAudit("create", "housy", `Queued ${queued} transactions for coding`, null, userProfile?.email, "", companyId);
+    const tail = skipped ? ` ${skipped} already had a rule suggestion and were left alone.` : "";
     showToast(
       failed
-        ? `Queued ${queued}; ${failed} could not be queued.`
-        : `${HOUSY.name} is coding ${queued} transaction${queued === 1 ? "" : "s"}. Suggestions appear here as it finishes — nothing is posted until you confirm.`,
+        ? `Queued ${queued}; ${failed} could not be queued.${tail}`
+        : `${HOUSY.name} is coding ${queued} transaction${queued === 1 ? "" : "s"}. Suggestions appear here as it finishes — nothing is posted until you confirm.${tail}`,
       failed ? "error" : "success");
   }
 

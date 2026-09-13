@@ -82,24 +82,41 @@ async function applySuggestion(sb, job, output) {
   // guessing at what it meant.
   if (!account) return { written: false, reason: `no account with code "${code}"` };
 
+  // The property is matched DETERMINISTICALLY against the transaction text,
+  // not asked of the model.
+  //
+  // Asked, the model answered "Bank Charges" and "Rental Income" -- account
+  // names, not properties -- for every transaction, having ignored the
+  // property list entirely. A bank description either contains a property's
+  // name or it does not, and a string search answers that exactly. This is
+  // the same rule as not asking it to parse a date: if something is
+  // decidable, decide it.
   let classId = null;
-  const className = output.class_name == null ? "" : String(output.class_name).trim();
-  if (className) {
+  const haystack = `${job.input?.description || ""} ${job.input?.payee || ""}`.toLowerCase();
+  if (haystack.trim()) {
     const { data: classes } = await sb.from("acct_classes")
       .select("id, name").eq("company_id", job.company_id);
-    const hit = (classes || []).find(c =>
-      String(c.name).trim().toLowerCase() === className.toLowerCase());
-    // A class that does not match is dropped, not invented: the account is
-    // the part that matters, and a wrong property is worse than none.
+    // Longest name first, so "100 Oak Street, Unit A" wins over
+    // "100 Oak Street" when both appear.
+    const sorted = (classes || [])
+      .filter(c => c.name && String(c.name).trim().length >= 6)
+      .sort((a, b) => String(b.name).length - String(a.name).length);
+    const hit = sorted.find(c => haystack.includes(String(c.name).trim().toLowerCase()));
     classId = hit ? hit.id : null;
   }
 
   const { data: txn } = await sb.from("bank_feed_transaction")
-    .select("id, raw_payload_json, status").eq("id", job.subject_id)
+    .select("id, raw_payload_json, status, suggestion_status").eq("id", job.subject_id)
     .eq("company_id", job.company_id).maybeSingle();
   if (!txn) return { written: false, reason: "the transaction no longer exists" };
   // Do not overwrite a decision a human already made.
   if (txn.status !== "for_review") return { written: false, reason: `transaction is ${txn.status}` };
+  // Nor a rule's answer. A rule is exact and was written deliberately; by
+  // the time this returns, one may have been applied. Checked here as well
+  // as in the client because the client is not the only possible caller.
+  if (txn.suggestion_status && txn.suggestion_status !== "suggested_ai") {
+    return { written: false, reason: `a rule already suggested (${txn.suggestion_status})` };
+  }
 
   const payload = { ...(txn.raw_payload_json || {}) };
   payload._suggestion = {
