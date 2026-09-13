@@ -46,8 +46,13 @@ if (existsSync(built)) {
     !b.includes("__BUILD_ID__"),
     "build/sw.js still has __BUILD_ID__ — the stamp step did not run");
   const bm = b.match(/const CACHE_NAME = "([^"]+)"/);
+  // Was too loose: it passed on the literal placeholder, because
+  // "housify-__BUILD_ID__" is longer than "housify-" and is not
+  // "housify-v4". A test that accepts the exact failure it exists to
+  // catch is worse than no test, because it reads as coverage.
   assert("the built cache name is specific to this build",
-    !!bm && bm[1] !== "housify-v4" && bm[1].length > "housify-".length);
+    !!bm && !bm[1].includes("__") && /^housify-[0-9a-f]{7,}-/.test(bm[1]),
+    bm ? `got ${bm[1]} — expected housify-<sha>-<stamp>` : "no CACHE_NAME found");
   console.log(`      (built cache name: ${bm && bm[1]})`);
 } else {
   console.log("SKIP  no build/ present — run npm run build to check stamping");

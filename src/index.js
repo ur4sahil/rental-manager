@@ -13,9 +13,39 @@ import reportWebVitals from './reportWebVitals';
 // user opts in.
 if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      if (!reg) return;
+
+      // Ask whether a new version exists. A browser only checks for a new
+      // service worker on navigation or roughly daily, and an installed PWA
+      // may go days without either -- so a deploy can sit unseen while the
+      // app keeps serving the bundle it started with. That is exactly what
+      // happened with the Housy AI rename: it was live on the server and
+      // still read "Housy" on the phone.
+      const poll = () => reg.update().catch(() => {});
+      setInterval(poll, 60 * 60 * 1000);
+      // And whenever the app comes back to the foreground, which is the
+      // moment someone is about to look at it.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") poll();
+      });
+    }).catch(() => {
       // silent — dev Safari and private windows can block SW
     });
+  });
+
+  // sw.js calls skipWaiting() and clients.claim(), so a new worker takes
+  // control of this page the moment it installs. But taking control does
+  // NOT reload the page: the old JavaScript keeps running until the app is
+  // fully closed. Reload once when control changes, so a deploy actually
+  // reaches the person looking at it.
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // On a FIRST install there was no previous controller and nothing is
+    // stale; reloading then would refresh every new visitor for no reason.
+    if (reloading || !navigator.serviceWorker.controller) return;
+    reloading = true;
+    window.location.reload();
   });
 }
 
