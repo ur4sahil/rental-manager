@@ -179,7 +179,11 @@ function testFileStructure() {
   // county is stored without a " County" suffix. A bug fix that needs
   // thirty lines of lookup and a comment explaining why ambiguity is
   // refused rather than guessed is not the creep this bound is for.
-  assert(totalLines <= 43000, `Total src lines <= 43000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 43300 on 2026-09-13: two wizard steps (rental licence, lead paint
+  // certificate) plus requiredLicenses(). The licence feature existed and
+  // NOTHING asked for it -- all 41 rental properties had zero licences --
+  // so the lines are the prompt that was missing, not decoration.
+  assert(totalLines <= 43300, `Total src lines <= 43300 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

@@ -260,12 +260,46 @@ export const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",
 // `review` is intentionally excluded — it's a summary screen, never a
 // skippable task. Callers that need it (e.g. the wizard's own step
 // array) append it locally.
-export function getWizardApplicableSteps({ propertyStatus, userRole } = {}) {
+// Which licences a property is required to hold.
+//
+// Lead paint is a PRE-1978 rule, not post: the federal ban on lead-based
+// paint took effect in 1978, so disclosure and Maryland's MDE
+// registration apply to housing built BEFORE then. Gating it the other
+// way round would flag exactly the wrong properties and miss every one
+// that actually needs a certificate.
+//
+// An unknown year is its own answer. Treating NULL as pre-1978 flags the
+// whole portfolio; treating it as post-1978 flags none. It returns
+// "unknown" so the compliance report can ask for the year rather than
+// quietly guess.
+export const LEAD_PAINT_CUTOFF_YEAR = 1978;
+
+export function requiredLicenses({ yearBuilt } = {}) {
+  const out = [{ type: "rental_license", required: true }];
+  const y = Number(yearBuilt);
+  if (!yearBuilt || Number.isNaN(y)) {
+    out.push({ type: "lead_paint", required: "unknown" });
+  } else if (y < LEAD_PAINT_CUTOFF_YEAR) {
+    out.push({ type: "lead_paint", required: true });
+  }
+  return out;
+}
+
+export function getWizardApplicableSteps({ propertyStatus, userRole, yearBuilt } = {}) {
   const s = ["property_details"];
   if (propertyStatus === "occupied") s.push("tenant_lease");
   s.push("utilities", "hoa");
   if (userRole === "admin" || userRole === "owner") s.push("loan");
-  s.push("documents", "insurance", "property_tax");
+  // Every rental property needs a licence, so the wizard asks for one.
+  // It had never asked: "rental_license" existed only as a TYPE in a
+  // dropdown behind Properties -> a property -> Licenses tab -> add, and
+  // the result was that all 41 rental properties had zero licences
+  // recorded. A feature nothing prompts for does not get used.
+  s.push("documents", "insurance", "property_tax", "rental_license");
+  // Lead paint certificate: only for pre-1978 housing, and also when the
+  // year is unknown -- because the wizard is exactly where that gets
+  // filled in, and skipping the question is how the year stays unknown.
+  if (!yearBuilt || Number(yearBuilt) < LEAD_PAINT_CUTOFF_YEAR) s.push("lead_paint");
   if (propertyStatus === "occupied") s.push("recurring_rent");
   return s;
 }
@@ -279,6 +313,8 @@ export const WIZARD_STEP_LABELS = {
   documents: "Documents",
   insurance: "Insurance",
   property_tax: "Property Tax",
+  rental_license: "Rental License",
+  lead_paint: "Lead Paint Certificate",
   recurring_rent: "Recurring Rent",
 };
 
@@ -291,6 +327,8 @@ export const WIZARD_STEP_ICONS = {
   documents: "description",
   insurance: "verified_user",
   property_tax: "receipt_long",
+  rental_license: "badge",
+  lead_paint: "science",
   recurring_rent: "event_repeat",
 };
 

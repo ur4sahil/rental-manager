@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField} from "../ui";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -193,6 +193,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
   const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
+  // One licence per property, so this is a single record rather than a
+  // collection. `enabled` mirrors the other optional steps: a property
+  // that genuinely has no licence yet can be skipped, and the Compliance
+  // report reports it as missing rather than the wizard blocking setup.
+  // Lead paint certificate: a second licence row of a different TYPE on
+  // the same property, required only for pre-1978 housing.
+  const [leadPaint, setLeadPaint] = useState({
+    enabled: false, license_number: "", jurisdiction: "",
+    issue_date: "", expiry_date: "", fee_amount: "", status: "active",
+  });
+  const [rentalLicense, setRentalLicense] = useState({
+    enabled: false, license_type: "rental_license", license_number: "",
+    jurisdiction: "", issue_date: "", expiry_date: "", fee_amount: "", status: "active",
+  });
   const [taxes, setTaxes] = useState({
     enabled: false,
     assessed_value: "",
@@ -226,7 +240,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // Review page + Tasks & Approvals stay in lock-step on what counts
   // as an applicable step. `review` is wizard-only and appended here.
   const steps = [
-    ...getWizardApplicableSteps({ propertyStatus: propForm.status, userRole }),
+    ...getWizardApplicableSteps({ propertyStatus: propForm.status, userRole, yearBuilt: propForm.year_built }),
     "review",
   ];
   const totalSteps = steps.length;
@@ -489,6 +503,19 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     return true;
   }
 
+  async function saveLeadPaint() {
+    if (!leadPaint.enabled) return true;
+    if (!leadPaint.expiry_date) throw new Error("Expiry date is required — it is what the renewal reminders count down to");
+    return true;
+  }
+
+  async function saveRentalLicense() {
+    if (!rentalLicense.enabled) return true;
+    if (!rentalLicense.expiry_date) throw new Error("Expiry date is required — it is what the renewal reminders count down to");
+    if (!rentalLicense.jurisdiction.trim()) throw new Error("Jurisdiction is required (the county or city that issued it)");
+    return true;
+  }
+
   async function saveTaxes() {
     if (!taxes.enabled) return true;
     if (!taxes.annual_tax_amount || Number(taxes.annual_tax_amount) <= 0) throw new Error("Annual tax amount is required");
@@ -539,6 +566,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       case "loan": return await saveLoan();
       case "insurance": return await saveInsurance();
       case "property_tax": return await saveTaxes();
+      case "rental_license": return await saveRentalLicense();
+      case "lead_paint": return await saveLeadPaint();
       case "recurring_rent": return await saveRecurringRent();
       case "documents": return true; // docs are uploaded inline
       case "review": return true;
@@ -674,6 +703,30 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           ...(creds || {}),
         };
       }
+      if (leadPaint.enabled) {
+        pre.lead_paint = {
+          enabled: true,
+          license_type: "lead_paint",
+          license_number: (leadPaint.license_number || "").trim() || null,
+          jurisdiction: (leadPaint.jurisdiction || "").trim() || null,
+          issue_date: leadPaint.issue_date || null,
+          expiry_date: leadPaint.expiry_date,
+          fee_amount: leadPaint.fee_amount === "" ? null : safeNum(leadPaint.fee_amount),
+          status: leadPaint.status || "active",
+        };
+      }
+      if (rentalLicense.enabled) {
+        pre.rental_license = {
+          enabled: true,
+          license_type: rentalLicense.license_type,
+          license_number: (rentalLicense.license_number || "").trim() || null,
+          jurisdiction: (rentalLicense.jurisdiction || "").trim() || null,
+          issue_date: rentalLicense.issue_date || null,
+          expiry_date: rentalLicense.expiry_date,
+          fee_amount: rentalLicense.fee_amount === "" ? null : safeNum(rentalLicense.fee_amount),
+          status: rentalLicense.status || "active",
+        };
+      }
       if (insurance.enabled) {
         const creds = await encryptRow(!!(insurance.username && insurance.password), insurance.username, insurance.password);
         pre.insurance = {
@@ -725,6 +778,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         county: propForm.county || '',
         type: propForm.type,
         status: propForm.status,
+        // Drives the pre-1978 lead paint requirement. Empty string would
+        // fail the integer column, so an unset year is null -- and null
+        // means "unknown", which the compliance report reports as such
+        // rather than assuming either side of the cutoff.
+        year_built: propForm.year_built ? Number(propForm.year_built) : null,
         notes: propForm.notes || '',
       },
       tenant: (propForm.status === 'occupied' && tenantForm.tenant.trim()) ? {
@@ -1407,7 +1465,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!loan.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLoan({ ...loan, enabled: !loan.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have a loan?</span>
               </label>
@@ -1662,6 +1720,126 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           </div>
         );
 
+      case "lead_paint":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-warn-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-warn-700 text-2xl">science</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Lead Paint Certificate</h3>
+                <p className="text-sm text-neutral-400">Required for housing built before {LEAD_PAINT_CUTOFF_YEAR}.</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
+              <FormField label="Year built">
+                <Input type="text" inputMode="numeric" value={propForm.year_built || ""}
+                  onChange={e => setPropForm({ ...propForm, year_built: e.target.value.replace(/[^0-9]/g, "").slice(0, 4) })}
+                  placeholder="e.g. 1972" />
+              </FormField>
+              {/* The rule is stated rather than left implicit, because it
+                  is the reason this step is on screen at all. */}
+              <p className="text-xs text-neutral-500">
+                {!propForm.year_built
+                  ? "Set the year built and this page will tell you whether a certificate is required."
+                  : Number(propForm.year_built) < LEAD_PAINT_CUTOFF_YEAR
+                    ? `Built ${propForm.year_built} — before ${LEAD_PAINT_CUTOFF_YEAR}, so a lead paint certificate is required.`
+                    : `Built ${propForm.year_built} — from ${LEAD_PAINT_CUTOFF_YEAR} onward, so no lead paint certificate is required.`}
+              </p>
+              {(!propForm.year_built || Number(propForm.year_built) < LEAD_PAINT_CUTOFF_YEAR) && (<>
+                <Checkbox
+                  label="This property has a lead paint certificate"
+                  checked={leadPaint.enabled}
+                  onChange={e => setLeadPaint(v => ({ ...v, enabled: e.target.checked }))}
+                />
+                {leadPaint.enabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField label="Certificate number">
+                    <Input value={leadPaint.license_number}
+                      onChange={e => setLeadPaint(v => ({ ...v, license_number: e.target.value }))} />
+                  </FormField>
+                  <FormField label="Issuing body">
+                    <Input value={leadPaint.jurisdiction}
+                      onChange={e => setLeadPaint(v => ({ ...v, jurisdiction: e.target.value }))}
+                      placeholder="e.g. Maryland Department of the Environment" />
+                  </FormField>
+                  <FormField label="Issued">
+                    <Input type="date" value={leadPaint.issue_date}
+                      onChange={e => setLeadPaint(v => ({ ...v, issue_date: e.target.value }))} />
+                  </FormField>
+                  <FormField label="Expires *">
+                    <Input type="date" value={leadPaint.expiry_date}
+                      onChange={e => setLeadPaint(v => ({ ...v, expiry_date: e.target.value }))} />
+                  </FormField>
+                </div>
+                )}
+              </>)}
+            </div>
+          </div>
+        );
+
+      case "rental_license":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-info-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-info-600 text-2xl">badge</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-display font-bold text-neutral-800">Rental License</h3>
+                <p className="text-sm text-neutral-400">Every rental property needs one. Skip it and the property shows as missing a license.</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
+              <Checkbox
+                label="This property has a rental license"
+                checked={rentalLicense.enabled}
+                onChange={e => setRentalLicense(v => ({ ...v, enabled: e.target.checked }))}
+              />
+              {rentalLicense.enabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <FormField label="License type">
+                  <Select value={rentalLicense.license_type}
+                    onChange={e => setRentalLicense(v => ({ ...v, license_type: e.target.value }))}>
+                    {LICENSE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </FormField>
+                <FormField label="License number">
+                  <Input value={rentalLicense.license_number}
+                    onChange={e => setRentalLicense(v => ({ ...v, license_number: e.target.value }))}
+                    placeholder="As printed on the license" />
+                </FormField>
+                <FormField label="Jurisdiction *">
+                  <Input value={rentalLicense.jurisdiction}
+                    onChange={e => setRentalLicense(v => ({ ...v, jurisdiction: e.target.value }))}
+                    placeholder="The county or city that issued it" />
+                </FormField>
+                <FormField label="Fee">
+                  <Input type="text" inputMode="decimal" value={rentalLicense.fee_amount}
+                    onChange={e => setRentalLicense(v => ({ ...v, fee_amount: e.target.value.replace(/[^0-9.]/g, "") }))}
+                    placeholder="0.00" />
+                </FormField>
+                <FormField label="Issued">
+                  <Input type="date" value={rentalLicense.issue_date}
+                    onChange={e => setRentalLicense(v => ({ ...v, issue_date: e.target.value }))} />
+                </FormField>
+                <FormField label="Expires *">
+                  <Input type="date" value={rentalLicense.expiry_date}
+                    onChange={e => setRentalLicense(v => ({ ...v, expiry_date: e.target.value }))} />
+                </FormField>
+              </div>
+              )}
+              {!rentalLicense.enabled && (
+                <p className="text-xs text-neutral-400">
+                  You can add it later from the property's Licenses tab. Until then it appears
+                  on the Dashboard and the License Compliance report as missing.
+                </p>
+              )}
+            </div>
+          </div>
+        );
+
       case "insurance":
         return (
           <div>
@@ -1677,7 +1855,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!insurance.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setInsurance({ ...insurance, enabled: !insurance.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${insurance.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have insurance?</span>
               </label>
@@ -1753,7 +1931,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!taxes.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTaxes({ ...taxes, enabled: !taxes.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${taxes.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setTaxes({ ...taxes, enabled: !taxes.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${taxes.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${taxes.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Track property tax for this property?</span>
               </label>

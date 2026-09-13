@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -2027,7 +2027,41 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
         fee: safeNum(lic.fee_amount),
         notes: lic.notes || "",
       };
-    }).sort((a, b) => a.daysUntil - b.daysUntil);
+    })
+    // A property with NO licence is the compliance failure that mattered
+    // most and the one this report could not show: it mapped over the
+    // licences that exist, so a property with none was invisible. Every
+    // rental property needs one, so absence is a row, sorted to the top
+    // ahead of anything merely expiring.
+    // A property MISSING a licence is the compliance failure that mattered
+    // most and the one this report could not show: it mapped over the
+    // licences that exist, so a property with none was invisible.
+    //
+    // Required per TYPE, not per property: every rental needs a rental
+    // licence, and pre-1978 housing also needs a lead paint certificate.
+    // An unknown build year is reported as unknown rather than assumed --
+    // guessing pre-1978 flags the whole portfolio, guessing post-1978
+    // flags none.
+    .concat(
+      properties
+        .filter(p => !p.archived_at)
+        .flatMap(p => requiredLicenses({ yearBuilt: p.year_built })
+          .filter(req => !licenses.some(l => l.property_id === p.id && !l.archived_at && l.license_type === req.type))
+          .map(req => ({
+            property: p.address,
+            type: LIC_TYPE_LABELS[req.type] || req.type,
+            number: "", jurisdiction: "", issueDate: "", expiryDate: "",
+            // Sorts before every real licence, including expired ones;
+            // an unknown requirement sits just behind a definite one.
+            daysUntil: req.required === true ? -99999 : -99998,
+            status: req.required === true ? "missing" : "year unknown",
+            fee: 0,
+            notes: req.required === true
+              ? "No license on file"
+              : "Build year unknown — set it to know whether a lead paint certificate is required",
+          })))
+    )
+    .sort((a, b) => a.daysUntil - b.daysUntil);
   }
 
   function getWorkOrderSummary(startDate, endDate) {
@@ -2954,7 +2988,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
       {/* Search */}
       <div className="relative mb-5">
-        <span className="material-icons-outlined absolute left-3 top-1/2 -tranneutral-y-1/2 text-neutral-300">search</span>
+        <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-neutral-300">search</span>
         <Input type="text" placeholder="Find report by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-400 transition-all" />
       </div>
@@ -3834,11 +3868,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
               render: r => (<>{r.jurisdiction || "—"}</>) },
             { key: "expiry", label: "Expiry", className: "text-xs text-neutral-500",
               render: r => (<>{r.expiryDate}</>) },
-            { key: "days", label: "Days", align: "right", className: r => (`tnum ${r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`),
-              render: r => (<>{r.daysUntil < 0 ? `${r.daysUntil}` : r.daysUntil}</>) },
+            { key: "days", label: "Days", align: "right", className: r => (`tnum ${r.daysUntil <= -99998 ? "text-neutral-400" : r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`),
+              // The sentinels that sort absent licences to the top are not
+              // days and must not be printed -- a row read "-99999".
+              render: r => (<>{r.daysUntil <= -99998 ? "—" : r.daysUntil}</>) },
             { key: "status", label: "Status", align: "center",
               render: r => (<>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "expired" ? "bg-danger-100 text-danger-700" : r.status === "urgent" ? "bg-danger-50 text-danger-600" : r.status === "soon" ? "bg-warn-50 text-warn-700" : r.status === "pending_renewal" ? "bg-brand-50 text-brand-700" : "bg-success-50 text-success-700"}`}>{r.status.replace("_", " ")}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "missing" ? "bg-danger-100 text-danger-800 font-semibold" : r.status === "year unknown" ? "bg-warn-100 text-warn-800" : r.status === "expired" ? "bg-danger-100 text-danger-700" : r.status === "urgent" ? "bg-danger-50 text-danger-600" : r.status === "soon" ? "bg-warn-50 text-warn-700" : r.status === "pending_renewal" ? "bg-brand-50 text-brand-700" : "bg-success-50 text-success-700"}`}>{r.status.replace("_", " ")}</span>
               </>) },
             { key: "fee", label: "Fee", align: "right", className: "tnum",
               render: r => (<>{r.fee ? acctFmt(r.fee) : "—"}</>) },

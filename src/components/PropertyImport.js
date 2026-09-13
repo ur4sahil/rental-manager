@@ -364,6 +364,22 @@ export default function PropertyImport({ companyId, companyName, properties = []
       await put("property_insurance", { provider: recs.insurance.provider },
         { ...rest, property_id: propertyId == null ? null : String(propertyId) });
     }
+    // Two licence TYPES can coexist on one property, so each is matched on
+    // (property_id, license_type) rather than property alone.
+    for (const key of ["rental_license", "lead_paint"]) {
+      if (!recs[key]) continue;
+      const { enabled: _le, ...lrest } = recs[key];
+      if (propertyId == null) { failures.push(`property_licenses: no property id, ${key} not saved`); continue; }
+      const lpid = Number(propertyId);
+      const { data: lfound } = await supabase.from("property_licenses").select("id")
+        .eq("company_id", companyId).eq("property_id", lpid)
+        .eq("license_type", lrest.license_type).is("archived_at", null).limit(1);
+      const lhit = (lfound || [])[0];
+      const { error: lerr } = lhit
+        ? await supabase.from("property_licenses").update(lrest).eq("id", lhit.id).eq("company_id", companyId)
+        : await supabase.from("property_licenses").insert([{ ...lrest, company_id: companyId, property_id: lpid }]);
+      if (lerr) failures.push(`property_licenses (${key}): ${lerr.message}`);
+    }
     if (recs.taxes) {
       // annual_tax_amount is NOT NULL. Without one, the row can only
       // update a tax record that already exists -- so look first, and
