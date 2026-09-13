@@ -33,7 +33,13 @@ const { extractLicense } = require("./_ai-extract");
 const WORKER_ACTIONS = new Set(["claim", "complete"]);
 
 function admin() {
-  const url = process.env.SUPABASE_URL;
+  // BOTH names, because the two environments are not configured alike:
+  // production sets only REACT_APP_SUPABASE_URL (as 19 other routes here
+  // read), staging sets both. Reading only SUPABASE_URL made every route
+  // in this file return 500 in production while working perfectly on
+  // staging -- a difference no test catches, because the tests run
+  // against staging's environment.
+  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
