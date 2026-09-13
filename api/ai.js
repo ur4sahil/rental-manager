@@ -65,6 +65,13 @@ function workerAuthorised(req) {
 }
 
 
+// suggestion_status defaults to the STRING "none", not NULL. Every check
+// of "does this already have a suggestion?" has to go through here, or a
+// truthiness test quietly answers yes for everything.
+function hasSuggestion(status) {
+  return Boolean(status) && status !== "none";
+}
+
 // Turn a categorise_txn result into a suggestion on the bank transaction.
 //
 // The model returns an account CODE, never an id. Codes are short, stable
@@ -114,7 +121,11 @@ async function applySuggestion(sb, job, output) {
   // Nor a rule's answer. A rule is exact and was written deliberately; by
   // the time this returns, one may have been applied. Checked here as well
   // as in the client because the client is not the only possible caller.
-  if (txn.suggestion_status && txn.suggestion_status !== "suggested_ai") {
+  //
+  // "none" is a STRING in this column, not NULL -- that is the default. A
+  // plain truthiness check treats it as "already suggested" and silently
+  // blocks every write, which is exactly what it did.
+  if (hasSuggestion(txn.suggestion_status) && txn.suggestion_status !== "suggested_ai") {
     return { written: false, reason: `a rule already suggested (${txn.suggestion_status})` };
   }
 

@@ -1628,7 +1628,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // model only ever sees the long tail, which is the only part worth
     // spending two seconds of inference on.
     const all = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
-    const selected = all.filter(t => !t.suggestion_status);
+    // "none" is a STRING here, not NULL -- it is the column default. A
+    // plain !t.suggestion_status treats every untouched transaction as
+    // already suggested and skips the lot.
+    const selected = all.filter(t => !t.suggestion_status || t.suggestion_status === "none");
     const skipped = all.length - selected.length;
     if (!selected.length) {
       showToast(skipped ? `All ${skipped} already have a suggestion from a rule.` : "Nothing selected.", "info");

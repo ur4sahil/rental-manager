@@ -75,7 +75,7 @@ for (const t of seeded) {
         date: "2026-09-01", direction: t.direction, amount: t.amount,
         description: t.desc, payee: t.payee,
         accounts: accounts.map(a => ({ code: a.code, name: a.name, type: a.type })),
-        classes: classes.map(c => c.name).filter(Boolean),
+        
       },
     }),
   });
