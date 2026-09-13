@@ -1888,7 +1888,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="text-4xl mb-3">📄</div>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Upload a PDF Template</h3>
   <p className="text-sm text-neutral-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
-  <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 cursor-pointer font-semibold">
+  <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-brand-700 cursor-pointer font-semibold">
   <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
   <FileInput accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
   </label>
@@ -2234,7 +2234,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-brand-200 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-brand-200 p-4">
   <div className="flex items-center gap-2 mb-1">
   <span className="material-icons-outlined text-brand-600">draw</span>
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Send for Signature</h3>

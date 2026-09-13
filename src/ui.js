@@ -48,12 +48,18 @@ const BTN_VARIANTS = {
   "warning-fill": "bg-warn-600 text-white hover:bg-warn-700",
   slate:     "text-neutral-600 bg-neutral-100 hover:bg-neutral-200",
 };
+// Size changes the padding and the type, NOT the shape. This used to
+// carry three different radii across four sizes -- rounded-lg, xl and 2xl
+// -- so a small button and a large one were differently rounded and two
+// buttons side by side in different sizes looked like different
+// components. Controls are rounded-lg; surfaces are rounded-xl.
 const BTN_SIZES = {
-  xs: "text-xs px-2 py-1 rounded-lg gap-1",
-  sm: "text-xs px-3 py-1.5 rounded-lg gap-1.5",
-  md: "text-sm px-3.5 py-1.5 rounded-xl gap-1.5",
-  lg: "text-sm px-5 py-2 rounded-2xl gap-2",
+  xs: "text-xs px-2 py-1 gap-1",
+  sm: "text-xs px-3 py-1.5 gap-1.5",
+  md: "text-sm px-3.5 py-1.5 gap-1.5",
+  lg: "text-sm px-5 py-2 gap-2",
 };
+const BTN_SHAPE = "rounded-lg";
 
 export function Btn({ variant = "primary", size = "md", className = "", icon, type, children, ...props }) {
   // Default to type="button". HTML's <button> defaults to type="submit",
@@ -62,7 +68,7 @@ export function Btn({ variant = "primary", size = "md", className = "", icon, ty
   // instead of the one the user intended. Pin type so our buttons stay
   // inert to form semantics unless a caller explicitly opts in.
   return (
-    <button type={type || "button"} className={`${BTN_BASE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
+    <button type={type || "button"} className={`${BTN_BASE} ${BTN_SHAPE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
       {icon && <span className="material-icons-outlined text-sm">{icon}</span>}
       {children}
     </button>
@@ -72,7 +78,7 @@ export function Btn({ variant = "primary", size = "md", className = "", icon, ty
 // ---- ICON BUTTON ----
 export function IconBtn({ icon, className = "", title, ...props }) {
   return (
-    <button className={`w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors ${FOCUS_RING} ${className}`} title={title} {...props}>
+    <button className={`w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors ${FOCUS_RING} ${className}`} title={title} {...props}>
       <span className="material-icons-outlined text-lg">{icon}</span>
     </button>
   );
@@ -127,7 +133,25 @@ export const SURFACE = {
   overlay: "bg-white rounded-xl border border-neutral-200 shadow-lg",
 };
 
-export function Card({ className = "", padding = "p-5", variant = "card", children, ...props }) {
+// Card padding, named.
+//
+// The shared card recipe carried p-4 in 87 places, p-6 in 23, p-5 in 18,
+// p-8 in 9, p-3 in 5 and p-10 once -- six densities for the same object,
+// and Card's own default was p-5, the THIRD most common. Naming three
+// levels gives new code something to reach for other than a number, and
+// makes the default the one the app actually uses.
+//
+// A raw class still works ({padding="p-8"}) for the handful of places
+// that genuinely want something else, so this constrains without
+// blocking.
+export const PAD = {
+  tight: "p-3",   // dense lists, nested panels
+  card:  "p-4",   // the default
+  roomy: "p-6",   // modals, wide single-column panels
+};
+
+export function Card({ className = "", padding = "card", variant = "card", children, ...props }) {
+  padding = PAD[padding] || padding;
   return (
     <div className={`${SURFACE[variant] || SURFACE.card} ${padding} ${className}`} {...props}>
       {children}
@@ -138,13 +162,16 @@ export function Card({ className = "", padding = "p-5", variant = "card", childr
 // ---- INPUT / SELECT / TEXTAREA ----
 // Size tokens — keep "md" as the default so existing screens don't shift.
 // Use size="sm" for dense admin/settings forms where vertical space matters.
+// Same rule as buttons: size is padding and type, not shape. An input
+// next to a button must share its corner or the pair looks mismatched.
 const INPUT_SIZES = {
-  sm: "px-2.5 py-1 text-xs rounded-lg",
-  md: "px-3 py-1.5 text-sm rounded-xl",
+  sm: "px-2.5 py-1 text-xs",
+  md: "px-3 py-1.5 text-sm",
 };
+const INPUT_SHAPE = "rounded-lg";
 const INPUT_COMMON = "border border-brand-100 focus:border-brand-300 focus:outline-none transition-colors";
 function inputBase(size, hasExplicitWidth) {
-  return `${INPUT_COMMON} ${INPUT_SIZES[size] || INPUT_SIZES.md}${hasExplicitWidth ? "" : " w-full"}`;
+  return `${INPUT_COMMON} ${INPUT_SHAPE} ${INPUT_SIZES[size] || INPUT_SIZES.md}${hasExplicitWidth ? "" : " w-full"}`;
 }
 
 export function Input({ className = "", size = "md", ...props }) {
@@ -660,7 +687,7 @@ export function SearchTrigger({ onOpen, hint = "K", placeholder = "Search or jum
       type="button"
       onClick={onOpen}
       aria-label={`${placeholder} (keyboard shortcut ${hint})`}
-      className={"group flex items-center gap-2 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left " +
+      className={"group flex items-center gap-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left " +
         "hover:border-brand-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 " +
         "focus-visible:ring-offset-1 transition-colors " + className}
     >

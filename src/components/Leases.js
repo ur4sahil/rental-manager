@@ -440,7 +440,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   })()}
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <h3 className="font-display font-semibold text-neutral-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Apply Template</label>

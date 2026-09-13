@@ -1247,7 +1247,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   <div className="space-y-2">
-  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-2xl px-4 py-3 text-left">
+  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
   <div className="text-sm font-medium text-brand-800">✍️ Generate & E-Sign Lease</div>
   <div className="text-xs text-brand-400">Opens PDF with signature canvas</div>
@@ -1258,7 +1258,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   { label: "\u{1F504} Renew Lease", desc: "Extend lease term", modal: "renew" },
   { label: "\u{1F4CB} Generate Move-Out Notice", desc: "30/60 day notice", modal: "notice" },
   ].map(item => (
-  <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-2xl px-4 py-3 text-left">
+  <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
   <div className="text-sm font-medium text-neutral-800">{item.label}</div>
   <div className="text-xs text-neutral-400">{item.desc}</div>
@@ -1989,8 +1989,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       onChange={e => { const [key, dir] = e.target.value.split(":"); setTenantSort({ key, dir }); }}
     >
       {Object.entries(SORTABLE).flatMap(([key, label]) => [
-        <option key={key + ":asc"} value={key + ":asc"}>{label} \u2191</option>,
-        <option key={key + ":desc"} value={key + ":desc"}>{label} \u2193</option>,
+        <option key={key + ":asc"} value={key + ":asc"}>{label} ↑</option>,
+        <option key={key + ":desc"} value={key + ":desc"}>{label} ↓</option>,
       ])}
     </Select>
   </label>

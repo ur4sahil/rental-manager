@@ -5337,7 +5337,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   )}
   {/* QuickBooks-style metric cards */}
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Revenue</span>
         <span className="w-10 h-10 rounded-lg bg-success-50 flex items-center justify-center">
@@ -5347,7 +5347,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalRevenue)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Expenses</span>
         <span className="w-10 h-10 rounded-lg bg-danger-50 flex items-center justify-center">
@@ -5357,7 +5357,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className="text-2xl font-bold text-neutral-900 tnum">{acctFmt(plData.totalExpenses)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Net Income</span>
         <span className="w-10 h-10 rounded-lg bg-info-50 flex items-center justify-center">
@@ -5367,7 +5367,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       <p className={`text-2xl font-bold tnum ${plData.netIncome >= 0 ? "text-neutral-900" : "text-danger-600"}`}>{acctFmt(plData.netIncome)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Assets</span>
         <span className="w-10 h-10 rounded-lg bg-accent-50 flex items-center justify-center">
@@ -5806,7 +5806,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {/* Period Lock Tab */}
   {reconTab === "period_lock" && (
   <div className="space-y-4">
-    <div className="bg-white rounded-xl border border-neutral-200 p-5">
+    <div className="bg-white rounded-xl border border-neutral-200 p-4">
       <h3 className="font-semibold text-neutral-800 mb-1">Accounting Period Lock</h3>
       <p className="text-sm text-neutral-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
       {periodLock ? (
@@ -5894,7 +5894,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
     <Btn variant="danger" size="sm" onClick={() => reopenReconciliation(viewRecon)}>Re-open</Btn>
   )}
   </div>
-  <div className="bg-white rounded-xl border border-neutral-200 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : viewRecon.status === "reopened" ? "bg-neutral-100 text-neutral-600" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>

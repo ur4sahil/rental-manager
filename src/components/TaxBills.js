@@ -304,7 +304,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
       {/* Mark Paid modal */}
       {markPaidBill && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setMarkPaidBill(null)}>
-          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Mark bill paid</h3>
             <p className="text-xs text-neutral-500 mb-4">{markPaidBill.bill.installment_label} · {propertyLabel(markPaidBill.bill.property)}</p>
             <div className="space-y-3">
@@ -334,7 +334,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
       {/* Edit modal */}
       {editBill && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setEditBill(null)}>
-          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-neutral-800 mb-1">Edit bill</h3>
             <p className="text-xs text-neutral-500 mb-4">{propertyLabel(editBill.bill.property)} · {editBill.bill.tax_year}</p>
             <div className="space-y-3">

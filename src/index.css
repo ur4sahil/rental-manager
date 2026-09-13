@@ -48,6 +48,29 @@
   --color-danger: #dc2626;
   --color-warning: #d97706;
 
+  /* ---- SHAPE ----
+     Radii were never declared, so the app ran on Tailwind's stock values
+     and picked between SIX of them per element -- 464 rounded-xl, 203
+     rounded-lg, 168 rounded-full, 78 rounded-2xl, 39 rounded-3xl, 4
+     rounded-md. Declaring them makes the values ours and changeable in
+     one place; the components below decide which step each KIND of thing
+     gets, so new code inherits a choice instead of making one.
+
+     Tuned toward QuickBooks, which is squarer than this app was: a 24px
+     card corner reads as a consumer app. */
+  --radius-sm: 0.25rem;   /* 4px  -- inline chips, skeleton bars */
+  --radius-md: 0.375rem;  /* 6px  -- rarely; kept so the step exists */
+  --radius-lg: 0.5rem;    /* 8px  -- controls: buttons, inputs, selects */
+  --radius-xl: 0.75rem;   /* 12px -- surfaces: cards, panels, dialogs */
+  --radius-2xl: 1rem;     /* 16px -- the largest surface; use sparingly */
+  --radius-3xl: 1.5rem;   /* 24px -- marketing only, not app chrome */
+
+  /* ---- ELEVATION ----
+     One shadow for a resting surface, one for something floating above
+     the page. Anything else was a per-element guess. */
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  --shadow-pop:  0 4px 12px -2px rgb(0 0 0 / 0.10), 0 2px 6px -2px rgb(0 0 0 / 0.06);
+
   /* ---- TYPE SCALE ----
      The app had no scale: Tailwind's defaults plus 115 arbitrary one-off
      sizes -- text-[10px] in 79 places, text-[11px] in 31, text-[9px] in 4
@@ -249,7 +272,9 @@
   --color-caution-800: #854d0e;
 
   /* Box shadows */
-  --shadow-card: 0 4px 20px -2px rgba(0,0,0,0.05);
+  /* (--shadow-card now lives with the elevation scale above; it was
+     declared twice, and the LATER one won, so editing the documented
+     scale would have had no effect.) */
 
   /* LAYOUT TOKENS
      Widths are design decisions, so they belong here rather than as a

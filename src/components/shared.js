@@ -65,7 +65,7 @@ export function Badge({ status, label }) {
 
 export function StatCard({ label, value, sub, color = "text-neutral-800", onClick }) {
   return (
-  <div onClick={onClick} className={"bg-white rounded-xl border border-neutral-200 shadow-card p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
+  <div onClick={onClick} className={"bg-white rounded-xl border border-neutral-200 shadow-card p-4" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
   <div className="text-xs text-neutral-400 font-medium uppercase tracking-widest mb-1">{label}</div>
   <div className={`text-2xl font-display font-bold ${color}`}>{value}</div>
   {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
@@ -141,9 +141,18 @@ export function Modal({ title, onClose, children, labelledBy }) {
 
 export function ToastContainer({ toasts, removeToast }) {
   return (
-  <div className="fixed bottom-4 right-4 safe-bottom safe-right z-[100] flex flex-col gap-2 max-w-sm">
+  // aria-live, because a toast that is only VISIBLE does not exist for a
+  // screen-reader user -- and these carry the confirmation that a posting
+  // succeeded or the reason it did not. "polite" on the region so routine
+  // successes queue behind whatever is being read; individual error
+  // toasts below raise themselves to role="alert".
+  <div role="status" aria-live="polite" aria-atomic="false"
+       className="fixed bottom-4 right-4 safe-bottom safe-right z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
-  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
+  <div key={t.id}
+       // An error interrupts; a success does not.
+       role={t.type === "error" ? "alert" : undefined}
+       className={"flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
   {t.isError ? (<>
     <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : "warning"}</span>
     <div className="flex-1 min-w-0">
@@ -155,8 +164,8 @@ export function ToastContainer({ toasts, removeToast }) {
       <p className="text-sm">{t.message}</p>
     </div>
     <div className="flex items-center gap-1 shrink-0">
-      <button onClick={() => reportError(t.code)} className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors" title="Report this error">Report</button>
-      <button onClick={() => removeToast(t.id)} className="text-xs opacity-60 hover:opacity-100 px-1">✕</button>
+      <button onClick={() => reportError(t.code)} aria-label={`Report error ${t.code}`} className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400" title="Report this error">Report</button>
+      <button onClick={() => removeToast(t.id)} aria-label="Dismiss" className="text-xs opacity-60 hover:opacity-100 px-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400">✕</button>
     </div>
   </>) : (<>
     <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
@@ -391,7 +400,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">File *</label>
   <div className="flex items-center gap-3 flex-wrap">
-  <label className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100 cursor-pointer text-sm font-medium transition-colors">
+  <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100 cursor-pointer text-sm font-medium transition-colors">
   <span className="material-icons-outlined text-base">upload_file</span>
   <span>Choose File</span>
   <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="hidden" onChange={e => setFileName(e.target.files?.[0]?.name || "")} />

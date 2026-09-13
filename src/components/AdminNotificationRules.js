@@ -244,7 +244,7 @@ export default function NotificationRulesPanel({ companyId, userProfile, showToa
                     role="button" tabIndex={0}
                     onClick={() => setActiveType(type)}
                     onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveType(type); } }}
-                    className={"cursor-pointer rounded-2xl border bg-white px-4 py-3 transition-colors hover:border-brand-300 " + (enabled ? "border-brand-100" : "border-neutral-200 opacity-60")}>
+                    className={"cursor-pointer rounded-lg border bg-white px-4 py-3 transition-colors hover:border-brand-300 " + (enabled ? "border-brand-100" : "border-neutral-200 opacity-60")}>
                     <div className="flex items-start gap-3">
                       <div className="text-2xl shrink-0">{icon}</div>
                       <div className="min-w-0 flex-1">

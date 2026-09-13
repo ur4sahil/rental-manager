@@ -300,7 +300,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   {/* Owner Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-sm p-4 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-display font-semibold text-neutral-800">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3><Btn variant="ghost" onClick={resetForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
@@ -430,7 +430,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "statements" && viewStatement && (
   <div>
   <Btn variant="ghost" size="sm" onClick={() => setViewStatement(null)}>← Back to Statements</Btn>
-  <div className="bg-white rounded-xl border border-neutral-200 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
@@ -679,7 +679,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "statements" && viewStatement && (
   <div>
   <Btn variant="ghost" size="sm" onClick={() => setViewStatement(null)}>{"\u2190"} Back to Statements</Btn>
-  <div className="bg-white rounded-xl border border-neutral-200 p-5">
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>

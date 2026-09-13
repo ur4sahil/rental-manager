@@ -646,7 +646,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     </div>
 
     {step === "download" && (
-      <div className="rounded-xl border border-neutral-200 bg-brand-50/30 p-5 space-y-3">
+      <div className="rounded-xl border border-neutral-200 bg-brand-50/30 p-4 space-y-3">
         <p className="text-sm text-neutral-700">
           {isAdd
             ? <>An empty workbook for properties you don't have yet. Type them in, fill in whichever
@@ -686,7 +686,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     )}
 
     {step === "upload" && (
-      <div className="rounded-xl border border-neutral-200 p-5 space-y-3">
+      <div className="rounded-xl border border-neutral-200 p-4 space-y-3">
         <p className="text-sm text-neutral-700">Upload the filled-in workbook. You'll see what will change before anything is saved.</p>
         <FileInput accept=".xlsx" onChange={e => handleFile(e.target.files?.[0])} disabled={busy} />
         {busy && <div className="flex items-center gap-2 text-sm text-neutral-500"><Spinner /> Reading…</div>}
