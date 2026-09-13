@@ -1894,7 +1894,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "tenants" && (<>
   {/* Required Documents Prompt */}
   {showTenantDocPrompt && (
-  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="flex items-center justify-between mb-2">
   <div className="text-sm font-bold text-warn-800">{"\u{1F4CB}"} Required Documents for {showTenantDocPrompt}</div>
   <TextLink tone="warn" size="xs" underline={false} onClick={() => setShowTenantDocPrompt(null)}>✕</TextLink>
@@ -1921,7 +1921,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* Document Exception Requests — Admin/Manager Panel */}
   {canReviewAny && docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).length > 0 && (
-  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-sm font-bold text-warn-800 mb-2">{"\u{1F4CB}"} Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).length})</div>
   <div className="space-y-2">
   {docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).map(r => (

@@ -347,6 +347,25 @@ code {
     monospace;
 }
 
+/* Minimum tap target on touch devices.
+   A small inline link -- an icon plus a word, like "Open" beside an
+   attachment -- renders about 24px tall, which is fine for a mouse and
+   too small for a thumb. Scoped to `pointer: coarse` so desktop density
+   is untouched, and applied to the link itself rather than chased element
+   by element: the same shape recurs wherever a row has an inline action.
+
+   The floor is 32px rather than Apple's 44px because these sit inside
+   dense table rows; 44px would force a redesign of the rows themselves,
+   which is a bigger change than this pass. */
+@media (pointer: coarse) {
+  a:has(.material-icons-outlined),
+  a:has(.material-icons) {
+    min-height: 2rem;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 /* Prevent dropdowns and selects from overflowing on mobile */
 select {
   max-width: 100%;

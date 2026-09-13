@@ -360,7 +360,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
 
   {expiringSoon.length > 0 && (
-  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="font-semibold text-warn-800 text-sm mb-2">Leases Expiring Soon</div>
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
@@ -469,7 +469,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div><label className="text-xs text-neutral-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
-  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-sm font-semibold text-warn-800 mb-2">⚠️ Late Fee Settings</div>
   <div className="grid grid-cols-3 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-warn-200 bg-white" /></div>
@@ -808,7 +808,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
             )}
 
             {allSigned && (
-              <div className="bg-positive-50 border border-positive-200 rounded-2xl p-3 mt-3 text-center">
+              <div className="bg-positive-50 border border-positive-200 rounded-xl p-3 mt-3 text-center">
                 <div className="text-sm font-bold text-positive-700">Lease fully executed</div>
                 <div className="text-xs text-positive-600 mt-1">Download the signed document and certificate of completion from the Documents tab → History.</div>
               </div>

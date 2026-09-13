@@ -450,14 +450,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Pending Requests */}
   {pendingRequests.length > 0 && (
-  <div className="mb-6 bg-warn-50 border border-warn-200 rounded-3xl p-4">
+  <div className="mb-6 bg-warn-50 border border-warn-200 rounded-xl p-3">
   <div className="text-sm font-semibold text-warn-800 mb-1">⏳ Pending Requests</div>
   <div className="text-xs text-warn-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
   </div>
   )}
 
   {joinMessage && (
-  <div className="mb-4 bg-positive-50 border border-positive-200 rounded-3xl p-4 text-sm text-positive-700">{joinMessage}</div>
+  <div className="mb-4 bg-positive-50 border border-positive-200 rounded-xl p-3 text-sm text-positive-700">{joinMessage}</div>
   )}
 
   {/* Actions */}
@@ -622,7 +622,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   if (loading || requests.length === 0) return null;
 
   return (
-  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-bold text-warn-800">⏳ Pending Join Requests ({requests.length})</div>
   </div>
@@ -685,7 +685,7 @@ function PendingPMAssignments({ companyId, addNotification, showToast }) {
   if (loading || requests.length === 0) return null;
 
   return (
-  <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4">
+  <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-bold text-info-800">{"\u{1F4E8}"} PM Assignment Requests ({requests.length})</div>
   </div>

@@ -31,8 +31,16 @@ module.exports = defineConfig({
     { name: 'webkit-desktop',   use: { ...devices['Desktop Safari'] } },
     // Tablet
     { name: 'ipad',  use: { ...devices['iPad Pro 11'] } },
-    // Mobile
-    { name: 'iphone', use: { ...devices['iPhone 14 Pro'] } },
+    // Mobile. Carries the signed-in session like the desktop project, so a
+    // mobile spec exercises the real app rather than the landing page.
+    //
+    // A mobile spec must run HERE, not as test.use({...devices[...]}) on
+    // top of chromium-desktop: mixing a phone descriptor into a desktop
+    // project produced a context whose measurements disagreed with two
+    // independent probes of the same page (selects reported 18px tall
+    // with no padding, while the real element computed 32px/10px).
+    { name: 'iphone', use: { ...devices['iPhone 14 Pro'],
+        storageState: './playwright/.auth/admin.json' }, dependencies: ['setup'] },
     { name: 'android', use: { ...devices['Pixel 7'] } },
   ],
 });

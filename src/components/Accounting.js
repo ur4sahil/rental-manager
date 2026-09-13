@@ -874,7 +874,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
             <p className="text-sm text-neutral-400">As of {posted.date} · {posted.number}</p>
           </div>
         </div>
-        <div className="bg-info-50 border border-info-200 rounded-xl p-4 mb-4 text-sm text-info-800">
+        <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4 text-sm text-info-800">
           <strong>Next step:</strong> reclassify <code className="tnum">3000 Opening Balance Equity</code> into <code className="tnum">3100 Owner's Equity</code> or <code className="tnum">3200 Retained Earnings</code> via a normal journal entry. OBE should eventually read $0 on your Balance Sheet.
         </div>
         <div className="flex gap-2">
@@ -5432,7 +5432,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     {/* Right: Account Summary + Pending (1/3) */}
     <div className="space-y-4">
       {pendingCount > 0 && (
-      <div className="bg-warn-50 border border-warn-200 rounded-xl p-4">
+      <div className="bg-warn-50 border border-warn-200 rounded-xl p-3">
         <div className="flex items-center gap-2 mb-1">
           <span className="material-icons-outlined text-warn-600 text-lg">pending_actions</span>
           <span className="font-semibold text-warn-800 text-sm">Pending Actions</span>
@@ -5810,7 +5810,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       <h3 className="font-semibold text-neutral-800 mb-1">Accounting Period Lock</h3>
       <p className="text-sm text-neutral-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
       {periodLock ? (
-      <div className="bg-danger-50 border border-danger-200 rounded-xl p-4 mb-4">
+      <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 mb-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-danger-800">Period locked through {periodLock.lock_date}</div>
@@ -5825,7 +5825,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
         </div>
       </div>
       ) : (
-      <div className="bg-success-50 border border-success-200 rounded-xl p-4 mb-4">
+      <div className="bg-success-50 border border-success-200 rounded-xl p-3 mb-4">
         <div className="text-sm text-success-800">No period lock active. All periods are open for modifications.</div>
       </div>
       )}

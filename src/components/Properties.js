@@ -1520,7 +1520,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               {propForm.status === "occupied" && (
-                <div className="bg-warn-50 border border-warn-200 rounded-xl p-4 mb-4">
+                <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
                   <div className="text-sm font-semibold text-warn-800 mb-2">Required Documents</div>
                   {[
                     { type: "Lease", label: "Lease Agreement" },
@@ -3603,7 +3603,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {incompleteWizards.length > 0 && !showPropertyWizard && (
   <div className="mb-4 space-y-2">
   {incompleteWizards.map(w => (
-  <div key={w.id} className="bg-warn-50 border border-warn-200 rounded-xl p-4 flex items-center justify-between">
+  <div key={w.id} className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
   <div className="flex items-center gap-3">
   <span className="material-icons-outlined text-warn-600">construction</span>
   <div>

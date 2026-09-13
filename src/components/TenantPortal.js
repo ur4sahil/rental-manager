@@ -771,19 +771,19 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <div className="max-w-md mx-auto">
   {paymentSuccess && (
   paymentPendingStatus === "requires_action" ? (
-    <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4 text-center">
     <div className="text-2xl mb-1">🏦</div>
     <div className="text-info-800 font-semibold">Bank verification pending</div>
     <div className="text-info-600 text-sm">You'll see a $0.01 deposit in 1-2 business days. Check your email for verification instructions to complete the payment.</div>
     </div>
   ) : paymentPendingStatus === "processing" ? (
-    <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4 text-center">
     <div className="text-2xl mb-1">🏦</div>
     <div className="text-info-800 font-semibold">Payment processing</div>
     <div className="text-info-600 text-sm">ACH transfers take 1-3 business days to clear. You'll be notified when the payment posts.</div>
     </div>
   ) : (
-    <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 mb-4 text-center">
+    <div className="bg-positive-50 border border-positive-200 rounded-xl p-3 mb-4 text-center">
     <div className="text-2xl mb-1">✅</div>
     <div className="text-positive-800 font-semibold">Payment Successful!</div>
     <div className="text-positive-600 text-sm">Your payment has been recorded and your balance updated.</div>

@@ -99,6 +99,44 @@ export function Skeleton({ className = "" }) {
   return <span className={`inline-block bg-neutral-200 rounded animate-pulse align-middle ${className}`} />;
 }
 
+// ---- ALERT ----
+// A tinted banner: a warning above a form, a confirmation, a blocked
+// action's reason.
+//
+// There were 73 distinct recipes for a tinted block across the app. The
+// alert-shaped ones -- tint, matching border, padding -- had drifted to
+// rounded-lg / rounded-xl / rounded-3xl and p-3 / p-4, so two warnings on
+// adjacent pages did not look like the same kind of thing.
+//
+// ALERT_TONE is exported because normalising the existing 40-odd
+// hand-written banners means rewriting their className, not their
+// contents -- restructuring JSX is how a migration loses the children it
+// was supposed to keep.
+export const ALERT_TONE = {
+  danger:   "bg-danger-50 border-danger-200 text-danger-800",
+  warn:     "bg-warn-50 border-warn-200 text-warn-800",
+  success:  "bg-success-50 border-success-200 text-success-800",
+  info:     "bg-info-50 border-info-200 text-info-800",
+  positive: "bg-positive-50 border-positive-200 text-positive-800",
+  notice:   "bg-notice-50 border-notice-200 text-notice-800",
+};
+export const ALERT_SHAPE = "border rounded-xl p-3";
+
+export function Alert({ tone = "info", icon, title, children, className = "" }) {
+  return (
+    <div role={tone === "danger" ? "alert" : undefined}
+         className={`${ALERT_SHAPE} ${ALERT_TONE[tone] || ALERT_TONE.info} ${className}`}>
+      <div className="flex items-start gap-2">
+        {icon && <span className="material-icons-outlined text-base shrink-0 mt-0.5">{icon}</span>}
+        <div className="min-w-0 flex-1 text-sm">
+          {title && <p className="font-semibold mb-0.5">{title}</p>}
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- SURFACES ----
 // One recipe per KIND of surface, and nothing spells its own.
 //
@@ -165,8 +203,8 @@ export function Card({ className = "", padding = "card", variant = "card", child
 // Same rule as buttons: size is padding and type, not shape. An input
 // next to a button must share its corner or the pair looks mismatched.
 const INPUT_SIZES = {
-  sm: "px-2.5 py-1 text-xs",
-  md: "px-3 py-1.5 text-sm",
+  sm: "px-2.5 py-1 text-xs min-h-8",
+  md: "px-3 py-1.5 text-sm min-h-9",
 };
 const INPUT_SHAPE = "rounded-lg";
 const INPUT_COMMON = "border border-brand-100 focus:border-brand-300 focus:outline-none transition-colors";
@@ -186,8 +224,17 @@ export function Input({ className = "", size = "md", ...props }) {
   return <input className={`${base} ${className}`} {...defaults} {...props} />;
 }
 
+// SELECT_HEIGHT, not padding. A <select> on mobile is drawn by the
+// platform, and mobile Chrome does not honour vertical padding on one the
+// way it does on an <input> -- the filter selects measured ~22px tall on
+// an iPhone while the text input directly above them sat at 32px, which
+// the screenshot makes obvious. An explicit height is deterministic on
+// both. min-height was not enough either; it is the padding that fails to
+// apply, so the box never grows to meet it.
+const SELECT_HEIGHT = { sm: "h-8", md: "h-9" };
+
 export function Select({ className = "", filter, size = "md", children, ...props }) {
-  const base = inputBase(size, filter || /\bw-/.test(className));
+  const base = `${inputBase(size, filter || /\bw-/.test(className))} ${SELECT_HEIGHT[size] || SELECT_HEIGHT.md}`;
   const widthCls = filter ? " w-auto" : "";
   // Fall back to the first option's text as the accessible name.
   //
@@ -551,13 +598,36 @@ export function FilterPill({ active, onClick, tone = "brand", children, classNam
 // passed, the entire row is clickable (label wraps input). If the caller
 // needs bare-input semantics (e.g., inside a custom grid cell), pass
 // `label={null}` and render its own <label>.
+// The box renders at the browser default, roughly 13x13 CSS pixels, which
+// is far below a usable touch target -- measured 18 of them at 13x13 on
+// the Maintenance page at iPhone width. h-4 w-4 makes the box itself
+// legible; the padding around it inside the label is what actually gets
+// tapped, so an unlabelled checkbox in a table cell still needs the
+// caller to give it room.
+//
+// Also gains the shared focus ring: it had focus:ring (always on, even
+// for a mouse click) rather than focus-visible.
 export function Checkbox({ label, className = "", ...props }) {
   const input = (
-    <input type="checkbox" className="rounded border-brand-200 text-brand-600 focus:ring-brand-300" {...props} />
+    <input type="checkbox"
+      className={`h-4 w-4 shrink-0 rounded border-brand-200 text-brand-600 cursor-pointer ${FOCUS_RING}`}
+      {...props} />
   );
-  if (label == null) return input;
+  // An unlabelled checkbox -- a row selector in a table -- has only the
+  // 16px box as its tap target, which measured 18 such targets under 32px
+  // on Maintenance at iPhone width. Clicking a <label> toggles the input
+  // it wraps, so padding the label grows the TARGET without growing the
+  // box. The negative margin keeps the extra area from shifting the
+  // layout around it.
+  if (label == null) {
+    return (
+      <label className={`inline-flex items-center justify-center p-2 -m-2 cursor-pointer ${className}`}>
+        {input}
+      </label>
+    );
+  }
   return (
-    <label className={`inline-flex items-center gap-2 text-sm text-neutral-700 ${className}`}>
+    <label className={`inline-flex items-center gap-2 py-1.5 text-sm text-neutral-700 cursor-pointer ${className}`}>
       {input}
       <span>{label}</span>
     </label>
