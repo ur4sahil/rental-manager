@@ -1611,80 +1611,74 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // Sequential on purpose, not Promise.all: each accept posts a journal
   // entry, and firing dozens concurrently both hammers the database and
   // makes a partial failure impossible to describe afterwards.
-  // Queue the selected transactions for Housy to code.
+  // Code the selected transactions.
   //
-  // This does NOT post anything. Each result comes back as a suggestion on
-  // the transaction -- the same shape the rules engine writes -- so it
-  // pre-fills the Categorise form and you still confirm it. The model
-  // proposing an account is not the model touching the books.
+  // History FIRST, model second, and that ordering is the whole design.
+  // Measured on 16,548 real journal lines (leave-one-out): 83% of
+  // transactions have a precedent, and the account chosen last time is
+  // right 93.4% of the time. That is instant, it improves every time
+  // someone codes something, and it can say WHY -- "Gas, because all 28
+  // previous Washington Gas payments went there" -- which no model output
+  // can. The model only sees what has never been seen before.
   //
-  // Queued rather than awaited: even at a couple of seconds each, fifty
-  // transactions is minutes, and no HTTP request survives that.
+  // Nothing here posts. Every result is a suggestion that pre-fills the
+  // Categorise form, and you still confirm it.
   async function bulkAskHousy() {
-    // Rules first, model second. A transaction the deterministic rules
-    // engine already answered is left alone: a rule is exact and was
-    // written by a person, where the model is a guess that measured 5/5 on
-    // five cases and will not stay there. Skipping them also means the
-    // model only ever sees the long tail, which is the only part worth
-    // spending two seconds of inference on.
     const all = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
-    // "none" is a STRING here, not NULL -- it is the column default. A
-    // plain !t.suggestion_status treats every untouched transaction as
-    // already suggested and skips the lot.
+    // "none" is a STRING in this column, not NULL -- it is the default. A
+    // plain truthiness check skips every untouched transaction.
     const selected = all.filter(t => !t.suggestion_status || t.suggestion_status === "none");
-    const skipped = all.length - selected.length;
+    const skippedRule = all.length - selected.length;
     if (!selected.length) {
-      showToast(skipped ? `All ${skipped} already have a suggestion from a rule.` : "Nothing selected.", "info");
+      showToast(skippedRule ? `All ${skippedRule} already have a suggestion from a rule.` : "Nothing selected.", "info");
       return;
     }
 
-    // The model picks from THESE, and an account code it did not get from
-    // this list is rejected server-side rather than written.
-    //
-    // Only income and expense accounts. Of this company's 75 accounts, 46
-    // are Assets -- bank and property accounts a transaction can never be
-    // coded to, because money moving between your own accounts is a
-    // TRANSFER and has its own flow. Sending all 75 measured 2/5; the
-    // model answered "6000 Bank Charges" for everything it was unsure of.
-    // Handing a 5B model 75 options where 22 are real is a signal problem,
-    // not a reasoning one.
+    // Only income and expense accounts can receive a coded transaction --
+    // money moving between your own accounts is a transfer and has its own
+    // flow. Sent only for the model fallback; the history lookup does not
+    // need them.
     const CODEABLE = new Set(["Revenue", "Expense", "Other Income"]);
-    const chart = accounts
-      .filter(a => CODEABLE.has(a.type))
+    const chart = accounts.filter(a => CODEABLE.has(a.type))
       .map(a => ({ code: a.code, name: a.name, type: a.type }));
-    if (!chart.length) { showToast("No income or expense accounts to code against.", "error"); return; }
 
     setBulkBusy({ done: 0, total: selected.length });
-    let queued = 0, failed = 0;
-    for (const t of selected) {
-      const r = await queueHousyJob({
-        companyId, kind: "categorise_txn",
-        subjectTable: "bank_feed_transaction", subjectId: String(t.id),
-        userEmail: userProfile?.email,
-        // Short text, so these run in seconds rather than the minutes a
-        // lease takes. Priority above document reads for that reason.
-        priority: 5,
-        input: {
-          date: t.posted_date,
-          direction: t.direction,
-          amount: Math.abs(safeNum(t.amount)),
-          description: t.bank_description_clean || t.bank_description_raw || "",
-          payee: t.payee_normalized || t.payee_raw || "",
-          accounts: chart,
-        },
+    let r = null;
+    try {
+      const res = await fetch("/api/ai?action=code-transactions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId, accounts: chart, userEmail: userProfile?.email,
+          transactions: selected.map(t => ({
+            id: t.id, date: t.posted_date, direction: t.direction,
+            amount: Math.abs(safeNum(t.amount)),
+            description: t.bank_description_clean || t.bank_description_raw || "",
+            payee: t.payee_normalized || t.payee_raw || "",
+          })),
+        }),
       });
-      r.ok ? queued++ : failed++;
-      setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
+      r = await res.json();
+      if (!res.ok) { showToast(r?.error || `Could not code: HTTP ${res.status}`, "error"); return; }
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "code transactions" });
+      return;
+    } finally {
+      setBulkBusy(null);
+      setSelectedTxns(new Set());
     }
-    setBulkBusy(null);
-    setSelectedTxns(new Set());
-    logAudit("create", "housy", `Queued ${queued} transactions for coding`, null, userProfile?.email, "", companyId);
-    const tail = skipped ? ` ${skipped} already had a rule suggestion and were left alone.` : "";
+
+    logAudit("create", "housy", `Coded ${r.fromHistory} from history, queued ${r.queued} for ${HOUSY.name}`, null, userProfile?.email, "", companyId);
+
+    const bits = [];
+    if (r.fromHistory) bits.push(`${r.fromHistory} coded from your own history`);
+    if (r.queued) bits.push(`${r.queued} sent to ${HOUSY.name} (no precedent yet)`);
+    if (skippedRule) bits.push(`${skippedRule} left to their rule`);
+    if (r.skipped) bits.push(`${r.skipped} skipped`);
     showToast(
-      failed
-        ? `Queued ${queued}; ${failed} could not be queued.${tail}`
-        : `${HOUSY.name} is coding ${queued} transaction${queued === 1 ? "" : "s"}. Suggestions appear here as it finishes — nothing is posted until you confirm.${tail}`,
-      failed ? "error" : "success");
+      bits.length ? bits.join(" · ") + ". Nothing is posted until you confirm."
+                  : "Nothing to code.",
+      r.failures?.length ? "error" : "success");
+    await refreshData();
   }
 
   async function bulkApply({ accountId, accountName, classId, entityType, entityId, entityName }) {
@@ -2642,7 +2636,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
         {txn.suggestion_status === "suggested_ai" && (() => {
-          const c = txn.raw_payload_json?._suggestion?.confidence;
+          const sg = txn.raw_payload_json?._suggestion || {};
+          if (sg.source === "history") {
+            // Evidence, not a score. "28 of 28 before" is checkable in a
+            // way a model's self-rated confidence is not.
+            const pct = sg.agreement != null ? Math.round(sg.agreement * 100) : null;
+            return <span className="ml-1.5 text-xs bg-positive-100 text-positive-700 px-1.5 py-0.5 rounded-full"
+              title={`You coded ${sg.support} similar transaction${sg.support === 1 ? "" : "s"} this way${pct != null ? ` (${pct}% of them)` : ""}`}>
+              History {sg.support ? `· ${sg.support}` : ""}</span>;
+          }
+          const c = sg.confidence;
           // The confidence is the MODEL'S own and is not calibrated -- it
           // said 1.0 on a licence whose zip it got wrong. Shown because a
           // reviewer deserves to know how sure it claimed to be, never

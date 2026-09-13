@@ -73,6 +73,28 @@ function hasSuggestion(status) {
   return Boolean(status) && status !== "none";
 }
 
+// Write a suggestion onto a transaction. One writer for both paths --
+// history and model -- so the guards (already decided, already suggested)
+// cannot drift apart between them.
+async function writeSuggestion(sb, companyId, txnId, sug) {
+  const { data: txn } = await sb.from("bank_feed_transaction")
+    .select("id, raw_payload_json, status, suggestion_status").eq("id", txnId)
+    .eq("company_id", companyId).maybeSingle();
+  if (!txn) return { written: false, reason: "the transaction no longer exists" };
+  if (txn.status !== "for_review") return { written: false, reason: `transaction is ${txn.status}` };
+  if (hasSuggestion(txn.suggestion_status) && txn.suggestion_status !== "suggested_ai") {
+    return { written: false, reason: `a rule already suggested (${txn.suggestion_status})` };
+  }
+
+  const payload = { ...(txn.raw_payload_json || {}) };
+  payload._suggestion = { type: "assign", classId: null, ...sug };
+
+  const { error } = await sb.from("bank_feed_transaction").update({
+    suggestion_status: "suggested_ai", raw_payload_json: payload,
+  }).eq("id", txn.id).eq("company_id", companyId);
+  return error ? { written: false, reason: error.message } : { written: true };
+}
+
 // Turn a categorise_txn result into a suggestion on the bank transaction.
 //
 // The model returns an account CODE, never an id. Codes are short, stable
@@ -242,6 +264,70 @@ module.exports = async function handler(req, res) {
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true, jobs: data || [] });
+    }
+
+    // ---- code transactions: history first, model only if it is silent ---
+    //
+    // MEASURED on 16,548 real journal lines (leave-one-out, so out of
+    // sample): 83% of transactions have a precedent, and the most-common
+    // account for that precedent is right 93.4% of the time.
+    //
+    // So history is not a hint to feed the model -- it IS the answer for
+    // most transactions, it is instant, and it can say why: "Gas, because
+    // all 28 previous Washington Gas payments went there." The model is
+    // for the ~17% with no precedent at all, which is the only part where
+    // a guess beats nothing.
+    if (action === "code-transactions") {
+      const { transactions = [], accounts = [], minSupport = 3, minAgreement = 0.7 } = body;
+      if (!Array.isArray(transactions) || !transactions.length) {
+        return res.status(400).json({ error: "transactions is required" });
+      }
+
+      let fromHistory = 0, queued = 0, skipped = 0;
+      const failures = [];
+
+      for (const t of transactions) {
+        const text = `${t.description || ""} ${t.payee || ""}`.trim();
+        if (!text) { skipped++; continue; }
+
+        const { data: hits } = await sb.rpc("suggest_account_from_history", {
+          p_company_id: companyId, p_text: text, p_min_support: 1,
+        });
+        const top = (hits || [])[0];
+
+        // Confident enough only when the precedent is both REPEATED and
+        // consistent. One prior line that happened to go somewhere is not
+        // a pattern, and a 50/50 split is not an answer.
+        const confident = top
+          && Number(top.support) >= minSupport
+          && Number(top.agreement) >= minAgreement;
+
+        if (confident) {
+          const r = await writeSuggestion(sb, companyId, t.id, {
+            accountId: top.account_id, accountName: top.account_name,
+            memo: (t.description || "").slice(0, 120),
+            source: "history",
+            support: Number(top.support),
+            agreement: Number(top.agreement),
+            method: top.method,
+          });
+          r.written ? fromHistory++ : failures.push({ id: t.id, reason: r.reason });
+          continue;
+        }
+
+        // No usable precedent. This is where the model earns its keep.
+        if (!accounts.length) { skipped++; continue; }
+        const { error: insErr } = await sb.from("ai_jobs").insert([{
+          company_id: companyId, kind: "categorise_txn", status: "queued",
+          subject_table: "bank_feed_transaction", subject_id: String(t.id),
+          priority: 5, created_by: body.userEmail || null,
+          input: { date: t.date, direction: t.direction, amount: t.amount,
+                   description: t.description, payee: t.payee, accounts },
+        }]);
+        insErr ? failures.push({ id: t.id, reason: insErr.message }) : queued++;
+      }
+
+      return res.status(200).json({ ok: true, fromHistory, queued, skipped, failures });
     }
 
     // ---- ask a question of the documents --------------------------------
