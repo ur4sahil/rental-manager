@@ -13,7 +13,6 @@
 // watches for you to arrive somewhere that is no longer the login page.
 const path = require("path");
 const fs = require("fs");
-const readline = require("readline");
 const { PLAYBOOKS } = require("./playbooks");
 
 const key = (process.argv[2] || "").toLowerCase();
@@ -26,12 +25,25 @@ if (!book) {
 const OUT_DIR = process.env.HOUSY_SESSION_DIR || path.join(require("os").homedir(), ".housy-sessions");
 
 (async () => {
-  let chromium;
-  try { ({ chromium } = require("playwright")); }
-  catch { console.error("playwright not found — run this from tests/ where it is installed, or npm i playwright"); process.exit(1); }
+  // Node resolves node_modules from the SCRIPT's directory upward, not the
+  // working directory -- so running this from tests/ does NOT make
+  // tests/node_modules visible to a script living in worker/portals.
+  // Look where playwright actually is.
+  const { createRequire } = require("module");
+  const path = require("path");
+  let chromium = null;
+  for (const base of [__filename,
+                      path.join(__dirname, "..", "..", "tests", "package.json"),
+                      path.join(__dirname, "..", "..", "package.json")]) {
+    try { ({ chromium } = createRequire(base)("playwright")); if (chromium) break; } catch {}
+  }
+  if (!chromium) {
+    console.error("playwright not installed — run: cd tests && npm i playwright");
+    process.exit(1);
+  }
 
   console.log(`\nOpening ${book.provider}: ${book.entry}`);
-  console.log("Sign in in the window that opens. Solve any captcha yourself.\n");
+  console.log("Sign in in the window that opens. It saves itself when you are done.\n");
 
   // Headed and slowed slightly: this window is for a person to use.
   const browser = await chromium.launch({ headless: false, slowMo: 50 });
@@ -39,21 +51,44 @@ const OUT_DIR = process.env.HOUSY_SESSION_DIR || path.join(require("os").homedir
   const page = await ctx.newPage();
   await page.goto(book.entry, { waitUntil: "domcontentloaded" });
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  await new Promise(res => rl.question("Press Enter once you are signed in and can see your account… ", () => { rl.close(); res(); }));
-
-  // Verify rather than trust. Saving a session that is still sitting on the
-  // login page produces a file that fails every run afterwards, and the
-  // failure would look like a portal change rather than a bad capture.
-  let stillOut = false;
-  for (const sig of book.signedOutSignals) {
-    const loc = sig.role === "textbox"
-      ? page.getByRole("textbox", { name: sig.name })
-      : page.getByRole("button", { name: sig.name });
-    if (await loc.count().catch(() => 0)) { stillOut = true; break; }
+  // Watch for you to finish, rather than asking you to press Enter.
+  //
+  // Pressing Enter means someone has to be at the terminal as well as the
+  // browser. Polling for the sign-in fields to disappear means the browser
+  // is the only thing you touch -- sign in, and this notices and saves
+  // itself.
+  const DEADLINE = Date.now() + 8 * 60 * 1000;
+  let signedIn = false;
+  process.stdout.write("  waiting for you to sign in");
+  while (Date.now() < DEADLINE) {
+    await page.waitForTimeout(2500);
+    process.stdout.write(".");
+    let onLogin = false;
+    for (const sig of book.signedOutSignals) {
+      const loc = sig.role === "textbox"
+        ? page.getByRole("textbox", { name: sig.name })
+        : page.getByRole("button", { name: sig.name });
+      if (await loc.count().catch(() => 0)) { onLogin = true; break; }
+    }
+    // Two clean polls in a row, not one: a page mid-navigation briefly has
+    // no login fields, and saving then captures a session that is not
+    // signed in yet.
+    if (!onLogin) {
+      await page.waitForTimeout(2500);
+      let stillClear = true;
+      for (const sig of book.signedOutSignals) {
+        const loc = sig.role === "textbox"
+          ? page.getByRole("textbox", { name: sig.name })
+          : page.getByRole("button", { name: sig.name });
+        if (await loc.count().catch(() => 0)) { stillClear = false; break; }
+      }
+      if (stillClear) { signedIn = true; break; }
+    }
   }
-  if (stillOut) {
-    console.error("\nThis still looks like the sign-in page — nothing saved. Sign in fully, then run this again.");
+  console.log("");
+
+  if (!signedIn) {
+    console.error("\nTimed out still on the sign-in page — nothing saved. Run it again when you have a moment.");
     await browser.close();
     process.exit(2);
   }

@@ -25,7 +25,10 @@ const SHOTS = process.env.HOUSY_SHOT_DIR || "/tmp/housy-shots";
 
 const money = /\$\s?([\d,]+\.\d{2})/;
 const isoDate = (s) => {
-  const m = String(s).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  // WSSC writes "Due Date: 10-05-2026" with dashes; Washington Gas uses
+  // slashes. Matching only slashes found the amount and silently lost the
+  // date -- and a bill with no due date is the one you pay late.
+  const m = String(s).match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
   if (!m) return null;
   const [, mo, d, y] = m;
   const yr = y.length === 2 ? `20${y}` : y;
@@ -45,7 +48,22 @@ const isoDate = (s) => {
     finish("needs_signin", { error: "no session — run enroll.js first" });
   }
 
-  const { chromium } = require("playwright");
+  // Node resolves node_modules from the SCRIPT's directory upward, not the
+  // working directory -- so running this from tests/ does NOT make
+  // tests/node_modules visible to a script living in worker/portals.
+  // Look where playwright actually is.
+  const { createRequire } = require("module");
+  const path = require("path");
+  let chromium = null;
+  for (const base of [__filename,
+                      path.join(__dirname, "..", "..", "tests", "package.json"),
+                      path.join(__dirname, "..", "..", "package.json")]) {
+    try { ({ chromium } = createRequire(base)("playwright")); if (chromium) break; } catch {}
+  }
+  if (!chromium) {
+    console.error("playwright not installed — run: cd tests && npm i playwright");
+    process.exit(1);
+  }
   const browser = await chromium.launch();
   const ctx = await browser.newContext({
     storageState: JSON.parse(fs.readFileSync(SESSION, "utf8")),

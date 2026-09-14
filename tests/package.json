@@ -81,7 +81,9 @@
     "test:lead": "node lead-paint.test.mjs",
     "test:roundtrip": "node export-roundtrip.test.mjs",
     "test:ai": "node ai-pipeline.test.mjs",
-    "test:paths": "node page-paths.test.mjs"
+    "test:paths": "node page-paths.test.mjs",
+    "utility:login": "node ../worker/portals/enroll.js",
+    "utility:bill": "node ../worker/portals/fetch-bill.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

@@ -33,8 +33,12 @@ const PLAYBOOKS = {
       { text: /\$\s?[\d,]+\.\d{2}/ },
     ],
     dueDate: [
-      { text: /due\s+(?:by|on|date)?\s*:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}/i },
-      { text: /\d{1,2}\/\d{1,2}\/\d{4}/ },
+      // Label first, bare date second. WSSC renders "Due Date: 10-05-2026"
+      // with dashes, so both separators are accepted -- a slash-only
+      // pattern found the amount and lost the date.
+      { text: /due\s*date\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /due\s+(?:by|on)?\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/ },
     ],
   },
 
@@ -50,8 +54,12 @@ const PLAYBOOKS = {
       { text: /\$\s?[\d,]+\.\d{2}/ },
     ],
     dueDate: [
-      { text: /due\s+(?:by|on|date)?\s*:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}/i },
-      { text: /\d{1,2}\/\d{1,2}\/\d{4}/ },
+      // Label first, bare date second. WSSC renders "Due Date: 10-05-2026"
+      // with dashes, so both separators are accepted -- a slash-only
+      // pattern found the amount and lost the date.
+      { text: /due\s*date\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /due\s+(?:by|on)?\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/ },
     ],
   },
 };
