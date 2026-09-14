@@ -592,8 +592,12 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-neutral-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
   {properties.length > 1 && <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{propertyLabel(p)}</option>)}</Select>}
   </div>
-  {/* Summary bar */}
-  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
+  {/* Summary bar. Right-aligned on desktop so the running totals sit over
+      the Debit/Credit/Balance columns they describe rather than at the
+      opposite edge of the table. Left-aligned on mobile, where the card
+      view has no columns to align to and ml-auto still places the
+      export links. */}
+  <div className="flex flex-wrap items-center sm:justify-end gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
   {linesLoaded ? <>
   <span>DR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
@@ -667,12 +671,24 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
               cells: [acctFmt(g.totalDr), acctFmt(g.totalCr), acctFmt(g.closing, true)] }
           : null,
       }))}
+      // Totals belong UNDER the columns they total. A single-account ledger
+      // had no footer at all, so its only totals were the summary bar above
+      // the table -- pinned to the left edge while Debit, Credit and Balance
+      // sat at the right, which reads as three numbers that belong to
+      // nothing. footerRow fills the LAST n columns, and these are the last
+      // three, so they line up without counting colSpans here.
+      //
       // Debits and credits sum meaningfully across accounts; a combined
       // closing balance does not -- adding cash to receivables to income
-      // produces a figure that looks authoritative and means nothing.
-      footer={multiAccount && linesLoaded && allLines.length > 0
-        ? [{ label: `${groups.length} accounts \u00b7 ${allLines.length} entries`, strong: true,
-             cells: [acctFmt(grandDr), acctFmt(grandCr), "\u2014"] }]
+      // produces a figure that looks authoritative and means nothing. So the
+      // multi-account row dashes the balance out and the single-account one,
+      // where the figure IS meaningful, shows the closing balance.
+      footer={linesLoaded && allLines.length > 0
+        ? [multiAccount
+            ? { label: `${groups.length} accounts \u00b7 ${allLines.length} entries`, strong: true,
+                cells: [acctFmt(grandDr), acctFmt(grandCr), "\u2014"] }
+            : { label: `${allLines.length} ${allLines.length === 1 ? "entry" : "entries"}`, strong: true,
+                cells: [acctFmt(grandDr), acctFmt(grandCr), acctFmt(groups[0]?.closing || 0, true)] }]
         : null}
       onRowClick={l => onViewJE && onViewJE(l.jeId)}
       rowKey={(l, i) => i}
@@ -5576,7 +5592,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} />}
-  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {activeTab === "bankimport" && <BankTransactions linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}
   {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={openLedger} onRefresh={fetchAll} />}

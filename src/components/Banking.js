@@ -81,7 +81,7 @@ function csvBuildFingerprint(feedId, date, direction, absAmount, description) {
 }
 
 // --- Main Component ---
-export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE }) {
+export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE, linesLoaded = true }) {
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -317,7 +317,18 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     const diff = bankBal == null ? null : Math.round((bankBal - bookBal - pendingNet) * 100) / 100;
     const isReconciled = diff != null && Math.abs(diff) < 0.01;
-    return { bankBal, bookBal, pendingNet, pendingCount: pendingTxns.length, diff, isReconciled };
+    // Both inputs to bookBal and pendingNet arrive asynchronously, and both
+    // read as 0 until they do. A zero Books balance is indistinguishable
+    // from a real one, so the card used to state a confident red Mismatch
+    // for the whole width of that gap and then correct itself to Reconciled
+    // -- the reconciliation equivalent of a wrong number that looks like an
+    // answer. Nothing is asserted until the figures behind it exist.
+    //   * journal lines: linesLoaded, owned by Accounting (it already
+    //     distinguishes "not arrived" from "empty" for its own reports).
+    //   * pending roll-up: feedPending has no key for a feed until its
+    //     fetch resolves; every feed gets one, [] included.
+    const ready = linesLoaded && feedPending[feed.id] !== undefined;
+    return { bankBal, bookBal, pendingNet, pendingCount: pendingTxns.length, diff, isReconciled, ready };
   }
 
   // Fetch on mount + whenever date-range window changes (re-fetches txns)
@@ -2386,8 +2397,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             the exact diff and formula. */}
         {(() => {
           const r = computeFeedRecon(feed);
+          // Deliberately NOT gated on r.ready: bankBal comes off the feed row
+          // synchronously, so a feed with a bank balance renders the block
+          // (with "Checking…") from the first paint, and a genuinely empty
+          // one stays hidden throughout rather than flashing into view and
+          // then vanishing once the figures confirm it is empty.
           if (r.bankBal == null && r.bookBal === 0 && r.pendingNet === 0) return null; // empty feed
-          const wrapCls = r.bankBal == null
+          const wrapCls = !r.ready
+            ? "border-neutral-200"
+            : r.bankBal == null
             ? "border-neutral-200"
             : r.isReconciled ? "border-positive-200 bg-positive-50/30" : "border-danger-200 bg-danger-50/30";
           return (
@@ -2398,14 +2416,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               </div>
               <div className="flex justify-between text-neutral-500">
                 <span>Books</span>
-                <span className="tnum text-neutral-800">{formatCurrency(r.bookBal)}</span>
+                <span className="tnum text-neutral-800">{r.ready ? formatCurrency(r.bookBal) : "—"}</span>
               </div>
               <div className="flex justify-between text-neutral-500">
-                <span>Pending ({r.pendingCount})</span>
-                <span className="tnum text-neutral-800">{formatCurrency(r.pendingNet)}</span>
+                <span>Pending {r.ready ? `(${r.pendingCount})` : ""}</span>
+                <span className="tnum text-neutral-800">{r.ready ? formatCurrency(r.pendingNet) : "—"}</span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-dashed border-neutral-200">
-                {r.bankBal == null ? (
+                {!r.ready ? (
+                  <span className="text-2xs text-neutral-400 italic">Checking…</span>
+                ) : r.bankBal == null ? (
                   <span className="text-2xs text-neutral-400 italic">Connect bank for reco</span>
                 ) : r.isReconciled ? (
                   <span className="text-positive-700 font-semibold">✓ Reconciled</span>
