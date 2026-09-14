@@ -1344,7 +1344,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2">
   <Btn variant="danger" size="sm" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
   <Btn variant="primary" size="sm" onClick={() => setShowAddTxn(v => !v)}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
-  <Btn variant="ghost" size="sm" onClick={() => setPage("accounting", "newJE")} title="Open the full journal entry form in Accounting">Full entry</Btn>
+  {/* Carries where it came from, so posting the entry returns to THIS
+      tenant's ledger. It used to hand Accounting the bare string "newJE",
+      which told it to open the form but not where the user had been —
+      so every entry posted this way ended on the journal list. */}
+  <Btn variant="ghost" size="sm" onClick={() => setPage("accounting", { newJE: true, returnTo: { page: "tenants", openTenantId: selectedTenant?.id, tenantName: selectedTenant?.name, panel: "ledger" } })} title="Open the full journal entry form in Accounting">Full entry</Btn>
   </div>
   </div>
   {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (

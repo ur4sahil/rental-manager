@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
@@ -1573,9 +1573,14 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
     empty="Nothing to show"
   />
   <div className="flex gap-2">
-  {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); }}>Post</Btn>}
-  {modal.je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); }}>Void</Btn>}
-  {modal.je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); }}>Reverse</Btn>}
+  {/* Each of these closes the entry, so each has to go back wherever the
+      entry was opened FROM — the same thing the modal's X does via
+      onCloseJEDetail. Calling setModal(null) directly skipped that and
+      dumped the user on the journal list instead of the ledger they
+      came from. */}
+  {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Post</Btn>}
+  {modal.je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Void</Btn>}
+  {modal.je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Reverse</Btn>}
   {modal.je.status !== "voided" && <Btn variant="slate" size="sm" onClick={() => openEdit(modal.je)}>Edit</Btn>}
   <Btn variant="slate" size="sm" onClick={() => { openDuplicate(modal.je); }}>Duplicate</Btn>
   </div>
@@ -4427,7 +4432,7 @@ export function invalidateAccountingCache(companyId) {
   }
 }
 
-export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction, initialTab }) {
+export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction, initialTab, setPage }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   // Distinguishes "the ledger has not arrived yet" from "the ledger is
@@ -4448,8 +4453,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // to page="acct_journal" → Accounting with initialTab="journal").
   // Falls back to initialAction for the legacy "newJE" entry path,
   // then to the dashboard.
+  //
+  // initialAction arrives in two shapes. The legacy one is the bare string
+  // "newJE". The other is an object, which is how a caller says where the
+  // user came from: { newJE: true, returnTo: { page, openTenantId, panel } }.
+  // A tenant's ledger sends that so posting the entry lands the user back
+  // on the ledger they were reading instead of the journal list.
+  const wantsNewJE = initialAction === "newJE" || initialAction?.newJE === true;
+  const returnTo = initialAction?.returnTo || null;
   const [activeTab, setActiveTab] = useState(
-    initialTab || (initialAction === "newJE" ? "journal" : "overview")
+    initialTab || (wantsNewJE ? "journal" : "overview")
   );
   // Keep the tab in sync when the user nav-clicks between accounting
   // sub-pages without unmounting the component.
@@ -4494,6 +4507,39 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }, []);
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
   const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
+
+  // Finishing with a journal entry should put the user back where they
+  // opened it from. There are two such places and they were handled
+  // inconsistently: an account ledger inside this page (pendingLedgerReturn),
+  // and another page entirely (returnTo — a tenant's ledger sends this).
+  // Only the edit-save path honoured the first and nothing honoured the
+  // second, so posting an entry left the user on the journal list every
+  // time. One function now, called from every path that closes an entry.
+  // Closing an entry that was opened FROM an account ledger on this page.
+  const returnToLedger = useCallback(() => {
+    if (!pendingLedgerReturn) return false;
+    openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title);
+    setPendingLedgerReturn(null);
+    setViewJEId(null);
+    return true;
+  // openLedger is redefined each render and is not worth a ref here; the
+  // values it closes over are read at call time.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingLedgerReturn]);
+
+  // Finishing a SAVE. Same as above, but also honours a returnTo from
+  // another page. Scoped to the save paths deliberately: returnTo lives as
+  // long as this page is mounted, so firing it on every entry the user
+  // merely opens and closes would yank them off the page unprompted.
+  const returnToOrigin = useCallback(() => {
+    if (returnToLedger()) return true;
+    if (returnTo && setPage) {
+      setPage(returnTo.page, { openTenantId: returnTo.openTenantId, tenantName: returnTo.tenantName, panel: returnTo.panel || "ledger" });
+      return true;
+    }
+    return false;
+  }, [returnToLedger, returnTo, setPage]);
+
   const companyName = activeCompany?.name || "My Company";
 
   useEffect(() => { fetchAll({ allowCache: true }); }, [companyId]);
@@ -5520,7 +5566,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (pendingLedgerReturn) { openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title); setPendingLedgerReturn(null); setViewJEId(null); } return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToLedger} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}
