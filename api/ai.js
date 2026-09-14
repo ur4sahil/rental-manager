@@ -113,8 +113,14 @@ async function applySuggestion(sb, job, output) {
   // guessing at what it meant.
   if (!account) return { written: false, reason: `no account with code "${code}"` };
 
-  // The property is matched DETERMINISTICALLY against the transaction text,
-  // not asked of the model.
+  // The property comes from what this company has DONE BEFORE, ranked by
+  // measured reliability -- tenant 99%, vendor+memo+amount 85%,
+  // vendor+memo 81%. Anything below 80% is not offered at all, because a
+  // wrong property that looks like an answer is worse than a blank one:
+  // a reviewer accepts it and every charge after it inherits the mistake.
+  //
+  // Falls back to a literal name match in the text, which is exact when it
+  // fires and silent when it does not.
   //
   // Asked, the model answered "Bank Charges" and "Rental Income" -- account
   // names, not properties -- for every transaction, having ignored the
@@ -123,8 +129,18 @@ async function applySuggestion(sb, job, output) {
   // the same rule as not asking it to parse a date: if something is
   // decidable, decide it.
   let classId = null;
+  const { data: classHits } = await sb.rpc("suggest_class_from_history", {
+    p_company_id: job.company_id,
+    p_text: job.input?.description || "",
+    p_entity_name: job.input?.payee || null,
+    p_amount: job.input?.amount ?? null,
+    p_min_support: 2,
+  });
+  const topClass = (classHits || [])[0];
+  if (topClass && Number(topClass.reliability) >= 0.8) classId = topClass.class_id;
+
   const haystack = `${job.input?.description || ""} ${job.input?.payee || ""}`.toLowerCase();
-  if (haystack.trim()) {
+  if (!classId && haystack.trim()) {
     const { data: classes } = await sb.from("acct_classes")
       .select("id, name").eq("company_id", job.company_id);
     // Longest name first, so "100 Oak Street, Unit A" wins over
@@ -304,7 +320,14 @@ module.exports = async function handler(req, res) {
           && Number(top.agreement) >= minAgreement;
 
         if (confident) {
+          const { data: cls } = await sb.rpc("suggest_class_from_history", {
+            p_company_id: companyId, p_text: t.description || "",
+            p_entity_name: t.payee || null, p_amount: t.amount ?? null, p_min_support: 2,
+          });
+          const topCls = (cls || [])[0];
           const r = await writeSuggestion(sb, companyId, t.id, {
+            classId: topCls && Number(topCls.reliability) >= 0.8 ? topCls.class_id : null,
+            classSource: topCls && Number(topCls.reliability) >= 0.8 ? topCls.method : null,
             accountId: top.account_id, accountName: top.account_name,
             memo: (t.description || "").slice(0, 120),
             source: "history",
