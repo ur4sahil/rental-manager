@@ -1522,12 +1522,17 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   showToast={showToast}
   onClose={() => setModal(null)}
   onSave={async (formData, lines, status) => {
+  // Close ONLY on success. These return false when the save failed --
+  // a statement timeout on the journal lines, a period lock, an
+  // out-of-balance entry -- and closing regardless discarded everything
+  // the user had typed while looking exactly like a successful post.
+  let ok = false;
   if (modal === "add") {
-  await onAdd({ ...formData, lines, status });
+  ok = await onAdd({ ...formData, lines, status });
   } else if (modal?.mode === "edit") {
-  await onUpdate({ ...modal.je, ...formData, lines, status: status || modal.je.status });
+  ok = await onUpdate({ ...modal.je, ...formData, lines, status: status || modal.je.status });
   }
-  setModal(null);
+  if (ok) setModal(null);
   }}
   />
   )}
@@ -4994,16 +4999,19 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
 
   // --- Journal Entry CRUD ---
+  // Returns TRUE only when the entry and its lines are both saved. The
+  // caller closes the form on that, and keeps it open with the user's work
+  // intact on anything else.
   async function addJournalEntry(data) {
-  if (!guardSubmit("addJournalEntry")) return;
+  if (!guardSubmit("addJournalEntry")) return false;
   try {
   const { lines, ...header } = data;
   // Period lock check
-  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot post to a locked accounting period (" + header.date + ").", "error"); return; }
+  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot post to a locked accounting period (" + header.date + ").", "error"); return false; }
   // Validate DR/CR balance
   if (lines?.length > 0) {
   const v = validateJE(lines);
-  if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
+  if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return false; }
   }
   // Number via RPC + retry on 23505: in-memory journalEntries can
   // lag the DB (recurring engine / autopay post JEs without a refresh),
@@ -5012,7 +5020,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   let jeRow = null, headerErr = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const { data: number, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
-    if (numErr || !number) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
+    if (numErr || !number) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return false; }
     ({ data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number, date: header.date, description: header.description,
       reference: header.reference || "", property: header.property || "", status: header.status || "draft"
@@ -5020,7 +5028,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     if (!headerErr && jeRow) break;
     if (headerErr?.code !== "23505") break;
   }
-  if (headerErr || !jeRow) { showToast("Error creating journal entry: " + (headerErr?.message || "No ID returned"), "error"); return; }
+  if (headerErr || !jeRow) { showToast("Error creating journal entry: " + (headerErr?.message || "No ID returned"), "error"); return false; }
   if (lines?.length > 0) {
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
   journal_entry_id: jeRow.id, company_id: companyId,
@@ -5031,21 +5039,22 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (linesErr) {
   { const { error: _delErr } = await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId); if (_delErr) pmError("PM-4002", { raw: _delErr, context: "orphaned JE header cleanup", silent: true }); }
   showToast("Error creating journal entry lines: " + linesErr.message, "error");
-  return;
+  return false;
   }
   }
   fetchAll({ quiet: true });
+  return true;
   } finally { guardRelease("addJournalEntry"); }
   }
   async function updateJournalEntry(data) {
   const { id, lines, ...header } = data;
   delete header.created_at;
   // Period lock check
-  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot edit a journal entry in a locked period.", "error"); return; }
+  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot edit a journal entry in a locked period.", "error"); return false; }
   // Validate debit/credit balance before saving
   if (lines?.length > 0) {
   const v = validateJE(lines);
-  if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
+  if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return false; }
   }
   delete header.number;
   // Save old lines before deleting so we can restore on failure
@@ -5053,7 +5062,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
   // Replace lines
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
-  if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll({ quiet: true }); return; }
+  if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll({ quiet: true }); return false; }
   if (lines?.length > 0) {
   // class_id and entity_id are uuid columns. Legacy rows sometimes
   // carry bigint-stringified values (e.g. entity_id="306" for a
@@ -5068,10 +5077,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
   fetchAll({ quiet: true });
-  return;
+  return false;
   }
   }
   fetchAll({ quiet: true });
+  return true;
   }
   async function postJournalEntry(id) {
   if (!guardSubmit("postJE", id)) return;
