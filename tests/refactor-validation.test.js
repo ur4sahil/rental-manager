@@ -183,12 +183,14 @@ function testFileStructure() {
   // certificate) plus requiredLicenses(). The licence feature existed and
   // NOTHING asked for it -- all 41 rental properties had zero licences --
   // so the lines are the prompt that was missing, not decoration.
+  // 44000 on 2026-09-13: Housy learns from history — the Ask tab, the
+  // bulk transaction coding in Banking, and the PWA update handling.
   // 43700 on 2026-09-13: Housy — src/utils/housy.js and the review queue
   // in src/components/Housy.js. The queue is where a model PROPOSAL
   // becomes a human decision, so it is the component that keeps every AI
   // action out of the business tables until someone approves it. That is
   // not weight this bound should be fighting.
-  assert(totalLines <= 43700, `Total src lines <= 43700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  assert(totalLines <= 44000, `Total src lines <= 44000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
