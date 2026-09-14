@@ -798,7 +798,11 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
 export function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; if (isOpen) document.addEventListener("keydown", h); return () => document.removeEventListener("keydown", h); }, [isOpen, onClose]);
   if (!isOpen) return null;
-  const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
+  // xxl exists for the journal entry editor. Its line table needs about
+  // 1,180px to show an account, a class and a memo without clipping any of
+  // them; xl (1024px) left it scrolling sideways to read a value that had
+  // simply been squeezed.
+  const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl", xxl:"max-w-7xl" };
   return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
   <div className={`bg-white rounded-xl border border-neutral-200 shadow-card w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
@@ -1401,7 +1405,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   }, [form, validation.isValid, totalDebit, totalCredit]);
 
   return (
-  <AcctModal isOpen={true} onClose={onClose} title={mode === "add" ? "New Journal Entry" : `Edit: ${je?.number}`} size="xl">
+  <AcctModal isOpen={true} onClose={onClose} title={mode === "add" ? "New Journal Entry" : `Edit: ${je?.number}`} size="xxl">
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
@@ -1431,27 +1435,33 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <div className="rounded-xl border border-neutral-200 overflow-x-auto">
   <DataTable
     columns={[
-      { key: "account", label: "Account",
+      // Widths chosen so the real values FIT rather than being clipped to a
+      // few characters: an account reads "1100-012 AR - Tavon Singletary", a
+      // class reads a full property address. Both were being cut to about
+      // ten characters, which is not enough to tell two tenant AR accounts
+      // apart. The table scrolls sideways inside the modal rather than
+      // squeezing, and every column can be dragged from here.
+      { key: "account", label: "Account", width: 260,
         render: (line, i) => (<>
           <AccountPicker value={line.account_id} onChange={v => setLine(i,"account_id",v)} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption className="px-2 py-1.5 bg-white" />
         </>) },
-      { key: "class", label: "Class",
+      { key: "class", label: "Class", width: 230,
         render: (line, i) => (<>
           <Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>
         </>) },
-      { key: "tenant_vendor", label: "Tenant/Vendor",
+      { key: "tenant_vendor", label: "Tenant/Vendor", width: 190,
         render: (line, i) => (<>
           <Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select>
         </>) },
-      { key: "memo", label: "Memo",
+      { key: "memo", label: "Memo", width: 220,
         render: (line, i) => (<>
           <Input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" />
         </>) },
-      { key: "debit", label: "Debit",
+      { key: "debit", label: "Debit", width: 120,
         render: (line, i) => (<>
           <Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
         </>) },
-      { key: "credit", label: "Credit",
+      { key: "credit", label: "Credit", width: 120,
         render: (line, i) => (<>
           <Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right bg-white tnum focus:border-brand-300 focus:outline-none" />
         </>) },
@@ -1460,11 +1470,13 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
       // a line from a journal entry at all. Nothing caught it: the
       // shortcuts test exercises removeLine() directly, and the table
       // still rendered six tidy columns.
-      { key: "remove", label: "", thClassName: "w-8",
+      { key: "remove", label: "", thClassName: "w-8", width: 40,
         render: (line, i) => (
           <TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="disabled:opacity-20">✕</TextLink>
         ) },
     ]}
+    resizable
+    storageKey="je-lines"
     rows={form.lines}
     // Form lines have no id -- EMPTY_JE_LINE does not define one -- so
     // keying on line.id gave every row the key `undefined`. Index is the

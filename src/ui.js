@@ -523,6 +523,11 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
         onChange={e => { setSearch(e.target.value); setHighlighted(-1); if (!open) setOpen(true); }}
         onFocus={() => { setOpen(true); setSearch(""); }}
         onKeyDown={handleKeyDown}
+        // An <input> clips its value rather than ellipsising it, so a
+        // narrow column shows "1100-012 A" with no sign that more exists.
+        // The column is wide enough now, but the title keeps the whole
+        // account readable on hover at any width the user drags it to.
+        title={displayText || undefined}
         className={`${inputBase("md", false)} ${className} pr-7 text-xs`}
         autoComplete="off"
       />
@@ -972,12 +977,61 @@ export function DataTable({
   // look for it.
   sort = null,
   onSort = null,
+  // Drag-to-resize column widths. Requires every column to carry a `width`
+  // (a px number): with resizing on, the table switches to fixed layout so a
+  // drag moves the column the user grabbed instead of the browser
+  // redistributing every column at once. Without a starting width for each,
+  // fixed layout would divide the table equally and the first render would
+  // look wrong.
+  //
+  // Widths are remembered per table in localStorage under storageKey, so a
+  // column someone widened stays widened. Storage is per-viewer and
+  // best-effort: every read and write is guarded, because a private window
+  // or blocked site data throws rather than returning null.
+  resizable = false,
+  storageKey = null,
   scroll = true,
   className = "",
   ariaLabel,
 }) {
   const td = TD[density] || TD.normal;
   const th = TH[density] || TH.normal;
+
+  const [colWidths, setColWidths] = useState(() => {
+    if (!resizable || !storageKey) return {};
+    try { return JSON.parse(window.localStorage.getItem("dt-widths:" + storageKey) || "{}") || {}; }
+    catch { return {}; }
+  });
+  useEffect(() => {
+    if (!resizable || !storageKey) return;
+    try { window.localStorage.setItem("dt-widths:" + storageKey, JSON.stringify(colWidths)); } catch { /* private window, blocked storage */ }
+  }, [colWidths, resizable, storageKey]);
+
+  // Pointer events, not mouse: this has to keep tracking when the cursor
+  // leaves the header (which it does immediately on a downward drag), and
+  // setPointerCapture is what guarantees the move/up pair arrive.
+  const startResize = (key, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = e.currentTarget.parentElement;
+    const startX = e.clientX;
+    const startW = cell ? cell.getBoundingClientRect().width : 120;
+    const onMove = (ev) => {
+      // 56px floor: narrower than this and the header label is unreadable,
+      // so a column cannot be dragged into being unidentifiable.
+      setColWidths(w => ({ ...w, [key]: Math.max(56, Math.round(startW + (ev.clientX - startX))) }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+    };
+    // Without this the drag selects the table text as it goes.
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const widthOf = (c) => colWidths[c.key] ?? c.width;
   // `sort: true` means "sort by my own key"; a string names another field.
   const sortKeyOf = c => (c.sort === true ? c.key : (typeof c.sort === "string" ? c.sort : null));
   const cols = columns.length || 1;
@@ -1066,7 +1120,12 @@ export function DataTable({
   };
 
   const table = (
-    <table className={"w-full text-sm border-collapse " + className} aria-label={ariaLabel}>
+    <table className={"w-full text-sm border-collapse " + (resizable ? "table-fixed " : "") + className} aria-label={ariaLabel}>
+      {resizable && (
+        <colgroup>
+          {columns.map(c => <col key={c.key} style={{ width: widthOf(c) ? widthOf(c) + "px" : undefined }} />)}
+        </colgroup>
+      )}
       {!hideHeader && (
       <thead className={"bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide " + (stickyHeader ? "sticky top-0 z-10" : "")}>
         <tr>
@@ -1075,10 +1134,11 @@ export function DataTable({
               key={c.key}
               scope="col"
               className={[th, ALIGN[c.align] || ALIGN.left, "font-semibold",
+                resizable ? "relative" : "",
                 stickyFirstColumn && c === columns[0] ? "sticky left-0 z-20 bg-neutral-50" : "",
                 stickyLastColumn && c === columns[columns.length - 1] ? "sticky right-0 z-20 bg-neutral-50" : "",
                 c.thClassName || ""].filter(Boolean).join(" ")}
-              style={c.width ? { width: c.width } : undefined}
+              style={widthOf(c) ? { width: widthOf(c) } : undefined}
               aria-sort={sortKeyOf(c) && sort && sort.key === sortKeyOf(c)
                 ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
             >
@@ -1097,6 +1157,21 @@ export function DataTable({
                   )}
                 </button>
               ) : c.label}
+              {/* Grab handle. Double-click restores this column to the
+                  width the caller specified, so a drag is never a one-way
+                  door. The last column has none: there is nothing to its
+                  right to give or take space from. */}
+              {resizable && c !== columns[columns.length - 1] && (
+                <span
+                  onPointerDown={(e) => startResize(c.key, e)}
+                  onDoubleClick={() => setColWidths(w => { const n = { ...w }; delete n[c.key]; return n; })}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${typeof c.label === "string" ? c.label : c.key} column`}
+                  title="Drag to resize — double-click to reset"
+                  className="absolute top-0 right-0 h-full w-2 translate-x-1/2 cursor-col-resize select-none hover:bg-brand-300/70 active:bg-brand-400"
+                />
+              )}
             </th>
           ))}
         </tr>
