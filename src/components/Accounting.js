@@ -1520,7 +1520,11 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   vendors={vendors}
   companyId={companyId}
   showToast={showToast}
-  onClose={() => setModal(null)}
+  // Cancelling is also "done with this entry", so it goes back the same
+  // way saving does. Without this, backing out of a form opened from a
+  // tenant's ledger left the user on the journal list — the very thing
+  // they were complaining about, just via the other button.
+  onClose={() => { setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}
   onSave={async (formData, lines, status) => {
   // Close ONLY on success. These return false when the save failed --
   // a statement timeout on the journal lines, a period lock, an
@@ -4500,45 +4504,50 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       // ledger -- the entry it pushed is gone.
       ledgerNavRef.current = false;
       setLedgerView(null);
-      setPendingLedgerReturn(null);
+      // The user navigated with the browser's own Back/Forward, which is
+      // itself a way of going back. Drop the origin so the next entry they
+      // finish doesn't also fling them somewhere.
+      setJeOrigin(null);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
-  const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
 
-  // Finishing with a journal entry should put the user back where they
-  // opened it from. There are two such places and they were handled
-  // inconsistently: an account ledger inside this page (pendingLedgerReturn),
-  // and another page entirely (returnTo — a tenant's ledger sends this).
-  // Only the edit-save path honoured the first and nothing honoured the
-  // second, so posting an entry left the user on the journal list every
-  // time. One function now, called from every path that closes an entry.
-  // Closing an entry that was opened FROM an account ledger on this page.
-  const returnToLedger = useCallback(() => {
-    if (!pendingLedgerReturn) return false;
-    openLedger(pendingLedgerReturn.accountIds, pendingLedgerReturn.title);
-    setPendingLedgerReturn(null);
+  // WHERE THIS JOURNAL ENTRY WAS STARTED FROM.
+  //
+  // A journal entry can be reached from five places, and finishing with one
+  // -- posting, editing, voiding, reversing, or just closing it -- should
+  // put the user back at whichever one they came from. Previously each
+  // origin was handled separately or not at all, so most routes dumped the
+  // user on the journal list. One value now, set on the way in and consumed
+  // on the way out:
+  //
+  //   { kind: "ledger", accountIds, title }  an account ledger on this page
+  //   { kind: "tab",    tab }                another Accounting tab (Bank)
+  //   { kind: "page",   page, action }       another page entirely
+  //
+  // CONSUMED ONCE, deliberately. A cross-page origin arrives as a prop and
+  // therefore lives as long as this page is mounted; without clearing it,
+  // every later entry the user merely opened and closed would teleport them
+  // off the page. Taking it once means "go back to what you came here to
+  // do", after which Accounting behaves normally.
+  const [jeOrigin, setJeOrigin] = useState(
+    returnTo ? { kind: "page", page: returnTo.page, action: returnTo.action || { openTenantId: returnTo.openTenantId, tenantName: returnTo.tenantName, panel: returnTo.panel || "ledger" } } : null
+  );
+
+  const returnToOrigin = useCallback(() => {
+    if (!jeOrigin) return false;
+    setJeOrigin(null);
     setViewJEId(null);
-    return true;
+    if (jeOrigin.kind === "ledger") { openLedger(jeOrigin.accountIds, jeOrigin.title); return true; }
+    if (jeOrigin.kind === "tab") { setActiveTab(jeOrigin.tab); return true; }
+    if (jeOrigin.kind === "page" && setPage) { setPage(jeOrigin.page, jeOrigin.action); return true; }
+    return false;
   // openLedger is redefined each render and is not worth a ref here; the
   // values it closes over are read at call time.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingLedgerReturn]);
-
-  // Finishing a SAVE. Same as above, but also honours a returnTo from
-  // another page. Scoped to the save paths deliberately: returnTo lives as
-  // long as this page is mounted, so firing it on every entry the user
-  // merely opens and closes would yank them off the page unprompted.
-  const returnToOrigin = useCallback(() => {
-    if (returnToLedger()) return true;
-    if (returnTo && setPage) {
-      setPage(returnTo.page, { openTenantId: returnTo.openTenantId, tenantName: returnTo.tenantName, panel: returnTo.panel || "ledger" });
-      return true;
-    }
-    return false;
-  }, [returnToLedger, returnTo, setPage]);
+  }, [jeOrigin, setPage]);
 
   const companyName = activeCompany?.name || "My Company";
 
@@ -5566,15 +5575,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToLedger} />}
-  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} />}
+  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}
   {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={openLedger} onRefresh={fetchAll} />}
   </div>
 
   {/* Account Ledger Drill-Down — a page of its own */}
-  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setPendingLedgerReturn(null); closeLedger(); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>

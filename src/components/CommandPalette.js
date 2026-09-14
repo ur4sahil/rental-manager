@@ -72,7 +72,13 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
     if (canAccount) {
       out.push({ id: "new-je", kind: "action", label: "New journal entry", icon: "post_add",
         group: "Actions", keywords: "new journal entry create je add",
-        run: () => onNavigate("acct_journal", "newJE") });
+        // The palette opens from anywhere, so finishing the entry returns to
+        // whatever page it was invoked from — unless that was already an
+        // accounting page, which would be a no-op round trip.
+        run: () => onNavigate("acct_journal",
+          currentPage && !String(currentPage).startsWith("acct")  && currentPage !== "accounting"
+            ? { newJE: true, returnTo: { page: currentPage } }
+            : "newJE") });
       out.push({ id: "qb-import", kind: "action", label: "Import from QuickBooks", icon: "cloud_upload",
         group: "Actions", keywords: "import quickbooks qbo ledger",
         run: () => onNavigate("acct_qbimport") });
@@ -86,7 +92,7 @@ export function CommandPalette({ open, onClose, nav = [], onNavigate, onSwitchCo
         context: companyName || "", run: () => onSwitchCompany() });
     }
     return out;
-  }, [nav, onNavigate, onSwitchCompany, companyName]);
+  }, [nav, onNavigate, onSwitchCompany, companyName, currentPage]);
 
   const results = useMemo(() => {
     if (!query.trim()) {

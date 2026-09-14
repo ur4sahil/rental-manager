@@ -100,7 +100,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   {/* Stripe payments can't be manually recorded — they flow through
       the Stripe API. The escape hatch routes to the Accounting JE
       editor for any non-Stripe receipt the admin needs to log. */}
-  <Btn variant="success-fill" onClick={() => setPage("accounting", "newJE")}>
+  <Btn variant="success-fill" onClick={() => setPage("accounting", { newJE: true, returnTo: { page: "payments" } })}>
   <span className="material-icons-outlined text-sm">add_circle</span>Record Manual Payment
   </Btn>
   </div>
