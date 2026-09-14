@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths && npm run test:parity",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -83,7 +83,8 @@
     "test:ai": "node ai-pipeline.test.mjs",
     "test:paths": "node page-paths.test.mjs",
     "utility:login": "node ../worker/portals/enroll.js",
-    "utility:bill": "node ../worker/portals/fetch-bill.js"
+    "utility:bill": "node ../worker/portals/fetch-bill.js",
+    "test:parity": "node report-parity.test.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",

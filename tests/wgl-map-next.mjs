@@ -66,7 +66,20 @@ try {
   await p.waitForTimeout(5000);
 
   if (await p.getByRole("textbox", { name: /UserName/i }).count().catch(() => 0)) {
-    console.log("login refused — stopping, not retrying");
+    // WHY it refused decides what to do next, and the three cases need
+    // opposite responses: a wrong password needs correcting, a lockout
+    // needs waiting and NOT retrying, and a bot challenge needs a human.
+    // Reporting "refused" without distinguishing them is useless.
+    const t = (await p.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    const msg = t.match(/(invalid|incorrect|locked|disabled|suspended|too many|temporarily|unable to|does not match|verify|not a robot|try again)[^.!]{0,110}/i);
+    console.log("login refused — NOT retrying");
+    console.log("  page says:", msg ? msg[0].slice(0, 130) : "(no error message found on the page)");
+    const captcha = await p.locator('iframe[title*="recaptcha" i], [class*="captcha" i]:visible').count().catch(() => 0);
+    console.log("  visible captcha elements:", captcha);
+    mkdirSync("/tmp/housy-shots", { recursive: true });
+    const s = `/tmp/housy-shots/wgl-refused-${Date.now()}.png`;
+    await p.screenshot({ path: s, fullPage: true });
+    console.log("  screenshot:", s);
     await b.close(); process.exit(2);
   }
   console.log("signed in:", p.url());

@@ -6,7 +6,7 @@ import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/help
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { checkPeriodLock } from "../utils/accounting";
+import { checkPeriodLock, rpcAllPaged } from "../utils/accounting";
 import { Spinner } from "./shared";
 import { HOUSY, queueHousyJob } from "../utils/housy";
 import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
@@ -257,9 +257,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     let cancelled = false;
     if (!companyId) return undefined;
     (async () => {
-      const { data, error } = await supabase.rpc("acct_balance_index", { p_company_id: companyId });
+      let data = null;
+      try { data = await rpcAllPaged("acct_balance_index", { p_company_id: companyId }); }
+      catch { data = null; }
       if (cancelled) return;
-      if (error || !data) { setServerBalanceIndex(null); return; }
+      if (!data) { setServerBalanceIndex(null); return; }
       const idx = {};
       for (const r of data) {
         if (!r.account_id) continue;

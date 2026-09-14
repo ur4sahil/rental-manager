@@ -88,7 +88,16 @@ export const calcAllBalances = (accounts, journalEntries) => {
   return accounts.map(a => ({ ...a, computedBalance: balanceFromIndex(index, a.id, a.type) }));
 };
 
-export const getPLData = (accounts, journalEntries, startDate, endDate, classId = null, includeZeros = false) => {
+// preIndex, when given, is exactly what buildBalanceIndex(...).index would
+// have returned for this period -- { [accountId]: { debit, credit } } -- but
+// summed by the DATABASE instead of over every journal line in the browser.
+// The caller is responsible for having applied the class filter to it, which
+// is why the classId branch below also honours it.
+//
+// Optional and defaulted, so every existing call site keeps the old
+// behaviour untouched. tests/report-parity.test.js asserts the two paths
+// produce identical figures on real data.
+export const getPLData = (accounts, journalEntries, startDate, endDate, classId = null, includeZeros = false, preIndex = null) => {
   const revTypes = ["Revenue","Other Income"];
   const expTypes = ["Expense","Cost of Goods Sold","Other Expense"];
   if (classId) {
@@ -105,14 +114,14 @@ export const getPLData = (accounts, journalEntries, startDate, endDate, classId 
   filteredIndex[aid].credit += safeNum(l.credit);
   }
   }
-  const getBalance = (aid, atype) => balanceFromIndex(filteredIndex, aid, atype);
+  const getBalance = (aid, atype) => balanceFromIndex(preIndex || filteredIndex, aid, atype);
   const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
   const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
   const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
   const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
   return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
   }
-  const { index } = buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
+  const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
   const getBalance = (aid, atype) => balanceFromIndex(index, aid, atype);
   const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
   const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
@@ -121,9 +130,11 @@ export const getPLData = (accounts, journalEntries, startDate, endDate, classId 
   return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
 };
 
-export const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
-  const filtered = journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
-  const { index } = buildBalanceIndex(filtered);
+// preIndex: same contract as getPLData, for the as-of range (everything up
+// to and including asOfDate).
+export const getBalanceSheetData = (accounts, journalEntries, asOfDate, preIndex = null) => {
+  const filtered = preIndex ? [] : journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
+  const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(filtered);
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
   const assets = accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
   const liabilities = accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
@@ -219,8 +230,9 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome, arByTenant, arAging, arAgingByTenant: arAgingByTenantArr };
 };
 
-export const getTrialBalance = (accounts, journalEntries, endDate) => {
-  const { index } = buildBalanceIndex(journalEntries, je => je.date <= endDate);
+// preIndex: same contract as getPLData, for everything up to endDate.
+export const getTrialBalance = (accounts, journalEntries, endDate, preIndex = null) => {
+  const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(journalEntries, je => je.date <= endDate);
   return accounts.filter(a => a.is_active).map(a => {
   const entry = index[a.id];
   const net = entry ? entry.debit - entry.credit : 0;

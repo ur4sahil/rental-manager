@@ -111,6 +111,31 @@ export async function postAccountingTransaction({ date, description, reference, 
 // ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
 // Direct insert approach — no RPC. Posts JE header + lines in two steps.
 // All bare account codes (e.g., "1000") are resolved to UUIDs via resolveAccountId().
+// Read EVERY row of a set-returning RPC.
+//
+// PostgREST caps a response at 1000 rows, and that cap applies to RPCs just
+// as it does to table reads -- silently. A set-returning function read in
+// one shot therefore truncates with no error and no indication:
+// tests/report-parity.test.js caught acct_account_ledger returning 1000 of
+// an account's 2903 lines, with a closing balance of $8,376.58 where the
+// truth was -$105,080.99. A ledger that shows two thirds of itself and a
+// confident wrong total is worse than one that fails.
+//
+// Pages until a short page arrives, the same contract fetchAllPaged uses for
+// tables. Throws on error rather than returning a partial set, so a caller
+// cannot mistake "the fetch broke" for "the account has fewer lines".
+export async function rpcAllPaged(fn, args, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.rpc(fn, args).range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    rows.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
 export async function checkPeriodLock(companyId, date) {
   if (!date || !companyId) return false;
   const { data } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();

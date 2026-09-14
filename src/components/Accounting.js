@@ -9,7 +9,7 @@ import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } fr
 import { printTheme, chartPalette, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache } from "../utils/accounting";
+import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged} from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
 import { ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 import { QuickBooksImport } from "./QuickBooksImport";
@@ -403,7 +403,7 @@ export {
 // activity. Sahil: "cmd click on ledger balances or totals, shows total of
 // AR =0". Same failure AcctReports already guards against; this view was
 // simply never handed the flags.
-export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false }) {
+export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId }) {
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [propertyFilter, setPropertyFilter] = useState("");
@@ -411,6 +411,42 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
 
   // Build ledger lines for all selected accounts
   const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
+  const idKey = ids.join(",");
+
+  // Ask the DATABASE for just this ledger's lines, rather than filtering the
+  // whole company's 16,548 of them in the browser. acct_account_ledger takes
+  // the account ids and the period and returns only the matching rows.
+  //
+  // null means "still loading", [] means "loaded and empty" -- the same
+  // distinction linesLoaded draws for the old path, and for the same reason:
+  // a ledger that renders an empty table while still fetching claims the
+  // account has no transactions.
+  const [rpcRows, setRpcRows] = useState(null);
+  const [rpcFailed, setRpcFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId || !ids.length) return undefined;
+    setRpcRows(null);
+    setRpcFailed(false);
+    (async () => {
+      // Paged: PostgREST caps an RPC response at 1000 rows and truncates
+      // silently, which would show a long ledger as its first 1000 lines
+      // with a closing balance to match.
+      try {
+        const data = await rpcAllPaged("acct_account_ledger", {
+          p_company_id: companyId, p_account_ids: ids, p_start: start, p_end: end,
+        });
+        if (cancelled) return;
+        setRpcRows(data || []);
+      } catch (e) {
+        if (!cancelled) setRpcFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // idKey rather than ids: a fresh array identity every render would
+    // refetch forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, idKey, start, end]);
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
   // A total's ledger can span dozens of accounts, so neither the names
   // nor the codes can simply be joined: "TOTAL ASSETS" covers 46 of them,
@@ -431,8 +467,42 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const primaryType = acctMap[ids[0]]?.type || "Asset";
   const nb = getNormalBalance(primaryType);
 
+  // ONE flat list of candidate rows, from whichever source is available.
+  // Everything below consumes this, so the grouping, the running balance,
+  // the subtotals, the CSV and the PDF are all computed exactly as before --
+  // only where the rows come from has changed.
+  //
+  // The fallback is not dead code: acct_account_ledger ships ahead of the
+  // production migration, and an environment without it must still render a
+  // ledger rather than an empty one.
+  const useServerRows = rpcRows !== null && !rpcFailed;
   const sortedJEs = journalEntries.filter(je => je.status === "posted").sort((a, b) => a.date.localeCompare(b.date) || (a.id || "").localeCompare(b.id || ""));
   const inScope = (je) => je.date >= start && je.date <= end && (!propertyFilter || je.property === propertyFilter);
+
+  const candidateRows = useServerRows
+    ? rpcRows.map(r => ({
+        accountId: r.account_id, date: r.je_date, number: r.je_number, jeId: r.je_id,
+        description: r.description, reference: r.reference, property: r.property,
+        memo: r.memo, debit: safeNum(r.debit), credit: safeNum(r.credit),
+      }))
+    : sortedJEs.flatMap(je => (inScope(je) ? (je.lines || []).map(l => ({
+        accountId: l.account_id, date: je.date, number: je.number, jeId: je.id,
+        description: je.description, reference: je.reference, property: je.property,
+        memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit),
+      })) : []));
+
+  // The server already applied the date range; the property filter is still
+  // applied here for BOTH paths, because the running balance has to be
+  // recomputed over exactly the rows that end up on screen. Filtering after
+  // the balance was computed would leave a balance column that steps by
+  // amounts the reader cannot see.
+  const visibleRows = propertyFilter
+    ? candidateRows.filter(r => r.property === propertyFilter)
+    : candidateRows;
+
+  // Loading/failure now reflect whichever source is in play.
+  const rowsLoaded = useServerRows || linesLoaded;
+  const rowsFailed = (rpcFailed && !linesLoaded) || linesFailed;
 
   // Group PER ACCOUNT, each with its own running balance and subtotal.
   //
@@ -452,17 +522,14 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
     const dir = getNormalBalance(acct?.type || "Asset");
     let run = 0, totalDr = 0, totalCr = 0;
     const rows = [];
-    for (const je of sortedJEs) {
-      if (!inScope(je)) continue;
-      for (const l of (je.lines || [])) {
-        if (l.account_id !== accountId) continue;
-        const dr = safeNum(l.debit), cr = safeNum(l.credit);
-        run += dir === "debit" ? dr - cr : cr - dr;
-        totalDr += dr; totalCr += cr;
-        rows.push({ date: je.date, number: je.number, jeId: je.id, description: je.description,
-                    reference: je.reference, property: je.property, memo: l.memo,
-                    accountName: acct?.name || "", debit: dr, credit: cr, balance: run });
-      }
+    for (const r of visibleRows) {
+      if (String(r.accountId) !== String(accountId)) continue;
+      const dr = r.debit, cr = r.credit;
+      run += dir === "debit" ? dr - cr : cr - dr;
+      totalDr += dr; totalCr += cr;
+      rows.push({ date: r.date, number: r.number, jeId: r.jeId, description: r.description,
+                  reference: r.reference, property: r.property, memo: r.memo,
+                  accountName: acct?.name || "", debit: dr, credit: cr, balance: run });
     }
     return { accountId, acct, code: acct?.code || "", name: acct?.name || "Unknown",
              rows, totalDr, totalCr, closing: run };
@@ -475,7 +542,11 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const multiAccount = groups.length > 1;
 
   // Properties for filter dropdown
-  const properties = [...new Set(journalEntries.filter(je => je.property).map(je => je.property))].sort();
+  // Derived from THIS ledger's rows, not the whole company's entries: the
+  // dropdown should offer the properties that actually appear in the ledger
+  // being read. It also means the filter no longer depends on the full
+  // journalEntries array being loaded.
+  const properties = [...new Set(candidateRows.filter(r => r.property).map(r => r.property))].sort();
   // (The hand-counted column total that used to live here is gone:
   // DataTable and printTable both compute their own colSpans, which is the
   // point of them -- a hand-written count is how a 9-column header ended
@@ -598,15 +669,15 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
       view has no columns to align to and ml-auto still places the
       export links. */}
   <div className="flex flex-wrap items-center sm:justify-end gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
-  {linesLoaded ? <>
+  {rowsLoaded ? <>
   <span>DR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 tnum">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
-  </> : <span className="text-neutral-400">{linesFailed ? "Ledger failed to load \u2014 reopen to retry" : "Loading the ledger\u2026"}</span>}
+  </> : <span className="text-neutral-400">{rowsFailed ? "Ledger failed to load \u2014 reopen to retry" : "Loading the ledger\u2026"}</span>}
   {/* Only a single-account ledger has a meaningful closing balance.
       Across accounts the figure would sum unlike things, so the count of
       accounts is shown instead of an authoritative-looking nonsense. */}
   {multiAccount
-    ? (linesLoaded ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span> : null)
+    ? (rowsLoaded ? <span>Accounts: <strong className="text-neutral-800">{groups.length}</strong></span> : null)
     : <span>Bal: <strong className={`tnum ${(groups[0]?.closing || 0) >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(groups[0]?.closing || 0, true)}</strong></span>}
   {allLines.length > 0 && <span className="sm:hidden ml-auto flex items-center gap-3"><TextLink onClick={exportCSV}>CSV</TextLink><TextLink onClick={exportPDF}>PDF</TextLink></span>}
   </div>
@@ -683,7 +754,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
       // produces a figure that looks authoritative and means nothing. So the
       // multi-account row dashes the balance out and the single-account one,
       // where the figure IS meaningful, shows the closing balance.
-      footer={linesLoaded && allLines.length > 0
+      footer={rowsLoaded && allLines.length > 0
         ? [multiAccount
             ? { label: `${groups.length} accounts \u00b7 ${allLines.length} entries`, strong: true,
                 cells: [acctFmt(grandDr), acctFmt(grandCr), "\u2014"] }
@@ -692,8 +763,8 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
         : null}
       onRowClick={l => onViewJE && onViewJE(l.jeId)}
       rowKey={(l, i) => i}
-      loading={!linesLoaded}
-      empty={linesFailed ? "Ledger failed to load \u2014 close and reopen to retry" : "No transactions found for this period"}
+      loading={!rowsLoaded}
+      empty={rowsFailed ? "Ledger failed to load \u2014 close and reopen to retry" : "No transactions found for this period"}
     />
   </div>
   </div>
@@ -989,7 +1060,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
 }
 
 // --- Chart of Accounts Sub-Page ---
-export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger, showToast }) {
+export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger, showToast, companyId }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
@@ -998,7 +1069,39 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const dynamicTypes = getAccountTypes(accounts);
   const dynamicSubtypes = getAccountSubtypes(accounts, form.type === "__custom__" ? form.customType : form.type);
 
-  const withBalances = calcAllBalances(accounts, journalEntries);
+  // Account balances from the DATABASE (acct_balance_index) rather than by
+  // summing every journal line in the browser. This screen wants one number
+  // per account -- 212 of them -- and was reading 16,548 rows to get them.
+  //
+  // The client sum is kept as a fallback, not as dead code: the RPC ships
+  // ahead of the production migration, and an environment without it must
+  // still show balances rather than a column of zeros. balanceFromIndex is
+  // the same function either way, so the two agree wherever both can run.
+  const [srvIndex, setSrvIndex] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) return undefined;
+    (async () => {
+      let data = null;
+      try { data = await rpcAllPaged("acct_balance_index", { p_company_id: companyId }); }
+      catch { data = null; }
+      if (cancelled) return;
+      if (!data) { setSrvIndex(null); return; }
+      const idx = {};
+      for (const r of data) {
+        if (!r.account_id) continue;
+        if (!idx[r.account_id]) idx[r.account_id] = { debit: 0, credit: 0 };
+        idx[r.account_id].debit += safeNum(r.debit);
+        idx[r.account_id].credit += safeNum(r.credit);
+      }
+      setSrvIndex(idx);
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, journalEntries.length]);
+
+  const withBalances = srvIndex
+    ? accounts.map(a => ({ ...a, computedBalance: balanceFromIndex(srvIndex, a.id, a.type) }))
+    : calcAllBalances(accounts, journalEntries);
   const filtered = withBalances.filter(a => {
   if (!showInactive && !a.is_active) return false;
   if (filter !== "All" && a.type !== filter) return false;
@@ -5590,7 +5693,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
-  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
+  {activeTab === "coa" && <AcctChartOfAccounts companyId={companyId} accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} />}
   {activeTab === "bankimport" && <BankTransactions linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
@@ -5599,7 +5702,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
 
   {/* Account Ledger Drill-Down — a page of its own */}
-  {ledgerView && <AccountLedgerView linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView companyId={companyId} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>
