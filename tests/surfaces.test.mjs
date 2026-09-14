@@ -84,3 +84,38 @@ console.log(`      (${shared} uses of the shared card recipe)`);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+
+// ---- filter controls must not claim a whole row ----------------------
+// Select applies w-full unless its className carries a width or the
+// `filter` prop is set. In a stacked label wrapper that is correct. Sitting
+// INLINE in a flex row -- after a <span> or a non-block <label> -- it makes
+// the control take the entire line, which is how two Bank Transactions
+// filters ended up occupying two full-width rows for about 150px of
+// content each.
+//
+// Matches the inline shape only: a span or inline label immediately
+// followed by a Select, inside a flex container. Stacked wrappers are left
+// alone deliberately; "fixing" those would make them shrink oddly.
+{
+  const files = fs.readdirSync(path.join(SRC, "components")).filter(f => f.endsWith(".js"));
+  const offenders = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(SRC, "components", f), "utf8");
+    const lines = src.split("\n");
+    for (let i = 1; i < lines.length; i++) {
+      if (!/<Select(\s|$)/.test(lines[i])) continue;
+      const tag = lines[i] + " " + (lines[i + 1] || "");
+      const seg = tag.split("<Select")[1] || "";
+      if (/\bw-(\d|full|auto|\[)/.test(seg) || /^\s*filter[\s/>]/.test(seg)) continue;
+      const prev = lines[i - 1];
+      // Inline label or span on the line before, and not a block label
+      // (block means a stacked wrapper, where full width is right).
+      const inlineLabel = /<span[^>]*>[^<]*:\s*<\/span>|<label(?![^>]*\bblock\b)[^>]*>/.test(prev);
+      const ctx = lines.slice(Math.max(0, i - 5), i).join(" ");
+      const inRow = /className="[^"]*\bflex\b[^"]*\bgap-/.test(ctx) && !/flex-col/.test(ctx);
+      if (inlineLabel && inRow) offenders.push(`${f}:${i + 1}`);
+    }
+  }
+  assert("no Select sits inline in a filter row without a width or `filter`",
+    offenders.length === 0, offenders.join(", "));
+}

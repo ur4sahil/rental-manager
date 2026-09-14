@@ -3142,7 +3142,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">When transaction meets</label>
-          <Select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
+          <Select filter value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
             <option value="all">ALL</option><option value="any">ANY</option>
           </Select>
           <span className="text-xs text-neutral-400">conditions:</span>
@@ -3201,7 +3201,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {ruleForm.split && ruleForm.lines.length >= 2 && (
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs text-neutral-400">Split by:</span>
-              <Select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
+              <Select filter value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
                 <option value="percentage">Percentage</option><option value="amount">Amount</option>
               </Select>
             </div>

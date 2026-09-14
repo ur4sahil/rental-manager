@@ -538,7 +538,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
                     <div className="flex items-center gap-3 flex-wrap text-xs">
                       <div className="flex items-center gap-2">
                         <span className="text-neutral-500">Recipients:</span>
-                        <Select value={s.recipients || "all"} onChange={e => updateRecipients(s, e.target.value)}
+                        <Select filter value={s.recipients || "all"} onChange={e => updateRecipients(s, e.target.value)}
                           className="text-xs border border-neutral-200 rounded-lg px-2 py-1">
                           <option value="all">Everyone</option>
                           <option value="tenant">Tenants only</option>
