@@ -24,11 +24,21 @@ const SESSION = path.join(SESSION_DIR, `${key}.json`);
 const SHOTS = process.env.HOUSY_SHOT_DIR || "/tmp/housy-shots";
 
 const money = /\$\s?([\d,]+\.\d{2})/;
+const MONTHS = { january:1, february:2, march:3, april:4, may:5, june:6, july:7,
+                 august:8, september:9, october:10, november:11, december:12 };
+
+// Three formats, because all three appear in the wild on these two sites:
+// WSSC writes "Due Date: 10-05-2026" with dashes, and Washington Gas writes
+// "due on September 23, 2026" in words. A numeric-only pattern read the
+// amount and silently returned no date -- and a bill with no due date is
+// the one that gets paid late.
 const isoDate = (s) => {
-  // WSSC writes "Due Date: 10-05-2026" with dashes; Washington Gas uses
-  // slashes. Matching only slashes found the amount and silently lost the
-  // date -- and a bill with no due date is the one you pay late.
-  const m = String(s).match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  const txt = String(s);
+  const words = txt.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
+  if (words && MONTHS[words[1].toLowerCase()]) {
+    return `${words[3]}-${String(MONTHS[words[1].toLowerCase()]).padStart(2, "0")}-${String(words[2]).padStart(2, "0")}`;
+  }
+  const m = txt.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
   if (!m) return null;
   const [, mo, d, y] = m;
   const yr = y.length === 2 ? `20${y}` : y;
@@ -105,25 +115,76 @@ const isoDate = (s) => {
 
     const bodyText = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
 
-    let amount = null;
+    // THE AMOUNT MUST COME FROM THE BALANCE'S OWN CONTAINER.
+    //
+    // Falling back to the first money-shaped string on the page read
+    // $50.32 off a "YOUR BILLING AT A GLANCE" widget when the balance was
+    // $27.66 -- an overpayment of $22.66 had anything acted on it. A page
+    // full of dollar figures is the normal case, not the exception:
+    // this one showed the current bill, the previous bill and the same
+    // month last year, all beside the balance.
+    let amount = null, amountVia = null;
     for (const cand of book.amount) {
+      if (cand.labelled) {
+        const m = bodyText.match(cand.labelled);
+        if (m && m[1]) { amount = Number(m[1].replace(/,/g, "")); amountVia = `labelled "${m[0].slice(0, 36)}"`; break; }
+        continue;
+      }
       if (cand.role) {
         const el = page.getByRole(cand.role, { name: cand.name }).first();
-        if (await el.count().catch(() => 0)) {
-          const t = await el.innerText().catch(() => "");
-          const m = t.match(money) || bodyText.match(money);
-          if (m) { amount = Number(m[1].replace(/,/g, "")); record("amount", `${amount} (via ${cand.role})`); break; }
+        if (!(await el.count().catch(() => 0))) continue;
+        // The heading itself rarely holds the number; its parent does.
+        for (const scope of [el, el.locator("xpath=.."), el.locator("xpath=../..")]) {
+          const t = (await scope.innerText().catch(() => "")).replace(/\s+/g, " ");
+          const m = t.match(money);
+          if (m) { amount = Number(m[1].replace(/,/g, "")); amountVia = `${cand.role} "${t.slice(0, 40)}"`; break; }
         }
-      } else if (cand.text) {
+        if (amount != null) break;
+      }
+    }
+    // No page-wide fallback. If the balance cannot be found where the
+    // balance lives, that is not_found -- a number taken from somewhere
+    // else on the page is worse than no number at all.
+    if (amount != null) record("amount", `${amount} (${amountVia})`);
+
+    let due = null;
+    // Prefer the balance's own container: "Your next payment of $27.66 is
+    // due on September 23, 2026" sits right beside the amount, where a
+    // page-wide search would instead find a statement date from a history
+    // table.
+    if (amountVia) {
+      const el = page.getByRole(book.amount[0].role, { name: book.amount[0].name }).first();
+      for (const scope of [el.locator("xpath=.."), el.locator("xpath=../..")]) {
+        const t = (await scope.innerText().catch(() => "")).replace(/\s+/g, " ");
+        for (const cand of book.dueDate) {
+          const m = t.match(cand.text);
+          if (m) { due = isoDate(m[0]); if (due) { record("due date", `${due} (beside the balance)`); break; } }
+        }
+        if (due) break;
+      }
+    }
+    if (!due) {
+      for (const cand of book.dueDate) {
         const m = bodyText.match(cand.text);
-        if (m) { const mm = m[0].match(money); if (mm) { amount = Number(mm[1].replace(/,/g, "")); record("amount", `${amount} (via text)`); break; } }
+        if (m) { due = isoDate(m[0]); if (due) { record("due date", due); break; } }
       }
     }
 
-    let due = null;
-    for (const cand of book.dueDate) {
-      const m = bodyText.match(cand.text);
-      if (m) { due = isoDate(m[0]); if (due) { record("due date", due); break; } }
+    // The due date may live one page deeper. Followed only when the landing
+    // page did not have it, so the usual path stays a single load.
+    if (!due && book.dueDateFollow) {
+      const link = page.getByRole(book.dueDateFollow.role, { name: book.dueDateFollow.name }).first();
+      if (await link.count().catch(() => 0)) {
+        record("following", `${book.dueDateFollow.role} matching ${book.dueDateFollow.name}`);
+        await link.click().catch(() => {});
+        await page.waitForTimeout(7000);
+        const deeper = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+        for (const cand of book.dueDate) {
+          const m = deeper.match(cand.text);
+          if (m) { due = isoDate(m[0]); if (due) { record("due date", `${due} (one page deeper)`); break; } }
+        }
+        if (!due) record("due date", "not on the bill page either");
+      }
     }
 
     // Finding nothing is a real answer, not a failure to report. A bill

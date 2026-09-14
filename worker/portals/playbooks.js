@@ -29,8 +29,9 @@ const PLAYBOOKS = {
     // warning, and a single brittle locator is the usual reason these
     // break silently.
     amount: [
+      { labelled: /balance\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
+      { labelled: /amount\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
       { role: "heading", name: /amount due|balance/i },
-      { text: /\$\s?[\d,]+\.\d{2}/ },
     ],
     dueDate: [
       // Label first, bare date second. WSSC renders "Due Date: 10-05-2026"
@@ -38,6 +39,8 @@ const PLAYBOOKS = {
       // pattern found the amount and lost the date.
       { text: /due\s*date\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
       { text: /due\s+(?:by|on)?\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /due\s+on\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i },
+      { text: /due\s+on\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i },
       { text: /\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/ },
     ],
   },
@@ -51,7 +54,7 @@ const PLAYBOOKS = {
     ],
     amount: [
       { role: "heading", name: /amount due|current charges|balance/i },
-      { text: /\$\s?[\d,]+\.\d{2}/ },
+      { labelled: /current\s+balance[^$]{0,40}\$\s?([\d,]+\.\d{2})/i },
     ],
     dueDate: [
       // Label first, bare date second. WSSC renders "Due Date: 10-05-2026"
@@ -59,6 +62,7 @@ const PLAYBOOKS = {
       // pattern found the amount and lost the date.
       { text: /due\s*date\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
       { text: /due\s+(?:by|on)?\s*:?\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/i },
+      { text: /due\s+on\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i },
       { text: /\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/ },
     ],
   },
