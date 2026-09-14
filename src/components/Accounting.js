@@ -423,6 +423,8 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   // account has no transactions.
   const [rpcRows, setRpcRows] = useState(null);
   const [rpcFailed, setRpcFailed] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     let cancelled = false;
     if (!companyId || !ids.length) return undefined;
@@ -432,6 +434,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
       // Paged: PostgREST caps an RPC response at 1000 rows and truncates
       // silently, which would show a long ledger as its first 1000 lines
       // with a closing balance to match.
+      setRefreshing(true);
       try {
         const data = await rpcAllPaged("acct_account_ledger", {
           p_company_id: companyId, p_account_ids: ids, p_start: start, p_end: end,
@@ -440,13 +443,24 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
         setRpcRows(data || []);
       } catch (e) {
         if (!cancelled) setRpcFailed(true);
+      } finally {
+        if (!cancelled) setRefreshing(false);
       }
     })();
     return () => { cancelled = true; };
     // idKey rather than ids: a fresh array identity every render would
     // refetch forever.
+    //
+    // journalEntries IS in the deps, and has to be. This view used to derive
+    // straight from it, so voiding or editing an entry updated it for free.
+    // Reading from the server instead broke that: voiding an entry changes
+    // neither the company, the accounts nor the dates, so the ledger sat
+    // there showing the entry that had just been voided, with totals to
+    // match. The parent replaces this array whenever an entry actually
+    // changes (fetchAll / refetchJournalEntry), and only then, so depending
+    // on its identity refetches exactly when it should.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId, idKey, start, end]);
+  }, [companyId, idKey, start, end, journalEntries, refreshNonce]);
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
   // A total's ledger can span dozens of accounts, so neither the names
   // nor the codes can simply be joined: "TOTAL ASSETS" covers 46 of them,
@@ -653,6 +667,13 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
+  {/* Explicit refresh. The ledger now reloads by itself whenever an entry
+      changes, but a server-backed view that a person is reading should
+      still let them ask for the current figures without reopening it. */}
+  <Btn variant="slate" size="sm" icon="refresh" title="Reload this ledger"
+       disabled={refreshing} onClick={() => setRefreshNonce(n => n + 1)}>
+    {refreshing ? "Refreshing\u2026" : "Refresh"}
+  </Btn>
   {allLines.length > 0 && <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>}
   {allLines.length > 0 && <Btn variant="slate" size="sm" icon="picture_as_pdf" className="hidden sm:block" onClick={exportPDF}>PDF</Btn>}
   </div>
@@ -1097,7 +1118,11 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
       setSrvIndex(idx);
     })();
     return () => { cancelled = true; };
-  }, [companyId, journalEntries.length]);
+    // journalEntries identity, NOT .length. Voiding an entry leaves the
+    // count unchanged while changing every balance it touched, so keying on
+    // the length would leave this screen showing the voided entry's money.
+    // The parent replaces the array only when something actually changed.
+  }, [companyId, journalEntries]);
 
   const withBalances = srvIndex
     ? accounts.map(a => ({ ...a, computedBalance: balanceFromIndex(srvIndex, a.id, a.type) }))

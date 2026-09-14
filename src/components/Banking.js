@@ -272,10 +272,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       setServerBalanceIndex(idx);
     })();
     return () => { cancelled = true; };
-    // journalEntries.length, not journalEntries: re-read after a post or a
-    // sync changes the entry count, without re-firing on every identity
-    // change of an array this component does not own.
-  }, [companyId, journalEntries.length]);
+    // journalEntries identity, NOT .length. Voiding an entry leaves the
+    // count unchanged while changing the Books balance it contributed to,
+    // so keying on the length would leave a feed reconciled against money
+    // that is no longer on the books. The parent replaces this array only
+    // when an entry actually changed.
+  }, [companyId, journalEntries]);
 
   const balanceIndex = serverBalanceIndex || clientBalanceIndex;
   // Books is trustworthy once EITHER source has real figures: the server
