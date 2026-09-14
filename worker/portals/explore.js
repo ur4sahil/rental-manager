@@ -78,11 +78,29 @@ async function ask({ model, prompt, image, numPredict = 400 }) {
 // ---- what the page offers, as text -----------------------------------
 async function readTree(page) {
   const yaml = await page.locator("body").ariaSnapshot({ timeout: 20000 }).catch(() => "");
-  const rows = yaml.split("\n").map(l => l.trim().replace(/^-\s*/, ""))
-    .filter(l => /^(textbox|button|link|combobox|radio|checkbox|heading|option)/.test(l));
-  // Deduplicated: portals repeat nav on every page, and a list padded with
-  // forty copies of the same menu crowds out the controls that matter.
-  return [...new Set(rows)].slice(0, 60);
+  const rows = yaml.split("\n").map(l => l.trim().replace(/^-\s*/, "").replace(/^['"]/, ""))
+    // TEXT, not only controls.
+    //
+    // The first version kept buttons, links and headings and dropped
+    // everything else -- so when asked to find the bill amount on a page
+    // plainly reading "Balance: $106.39 Due Date: 10-05-2026", it answered
+    // that no control displayed it. Which was true, and useless: the
+    // answer was TEXT, and I had filtered the text out. A page is not just
+    // its buttons.
+    // `row` and `cell` matter as much as any button: on WSSC the entire
+    // answer -- account number, property, balance and due date -- lives in
+    // one table row. Leading YAML quotes are stripped above, because a
+    // quoted line reads as 'row rather than row and never matched.
+    .filter(l => /^(textbox|button|link|combobox|radio|checkbox|heading|option|text|paragraph|cell|row)/.test(l));
+  // Deduplicated: portals repeat nav on every page, and forty copies of the
+  // same menu crowd out what matters.
+  //
+  // Capped at 40, not 80. Measured three times on this project: a 5B model
+  // has a small attention budget and spending it on breadth costs
+  // accuracy. The WSSC balance line sat at index 20 of 80 and was missed;
+  // handed that same line alone, the model read the amount and the due
+  // date correctly. Fewer, better lines beat more of them.
+  return [...new Set(rows)].slice(0, 40);
 }
 
 async function proposeStep(tree, goal, history) {
@@ -90,9 +108,12 @@ async function proposeStep(tree, goal, history) {
     "You are operating a web page through its accessibility tree.",
     `GOAL: ${goal}`,
     history.length ? `Already done:\n${history.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}` : null,
-    "Choose the ONE control to interact with next, copying its label EXACTLY.",
-    "If the goal is already achieved on this page, set done=true and put the",
-    "answer in `found`.",
+    "The list includes TEXT as well as controls. If the answer is already",
+    "written on the page, that IS the goal achieved -- set done=true and put",
+    "the value in `found`. Do not click further looking for a better version",
+    "of something already in front of you.",
+    "Otherwise choose the ONE control to interact with next, copying its",
+    "label EXACTLY.",
     // Gemma's measured failure was clicking something related when the
     // right answer was nothing. Say it plainly and make it a first-class
     // outcome rather than a last resort.
