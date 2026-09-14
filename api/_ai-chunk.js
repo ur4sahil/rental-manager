@@ -28,7 +28,23 @@ function chunkText(text) {
 
   const flush = () => { if (buf.trim().length >= MIN_CHARS) out.push(buf.trim()); buf = ""; };
 
-  for (const para of clean.split(/\n\s*\n/)) {
+  // Split on NUMBERED CLAUSE headings before paragraphs.
+  //
+  // A lease is a list of numbered clauses, and each one is about exactly
+  // one thing. Paragraph splitting alone put the title, the parties, the
+  // premises, the notice address AND the term into a single 1,114-char
+  // chunk -- one embedding asked to represent five topics, which then
+  // scored poorly for every one of them. "When does the lease end?" could
+  // not find the clause holding the dates because that clause was a fifth
+  // of a chunk about something else.
+  //
+  // The pattern is deliberately strict: a number, a dot, a space, then a
+  // CAPITALISED word. "3. TERM." splits; "$2,450.00 per month" and
+  // "Section 19 below" do not.
+  const byClause = clean.split(/\n(?=\s*\d{1,2}\.\s+[A-Z][A-Z ]{2,})/);
+  const paragraphs = byClause.flatMap(block => block.split(/\n\s*\n/));
+
+  for (const para of paragraphs) {
     const p = para.trim();
     if (!p) continue;
     if (p.length > MAX_CHARS) {
@@ -50,7 +66,14 @@ function chunkText(text) {
       if (s.trim().length >= MIN_CHARS) out.push(s.trim());
       continue;
     }
-    if ((buf + "\n\n" + p).length > MAX_CHARS) flush();
+    // A new numbered clause always starts a new chunk, however short the
+    // last one was. Packing paragraphs up to the cap is what buried the
+    // TERM clause: it was merged with the title, the parties, the premises
+    // and the notice address into one 1,114-character chunk, and a single
+    // embedding cannot represent five subjects at once. Better a short
+    // chunk that is about one thing than a full one about five.
+    const startsClause = /^\s*\d{1,2}\.\s+[A-Z][A-Z ]{2,}/.test(p);
+    if (startsClause || (buf + "\n\n" + p).length > MAX_CHARS) flush();
     buf = buf ? buf + "\n\n" + p : p;
   }
   flush();
