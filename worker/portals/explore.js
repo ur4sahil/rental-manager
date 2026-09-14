@@ -76,46 +76,56 @@ async function ask({ model, prompt, image, numPredict = 400 }) {
 }
 
 // ---- what the page offers, as text -----------------------------------
-async function readTree(page) {
+// Value-shaped content: the things an answer usually looks like.
+const VALUE_SHAPES = [
+  /\$\s?[\d,]+\.\d{2}/,                       // money
+  /\(?\d{3}\)?[-. ]\d{3}[-. ]\d{4}/,           // phone
+  /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/,           // date
+  /[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/,         // date in words
+  /\b\d{6,}\b/,                                // account number
+  /[\w.+-]+@[\w-]+\.[\w.]+/,                   // email
+];
+
+// The 40 MOST RELEVANT lines, not the first 40.
+//
+// Taking the first 40 is arbitrary and it cost a real answer: on WSSC's
+// customer-service page the phone number sits at line 144 of 200, so the
+// read pass never saw it, reported nothing, and the explorer went off
+// clicking instead. Capping for attention was right; choosing by position
+// was not.
+//
+// Scored on overlap with the goal's own words plus whether the line
+// contains something value-shaped, then returned in page order so the
+// model reads them as a page rather than a ranking.
+function rankLines(lines, goal) {
+  const want = new Set(String(goal).toLowerCase().match(/[a-z]{3,}/g) || []);
+  const scored = lines.map((line, i) => {
+    const low = line.toLowerCase();
+    let score = 0;
+    for (const w of want) if (low.includes(w)) score += 3;
+    if (VALUE_SHAPES.some(re => re.test(line))) score += 4;
+    // A line that is nothing but a nav label is rarely the answer.
+    if (/^(link|button)/.test(line) && line.length < 30) score -= 1;
+    return { line, i, score };
+  });
+  return scored
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, 40)
+    .sort((a, b) => a.i - b.i)
+    .map(x => x.line);
+}
+
+async function readTree(page, goal) {
   const yaml = await page.locator("body").ariaSnapshot({ timeout: 20000 }).catch(() => "");
   const rows = yaml.split("\n").map(l => l.trim().replace(/^-\s*/, "").replace(/^['"]/, ""))
-    // TEXT, not only controls.
-    //
-    // The first version kept buttons, links and headings and dropped
-    // everything else -- so when asked to find the bill amount on a page
-    // plainly reading "Balance: $106.39 Due Date: 10-05-2026", it answered
-    // that no control displayed it. Which was true, and useless: the
-    // answer was TEXT, and I had filtered the text out. A page is not just
-    // its buttons.
-    // `row` and `cell` matter as much as any button: on WSSC the entire
-    // answer -- account number, property, balance and due date -- lives in
+    // TEXT, not only controls -- and `row`/`cell`, which is where WSSC puts
+    // an entire answer: account number, property, balance and due date in
     // one table row. Leading YAML quotes are stripped above, because a
     // quoted line reads as 'row rather than row and never matched.
     .filter(l => /^(textbox|button|link|combobox|radio|checkbox|heading|option|text|paragraph|cell|row)/.test(l));
-  // Deduplicated: portals repeat nav on every page, and forty copies of the
-  // same menu crowd out what matters.
-  //
-  // Capped at 40, not 80. Measured three times on this project: a 5B model
-  // has a small attention budget and spending it on breadth costs
-  // accuracy. The WSSC balance line sat at index 20 of 80 and was missed;
-  // handed that same line alone, the model read the amount and the due
-  // date correctly. Fewer, better lines beat more of them.
-  return [...new Set(rows)].slice(0, 40);
+  return rankLines([...new Set(rows)], goal);
 }
 
-// TWO PASSES, one question each.
-//
-// The single combined prompt -- "read the answer OR pick a control" -- was
-// measurably worse than either question alone. Handed one line, the model
-// read the amount and due date correctly; handed the same line inside a
-// page and asked to also decide what to click, it reported that no element
-// contained it.
-//
-// That is the third time on this project: asking for the account AND the
-// property dropped transaction coding from 4/5 to 3/5, and a four-field
-// vision prompt misread a checkbox a one-field prompt got right. A small
-// model has a small attention budget. Two focused calls cost a few seconds
-// and spend it twice.
 async function proposeStep(tree, goal, history) {
   // PASS 1: is the answer already here? Nothing about clicking.
   //
@@ -232,7 +242,7 @@ async function inspectVisually(pngBase64) {
   for (let step = 1; step <= MAX_STEPS; step++) {
     const shot = path.join(shots, `${key}-explore-${step}.png`);
     await page.screenshot({ path: shot });
-    const tree = await readTree(page);
+    const tree = await readTree(page, goal);
     console.log(`--- step ${step} · ${page.url().slice(0, 62)} · ${tree.length} controls`);
 
     const move = await proposeStep(tree, goal, history);
