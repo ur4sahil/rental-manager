@@ -103,26 +103,68 @@ async function readTree(page) {
   return [...new Set(rows)].slice(0, 40);
 }
 
+// TWO PASSES, one question each.
+//
+// The single combined prompt -- "read the answer OR pick a control" -- was
+// measurably worse than either question alone. Handed one line, the model
+// read the amount and due date correctly; handed the same line inside a
+// page and asked to also decide what to click, it reported that no element
+// contained it.
+//
+// That is the third time on this project: asking for the account AND the
+// property dropped transaction coding from 4/5 to 3/5, and a four-field
+// vision prompt misread a checkbox a one-field prompt got right. A small
+// model has a small attention budget. Two focused calls cost a few seconds
+// and spend it twice.
 async function proposeStep(tree, goal, history) {
-  const prompt = [
-    "You are operating a web page through its accessibility tree.",
-    `GOAL: ${goal}`,
-    history.length ? `Already done:\n${history.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}` : null,
-    "The list includes TEXT as well as controls. If the answer is already",
-    "written on the page, that IS the goal achieved -- set done=true and put",
-    "the value in `found`. Do not click further looking for a better version",
-    "of something already in front of you.",
-    "Otherwise choose the ONE control to interact with next, copying its",
-    "label EXACTLY.",
-    // Gemma's measured failure was clicking something related when the
-    // right answer was nothing. Say it plainly and make it a first-class
-    // outcome rather than a last resort.
-    "If NOTHING on this page advances the goal, set element to null and say",
-    "why. Never pick a control merely because it sounds related.",
-    'Reply with JSON: {"element":string|null,"role":string|null,"done":boolean,"found":string|null,"reason":string}',
-    `Accessibility tree:\n${tree.join("\n")}`,
-  ].filter(Boolean).join("\n\n");
-  return ask({ model: NAV_MODEL, prompt });
+  // PASS 1: is the answer already here? Nothing about clicking.
+  //
+  // Asked TWICE, differently framed, because this model is not
+  // deterministic even at temperature 0. The identical prompt on the
+  // identical 40 lines returned null on one run and
+  // "$106.39 Due Date: 10-05-2026" on the next. A single call and a null
+  // therefore proves nothing -- it is as likely to be a coin toss as an
+  // absence.
+  //
+  // Two framings, and either finding something counts. This is a READ: a
+  // value quoted off the page is checkable against the page, so a false
+  // positive costs nothing and a false negative costs a wasted click.
+  const framings = [
+    ["Below are lines from a web page, including its text.",
+     `You are looking for: ${goal}`,
+     "If the page states it, quote the value EXACTLY as written. If it does",
+     "not, return null. Do not guess and do not describe where it might be.",
+     'Reply with JSON: {"found":string|null}'],
+    ["Below are numbered lines from a web page.",
+     `Which line states ${goal}, and what is the value?`,
+     "Return null for both if no line states it.",
+     'Reply with JSON: {"line":number|null,"found":string|null}'],
+  ];
+  for (let i = 0; i < framings.length; i++) {
+    const body = i === 0 ? tree.join("\n") : tree.map((l, n) => `${n + 1}. ${l}`).join("\n");
+    const r = await ask({ model: NAV_MODEL, prompt: [...framings[i], body].join("\n\n"), numPredict: 220 });
+    if (r?.found) return { done: true, found: r.found, via: `read:${i + 1}` };
+  }
+
+  // PASS 2: only now, what to click. Nothing about reading.
+  const clickPass = await ask({
+    model: NAV_MODEL,
+    prompt: [
+      "You are operating a web page through its accessibility tree.",
+      `GOAL: ${goal}`,
+      history.length ? `Already done:\n${history.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}` : null,
+      "The value is NOT on this page -- that has been checked. Choose the ONE",
+      "control that would take you closer to it, copying its label EXACTLY.",
+      // The measured failure was clicking something related when the right
+      // answer was nothing. Make that a first-class outcome, not a last
+      // resort.
+      "If NOTHING here advances the goal, set element to null and say why.",
+      "Never pick a control merely because it sounds related.",
+      'Reply with JSON: {"element":string|null,"role":string|null,"reason":string}',
+      tree.join("\n"),
+    ].filter(Boolean).join("\n\n"),
+  });
+  return { ...(clickPass || {}), done: false, via: "click" };
 }
 
 // ---- the safety read, on the picture ---------------------------------
