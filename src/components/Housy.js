@@ -200,7 +200,10 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
         security_deposit: applied.security_deposit == null || applied.security_deposit === "" ? null : Number(applied.security_deposit),
         payment_due_day: applied.rent_due_day == null || applied.rent_due_day === "" ? null : Number(applied.rent_due_day),
         late_fee_amount: applied.late_fee == null || applied.late_fee === "" ? null : Number(applied.late_fee),
-        late_fee_type: applied.late_fee ? "fixed" : null,
+        // 'flat', not 'fixed' -- chk_lease_late_fee_type allows only
+        // 'flat' or 'percent', and 'fixed' failed every insert carrying a
+        // late fee. The model reads a dollar amount, so flat is right.
+        late_fee_type: applied.late_fee ? "flat" : null,
         // Draft, not active. Activating a lease is what starts rent
         // charging, and that should be a deliberate act on the Leases page
         // rather than a side effect of approving a reading.
