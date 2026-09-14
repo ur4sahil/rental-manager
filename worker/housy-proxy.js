@@ -32,7 +32,17 @@ function safeEqual(a, b) {
 // Only what Housy actually needs. Ollama's API also creates, copies,
 // pushes and DELETES models; none of that should be reachable from a
 // public URL even with the token.
-const ALLOWED = new Set(["/api/generate", "/api/tags", "/api/show"]);
+const ALLOWED = new Set([
+  "/api/generate",
+  // Retrieval embeds passages and questions. Omitting this returned 404
+  // for every embedding, and the caller's deliberate "null on failure,
+  // fall back to keyword search" turned that into silence: search simply
+  // stayed worse, with nothing anywhere saying why.
+  "/api/embeddings",
+  "/api/embed",
+  "/api/tags",
+  "/api/show",
+]);
 
 const server = http.createServer((req, res) => {
   const path = (req.url || "").split("?")[0];

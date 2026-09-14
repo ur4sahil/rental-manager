@@ -384,7 +384,9 @@ module.exports = async function handler(req, res) {
         quote: r.data?.quote || null,
         passage: r.data?.passage ?? null,
         chunks: chunks.map(c => ({ source_name: c.source_name, source_table: c.source_table,
-                                   source_id: c.source_id, content: c.content, rank: c.rank })),
+                                   source_id: c.source_id, content: c.content, rank: c.rank,
+                                   lexical: c.lexical, semantic: c.semantic })),
+        semanticSearch: Boolean(qVec),
         model: r.model, durationMs: r.durationMs,
       });
     }

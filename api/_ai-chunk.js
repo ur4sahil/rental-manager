@@ -88,7 +88,7 @@ async function ingestChunks(supabase, { companyId, sourceTable, sourceId, source
     const { error } = await supabase.from("doc_chunks").insert(rows.slice(i, i + 200));
     if (error) return { ok: false, error: `inserting chunks: ${error.message}`, chunks: i };
   }
-  return { ok: true, chunks: rows.length };
+  return { ok: true, chunks: rows.length, embedded: vectors.filter(Boolean).length };
 }
 
 module.exports = { chunkText, ingestChunks };
