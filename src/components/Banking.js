@@ -225,13 +225,20 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [matchCandidates, setMatchCandidates] = useState([]);
   const [matchLoading, setMatchLoading] = useState(false);
 
-  // Per-account debit/credit totals from posted journal lines. Used by
-  // the live reconciliation panel below to compute Books balance for
-  // each linked GL account in O(N) once per render. Inlined rather
-  // than imported from Accounting.js because Accounting imports this
-  // file (line 13 there) — a back-import would create a circular
-  // module reference.
-  const balanceIndex = useMemo(() => {
+  // Per-account debit/credit totals from posted journal lines, used by the
+  // live reconciliation panel to compute each feed's Books balance.
+  //
+  // Asked of the DATABASE now (acct_balance_index), which returns ~870
+  // summed rows instead of the 16,548 journal lines the browser used to
+  // download and add up itself. Reconciliation therefore no longer waits on
+  // the full ledger load at all.
+  //
+  // The client-side sum is kept as a FALLBACK, not as dead code: the RPC
+  // does not exist in every environment yet (it ships ahead of the
+  // production migration), and an environment without it must still
+  // reconcile rather than show every feed as unbalanced. Same arithmetic
+  // either way, so the two agree wherever both can run.
+  const clientBalanceIndex = useMemo(() => {
     const idx = {};
     for (const je of journalEntries || []) {
       if (je.status !== "posted") continue;
@@ -244,6 +251,34 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
     return idx;
   }, [journalEntries]);
+
+  const [serverBalanceIndex, setServerBalanceIndex] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) return undefined;
+    (async () => {
+      const { data, error } = await supabase.rpc("acct_balance_index", { p_company_id: companyId });
+      if (cancelled) return;
+      if (error || !data) { setServerBalanceIndex(null); return; }
+      const idx = {};
+      for (const r of data) {
+        if (!r.account_id) continue;
+        if (!idx[r.account_id]) idx[r.account_id] = { debit: 0, credit: 0 };
+        idx[r.account_id].debit += safeNum(r.debit);
+        idx[r.account_id].credit += safeNum(r.credit);
+      }
+      setServerBalanceIndex(idx);
+    })();
+    return () => { cancelled = true; };
+    // journalEntries.length, not journalEntries: re-read after a post or a
+    // sync changes the entry count, without re-firing on every identity
+    // change of an array this component does not own.
+  }, [companyId, journalEntries.length]);
+
+  const balanceIndex = serverBalanceIndex || clientBalanceIndex;
+  // Books is trustworthy once EITHER source has real figures: the server
+  // index having arrived, or the full ledger having loaded for the fallback.
+  const booksReady = serverBalanceIndex !== null || linesLoaded;
 
   // True unfiltered pending-net + count per feed. The `transactions`
   // state is filtered by the date-range cutoff (default 90 days),
@@ -323,11 +358,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // for the whole width of that gap and then correct itself to Reconciled
     // -- the reconciliation equivalent of a wrong number that looks like an
     // answer. Nothing is asserted until the figures behind it exist.
-    //   * journal lines: linesLoaded, owned by Accounting (it already
-    //     distinguishes "not arrived" from "empty" for its own reports).
+    //   * books: booksReady -- the server aggregate has answered, or the
+    //     full ledger arrived for the client fallback. Reconciliation no
+    //     longer has to wait for the whole ledger just to know its own
+    //     balances.
     //   * pending roll-up: feedPending has no key for a feed until its
     //     fetch resolves; every feed gets one, [] included.
-    const ready = linesLoaded && feedPending[feed.id] !== undefined;
+    const ready = booksReady && feedPending[feed.id] !== undefined;
     return { bankBal, bookBal, pendingNet, pendingCount: pendingTxns.length, diff, isReconciled, ready };
   }
 
