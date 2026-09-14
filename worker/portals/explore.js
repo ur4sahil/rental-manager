@@ -186,8 +186,14 @@ async function inspectVisually(pngBase64) {
   const key = process.argv[2];
   const goal = process.argv.slice(3).join(" ") || "find the current bill amount due";
   const { PLAYBOOKS } = require("./playbooks");
-  const book = PLAYBOOKS[key];
-  if (!book) { console.error(`usage: explore.js <${Object.keys(PLAYBOOKS).join("|")}> "<goal>"`); process.exit(1); }
+  // A known portal by key, or any URL. The point of an explorer is sites it
+  // has never seen; requiring a playbook first was backwards.
+  const isUrl = /^https?:\/\//i.test(key || "");
+  const book = isUrl ? { entry: key, provider: new URL(key).hostname } : PLAYBOOKS[key];
+  if (!book) {
+    console.error(`usage: explore.js <${Object.keys(PLAYBOOKS).join("|")}|https://...> "<goal>"`);
+    process.exit(1);
+  }
 
   const { createRequire } = require("module");
   let chromium = null;
@@ -197,11 +203,13 @@ async function inspectVisually(pngBase64) {
   if (!chromium) { console.error("playwright not installed"); process.exit(1); }
 
   const sessionFile = path.join(process.env.HOUSY_SESSION_DIR || path.join(require("os").homedir(), ".housy-sessions"), `${key}.json`);
-  if (!fs.existsSync(sessionFile)) { console.error(`no session — run enroll.js ${key} first`); process.exit(1); }
+  const haveSession = !isUrl && fs.existsSync(sessionFile);
+  if (!isUrl && !haveSession) { console.error(`no session — run enroll.js ${key} first`); process.exit(1); }
 
   const browser = await chromium.launch();
   const ctx = await browser.newContext({
-    storageState: JSON.parse(fs.readFileSync(sessionFile, "utf8")),
+    ...(haveSession ? { storageState: JSON.parse(fs.readFileSync(sessionFile, "utf8")) } : {}),
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
     viewport: { width: 1280, height: 950 },
   });
   const page = await ctx.newPage();
@@ -210,10 +218,16 @@ async function inspectVisually(pngBase64) {
 
   const proposed = [];     // the playbook being written
   const history = [];
+  // Where it has already been, and what it has already clicked. Without
+  // this it clicked "Customer Service" three times on the same URL: the
+  // prompt carried a history but nothing CHECKED that a step moved.
+  const seenUrls = new Set();
+  const triedHere = new Map();
   console.log(`\nGOAL: ${goal}\n`);
 
   await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+  seenUrls.add(page.url());
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     const shot = path.join(shots, `${key}-explore-${step}.png`);
@@ -263,13 +277,36 @@ async function inspectVisually(pngBase64) {
       break;
     }
 
+    // Refuse a control already tried on this page. A second identical
+    // click is the definition of not making progress.
+    const here = page.url();
+    const tried = triedHere.get(here) || new Set();
+    if (tried.has(label)) {
+      console.log(`    already tried "${label.slice(0, 36)}" here — stopping rather than looping`);
+      proposed.push({ step, action: "loop", name: label, url: here });
+      break;
+    }
+    tried.add(label); triedHere.set(here, tried);
+
+    const before = page.url();
     await loc.click().catch(() => {});
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+    const after = page.url();
+
+    // A click that changed nothing is a dead end. Recorded as such, so a
+    // reviewer sees WHY the run ended rather than a playbook full of
+    // repeats.
+    if (after === before && seenUrls.has(after)) {
+      console.log(`    "${label.slice(0, 36)}" did not move the page — stopping`);
+      proposed.push({ step, action: "no-op", role: move.role, name: label, url: after });
+      break;
+    }
+    seenUrls.add(after);
     history.push(`clicked ${move.role} "${label.slice(0, 40)}"`);
-    proposed.push({ step, action: "click", role: move.role, name: label, url: page.url() });
+    proposed.push({ step, action: "click", role: move.role, name: label, url: after });
   }
 
-  const out = `/tmp/housy-playbook-${key}-${Date.now()}.json`;
+  const out = `/tmp/housy-playbook-${String(key).replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}-${Date.now()}.json`;
   fs.writeFileSync(out, JSON.stringify({ portal: key, goal, entry: book.entry, steps: proposed }, null, 2));
   console.log(`\nproposed playbook: ${out}`);
   console.log(`${proposed.length} steps — review it, then it replays with no model at all.`);
