@@ -2483,13 +2483,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="w-64 !py-1.5 text-sm" />
     <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
-    <Select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
+    <Select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="w-36 border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
     </Select>
     {/* Server-side date window — smaller datasets load faster. The
         dateFrom/dateTo inputs to the left further narrow the visible set
         client-side. */}
-    <Select value={dateRangeMode} onChange={e => { setDateRangeMode(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs" title="Fetch window">
+    <Select value={dateRangeMode} onChange={e => { setDateRangeMode(e.target.value); setTxnPage(0); }} className="w-40 border border-brand-100 rounded-xl px-2 py-1.5 text-xs" title="Fetch window">
       <option value="30d">Last 30 days</option>
       <option value="90d">Last 90 days</option>
       <option value="6m">Last 6 months</option>

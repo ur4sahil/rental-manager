@@ -1343,7 +1343,12 @@ function AppInner() {
   <div className="flex-1 min-w-0 max-w-md">
   <SearchTrigger onOpen={() => setPaletteOpen(true)} hint={`${MOD}K`} />
   </div>
-  <div className="relative">
+  {/* ml-auto, because the search is flex-1 capped at max-w-md: once it
+      stops growing, everything after it packs left and the account
+      controls end up stranded mid-bar with empty space to their right.
+      They belong at the far edge, which is where a person looks for
+      them. */}
+  <div className="relative ml-auto">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
   <span className="hidden md:inline text-xs font-semibold text-neutral-700">{userProfile?.name || currentUser?.email?.split("@")[0] || "User"}</span>
