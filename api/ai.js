@@ -32,7 +32,7 @@ const { extractLicense } = require("./_ai-extract");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
-const WORKER_ACTIONS = new Set(["claim", "complete"]);
+const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets"]);
 
 function admin() {
   // BOTH names, because the two environments are not configured alike:
@@ -480,6 +480,45 @@ module.exports = async function handler(req, res) {
         semanticSearch: Boolean(qVec),
         model: r.model, durationMs: r.durationMs,
       });
+    }
+
+    // ---- a worker records a utility bill reading -------------------------
+    //
+    // The sweep runs on the Oracle box, which deliberately holds NO
+    // database credentials -- the service key bypasses RLS and that box is
+    // a second Always Free tenancy that can be reclaimed with little
+    // warning. So readings come back through here with the worker token,
+    // the same way jobs do.
+    //
+    // Records the bill on the utility row and nothing else. Utilities are
+    // not booked into accounting, so this never touches the ledger.
+    if (action === "record-reading") {
+      const { companyId: cid, provider, account = null, property = null,
+              outcome, amount = null, due = null, error: readErr = null } = body;
+      if (!cid || !provider || !outcome) {
+        return res.status(400).json({ error: "companyId, provider and outcome are required" });
+      }
+      const { data, error } = await sb.rpc("record_utility_reading", {
+        p_company_id: cid, p_provider: provider, p_account: account,
+        p_outcome: outcome, p_amount: amount, p_due: due,
+        p_error: readErr, p_property: property,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      const r = Array.isArray(data) ? data[0] : data;
+      return res.status(200).json({ ok: true, ...r });
+    }
+
+    // ---- what should the sweep read? -------------------------------------
+    // The box cannot query utilities itself, so it asks. Returns only what
+    // a sweep needs: provider, account number, property. No credentials.
+    if (action === "sweep-targets") {
+      const { companyId: cid, providers = [] } = body;
+      if (!cid) return res.status(400).json({ error: "companyId is required" });
+      let q = sb.from("utilities").select("id, provider, property, account_number").eq("company_id", cid);
+      if (providers.length) q = q.in("provider", providers);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true, targets: data || [] });
     }
 
     // ---- worker claims one job -----------------------------------------

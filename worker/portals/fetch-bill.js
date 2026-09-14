@@ -16,6 +16,11 @@ const path = require("path");
 const { PLAYBOOKS } = require("./playbooks");
 
 const key = (process.argv[2] || "").toLowerCase();
+// --account pins WHICH of the accounts behind this login to read. Without
+// it the portal shows whichever was selected last, and a reading gets
+// attributed to a property nobody chose.
+const acctIdx = process.argv.indexOf("--account");
+const wantAccount = acctIdx > -1 ? process.argv[acctIdx + 1] : null;
 const book = PLAYBOOKS[key];
 if (!book) { console.error(`usage: fetch-bill.js <${Object.keys(PLAYBOOKS).join("|")}>`); process.exit(1); }
 
@@ -107,6 +112,18 @@ const isoDate = (s) => {
     }
     record("session", "still valid");
 
+    // Switch to the requested account and CONFIRM it took. A click that
+    // silently failed would leave the previous property loaded and its
+    // balance reported under this one's name.
+    if (wantAccount) {
+      const { selectAccount, currentAccount } = require("./accounts");
+      const sel = await selectAccount(page, wantAccount);
+      if (!sel.ok) finish("wrong_account", { error: sel.reason, wanted: wantAccount });
+      const on = await currentAccount(page);
+      if (on && on !== wantAccount) finish("wrong_account", { error: `page shows ${on}`, wanted: wantAccount });
+      record("account", `${on || wantAccount} confirmed`);
+    }
+
     // The accessibility tree is what a playbook reasons over, and what
     // gets handed to the model when a locator stops matching. Small
     // enough to read: these pages were 1.7-5KB when probed.
@@ -146,6 +163,14 @@ const isoDate = (s) => {
     // balance lives, that is not_found -- a number taken from somewhere
     // else on the page is worse than no number at all.
     if (amount != null) record("amount", `${amount} (${amountVia})`);
+
+    // Which property this reading belongs to, when the portal identifies
+    // by address rather than by account number.
+    let readProperty = null;
+    if (book.identifyBy === "address" && book.addressNear) {
+      const m = bodyText.match(book.addressNear);
+      if (m) { readProperty = m[1].replace(/\s+/g, " ").trim(); record("property", readProperty); }
+    }
 
     let due = null;
     // Prefer the balance's own container: "Your next payment of $27.66 is
@@ -193,7 +218,7 @@ const isoDate = (s) => {
     if (amount == null) {
       finish("not_found", { error: "signed in, but no amount found — the bill may not be issued yet, or the page changed", screenshot: shot, treeChars: tree.length });
     }
-    finish("ok", { amount_due: amount, due_date: due, screenshot: shot, url: page.url() });
+    finish("ok", { account: wantAccount, property: readProperty, amount_due: amount, due_date: due, screenshot: shot, url: page.url() });
   } catch (e) {
     record("error", String(e.message).split("\n")[0]);
     finish("error", { error: String(e.message).slice(0, 200) });

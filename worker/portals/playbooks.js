@@ -43,6 +43,12 @@ const PLAYBOOKS = {
       { text: /due\s+on\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i },
       { text: /\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/ },
     ],
+    // WSSC shows no account number anywhere -- the property ADDRESS beside
+    // the balance is the identity. Captured so a reading is attributed to
+    // a property rather than reported as "the WSSC balance", which on an
+    // account holding ten properties means nothing.
+    identifyBy: "address",
+    addressNear: /([\dA-Z][A-Za-z0-9 .'-]{6,44}?(?:ST|AVE|DR|CT|RD|LN|PL|TER|WAY|BLVD|CIR|PKWY))[^$]{0,60}?Balance:\s*\$/i,
   },
 
   washington_gas: {
