@@ -12,7 +12,7 @@ import { Spinner } from "./shared";
 import { HOUSY, HOUSY_JOB_KINDS, HOUSY_STATUS, proposalCoverage } from "../utils/housy";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
-import { formatLocalDate } from "../utils/helpers";
+import { formatLocalDate, escapeFilterValue} from "../utils/helpers";
 
 const TONE_PILL = {
   warn: "bg-warn-50 text-warn-700", success: "bg-success-50 text-success-700",
@@ -124,6 +124,93 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
         : await supabase.from("property_licenses").insert([row]);
       return error ? { ok: false, error: error.message } : { ok: true };
     }
+    if (job.kind === "abstract_lease") {
+      // Every NOT NULL column on leases, checked before anything is
+      // written. A lease missing its rent or its dates is not a lease, and
+      // a half-written one is worse than none -- rent charges, late fees
+      // and renewal reminders all count off these fields.
+      const missing = [];
+      if (!applied.tenant_name) missing.push("tenant name");
+      if (!applied.lease_start) missing.push("start date");
+      if (!applied.lease_end) missing.push("end date");
+      if (applied.monthly_rent == null || applied.monthly_rent === "") missing.push("monthly rent");
+      if (missing.length) {
+        return { ok: false, error: `${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required — fill ${missing.length === 1 ? "it" : "them"} in above and approve again` };
+      }
+      if (String(applied.lease_end) <= String(applied.lease_start)) {
+        return { ok: false, error: "the end date is not after the start date" };
+      }
+
+      // Which property. The document's own property wins over the address
+      // the model read: the attachment is a fact, the reading is an
+      // inference, and they disagree when a lease names the landlord's
+      // office address instead of the unit.
+      let propertyId = job.input?.property_id ? Number(job.input.property_id) : null;
+      let propertyName = null;
+      if (propertyId) {
+        const { data: p } = await supabase.from("properties")
+          .select("id, address, short_name").eq("id", propertyId).eq("company_id", companyId).maybeSingle();
+        if (p) propertyName = p.short_name || p.address;
+      }
+      if (!propertyName && applied.property_address) {
+        const { data: matches } = await supabase.from("properties")
+          .select("id, address, short_name").eq("company_id", companyId)
+          .ilike("address", `%${escapeFilterValue(String(applied.property_address).split(",")[0].trim())}%`)
+          .is("archived_at", null).limit(2);
+        // Exactly one, or refuse. Two candidates means picking the wrong
+        // house, and every charge posted afterwards inherits the mistake.
+        if ((matches || []).length === 1) {
+          propertyId = matches[0].id;
+          propertyName = matches[0].short_name || matches[0].address;
+        } else if ((matches || []).length > 1) {
+          return { ok: false, error: `"${applied.property_address}" matches more than one of your properties — open the document from the right property instead` };
+        }
+      }
+      if (!propertyName) {
+        return { ok: false, error: "could not tell which property this lease is for — attach the document to a property first" };
+      }
+
+      // Which tenant. Name-matched, and left unlinked when ambiguous: the
+      // column allows a name without an id, and a lease pointed at the
+      // wrong tenant leaks one person's terms to another.
+      let tenantId = null;
+      const { data: tenants } = await supabase.from("tenants")
+        .select("id, name").eq("company_id", companyId)
+        .ilike("name", escapeFilterValue(String(applied.tenant_name).trim()))
+        .is("archived_at", null).limit(2);
+      if ((tenants || []).length === 1) tenantId = tenants[0].id;
+
+      // Never quietly create a second lease over a live one.
+      const { data: live } = await supabase.from("leases").select("id, start_date, end_date")
+        .eq("company_id", companyId).eq("property", propertyName)
+        .eq("status", "active").is("archived_at", null).limit(1);
+      if ((live || []).length) {
+        return { ok: false, error: `${propertyName} already has an active lease (${live[0].start_date} to ${live[0].end_date}). End that one first.` };
+      }
+
+      const row = {
+        company_id: companyId,
+        tenant_name: String(applied.tenant_name).trim(),
+        tenant_id: tenantId,
+        property: propertyName,
+        property_id: propertyId,
+        start_date: applied.lease_start,
+        end_date: applied.lease_end,
+        rent_amount: Number(applied.monthly_rent),
+        security_deposit: applied.security_deposit == null || applied.security_deposit === "" ? null : Number(applied.security_deposit),
+        payment_due_day: applied.rent_due_day == null || applied.rent_due_day === "" ? null : Number(applied.rent_due_day),
+        late_fee_amount: applied.late_fee == null || applied.late_fee === "" ? null : Number(applied.late_fee),
+        late_fee_type: applied.late_fee ? "fixed" : null,
+        // Draft, not active. Activating a lease is what starts rent
+        // charging, and that should be a deliberate act on the Leases page
+        // rather than a side effect of approving a reading.
+        status: "draft",
+        created_by: userProfile?.email || null,
+      };
+      const { error } = await supabase.from("leases").insert([row]);
+      return error ? { ok: false, error: error.message } : { ok: true };
+    }
+
     return { ok: false, error: `nothing knows how to apply a "${job.kind}" proposal yet` };
   }
 

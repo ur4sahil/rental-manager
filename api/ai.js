@@ -27,6 +27,7 @@ const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
+const { embed, toVectorLiteral } = require("./_ai-embed");
 const { extractLicense } = require("./_ai-extract");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
@@ -341,9 +342,13 @@ module.exports = async function handler(req, res) {
       const { question, sourceId = null, limit = 6 } = body;
       if (!question || !String(question).trim()) return res.status(400).json({ error: "question is required" });
 
-      const { data: chunks, error: sErr } = await sb.rpc("search_doc_chunks", {
-        p_company_id: companyId, p_query: String(question), p_limit: Math.min(Number(limit) || 6, 10),
-        p_source_id: sourceId,
+      // Embed the question so retrieval can match meaning. ~90ms, and a
+      // null just degrades this to the lexical search it used to be.
+      const qVec = await embed(String(question));
+      const { data: chunks, error: sErr } = await sb.rpc("search_doc_chunks_hybrid", {
+        p_company_id: companyId, p_query: String(question),
+        p_embedding: toVectorLiteral(qVec),
+        p_limit: Math.min(Number(limit) || 6, 10), p_source_id: sourceId,
       });
       if (sErr) return res.status(500).json({ error: sErr.message });
       // No passage means no grounded answer is possible. Say so rather

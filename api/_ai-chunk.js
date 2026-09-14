@@ -18,6 +18,8 @@ const MIN_CHARS = 40;     // a stray line is noise in the ranking
  * MAX_CHARS. A paragraph longer than the cap is split on sentence ends,
  * and only then on the cap itself.
  */
+const { embedAll, toVectorLiteral } = require("./_ai-embed");
+
 function chunkText(text) {
   const clean = String(text || "").replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
   if (!clean) return [];
@@ -71,9 +73,14 @@ async function ingestChunks(supabase, { companyId, sourceTable, sourceId, source
     .eq("company_id", companyId).eq("source_table", sourceTable).eq("source_id", String(sourceId));
   if (delErr) return { ok: false, error: `clearing old chunks: ${delErr.message}` };
 
+  // Embed as we ingest, so retrieval can match meaning and not only
+  // words. Null on failure -- search falls back to lexical, which is worse
+  // but not broken, and a document that failed to embed is still findable.
+  const vectors = await embedAll(chunks);
   const rows = chunks.map((content, i) => ({
     company_id: companyId, source_table: sourceTable, source_id: String(sourceId),
     source_name: sourceName || null, chunk_index: i, content,
+    embedding: toVectorLiteral(vectors[i]),
   }));
   // Batched: a long lease can be hundreds of chunks, and one oversized
   // insert is how a request body limit turns into a silent partial ingest.
