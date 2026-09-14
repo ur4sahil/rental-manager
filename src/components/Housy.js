@@ -7,6 +7,7 @@
 // they are" is something a reviewer can actually check.
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
+import { companyInsert } from "../utils/company";
 import { Btn, Card, PageHeader, TabBar, EmptyState, DataTable, Input, FormField } from "../ui";
 import { Spinner } from "./shared";
 import { HOUSY, HOUSY_JOB_KINDS, HOUSY_STATUS, proposalCoverage } from "../utils/housy";
@@ -189,7 +190,6 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
       }
 
       const row = {
-        company_id: companyId,
         tenant_name: String(applied.tenant_name).trim(),
         tenant_id: tenantId,
         property: propertyName,
@@ -210,7 +210,7 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
         status: "draft",
         created_by: userProfile?.email || null,
       };
-      const { error } = await supabase.from("leases").insert([row]);
+      const { error } = await companyInsert("leases", [row], companyId);
       return error ? { ok: false, error: error.message } : { ok: true };
     }
 
