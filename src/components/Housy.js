@@ -224,13 +224,26 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
     setAsking(true);
     setAnswer(null);
     try {
+      // Data first: "which properties are behind on rent" is answerable
+      // exactly, from a reviewed query, and no amount of document search
+      // would find it. Only if nothing in the catalogue fits does this
+      // fall through to reading the documents.
+      const dataRes = await fetch("/api/ai?action=ask-data", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, question: q }),
+      });
+      const dataBody = await dataRes.json().catch(() => ({}));
+      if (dataRes.ok && dataBody?.answered) { setAnswer({ ...dataBody, kind: "data" }); return; }
+
       const res = await fetch("/api/ai?action=ask", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyId, question: q }),
       });
       const body = await res.json();
       if (!res.ok) { showToast(body?.error || `Could not ask: HTTP ${res.status}`, "error"); return; }
-      setAnswer(body);
+      // Carry the catalogue across so a question that matched neither can
+      // say what it COULD have answered.
+      setAnswer({ ...body, kind: "document", available: dataBody?.available });
     } catch (err) {
       pmError("PM-8006", { raw: err, context: "ask Housy a question" });
     } finally {
@@ -275,12 +288,58 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
             the Documents page first.
           </p>
 
-          {answer && (
+          {answer?.kind === "data" ? (
+            <div className="mt-4 border-t border-neutral-200 pt-4">
+              <p className="text-xs text-neutral-400 mb-2">{answer.question}</p>
+              {answer.count === 0 ? (
+                <p className="text-sm text-neutral-500">
+                  Nothing matched.
+                  {/* Never let an empty result read as an all-clear: it is
+                      indistinguishable from having no records loaded. */}
+                  <span className="block text-2xs text-neutral-400 mt-1">{answer.empty_means}</span>
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="text-sm w-full">
+                    <thead>
+                      <tr className="text-2xs uppercase tracking-wide text-neutral-400">
+                        {Object.keys(answer.rows[0]).map(k => (
+                          <th key={k} className="text-left font-medium pb-1 pr-4">{k.replace(/_/g, " ")}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {answer.rows.slice(0, 50).map((r, i) => (
+                        <tr key={i} className="border-t border-neutral-100">
+                          {Object.values(r).map((v, j) => (
+                            <td key={j} className="py-1 pr-4 tabular-nums text-neutral-700">
+                              {v === null ? "—" : String(v)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {answer.count > 50 && (
+                    <p className="text-2xs text-neutral-400 mt-2">showing 50 of {answer.count}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : answer && (
             <div className="mt-4 border-t border-neutral-200 pt-4">
               {answer.answer == null || answer.found === false ? (
-                <p className="text-sm text-neutral-500">
-                  {answer.answer || answer.reason || "Nothing in your documents answers that."}
-                </p>
+                <div className="text-sm text-neutral-500">
+                  <p>{answer.answer || answer.reason || "Nothing in your documents answers that."}</p>
+                  {answer.available?.length > 0 && (
+                    <div className="mt-2 text-2xs text-neutral-400">
+                      <p className="mb-1">Things I can answer from your data:</p>
+                      <ul className="list-disc ml-4 space-y-0.5">
+                        {answer.available.slice(0, 6).map((a, i) => <li key={i}>{a}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   <p className="text-sm text-neutral-800 whitespace-pre-wrap">{answer.answer}</p>

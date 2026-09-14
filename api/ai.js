@@ -354,6 +354,74 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, fromHistory, queued, skipped, failures });
     }
 
+    // ---- ask a question of the DATA -------------------------------------
+    //
+    // The model never writes SQL. It picks one question from a catalogue
+    // of reviewed queries and fills in the blanks -- classification, which
+    // it measured well at, rather than code generation, which it did not.
+    //
+    // The reason is correctness before safety: a small model writes
+    // PLAUSIBLE SQL that is subtly wrong far more often than it writes SQL
+    // that fails, and a query returning a confident wrong number is the
+    // worst output there is, because nothing about it looks like an error.
+    // A forgotten "archived_at IS NULL" counts archived leases as active
+    // and still returns a tidy figure.
+    if (action === "ask-data") {
+      if (!aiConfigured()) return res.status(503).json({ error: "no model endpoint configured (AI_BASE_URL)" });
+      const { question } = body;
+      if (!question || !String(question).trim()) return res.status(400).json({ error: "question is required" });
+
+      const { data: catalog, error: cErr } = await sb.from("ai_question_templates")
+        .select("key, description, examples, params").eq("enabled", true);
+      if (cErr) return res.status(500).json({ error: cErr.message });
+      if (!catalog?.length) return res.status(200).json({ ok: true, answered: false, reason: "no questions are catalogued" });
+
+      const menu = catalog.map(c =>
+        `${c.key}: ${c.description}` +
+        (c.examples?.length ? `\n    e.g. ${c.examples.slice(0, 3).join(" / ")}` : "") +
+        (Object.keys(c.params || {}).length ? `\n    params: ${JSON.stringify(c.params)}` : "")
+      ).join("\n");
+
+      const pick = await askJson({
+        system:
+          "Choose which catalogued question answers the user, and extract any parameters.\n" +
+          // The honest refusal matters more than the coverage: answering
+          // the wrong question confidently is worse than saying no.
+          "If NONE of them answers it, set key to null. Never pick one that is merely related.\n" +
+          "Only use parameter names listed for the question you chose.",
+        schemaHint: '{"key":string|null,"params":object,"why":string}',
+        prompt: `Questions available:\n${menu}\n\nThe user asked: ${question}`,
+      });
+      if (!pick.ok) return res.status(502).json({ error: pick.error || "the model did not answer" });
+
+      const chosen = pick.data?.key && catalog.find(c => c.key === pick.data.key);
+      if (!chosen) {
+        return res.status(200).json({
+          ok: true, answered: false,
+          reason: pick.data?.why || "that is not something I can answer from your data yet",
+          available: catalog.map(c => c.description),
+        });
+      }
+
+      const { data: result, error: rErr } = await sb.rpc("run_ai_question", {
+        p_company_id: companyId, p_key: chosen.key, p_params: pick.data.params || {},
+      });
+      if (rErr) return res.status(500).json({ error: rErr.message });
+
+      // "No rows" and "no data to search" are DIFFERENT answers, and
+      // conflating them is how "you have no arrears" gets said to someone
+      // whose leases were simply never loaded.
+      const rows = result?.rows || [];
+      return res.status(200).json({
+        ok: true, answered: true, key: chosen.key, question: chosen.description,
+        params: pick.data.params || {}, rows, count: rows.length,
+        empty_means: rows.length === 0
+          ? "nothing matched — check the underlying records exist before reading this as a clean bill of health"
+          : null,
+        model: pick.model, durationMs: pick.durationMs,
+      });
+    }
+
     // ---- ask a question of the documents --------------------------------
     // SYNCHRONOUS, unlike everything else here, and deliberately.
     // Retrieval sends a handful of passages rather than a whole document,

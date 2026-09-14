@@ -68,10 +68,14 @@ async function visionCheck(pngPath) {
       body: JSON.stringify({
         model: VIS_MODEL, stream: true, format: "json",
         images: [fs.readFileSync(pngPath).toString("base64")],
-        prompt: "This is a utility bill payment form about to be submitted. Reply as JSON " +
-          '{"amount_filled":string|null,"account_shown":string|null,' +
-          '"anything_ticked_that_adds_money":string|null,"primary_button":string|null}. ' +
-          "anything_ticked_that_adds_money means a donation, tip or round-up that is CHECKED.",
+        // ONE question. The compound version -- four fields including a
+        // vaguely named "anything_ticked_that_adds_money" -- read the WAFF
+        // donation as ticked when the DOM said otherwise, and blocked a
+        // correct payment. Asked on its own, the same model on the same
+        // image answers correctly.
+        prompt: "Look at this payment form. Reply as JSON " +
+          '{"amount_filled":string|null,"account_shown":string|null}. ' +
+          "amount_filled is the amount in the payment box. account_shown is the account this payment is for.",
         options: { temperature: 0, num_predict: 250 },
       }),
       // Streamed: undici abandons a request whose headers take over 300s,
@@ -223,13 +227,27 @@ async function visionCheck(pngPath) {
     await page.screenshot({ path: shot });
     const vis = await visionCheck(shot);
     if (vis) {
-      log(`vision: amount=${vis.amount_filled} account=${vis.account_shown} button=${vis.primary_button}`);
-      if (vis.anything_ticked_that_adds_money) {
-        done("blocked", {
-          error: `something that adds money is still ticked: ${vis.anything_ticked_that_adds_money}`,
+      log(`vision reads: amount=${vis.amount_filled} account=${vis.account_shown}`);
+
+      // Vision cross-checks what a PERSON would read off the screen. It is
+      // not asked about checkbox state: that is a machine-readable fact and
+      // the DOM already answered it above, correctly, where the model did
+      // not.
+      const visAmt = vis.amount_filled ? Number(String(vis.amount_filled).replace(/[^0-9.]/g, "")) : null;
+      if (visAmt != null && Number.isFinite(visAmt) && Math.abs(visAmt - wantAmount) > 0.005) {
+        done("amount_mismatch", {
+          error: `the field says $${shown.toFixed(2)} but the page VISIBLY shows $${visAmt.toFixed(2)}`,
+          formAmount: shown, visibleAmount: visAmt, approvedAmount: wantAmount,
           screenshot: shot, vision: vis,
         });
       }
+      if (vis.account_shown && !String(vis.account_shown).includes(String(wantAccount).slice(0, 8))) {
+        done("wrong_account", {
+          error: `the page visibly shows "${vis.account_shown}", not account ${wantAccount}`,
+          screenshot: shot, vision: vis,
+        });
+      }
+      log("vision agrees on the amount and the account");
     } else {
       log("vision check unavailable — continuing on the structural checks alone");
     }

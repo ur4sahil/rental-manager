@@ -398,6 +398,14 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     try {
       const { data, error } = await supabase.rpc("suggest_accounts_for_pending", {
         p_company_id: companyId, p_txn_ids: null, p_min_support: 3, p_min_agree: 0.7,
+        // Falls back to the account-NAME vocabulary learned in your other
+        // companies when this one has no precedent of its own -- which is
+        // the cold-start case: a company with 1,502 pending transactions
+        // and no bank-derived history suggests nothing at all otherwise.
+        // Only the mapping crosses; amounts, properties and volumes never
+        // do, and the scope comes back so the badge can say where it came
+        // from.
+        p_allow_siblings: true,
       });
       if (error || !data?.length) return rows;
       const byId = new Map(data.map(d => [d.transaction_id, d]));
@@ -421,6 +429,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               support: Number(s.support),
               agreement: Number(s.agreement),
               classMethod: s.class_method || null,
+              scope: s.scope || "company",
             },
           },
         };
@@ -2688,6 +2697,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
         {txn.suggestion_status === "suggested_ai" && (() => {
           const sg = txn.raw_payload_json?._suggestion || {};
+          if (sg.source === "history" && sg.scope === "siblings") {
+            return <span className="ml-1.5 text-xs bg-info-100 text-info-700 px-1.5 py-0.5 rounded-full"
+              title={`Coded this way ${sg.support} time${sg.support === 1 ? "" : "s"} in your other companies — this one has no precedent yet`}>
+              Your other books {sg.support ? `· ${sg.support}` : ""}</span>;
+          }
           if (sg.source === "history") {
             // Evidence, not a score. "28 of 28 before" is checkable in a
             // way a model's self-rated confidence is not.
