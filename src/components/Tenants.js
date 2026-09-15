@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, RowMenu, usePersistedView} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
@@ -109,7 +109,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [sendingMsg, setSendingMsg] = useState(false);
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
   const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
-  const [tenantView, setTenantView] = useState("card");
+  const [tenantView, setTenantView] = usePersistedView("tenants", "card", ["card", "table", "compact"]);
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
   // Name ascending is how the list was ordered before sorting existed, so
@@ -2412,15 +2412,26 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (!bv) return -1;
     return av.localeCompare(bv, undefined, { sensitivity: "base", numeric: true }) * mul;
   });
+  // Six actions in a flex-wrap made every table row two lines tall. The
+  // three people reach for most stay inline; Edit / Invite / Delete move
+  // into the kebab, which also gets Delete away from the edge of a row
+  // that is itself a click target.
   const TenantActions = ({t}) => (
-  <div className="flex gap-1.5 flex-wrap">
+  <div className="flex gap-1.5 items-center justify-end flex-nowrap whitespace-nowrap">
   <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</TextLink>
-  <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
-  <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
-  <TextLink tone="highlight" size="xs" disabled={!!invitingTenant[t.id || t.email || ""]}
-    onClick={() => inviteTenant(t)}>{invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : "Invite"}</TextLink>
+  <RowMenu
+    label={`More actions for ${t.name}`}
+    items={[
+      { key: "edit", label: "Edit tenant", icon: "edit", tone: "neutral", onClick: () => startEdit(t) },
+      { key: "invite", label: invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : (t.email ? "Invite to portal" : "Invite (needs an email)"),
+        icon: "mail", tone: "neutral",
+        disabled: !t.email || !!invitingTenant[t.id || t.email || ""],
+        onClick: () => inviteTenant(t) },
+      { key: "delete", label: "Delete tenant", icon: "delete", tone: "danger", onClick: () => deleteTenant(t.id, t.name) },
+    ]}
+  />
   </div>
   );
   return <>

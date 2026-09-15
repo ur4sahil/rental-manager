@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -28,7 +28,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending", website: "", username: "", password: "" });
   const [showCreds, setShowCreds] = useState(new Set());
-  const [utilView, setUtilView] = useState("card");
+  const [utilView, setUtilView] = usePersistedView("utilities", "card", ["card", "table"]);
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
   const [utilFilterProp, setUtilFilterProp] = useState("all");
