@@ -581,14 +581,33 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
       // 1. Mint a link_token (new mode, or update mode for reconnect)
-      const ltRes = await fetch("/api/plaid-link", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_token", company_id: companyId, ...(reconnectConnectionId ? { reconnect_connection_id: reconnectConnectionId } : {}) })
-      });
-      const ltData = await ltRes.json();
+      //
+      // Retried once on 401. getSession() hands back whatever is in storage,
+      // and Chrome suspends supabase-js's background refresh timer on a
+      // backgrounded tab -- so a tab left open long enough sends an expired
+      // JWT, the route answers "Unauthorized", and the old code reported that
+      // as PM-5004 "your bank may require re-authentication". The bank was
+      // never contacted. refreshSession() forces a new token rather than
+      // trusting the timer.
+      const mintToken = async (accessToken) => {
+        const r = await fetch("/api/plaid-link", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + accessToken, "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "create_token", company_id: companyId, ...(reconnectConnectionId ? { reconnect_connection_id: reconnectConnectionId } : {}) })
+        });
+        return { res: r, data: await r.json().catch(() => ({})) };
+      };
+      let { res: ltRes, data: ltData } = await mintToken(session.access_token);
+      if (ltRes.status === 401) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed?.session?.access_token) {
+          ({ res: ltRes, data: ltData } = await mintToken(refreshed.session.access_token));
+        }
+      }
       if (!ltRes.ok || !ltData.link_token) {
-        pmError("PM-5004", { raw: new Error(ltData.error || `HTTP ${ltRes.status}`), context: "creating Plaid link token" });
+        // A 401 that survives a refresh is a dead session, not a bank problem.
+        if (ltRes.status === 401) pmError("PM-5011", { raw: new Error(ltData.error || "Unauthorized"), context: "creating Plaid link token" });
+        else pmError("PM-5004", { raw: new Error(ltData.error || `HTTP ${ltRes.status}`), context: "creating Plaid link token" });
         return;
       }
       // 2. Load Plaid Link SDK
@@ -664,6 +683,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       });
       const data = await res.json();
       if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
+      else if (data.history_pending) {
+        // Same reason as the post-connect path: zero on a connection that has
+        // never imported anything means Plaid is still fetching, not that
+        // there is nothing to fetch.
+        showToast("Connected, but Plaid is still fetching this account's history. Try Sync again in a few minutes.", "info");
+        fetchAll();
+      }
       else {
         let msg = `Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`;
         if (data.total_removed) msg += `, ${data.total_removed} removed`;
@@ -3578,6 +3604,14 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               });
               const data = await res.json();
               if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
+              // An empty first import is almost never "nothing to import" --
+              // it is Plaid still fetching the history, which takes anywhere
+              // from seconds to several minutes after linking. Reporting that
+              // as a plain success told the user the job was done when the
+              // transactions had not arrived yet.
+              else if (data.history_pending || (data.total_added === 0 && data.total_removed === 0)) {
+                showToast(`${postConnectModal.institutionName} is connected, but ${data.total_added === 0 ? "no transactions have arrived yet" : "the history is still loading"}. Plaid is still fetching — this can take a few minutes. Press Sync again shortly.`, "info");
+              }
               else { showToast(`Imported ${data.total_added} transaction${data.total_added !== 1 ? "s" : ""} from ${postConnectModal.institutionName}`, "success"); }
               fetchAll();
             } catch (e) { showToast("Sync failed: " + e.message, "error"); }

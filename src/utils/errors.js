@@ -62,6 +62,11 @@ export const PM_ERRORS = {
   "PM-5008": { message: "Could not save the bank rule.", action: "retry", severity: "error", module: "banking" },
   "PM-5009": { message: "Could not match this transaction.", action: "retry", severity: "error", module: "banking" },
   "PM-5010": { message: "Split total doesn't match the transaction amount.", action: "retry", severity: "warning", module: "banking" },
+  // PM-5004 covers any failure in the Plaid Link flow, which made it report
+  // "your bank may require re-authentication" when the real cause was an
+  // expired Housify session -- sending the user to look at Bank of America
+  // instead of at the tab they already had open. This separates the two.
+  "PM-5011": { message: "Your Housify session expired. Reload the page and try connecting again.", action: "reload", severity: "warning", module: "banking" },
   // PM-6xxx: PAYMENTS & LEDGER — financial integrity: partial-post failures are critical
   "PM-6001": { message: "Could not record the payment.", action: "retry", severity: "error", module: "payments" },
   "PM-6002": { message: "Could not update the tenant balance.", action: "contact", severity: "critical", module: "payments" },

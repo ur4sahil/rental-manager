@@ -12,6 +12,7 @@ const { getPlaidClient, decrypt, plaidTxnToRow, crossSourceKey, selectInserts } 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const CRON_CONCURRENCY = 3;
 const MAX_SYNC_PAGES = 50; // safety cap; each page is up to 500 changes
+const MAX_NOT_READY_RETRIES = 6; // ~15s of PRODUCT_NOT_READY before giving up this run
 
 function emailFilterValue(email) {
   const s = (email || "").trim().toLowerCase();
@@ -91,6 +92,13 @@ module.exports = async function handler(req, res) {
         let cursor = conn.plaid_sync_cursor || null;
         const added = [], modified = [], removed = [];
         let pages = 0;
+        // PRODUCT_NOT_READY means Plaid is still pulling this Item's history.
+        // It is counted separately from pages because the retry below does
+        // pages-- to avoid spending a page on a failed call -- which left the
+        // MAX_SYNC_PAGES cap unreachable, so the loop retried until the
+        // serverless function timed out.
+        let notReady = 0;
+        let historyNotReady = false;
         while (pages < MAX_SYNC_PAGES) {
           pages++;
           let resp;
@@ -102,7 +110,13 @@ module.exports = async function handler(req, res) {
             });
           } catch (e) {
             const code = e.response?.data?.error_code;
-            if (code === "PRODUCT_NOT_READY") { await sleep(2500); pages--; continue; }
+            if (code === "PRODUCT_NOT_READY") {
+              // Give up this run rather than spinning: the caller is told the
+              // history is still loading, and the cursor is left unset below
+              // so the next attempt starts from the beginning.
+              if (++notReady > MAX_NOT_READY_RETRIES) { historyNotReady = true; break; }
+              await sleep(2500); pages--; continue;
+            }
             if (code === "ITEM_LOGIN_REQUIRED") {
               await supabase.from("bank_connection")
                 .update({ connection_status: "needs_reauth", last_error_code: "ITEM_LOGIN_REQUIRED", last_error_message: "Re-authentication required" })
@@ -221,9 +235,43 @@ module.exports = async function handler(req, res) {
           }
         }
 
+        // ── Whether it is SAFE to persist this cursor ─────────────────
+        // A cursor marks "everything up to here has been seen". Storing one
+        // after importing nothing, on a connection that has never imported
+        // anything, silently strands the Item's whole history: every later
+        // sync asks "what changed since?" and Plaid correctly answers
+        // "nothing", because the backfill was never part of the stream after
+        // that marker.
+        //
+        // This is not hypothetical. A connection made on 2026-09-15 synced
+        // 5.7 seconds after the Item was created, while Plaid was still
+        // fetching. Six syncs reported success with added_count 0 and no
+        // error. Clearing the cursor by hand and re-syncing returned 1,895
+        // transactions that had been sitting at Plaid the whole time.
+        //
+        // So: if this run imported nothing AND this connection has never
+        // imported anything, leave the cursor null. The next attempt starts
+        // from the beginning, which is exactly what is wanted. The cost of
+        // being wrong is one redundant full pull, deduplicated on insert;
+        // the cost of the old behaviour was losing the history outright.
+        let hasEverImported = true;
+        if (addedCount === 0) {
+          const feedIds = [...feedByAcct.values()].map(f => f.id).filter(Boolean);
+          if (!feedIds.length) hasEverImported = false;
+          else {
+            const { count } = await supabase
+              .from("bank_feed_transaction")
+              .select("id", { count: "exact", head: true })
+              .eq("company_id", conn.company_id)
+              .in("bank_account_feed_id", feedIds);
+            hasEverImported = (count || 0) > 0;
+          }
+        }
+        const historyPending = addedCount === 0 && !hasEverImported;
+
         // Persist the new cursor + refresh balances/last_synced_at
         await supabase.from("bank_connection").update({
-          plaid_sync_cursor: cursor,
+          plaid_sync_cursor: historyPending ? null : cursor,
           last_successful_sync_at: new Date().toISOString(),
           connection_status: "active",
           last_error_code: null,
@@ -246,7 +294,10 @@ module.exports = async function handler(req, res) {
           .update({ completed_at: new Date().toISOString(), added_count: addedCount, status: "success" })
           .eq("id", syncEvent?.id);
 
-        return { added: addedCount, removed: removedCount, error: null };
+        // history_pending lets the UI say "still loading" instead of
+        // reporting an empty first import as a clean success.
+        return { added: addedCount, removed: removedCount, error: null,
+                 history_pending: historyPending || historyNotReady };
       } catch (e) {
         await supabase.from("plaid_sync_event")
           .update({ completed_at: new Date().toISOString(), status: "failed", error_json: { message: e.message } })
@@ -273,6 +324,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({
       connections_processed: connections.length,
+      history_pending: results.some(r => r?.history_pending),
       total_added: results.reduce((s, r) => s + (r?.added || 0), 0),
       total_removed: results.reduce((s, r) => s + (r?.removed || 0), 0),
       errors: results.filter(r => r?.error).length,
