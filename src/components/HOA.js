@@ -55,6 +55,11 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       const resU = await encryptCredential(form.username || "", companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       payload.username_encrypted = resU.encrypted;
+      // Which key encrypted this. ENCRYPTION_KEY was rotated once with
+      // nothing migrating the ciphertext, and every stored credential
+      // silently stopped opening. A fingerprint turns the next rotation
+      // into "re-enter this" instead of a credential that never works.
+      payload.credential_key_fp = resU.keyFp || null;
       payload.password_encrypted = resP.encrypted;
       payload.encryption_iv_username = resU.iv || null;
       payload.encryption_iv = resP.iv || resU.iv;
@@ -62,7 +67,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   if (editingHoa) {
-  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || "", password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || "", encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null }).eq("id", editingHoa.id).eq("company_id", companyId);
+  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || null, password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || null, encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || null, encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null, credential_key_fp: payload.credential_key_fp || editingHoa.credential_key_fp || null }).eq("id", editingHoa.id).eq("company_id", companyId);
   if (hoaErr) { showToast("Error updating HOA: " + hoaErr.message, "error"); return; }
   addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
   logAudit("update", "hoa", `HOA updated: ${form.hoa_name} ${formatCurrency(form.amount)}`, editingHoa.id, userProfile?.email, userRole, companyId);

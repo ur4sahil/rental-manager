@@ -40,6 +40,11 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
       const resU = await encryptCredential(form.username || "", companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       payload.username_encrypted = resU.encrypted;
+      // Which key encrypted this. ENCRYPTION_KEY was rotated once with
+      // nothing migrating the ciphertext, and every stored credential
+      // silently stopped opening. A fingerprint turns the next rotation
+      // into "re-enter this" instead of a credential that never works.
+      payload.credential_key_fp = resU.keyFp || null;
       payload.password_encrypted = resP.encrypted;
       payload.encryption_iv_username = resU.iv || null;
       payload.encryption_iv = resP.iv || resU.iv;
@@ -47,7 +52,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   if (editingPolicy) {
-  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingPolicy.username_encrypted || "", password_encrypted: payload.password_encrypted || editingPolicy.password_encrypted || "", encryption_iv: payload.encryption_iv || editingPolicy.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingPolicy.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingPolicy.encryption_salt || null }).eq("id", editingPolicy.id).eq("company_id", companyId);
+  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingPolicy.username_encrypted || null, password_encrypted: payload.password_encrypted || editingPolicy.password_encrypted || null, encryption_iv: payload.encryption_iv || editingPolicy.encryption_iv || null, encryption_iv_username: payload.encryption_iv_username || editingPolicy.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingPolicy.encryption_salt || null, credential_key_fp: payload.credential_key_fp || editingPolicy.credential_key_fp || null }).eq("id", editingPolicy.id).eq("company_id", companyId);
   if (polErr) { showToast("Error updating policy: " + polErr.message, "error"); return; }
   addNotification("🛡️", `Policy updated: ${form.provider}`);
   logAudit("update", "insurance", `Policy updated: ${form.provider} ${formatCurrency(form.premium_amount)}`, editingPolicy.id, userProfile?.email, userRole, companyId);
