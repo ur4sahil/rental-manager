@@ -29,6 +29,7 @@
 //     nothing" are otherwise indistinguishable.
 const { spawn } = require("child_process");
 const path = require("path");
+const { PLAYBOOKS, playbookFor, knownProviderAliases } = require("./playbooks");
 
 const API = (process.env.HOUSY_API_BASE || "").replace(/\/$/, "");
 const TOKEN = process.env.AI_WORKER_TOKEN || "";
@@ -40,7 +41,15 @@ if (!API || !TOKEN || !COMPANY) {
   process.exit(1);
 }
 
-const PROVIDER = { wssc: "WSSC", washington_gas: "Washington GAS" };
+// Portals come from the playbook file, not a second hard-coded list here.
+// The old map named two of them, so the five playbooks added alongside
+// would have been ignored -- and "no playbook" and "no bill due" look
+// identical in the output, which is the quiet failure worth avoiding.
+//
+// A utility row is matched to a playbook through its ALIASES, because
+// utilities.provider is free text someone typed: production holds
+// "Wash Gas" and "Washington Gas", "BGE" and "bge". Exact matching skipped
+// the variants silently.
 
 async function api(action, body) {
   const h = { "Content-Type": "application/json", "x-worker-token": TOKEN };
@@ -71,16 +80,28 @@ function runFetch(portal, account) {
 
 (async () => {
   const only = process.argv[2];
-  const portals = Object.keys(PROVIDER).filter(p => !only || p === only);
+  const portals = Object.keys(PLAYBOOKS).filter(p => !only || p === only);
   const summary = [];
 
   const { targets } = await api("sweep-targets", {
-    companyId: COMPANY, providers: portals.map(p => PROVIDER[p]),
+    // Ask for every spelling any playbook answers to, so a row typed
+    // "Wash Gas" comes back rather than being filtered out server-side.
+    companyId: COMPANY, providers: knownProviderAliases(),
   });
 
   for (const portal of portals) {
-    const provider = PROVIDER[portal];
-    const mine = (targets || []).filter(t => (t.provider || "").toLowerCase() === provider.toLowerCase());
+    const book = PLAYBOOKS[portal];
+    const provider = book.provider;
+    // Resolve each row through the alias table rather than comparing
+    // strings: that is what lets one playbook serve "Wash Gas" and
+    // "Washington Gas" both.
+    const mine = (targets || []).filter(t => playbookFor(t.provider)?.key === portal);
+    if (mine.length && !book.verified) {
+      // An unverified playbook is a hypothesis, and saying so is the
+      // difference between "Housy read your bill" and "Housy read
+      // something off a page nobody has checked".
+      console.log(`${provider}: playbook is UNVERIFIED — treat the reading as unconfirmed until a signed-in run proves it`);
+    }
     if (!mine.length) {
       console.log(`${provider}: no utility rows for this company`);
       summary.push({ provider, read: 0, note: "no rows" });
