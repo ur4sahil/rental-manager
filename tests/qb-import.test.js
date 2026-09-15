@@ -346,19 +346,54 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
       assertEq(g.totals.entries, 6654, "distinct journal entries");
       assertEq(g.totals.dateFrom, "2023-01-01", "earliest transaction date");
       assertEq(g.totals.dateTo, "2025-12-31", "latest transaction date");
-      assert(near(g.totals.debit, 48670412.24), `total debits are 48,670,412.24 (got ${g.totals.debit})`);
-      assert(near(g.totals.credit, 48670412.24), `total credits are 48,670,412.24 (got ${g.totals.credit})`);
+      // Totals are $19,200 HIGHER on each side than this test used to
+      // assert, and that is the fix, not a regression.
+      //
+      // This test previously expected 24 unbalanced entries and even
+      // described them: "The 24 are 12 offsetting pairs for one property,
+      // all $1,600." Twelve one-sided $1,600 pairs for a single tenant was
+      // written down as expected behaviour and never questioned. It was a
+      // defect: each transaction had lost the leg that lived in an account
+      // QuickBooks had DELETED, and buildEntriesPayload then refused to
+      // post any of them -- correctly, since a one-sided entry silently
+      // unbalances the books, but the result was 24 transactions missing
+      // from the ledger and a bank account short by $19,200.
+      //
+      // groupTransactions now reconstructs that leg from the account
+      // QuickBooks names in "Item split account", or from the Customer
+      // when the P&L Detail leaves the split column empty. So the pairs
+      // balance, they post, and the totals rise by the $19,200 that was
+      // being dropped on each side.
+      assert(near(g.totals.debit, 48689612.24), `total debits are 48,689,612.24 (got ${g.totals.debit})`);
+      assert(near(g.totals.credit, 48689612.24), `total credits are 48,689,612.24 (got ${g.totals.credit})`);
       assert(near(g.totals.difference, 0), `the ledger balances to zero (got ${g.totals.difference})`);
-      assertEq(g.totals.balancedEntries, 6630, "entries that balance individually");
-      assertEq(g.totals.unbalancedEntries, 24, "entries that do not balance individually");
-      assert(near(g.totals.unbalancedNet, 0), `the unbalanced entries net to zero (got ${g.totals.unbalancedNet})`);
+      assertEq(g.totals.balancedEntries, 6654, "every entry balances individually");
+      assertEq(g.totals.unbalancedEntries, 0, "no entry is left one-sided");
 
-      // The 24 are 12 offsetting pairs for one property, all $1,600.
-      const unb = g.unbalanced;
-      assert(unb.every(t => Math.abs(Math.abs(t.imbalance) - 1600) < 0.005), "every unbalanced entry is $1,600");
-      assertEq(unb.filter(t => t.imbalance > 0).length, 12, "12 unbalanced entries are debit-heavy");
-      assertEq(unb.filter(t => t.imbalance < 0).length, 12, "12 unbalanced entries are credit-heavy");
-      assertEq(new Set(unb.map(t => t.lines[0].property)).size, 1, "all unbalanced entries are for a single property");
+      // The repair itself, asserted rather than assumed.
+      const rebuilt = g.transactions.filter(t => t.reconstructedLeg);
+      assertEq(rebuilt.length, 24, "24 legs were reconstructed from a deleted account");
+      assertEq(new Set(rebuilt.map(t => t.reconstructedLeg)).size, 1,
+        "all reconstructed legs belong to one account");
+      assert(rebuilt.every(t => t.balanced), "every reconstructed entry balances");
+      assert(rebuilt.every(t => t.lines.length === 2), "each reconstructed entry has exactly two legs");
+      const recon = rebuilt.flatMap(t => t.lines.filter(l => l.reconstructedFromSplit));
+      assertEq(recon.length, 24, "one reconstructed line per entry");
+      assert(near(recon.reduce((n, l) => n + l.debit, 0), 19200), "reconstructed debits total $19,200");
+      assert(near(recon.reduce((n, l) => n + l.credit, 0), 19200), "reconstructed credits total $19,200");
+      // Both routes must be exercised: the deposits name the account, the
+      // rent entries only name the customer.
+      assertEq(recon.filter(l => l.reconstructedFrom === "split account").length, 12,
+        "12 legs came from Item split account");
+      assertEq(recon.filter(l => l.reconstructedFrom === "customer").length, 12,
+        "12 legs came from the Customer column");
+      // And the revived account must reach the plan, or nothing is created
+      // for it and the entry is dropped again for the original reason.
+      const invAll = qb.buildAccountInventory(g.rowsWithReconstructed);
+      const invList = Array.isArray(invAll) ? invAll : [...invAll.values()];
+      const revived = invList.filter(a => a.path === [...new Set(rebuilt.map(t => t.reconstructedLeg))][0]);
+      assertEq(revived.length, 1, "the revived account appears in the account inventory");
+      assertEq(revived[0].lineCount, 24, "the revived account carries all 24 lines");
 
       // No transaction may span two dates or two types — the grouping premise.
       const spanning = g.transactions.filter(t => new Set(t.lines.map(l => l.date)).size > 1);
@@ -394,9 +429,13 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
       const arCount = accounts.filter(a => a.type === "Asset" && qb.suggestTenantAR(a.path, custNames)).length;
       assertEq(arCount, 54, "asset accounts identified as per-tenant receivables");
 
-      const tb = qb.buildTrialBalance(all);
+      // The reconstructed set, matching what the import UI now shows: a
+      // revived leg is a real line that will be posted, so a trial balance
+      // omitting it disagrees with the import by exactly the recovered
+      // amount.
+      const tb = qb.buildTrialBalance(g.rowsWithReconstructed);
       assert(near(tb.difference, 0), `trial balance differences to zero (got ${tb.difference})`);
-      assert(near(tb.debit, 48670412.24), "trial balance debit total matches");
+      assert(near(tb.debit, 48689612.24), "trial balance debit total matches");
     }
   }
 

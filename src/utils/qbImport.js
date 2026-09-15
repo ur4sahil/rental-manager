@@ -234,7 +234,7 @@ export async function parseWorkbook(data, filename = "", group = "asset") {
       sourceFile: filename,
       sourceRow: r,
       shape,
-      accountPath,
+      accountPath: stripDeletedSuffix(accountPath),
       accountType: inferAccountType({ shape, section: currentSection, fileType, accountPath }),
       section: currentSection,
       // QBO writes MM/DD/YYYY; store ISO so it sorts and inserts directly.
@@ -255,6 +255,13 @@ export async function parseWorkbook(data, filename = "", group = "asset") {
   }
 
   return { shape, title, group, filename, rows, warnings, rejected };
+}
+
+// "Stanley Ibe (deleted)" and "Stanley Ibe" are the same account. The
+// suffix is QuickBooks bookkeeping about the account's state, not part of
+// its name, so matching on it fails over something purely cosmetic.
+export function stripDeletedSuffix(name) {
+  return String(name || "").replace(/\s*\((?:deleted|inactive)\)\s*$/i, "").trim();
 }
 
 // ---- transaction grouping -----------------------------------------
@@ -294,6 +301,69 @@ export function groupTransactions(rows) {
 
   for (const t of byId.values()) {
     t.imbalance = round2(t.debit - t.credit);
+
+    // RECONSTRUCT A LEG THAT LIVES IN A DELETED QUICKBOOKS ACCOUNT.
+    //
+    // QuickBooks keeps a deleted account and still shows its history --
+    // the UI renders "Stanley Ibe (deleted)" on the entry -- but it omits
+    // that account from the Account List AND from the transaction report
+    // it belongs to. The exported transaction therefore arrives with one
+    // leg missing, and an entry that cannot balance used to be dropped
+    // whole.
+    //
+    // Measured on the Sigma Housing LLC export: 24 such transactions, 12
+    // matched pairs, all one tenant. Twelve $1,600 bank deposits lost
+    // their credit leg and twelve rent journal entries (#113-124) lost
+    // their debit leg -- $19,200 each way, netting to exactly zero. The
+    // bank was short by precisely that $19,200 because those deposits
+    // never imported.
+    //
+    // QuickBooks names the missing account in "Item split account", which
+    // this parser already captures as splitAccount and never used. So the
+    // leg is reconstructible: same amount, opposite side, the account
+    // QuickBooks itself points at.
+    //
+    // Only for a SINGLE-LINE transaction. With two or more lines already
+    // present, which one the split belongs to is a guess, and guessing
+    // would put money in the wrong account -- worse than reporting the
+    // imbalance.
+    if (!t.balanced && t.lines.length === 1) {
+      const only = t.lines[0];
+      // Two ways QuickBooks tells us what the missing account was.
+      //
+      //   1. "Item split account" names it outright, which is how the bank
+      //      deposits identify the receivable they cleared.
+      //   2. The Profit and Loss Detail has no split column at all and
+      //      leaves it empty -- but it does carry the Customer. A one-sided
+      //      income line for a named customer has exactly one possible
+      //      counter-leg: that customer's receivable. This is the same
+      //      inference getOrCreateTenantAR makes everywhere else in the
+      //      app, and it is what the QuickBooks UI itself displays on the
+      //      entry ("Stanley Ibe (deleted)" against Rental Income).
+      //
+      // Customer is used ONLY when no split account is named, so an
+      // explicit answer always beats an inferred one.
+      const target = stripDeletedSuffix(only.splitAccount) || stripDeletedSuffix(only.customer);
+      if (target && target !== only.accountPath) {
+        t.lines.push({
+          ...only,
+          accountPath: target,
+          // The counter-leg of a receivable: an Asset. inferAccountType
+          // cannot help -- the account is absent from every export.
+          accountType: "Asset",
+          // Opposite side, same amount: that is what makes it balance.
+          debit: only.credit,
+          credit: only.debit,
+          reconstructedFromSplit: true,
+          reconstructedFrom: only.splitAccount ? "split account" : "customer",
+        });
+        t.debit += only.credit;
+        t.credit += only.debit;
+        t.imbalance = round2(t.debit - t.credit);
+        t.reconstructedLeg = target;
+      }
+    }
+
     t.balanced = Math.abs(t.imbalance) < 0.005;
     t.description = buildDescription(t);
     t.property = (t.lines.find(l => l.property) || {}).property || "";
@@ -308,6 +378,13 @@ export function groupTransactions(rows) {
   return {
     transactions,
     unbalanced,
+    // Every line INCLUDING the legs reconstructed above. buildImportPlan
+    // builds its account inventory from rows, so feeding it the raw set
+    // would leave a revived account absent from the plan -- no account
+    // created, nothing for the line to resolve to, and the transaction
+    // dropped again for the original reason. Found exactly that way: the
+    // legs balanced and the inventory still listed 0 Stanley Ibe entries.
+    rowsWithReconstructed: transactions.flatMap(t => t.lines),
     totals: {
       entries: transactions.length,
       lines: rows.length,

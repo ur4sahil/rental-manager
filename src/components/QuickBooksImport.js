@@ -83,9 +83,17 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     () => (allRows.length ? groupTransactions(allRows) : null),
     [allRows]
   );
+  // Built from the reconstructed row set, not the raw one. A leg revived
+  // from a deleted QuickBooks account is a real line that will be posted,
+  // so a trial balance that omits it shows the user a total that does not
+  // match what they are about to import -- off by exactly the amount being
+  // recovered.
   const trialBalance = useMemo(
-    () => (allRows.length ? buildTrialBalance(allRows) : null),
-    [allRows]
+    () => {
+      const rows = (grouped && grouped.rowsWithReconstructed) || allRows;
+      return rows.length ? buildTrialBalance(rows) : null;
+    },
+    [grouped, allRows]
   );
 
   // A QuickBooks transaction's legs live in DIFFERENT files — the
@@ -173,7 +181,14 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     if (!allRows.length) { showToast("Add at least one readable QuickBooks export.", "error"); return; }
     setBusy("Building the mapping plan…");
     await new Promise(r => setTimeout(r, 0));
-    setPlan(buildImportPlan({ rows: allRows, existingAccounts: accounts, accountList }));
+    // grouped.rowsWithReconstructed, not allRows: a leg rebuilt from a
+    // deleted QuickBooks account has to be in the plan, or no account is
+    // created for it and the transaction is dropped exactly as before.
+    setPlan(buildImportPlan({
+      rows: (grouped && grouped.rowsWithReconstructed) || allRows,
+      existingAccounts: accounts,
+      accountList,
+    }));
     setBusy("");
     setStep(2);
   }
