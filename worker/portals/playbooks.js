@@ -251,18 +251,22 @@ const PLAYBOOKS = {
   fairfax_water: {
     provider: "Fairfax Water",
     aliases: ["fairfax water", "fairfax county water", "fcwa"],
-    verified: false,
-    // Fairfax Water sits behind a Cloudflare interstitial ("Click to
-    // reveal") that renders before the site does, so an automated browser
-    // never reaches a login form. That is a bot control, and working around
-    // it is out of scope -- this one needs a human session or an entirely
-    // different route to the bill, such as the emailed statement.
+    verified: true,
+    // VERIFIED 2026-09-14: signs in and reads $306.45.
     //
-    // It also hands payment off to a third-party processor (Paymentus). The
-    // READING must come from their own account pages; following a pay link
-    // lands on a checkout whose figures belong to the checkout, not the
-    // account.
-    entry: "https://www.fairfaxwater.org/",
+    // Three things were wrong here and NONE of them was a bot control,
+    // though it was recorded as one:
+    //   1. headless chromium got Cloudflare's "Sorry, you have been
+    //      blocked"; system Chrome loads the site fine, same machine, same
+    //      IP, seconds later
+    //   2. the portal is not on fairfaxwater.org at all -- "Login or
+    //      Register" goes to fwcustomer.org
+    //   3. the stored username had a typo (gail.com for gmail.com)
+    //
+    // It also hands PAYMENT off to a third-party processor (Paymentus). The
+    // READING must come from fwcustomer.org; following a pay link lands on
+    // a checkout whose figures belong to the checkout, not the account.
+    entry: "https://www.fwcustomer.org/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,

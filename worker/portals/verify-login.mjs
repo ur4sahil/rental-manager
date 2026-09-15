@@ -62,7 +62,14 @@ const ENTRY = ENTRY_OVERRIDE || book.entry;  // override lets a candidate URL be
 mkdirSync(SHOT, { recursive: true });
 if (existsSync(CODE_FILE)) unlinkSync(CODE_FILE);
 
-const b = await chromium.launch({ headless: true });
+// Headed system Chrome by default. Fairfax Water blocks headless chromium
+// outright and loads fine in real Chrome from the same machine seconds
+// later; Dominion renders nothing headless. HEADLESS=1 forces the old
+// behaviour when there is no desktop browser.
+const HEADLESS = process.env.HEADLESS === "1";
+let b = null;
+try { b = await chromium.launch({ channel: "chrome", headless: HEADLESS }); }
+catch { b = await chromium.launch({ headless: HEADLESS }); }
 const page = await (await b.newContext({
   viewport: { width: 1360, height: 950 }, locale: "en-US", timezoneId: "America/New_York",
 })).newPage();
