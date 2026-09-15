@@ -24,6 +24,14 @@ tests/playwright-report
 # test credentials
 tests/.env
 
+# Any pulled environment file, whatever it is called. The list above names
+# the exact files CRA and Vercel create by default, which left a hole: a
+# `vercel env pull` writes wherever it is told, and a file called stg.env or
+# prod.env carrying a service-role key and a Teller certificate was neither
+# ignored nor obviously dangerous in `git status`. Match the suffix, not the
+# handful of names.
+*.env
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
