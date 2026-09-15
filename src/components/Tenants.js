@@ -10,6 +10,7 @@ import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPrope
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
+import { pathForPage, subPathFor } from "../utils/routes";
 import { LeaseManagement } from "./Leases";
 import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 
@@ -169,6 +170,84 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (initialAction.panel === "messages") openMessages(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction?.openTenantId, tenants.length]);
+
+  // ---- A TENANT IS A PLACE -------------------------------------------
+  //
+  // /tenants/1049/ledger, not /tenants with the tenant held in React state.
+  //
+  // Reports were the only screen in the app whose URL said what was on
+  // screen; everywhere else, opening something left the address bar on the
+  // page you started from. That costs three things people expect:
+  //   * Back returns to the tenant list, not to the previous PAGE
+  //   * a refresh keeps your place
+  //   * a link can be bookmarked or sent to someone
+  //
+  // It also removes hand-rolled history. jeOrigin in Accounting.js exists to
+  // remember "where did this journal entry come from" -- a second history
+  // stack maintained beside the browser's. With real URLs that question is
+  // just Back.
+  const PANELS = ["detail", "ledger", "documents", "messages", "actions", "lease"];
+  const urlSyncing = React.useRef(false);
+
+  const tenantUrl = (tenant, panel) => {
+    const base = pathForPage("tenants");
+    const path = tenant ? `${base}/${tenant.id}${panel && panel !== "detail" ? "/" + panel : ""}` : base;
+    // Keep the query string: ?company= lives there and must survive.
+    return path + window.location.search + window.location.hash;
+  };
+
+  // Read the URL on arrival (and on Back/Forward) and open what it names.
+  const openFromUrl = React.useCallback((list) => {
+    const sub = subPathFor("tenants", window.location.pathname);
+    if (!sub) { setSelectedTenant(null); setActivePanel(null); return; }
+    const [idPart, panelPart] = sub.split("/");
+    const t = (list || []).find(x => String(x.id) === String(idPart));
+    // A tenant id that is not in this company's list is not an error to
+    // report -- it is a link to somewhere the viewer cannot see, and the
+    // list is the honest answer.
+    if (!t) return;
+    const panel = PANELS.includes(panelPart) ? panelPart : "detail";
+    urlSyncing.current = true;
+    setSelectedTenant(t);
+    setActivePanel(panel);
+    if (panel === "documents") fetchTenantDocs(t);
+    if (panel === "ledger") openLedger(t);
+    if (panel === "messages") openMessages(t);
+    urlSyncing.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (tenants.length) openFromUrl(tenants);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenants.length]);
+
+  useEffect(() => {
+    const onPop = () => openFromUrl(tenants);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenants]);
+
+  // Write the URL when the selection changes.
+  //
+  // Opening a tenant PUSHES, so Back returns to the list. Switching panel
+  // REPLACES, so clicking through Ledger/Documents/Messages does not bury
+  // the list under four history entries -- the same judgement the Reports
+  // page already makes about periods.
+  useEffect(() => {
+    if (urlSyncing.current) return;
+    const want = tenantUrl(selectedTenant, activePanel);
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    if (want === here) return;
+    const opening = selectedTenant && !subPathFor("tenants", window.location.pathname);
+    const st = { ...(window.history.state || {}), page: "tenants", screen: "app" };
+    try {
+      if (opening) window.history.pushState(st, "", want);
+      else window.history.replaceState(st, "", want);
+    } catch (_e) { /* a URL we cannot write must never block the UI */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTenant?.id, activePanel]);
 
   async function fetchTenants() {
   const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);

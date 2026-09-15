@@ -723,13 +723,23 @@ function AppInner() {
   // rebuilt the URL from pathname — just "/" — so "?company=<id>#accounting"
   // became "/" and every shared deep link landed on the dashboard.)
   if (company) {
-  // Strip ONLY ?company=, keeping every other param. Replacing the whole
-  // search string deleted ?ledger= too, so a shared/cmd-clicked ledger
-  // link that carried a company silently lost the ledger it was for.
-  const rest = new URLSearchParams(window.location.search);
-  rest.delete("company");
-  const restQs = rest.toString();
-  window.history.replaceState({}, "", window.location.pathname + (restQs ? "?" + restQs : "") + window.location.hash);
+  // ?company= STAYS in the URL. It used to be stripped once consumed, for
+  // a tidier address bar, and that traded away three things:
+  //
+  //   * refresh returned you to the company picker, because which company
+  //     you had open lived only in React state
+  //   * a URL copied from the address bar carried no company, so a
+  //     colleague opened it in whichever company they last used
+  //   * a bookmark could not name a company
+  //
+  // It is safe to keep because it is SELECTION, not authentication. The
+  // membership check above decides whether this user may open it, and
+  // every query underneath is still bounded by RLS and
+  // get_user_company_ids() -- editing the id by hand grants nothing. The
+  // URL says what you are looking at; the server says whether you may.
+  //
+  // pageUrl() only strips params belonging to OTHER pages, so an unowned
+  // param like this one already survives navigation.
   handleSelectCompany(company, match.role, user); return; }
   }
   }
@@ -783,6 +793,21 @@ function AppInner() {
   window._classIdBackfilled = false;
   setActiveErrorContext(company.id, currentUser?.email || "", role || "");
   setActiveCompany(company);
+  // Put the company in the URL and keep it there, so the address bar always
+  // names the books on screen. Switching company REPLACES rather than
+  // pushes: a switch is a change of context, not a place to go Back to, and
+  // pushing would make Back silently swap the company underneath whatever
+  // page you returned to.
+  try {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("company") !== company.id) {
+      q.set("company", company.id);
+      window.history.replaceState(
+        { ...(window.history.state || {}) }, "",
+        window.location.pathname + "?" + q.toString() + window.location.hash,
+      );
+    }
+  } catch (_e) { /* a URL we cannot rewrite must not stop the switch */ }
   // Stamped with the user id. A bare company id is browser-global, so
   // signing in as a second account on the same device inherited the
   // first account's company and skipped the selector entirely.
