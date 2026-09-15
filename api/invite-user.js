@@ -114,9 +114,38 @@ module.exports = async function handler(req, res) {
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
+  // MEMBERSHIP FIRST, EMAIL SECOND.
+  //
+  // This used to run the other way round, and the old comment on the
+  // failure path said so plainly: "Email is out the door; surface the DB
+  // error so caller can retry." If the membership write failed, the
+  // invitee had already received an invitation to a company they were not
+  // a member of -- they click the link, sign in, and find nothing. A retry
+  // then sends them a second email.
+  //
+  // Reversed, the worst case is a membership row for someone who never got
+  // an email: invisible to them, visible to the admin as a pending invite,
+  // and fixed by pressing Resend. An unsent email is recoverable; an
+  // un-backed invitation is confusing to someone who cannot see why.
+  //
+  // status stays 'invited' either way -- it means "not yet accepted", which
+  // is true from the moment the row exists.
+  const { error: preMemErr } = await admin.from("company_members").upsert([{
+    company_id: companyId,
+    user_email: email,
+    user_name: userName || email.split("@")[0],
+    role,
+    status: "invited",
+    invited_by: callerEmail,
+  }], { onConflict: "company_id,user_email" });
+  if (preMemErr) {
+    return res.status(500).json({ error: "Membership record failed: " + preMemErr.message });
+  }
+
   let userCreated = false;
   let alreadyRegistered = false;
   let magicLinkSent = false;
+  let invitedAuthUserId = null;
   try {
     const { data: invRes, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { name: userName || email.split("@")[0], role },
@@ -157,24 +186,32 @@ module.exports = async function handler(req, res) {
       } catch (_otpE) { /* swallow — client still gets already_registered=true */ }
     } else if (invRes?.user) {
       userCreated = true;
+      invitedAuthUserId = invRes.user.id || null;
     }
   } catch (e) {
     return res.status(500).json({ error: "Auth admin call failed: " + (e.message || "unknown") });
   }
 
-  // Step 3: record the membership row. Service role ensures write lands
-  // even if the caller's JWT has narrower RLS permissions than expected.
-  const { error: memErr } = await admin.from("company_members").upsert([{
-    company_id: companyId,
-    user_email: email,
-    user_name: userName || email.split("@")[0],
-    role,
-    status: "invited",
-    invited_by: callerEmail,
-  }], { onConflict: "company_id,user_email" });
-  if (memErr) {
-    // Email is out the door; surface the DB error so caller can retry.
-    return res.status(500).json({ error: "Membership record failed: " + memErr.message });
+  // Link the membership to the auth user that was just created.
+  //
+  // inviteUserByEmail returns the new user's id and nothing was storing it,
+  // so every invited member sat with auth_user_id NULL. It still worked,
+  // because get_staff_company_ids() and is_company_staff() both fall back
+  // to matching on email -- but the moment someone changes their email
+  // address, a membership keyed only on the old one stops matching them and
+  // they silently lose access to the company.
+  //
+  // Best-effort on purpose: the invitation has already been sent and the
+  // membership already exists, so failing here must not turn a successful
+  // invite into an error. The email fallback keeps working meanwhile.
+  if (invitedAuthUserId) {
+    const { error: linkErr } = await admin.from("company_members")
+      .update({ auth_user_id: invitedAuthUserId })
+      .eq("company_id", companyId)
+      .ilike("user_email", emailFilterValue(email));
+    if (linkErr) {
+      console.warn("invite: could not link auth_user_id for", companyId, linkErr.message);
+    }
   }
 
   return res.status(200).json({
