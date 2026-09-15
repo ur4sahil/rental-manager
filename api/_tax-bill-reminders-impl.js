@@ -93,6 +93,12 @@ async function rollforwardNextYear(supabase, todayIso) {
   const today = new Date(todayIso + "T00:00:00Z");
   const nextYear = today.getUTCFullYear() + 1;
 
+  // company-scope-exempt: this is a CRON job, not a user request. It scans
+  // every company's properties to generate tax-bill reminders and carries
+  // company_id through to each reminder it creates. There is no "current
+  // company" here because there is no user -- scoping it to one would mean
+  // 36 scheduled jobs instead of one, and silently missing any company
+  // added afterwards.
   const { data: props } = await supabase
     .from("properties")
     .select("id, address, county, state, company_id")

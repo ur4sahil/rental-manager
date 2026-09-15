@@ -612,6 +612,10 @@ async function handleWebhook(req, res) {
   // entries. The unique index on (company_id, reference) is partial
   // on the same predicate (see migration).
   if (event.type === "payment_intent.succeeded") {
+    // company-scope-exempt: a webhook has no signed-in user and therefore
+    // no current company. This is an idempotency check keyed on the Stripe
+    // event id, which is globally unique -- scoping it by company would
+    // require knowing the company before the lookup that determines it.
     const { data: existing } = await sb.from("acct_journal_entries")
       .select("id, status").eq("reference", "STRIPE-" + event.data.object.id)
       .neq("status", "voided").maybeSingle();
