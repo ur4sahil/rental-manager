@@ -6,10 +6,23 @@
 // those survive a redesign that changes class names and DOM structure,
 // which is what actually breaks scrapers.
 //
-// NO PLAYBOOK LOGS IN. WSSC presents a visible reCAPTCHA and Washington
-// Gas runs reCAPTCHA v3; defeating either would break their terms. The
-// person signs in once and the session is reused. A playbook that finds
-// itself on a login page reports needs_signin and stops.
+// SIGNING IN: WHAT IS ACTUALLY TRUE, TESTED 2026-09-14
+//
+// This file used to say "NO PLAYBOOK LOGS IN", on the grounds that WSSC
+// shows a visible reCAPTCHA and Washington Gas runs v3. That was asserted,
+// never tested, and it is wrong: WSSC signs in automatically with the
+// account holder's own credentials and reads the bill, with three captcha
+// elements present on the page. Pepco signs in with no captcha at all.
+//
+// The line that matters is not "is a captcha present" but "does an honest
+// sign-in work". An honest sign-in means the account holder's own
+// credentials, typed into the site's own form, once, at human speed. It
+// does NOT mean stealth plugins, fingerprint spoofing, rotated IPs or
+// solving a challenge -- those defeat a control rather than pass it, and
+// are out of scope here whatever a portal does.
+//
+// A playbook that finds itself on a login page and has no credentials
+// still reports needs_signin and stops.
 //
 // ---------------------------------------------------------------------
 // `verified` IS THE IMPORTANT FIELD
@@ -151,11 +164,12 @@ const PLAYBOOKS = {
   pepco: {
     provider: "Pepco",
     aliases: ["pepco", "potomac electric", "potomac electric power"],
-    verified: false,
-    // Pepco is an Exelon utility; secure.pepco.com is the account portal
-    // rather than the marketing site. Exelon's siblings (BGE below) share
-    // this shape, which is why their locators are identical -- if one is
-    // wrong, both are, and that is worth knowing in one go.
+    // VERIFIED 2026-09-14: signed in end to end and read $513.99 due
+    // 09/14/2026 off the dashboard. No captcha, no MFA.
+    verified: true,
+    // secure.pepco.com redirects to www.pepco.com, whose Sign In link goes
+    // to Exelon's Azure B2C. BGE below is the same federation, so what is
+    // learned on one applies to the other.
     entry: "https://secure.pepco.com/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
@@ -169,7 +183,14 @@ const PLAYBOOKS = {
   bge: {
     provider: "BGE",
     aliases: ["bge", "baltimore gas and electric", "baltimore gas & electric"],
+    // Credentials ARE accepted (2026-09-14) -- sign-in gets through Azure
+    // B2C -- but BGE then demands a verification code and lands on an
+    // "Enter Code" page, so no bill was read. Unverified for that reason,
+    // not because the login failed. A code is single-use and belongs to the
+    // browser session that asked for it, so it cannot be supplied after the
+    // fact; the session has to stay open while someone reads it out.
     verified: false,
+    mfa: "code-on-signin",
     entry: "https://secure.bge.com/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
@@ -185,7 +206,9 @@ const PLAYBOOKS = {
     // A cooperative, not an investor-owned utility, so it does not share
     // the Exelon portal shape. No SMECO utility row exists in production
     // yet -- this playbook is ready for when one is added.
-    entry: "https://myaccount.smeco.coop/",
+    // myaccount.smeco.coop does not resolve (ERR_NAME_NOT_RESOLVED). This
+    // is still a guess and is the next thing to confirm.
+    entry: "https://www.smeco.coop/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
@@ -196,10 +219,16 @@ const PLAYBOOKS = {
     provider: "Fairfax Water",
     aliases: ["fairfax water", "fairfax county water", "fcwa"],
     verified: false,
-    // Fairfax Water hands payment off to a third-party processor
-    // (Paymentus). The READING should come from their own account pages;
-    // a playbook that follows a pay link ends up on a processor page whose
-    // figures belong to a checkout, not to the account.
+    // Fairfax Water sits behind a Cloudflare interstitial ("Click to
+    // reveal") that renders before the site does, so an automated browser
+    // never reaches a login form. That is a bot control, and working around
+    // it is out of scope -- this one needs a human session or an entirely
+    // different route to the bill, such as the emailed statement.
+    //
+    // It also hands payment off to a third-party processor (Paymentus). The
+    // READING must come from their own account pages; following a pay link
+    // lands on a checkout whose figures belong to the checkout, not the
+    // account.
     entry: "https://www.fairfaxwater.org/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
@@ -211,7 +240,9 @@ const PLAYBOOKS = {
     provider: "Dominion",
     aliases: ["dominion", "dominion energy", "dominion virginia power", "dominion power"],
     verified: false,
-    entry: "https://mya.dominionenergy.com/",
+    // mya.dominionenergy.com was a guess and does not resolve at all
+    // (ERR_NAME_NOT_RESOLVED). myaccount.dominionenergy.com answers.
+    entry: "https://myaccount.dominionenergy.com/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
@@ -224,6 +255,10 @@ const PLAYBOOKS = {
     verified: false,
     // Not on the original list of five, but production has a Novec row and
     // a utility with no playbook is silently skipped by the sweep.
+    //
+    // 2026-09-14: "My Account" leads to My-Service.cfm, which carries no
+    // login form. The real sign-in is somewhere else on that page and has
+    // not been found yet.
     entry: "https://www.novec.com/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
