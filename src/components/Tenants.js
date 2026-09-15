@@ -144,6 +144,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
+  const [invitingTenant, setInvitingTenant] = useState({});
 
   useEffect(() => {
   fetchTenants();
@@ -665,7 +666,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function inviteTenant(tenant) {
-  if (!guardSubmit("inviteTenant")) return;
+  // Per tenant, not shared: inviting one tenant must not block inviting
+  // another. Same fault as the team invite in Admin.js.
+  const who = tenant.id || tenant.email || "";
+  if (!guardSubmit("inviteTenant", who)) return;
+  setInvitingTenant(prev => ({ ...prev, [who]: true }));
   try {
   if (!tenant.email) { showToast("This tenant has no email address. Please add one first.", "error"); return; }
   if (!await showConfirm({ message: "Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal" })) return;
@@ -701,7 +706,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data: { session } } = await supabase.auth.getSession();
   const inviteToken = session?.access_token;
   if (!inviteToken) { showToast("Session expired — please sign in again.", "error"); return; }
+  // Timed out: without this a hung request leaves the button inert until
+  // the guard self-clears 30 seconds later, with nothing on screen saying
+  // so.
   const inviteResp = await fetch("/api/invite-user", {
+    signal: AbortSignal.timeout(30000),
   method: "POST",
   headers: { "Content-Type": "application/json", "Authorization": "Bearer " + inviteToken },
   body: JSON.stringify({
@@ -733,7 +742,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   } catch (e) {
   showToast("Error inviting tenant: " + e.message, "error");
   }
-  } finally { guardRelease("inviteTenant"); }
+  } finally {
+    guardRelease("inviteTenant", who);
+    setInvitingTenant(prev => { const n = { ...prev }; delete n[who]; return n; });
+  }
   }
 
   async function applyLateFeeForTenant(t) {
@@ -2407,7 +2419,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</TextLink>
   <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
-  <TextLink tone="highlight" size="xs" onClick={() => inviteTenant(t)}>Invite</TextLink>
+  <TextLink tone="highlight" size="xs" disabled={!!invitingTenant[t.id || t.email || ""]}
+    onClick={() => inviteTenant(t)}>{invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : "Invite"}</TextLink>
   </div>
   );
   return <>
@@ -2440,12 +2453,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {portalStatus !== "active" && (
   <button
     onClick={e => { e.stopPropagation(); inviteTenant(t); }}
-    disabled={!t.email}
+    disabled={!t.email || !!invitingTenant[t.id || t.email || ""]}
     title={!t.email ? "Add an email to this tenant first" : portalStatus === "invited" ? "Re-send the portal invite email" : "Send portal access invite to this tenant"}
     className={"ml-auto text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors " + (!t.email ? "bg-neutral-100 text-neutral-400 cursor-not-allowed" : portalStatus === "invited" ? "bg-highlight-50 text-highlight-700 hover:bg-highlight-100 border border-highlight-200" : "bg-brand-600 text-white hover:bg-brand-700")}
   >
     <span className="material-icons-outlined text-xs">{portalStatus === "invited" ? "refresh" : "mail"}</span>
-    {portalStatus === "invited" ? "Resend Invite" : "Invite to Portal"}
+    {invitingTenant[t.id || t.email || ""]
+      ? "Sending\u2026"
+      : (portalStatus === "invited" ? "Resend Invite" : "Invite to Portal")}
   </button>
   )}
   </div>

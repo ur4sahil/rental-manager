@@ -126,6 +126,8 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   const [form, setForm] = useState({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "", manager_email: "" });
   // customPages: which modules are toggled ON when adding/editing a user
   const [customPages, setCustomPages] = useState([]);
+  // Which invites are in flight, keyed the same way as the submit guard.
+  const [inviting, setInviting] = useState({});
 
   // All modules that can be assigned (admin and tenant are fixed, not customizable)
   const CUSTOMIZABLE_ROLES = ["office_assistant", "accountant", "maintenance", "manager"];
@@ -270,7 +272,18 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   }
 
   async function inviteUser(user) {
-  if (!guardSubmit("inviteUser")) return;
+  // Keyed PER USER. A shared "inviteUser" key meant inviting one teammate
+  // blocked inviting a different one, which looks identical to a dead
+  // button -- the click is swallowed and nothing appears anywhere.
+  // guardSubmit takes a record id; a shared key meant inviting one
+  // teammate blocked inviting a different one, indistinguishable from a
+  // dead button. The guard also self-clears after 30s, so the old symptom
+  // was a button that did nothing for half a minute and then worked -- with
+  // nothing on screen to say which.
+  const who = user.id || user.email || "";
+  const guardKey = "inviteUser:" + who;
+  if (!guardSubmit("inviteUser", who)) return;
+  setInviting(prev => ({ ...prev, [guardKey]: true }));
   try {
   if (!user.email) { showToast("This user has no email address.", "error"); return; }
   const roleName = ROLES[user.role]?.label || user.role;
@@ -282,8 +295,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) { showToast("Session expired — please sign in again.", "error"); return; }
+  // A TIMEOUT, because without one a hung request holds the guard for the
+  // life of the page: the first click never finishes, and every click
+  // after it is silently refused. That is the "button does nothing"
+  // report -- not a missing guard, a guard that could never be released.
   const resp = await fetch("/api/invite-user", {
   method: "POST",
+  signal: AbortSignal.timeout(30000),
   headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
   body: JSON.stringify({
   email: (user.email || "").trim().toLowerCase(),
@@ -320,7 +338,10 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   } catch (e) {
   showToast("Error sending invite: " + e.message, "error");
   }
-  } finally { guardRelease("inviteUser"); }
+  } finally {
+    guardRelease("inviteUser", who);
+    setInviting(prev => { const n = { ...prev }; delete n[guardKey]; return n; });
+  }
   }
 
   // Get the effective pages for a user — custom_pages takes priority over role default
@@ -454,8 +475,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
   {ROLES[u.role]?.label}
   </span>
-  <Btn variant="secondary" size="xs" onClick={() => inviteUser(u)}>
-  {u._memberStatus ? "✉️ Resend Invite" : "✉️ Invite"}
+  {/* Shows what it is doing. Sending an invite creates an auth account and
+      sends an email -- seconds, not instant -- and a button that looks
+      untouched for that long reads as broken, so it gets clicked again. */}
+  <Btn variant="secondary" size="xs"
+       disabled={!!inviting["inviteUser:" + (u.id || u.email || "")]}
+       onClick={() => inviteUser(u)}>
+  {inviting["inviteUser:" + (u.id || u.email || "")]
+    ? "Sending\u2026"
+    : (u._memberStatus ? "\u2709\uFE0F Resend Invite" : "\u2709\uFE0F Invite")}
   </Btn>
   <Btn variant="secondary" size="xs" onClick={() => startEdit(u)}>
   ✏️ Edit
