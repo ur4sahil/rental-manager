@@ -103,4 +103,117 @@ async function currentAccount(page) {
   return (label.match(ACCT_RE) || [])[1] || null;
 }
 
-module.exports = { listAccounts, selectAccount, currentAccount };
+// ─────────────────────────────────────────────────────────────────────
+// SHAPE B: a chooser PAGE, not an inline switcher.
+//
+// Washington Gas puts its accounts behind a button on every page. BGE does
+// not: after sign-in it lands on ChangeAccount.aspx headed "Select an
+// Account To View", and there IS no bill until one is picked. Everything
+// above returns "no account switcher on this page" there, which reads like
+// a single-account login and is why BGE returned no figures.
+//
+// The rules are the same as shape A and matter for the same reason:
+// selection is by ACCOUNT NUMBER, never by position, and the switch is
+// VERIFIED afterwards rather than assumed.
+//
+// UNVERIFIED against the live page. BGE's sign-in and MFA were both proven
+// on 2026-09-14, but the run ended at the chooser, so the locators below
+// are written from the heading and the shape these pages share. The first
+// signed-in run either confirms them or shows which one missed.
+
+/** Are we sitting on a chooser page that must be answered first? */
+async function onChooserPage(page) {
+  const heading = page.getByRole("heading", { name: /select an account|choose an account|change account/i }).first();
+  if (await heading.count().catch(() => 0)) return true;
+  // The heading is the reliable signal; the URL is a useful second one
+  // because BGE names the page outright.
+  return /changeaccount|selectaccount|accountlist/i.test(page.url());
+}
+
+/**
+ * The accounts offered on a chooser page.
+ *
+ * Looks at links, buttons and table rows, because a chooser is rendered as
+ * all three across portals and picking one shape in advance is how these
+ * break on a redesign.
+ */
+async function listChooserAccounts(page) {
+  const seen = [];
+  const scopes = [
+    page.getByRole("link", { name: ACCT_RE }),
+    page.getByRole("button", { name: ACCT_RE }),
+    page.getByRole("row", { name: ACCT_RE }),
+    page.getByRole("radio"),
+  ];
+  for (const loc of scopes) {
+    const n = await loc.count().catch(() => 0);
+    for (let i = 0; i < n; i++) {
+      const el = loc.nth(i);
+      const label = (await el.innerText().catch(() => "")).replace(/\s+/g, " ").trim()
+        || (await el.getAttribute("aria-label").catch(() => "")) || "";
+      const num = (label.match(ACCT_RE) || [])[1];
+      if (!num || seen.some(a => a.number === num)) continue;
+      seen.push({
+        number: num,
+        label: label.slice(0, 120),
+        address: label.replace(ACCT_RE, "").replace(/\s{2,}/g, " ").trim().slice(0, 90),
+        isDefault: /default/i.test(label),
+      });
+    }
+  }
+  return { ok: seen.length > 0, accounts: seen,
+           reason: seen.length ? null : "chooser page listed no account numbers" };
+}
+
+/**
+ * Pick one account on a chooser page and confirm we left the chooser.
+ *
+ * "Left the chooser" is the confirmation available here: unlike shape A
+ * there is no switcher label to re-read, and asserting on a bill figure
+ * would conflate "the switch worked" with "the bill loaded". If the
+ * chooser is still on screen, the click did not take.
+ */
+async function selectChooserAccount(page, number) {
+  const target = page.getByRole("link", { name: new RegExp(number) }).first();
+  const alt = page.getByRole("button", { name: new RegExp(number) }).first();
+  const row = page.getByRole("row", { name: new RegExp(number) }).first();
+
+  let clicked = false;
+  for (const loc of [target, alt, row]) {
+    if (!(await loc.count().catch(() => 0))) continue;
+    // A row is not itself clickable on every portal; its first link is.
+    const inner = loc.getByRole("link").first();
+    const el = (await inner.count().catch(() => 0)) ? inner : loc;
+    await el.click({ timeout: 15000 }).catch(() => {});
+    clicked = true;
+    break;
+  }
+  if (!clicked) return { ok: false, reason: `account ${number} is not on the chooser page` };
+
+  await page.waitForLoadState("networkidle", { timeout: 25000 }).catch(() => {});
+  if (await onChooserPage(page)) {
+    return { ok: false, reason: `clicked ${number} but the chooser is still showing — the switch did not take` };
+  }
+  return { ok: true, already: false, via: "chooser page" };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Dispatch. Callers say "select this account" and do not need to know
+// which shape the portal uses -- which is the point, because a portal can
+// change shape in a redesign and the caller should not have to.
+
+async function listAccountsAny(page) {
+  if (await onChooserPage(page)) return listChooserAccounts(page);
+  return listAccounts(page);
+}
+
+async function selectAccountAny(page, number) {
+  if (await onChooserPage(page)) return selectChooserAccount(page, number);
+  return selectAccount(page, number);
+}
+
+module.exports = {
+  listAccounts, selectAccount, currentAccount,
+  onChooserPage, listChooserAccounts, selectChooserAccount,
+  listAccountsAny, selectAccountAny,
+};

@@ -13,7 +13,7 @@
 // is a proposal, and a person confirms it.
 const fs = require("fs");
 const path = require("path");
-const { PLAYBOOKS } = require("./playbooks");
+const { PLAYBOOKS, NOTHING_DUE, CREDIT_BALANCE } = require("./playbooks");
 
 const key = (process.argv[2] || "").toLowerCase();
 // --account pins WHICH of the accounts behind this login to read. Without
@@ -116,7 +116,10 @@ const isoDate = (s) => {
     // silently failed would leave the previous property loaded and its
     // balance reported under this one's name.
     if (wantAccount) {
-      const { selectAccount, currentAccount } = require("./accounts");
+      // ...Any: dispatches on the shape the portal actually uses. Washington
+      // Gas has an inline switcher; BGE has a chooser PAGE and no bill at
+      // all until one is picked.
+      const { selectAccountAny: selectAccount, currentAccount } = require("./accounts");
       const sel = await selectAccount(page, wantAccount);
       if (!sel.ok) finish("wrong_account", { error: sel.reason, wanted: wantAccount });
       const on = await currentAccount(page);
@@ -140,8 +143,31 @@ const isoDate = (s) => {
     // full of dollar figures is the normal case, not the exception:
     // this one showed the current bill, the previous bill and the same
     // month last year, all beside the balance.
-    let amount = null, amountVia = null;
-    for (const cand of book.amount) {
+    // A CREDIT IS CHECKED FIRST, and it short-circuits.
+    //
+    // SMECO's overview reads "No payment due  -$4.15": the utility owes
+    // money, not the other way round. Running the amount candidates over
+    // that page and taking the first dollar figure records a $4.15 BILL --
+    // a credit inverted into a debt on a screen nobody would think to
+    // doubt, and one that would then be paid.
+    //
+    // So: if the page says nothing is due, the answer is zero (or the
+    // credit), and the bill patterns never run.
+    let amount = null, amountVia = null, credit = null;
+    if (NOTHING_DUE.some(re => re.test(bodyText))) {
+      const cm = bodyText.match(CREDIT_BALANCE);
+      if (cm && cm[1]) {
+        credit = Number(cm[1].replace(/[^0-9.]/g, ""));
+        amount = -credit;               // signed: negative IS the credit
+        amountVia = `credit balance "${cm[0].slice(0, 44)}"`;
+      } else {
+        amount = 0;
+        amountVia = "page says nothing is due";
+      }
+      record("amount", `${amount} (${amountVia})`);
+    }
+
+    for (const cand of (amount != null ? [] : book.amount)) {
       if (cand.labelled) {
         const m = bodyText.match(cand.labelled);
         if (m && m[1]) { amount = Number(m[1].replace(/,/g, "")); amountVia = `labelled "${m[0].slice(0, 36)}"`; break; }
@@ -162,7 +188,7 @@ const isoDate = (s) => {
     // No page-wide fallback. If the balance cannot be found where the
     // balance lives, that is not_found -- a number taken from somewhere
     // else on the page is worse than no number at all.
-    if (amount != null) record("amount", `${amount} (${amountVia})`);
+    if (amount != null && !credit && amountVia && !amountVia.startsWith("credit")) record("amount", `${amount} (${amountVia})`);
 
     // Which property this reading belongs to, when the portal identifies
     // by address rather than by account number.
@@ -218,7 +244,21 @@ const isoDate = (s) => {
     if (amount == null) {
       finish("not_found", { error: "signed in, but no amount found — the bill may not be issued yet, or the page changed", screenshot: shot, treeChars: tree.length });
     }
-    finish("ok", { account: wantAccount, property: readProperty, amount_due: amount, due_date: due, screenshot: shot, url: page.url() });
+    // amount_due is SIGNED. A credit is negative, which is what makes it
+    // impossible to mistake for a bill downstream: pay-runner refuses any
+    // amount <= 0, so a credit can never be "paid", and the in-credit
+    // report is simply amount < 0.
+    //
+    // credit_balance is reported separately as a positive figure, because
+    // "you are owed $4.15" is what a person needs to read when deciding
+    // whether to ask for a refund cheque -- and "-4.15" is not that.
+    finish("ok", {
+      account: wantAccount, property: readProperty,
+      amount_due: amount, due_date: due,
+      credit_balance: credit,
+      nothing_due: amount === 0 || credit != null,
+      screenshot: shot, url: page.url(),
+    });
   } catch (e) {
     record("error", String(e.message).split("\n")[0]);
     finish("error", { error: String(e.message).slice(0, 200) });

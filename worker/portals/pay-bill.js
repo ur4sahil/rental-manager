@@ -131,7 +131,7 @@ async function visionCheck(pngPath) {
     `${key}.json`);
   if (!fs.existsSync(sessionFile)) done("needs_signin", { error: "no session" });
 
-  const { selectAccount, currentAccount } = require("./accounts");
+  const { selectAccountAny: selectAccount, currentAccount } = require("./accounts");
   const shots = "/tmp/housy-shots";
   fs.mkdirSync(shots, { recursive: true });
 

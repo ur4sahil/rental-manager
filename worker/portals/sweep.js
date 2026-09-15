@@ -80,6 +80,11 @@ function runFetch(portal, account) {
 
 (async () => {
   const only = process.argv[2];
+  // Accounts the utility OWES money to. Collected across every portal and
+  // printed together at the end, because a credit sitting quietly on one
+  // account among forty is exactly the thing nobody notices -- and it is
+  // refundable by cheque if someone asks.
+  const inCredit = [];
   const portals = Object.keys(PLAYBOOKS).filter(p => !only || p === only);
   const summary = [];
 
@@ -137,6 +142,10 @@ function runFetch(portal, account) {
       const rec = await api("record-reading", {
         companyId: COMPANY, provider, account,
         property: r.property ?? null, outcome: r.outcome,
+        // Signed. A credit arrives negative and is stored negative, so the
+        // in-credit report is a plain amount < 0 and nothing downstream has
+        // to remember a separate flag to avoid paying money that is owed TO
+        // this company.
         amount: r.amount_due ?? null, due: r.due_date ?? null, error: r.error ?? null,
       }).catch(e => ({ reason: e.message }));
 
@@ -144,7 +153,11 @@ function runFetch(portal, account) {
       if (r.outcome === "ok") {
         read++;
         if (!rec?.updated) unmatched++;
-        console.log(`  ${provider.padEnd(15)} ${String(who).slice(0, 30).padEnd(32)} $${Number(r.amount_due).toFixed(2).padStart(9)}  due ${r.due_date || "?"}   ${rec?.reason || ""}`);
+        if (r.credit_balance != null) inCredit.push({ provider, who, credit: r.credit_balance });
+        const figure = r.credit_balance != null
+          ? `CREDIT $${Number(r.credit_balance).toFixed(2)}`.padStart(11)
+          : `$${Number(r.amount_due).toFixed(2)}`.padStart(11);
+        console.log(`  ${provider.padEnd(15)} ${String(who).slice(0, 30).padEnd(32)} ${figure}  due ${r.due_date || "?"}   ${rec?.reason || ""}`);
       } else {
         failed++;
         console.log(`  ${provider.padEnd(15)} ${String(who).slice(0, 30).padEnd(32)} ${r.outcome}: ${String(r.error || "").slice(0, 46)}`);
@@ -154,7 +167,15 @@ function runFetch(portal, account) {
     summary.push({ provider, read, failed, unmatched, needsSignin });
   }
 
-  console.log("\n" + JSON.stringify({ swept: summary, at: new Date().toISOString() }, null, 2));
+  if (inCredit.length) {
+    console.log("\n=== ACCOUNTS IN CREDIT — these utilities owe money back ===");
+    for (const c of inCredit) {
+      console.log(`  ${c.provider.padEnd(15)} ${String(c.who).slice(0, 34).padEnd(36)} owes you $${Number(c.credit).toFixed(2)}`);
+    }
+    console.log("  (request a refund cheque from the utility for these)");
+  }
+
+  console.log("\n" + JSON.stringify({ swept: summary, inCredit, at: new Date().toISOString() }, null, 2));
   // Non-zero when a session needs a person, so the timer surfaces it as a
   // unit failure instead of it scrolling past in a log nobody opens.
   process.exit(summary.some(s => s.needsSignin) ? 2 : 0);
