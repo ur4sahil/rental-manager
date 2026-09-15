@@ -4670,6 +4670,57 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }, []);
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
 
+  // ---- AN OPEN JOURNAL ENTRY IS A PLACE -------------------------------
+  // /accounting/journal-entries/JE-0321, so a refresh keeps the entry on
+  // screen and the link can be sent to someone.
+  //
+  // replaceState, NOT push, and deliberately. Two things already own
+  // history here: the account ledger pushes an entry (without changing the
+  // path) so Back closes the ledger, and jeOrigin remembers where an entry
+  // was opened from. Pushing a third entry per journal entry would make
+  // Back mean two different things depending on how the entry was reached.
+  //
+  // The honest description is that this makes an entry ADDRESSABLE without
+  // making it a history step. Unwinding jeOrigin in favour of real URLs is
+  // the better end state, and a bigger change than it looks.
+  const jeUrlSyncing = useRef(false);
+
+  useEffect(() => {
+    // Only the journal tab owns this path; the other tabs have their own.
+    if (activeTab !== "journal") return;
+    if (jeUrlSyncing.current) return;
+    const base = pathForPage("acct_journal");
+    const je = viewJEId ? journalEntries.find(j => j.id === viewJEId) : null;
+    // Addressed by NUMBER (JE-0321), which is what a person reads on the
+    // entry and can repeat back, rather than the internal id.
+    const seg = je?.number ? "/" + encodeURIComponent(je.number) : "";
+    const want = base + seg + window.location.search + window.location.hash;
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    if (want === here) return;
+    try {
+      window.history.replaceState(
+        { ...(window.history.state || {}), page: "acct_journal", screen: "app" }, "", want);
+    } catch (_e) { /* never block the UI on a URL */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewJEId, activeTab, journalEntries.length]);
+
+  // Arriving on a /accounting/journal-entries/JE-0321 link.
+  useEffect(() => {
+    if (activeTab !== "journal" || !journalEntries.length) return;
+    const sub = subPathFor("acct_journal", window.location.pathname);
+    if (!sub) return;
+    const number = decodeURIComponent(sub.split("/")[0]);
+    const je = journalEntries.find(j => j.number === number);
+    // An entry number that is not in the loaded set is not an error to
+    // announce: it may belong to another company, or simply not be in this
+    // page of the ledger. The journal list is the honest answer.
+    if (!je || viewJEId === je.id) return;
+    jeUrlSyncing.current = true;
+    setViewJEId(je.id);
+    jeUrlSyncing.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, journalEntries.length]);
+
   // WHERE THIS JOURNAL ENTRY WAS STARTED FROM.
   //
   // A journal entry can be reached from five places, and finishing with one

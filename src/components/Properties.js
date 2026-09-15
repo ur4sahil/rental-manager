@@ -10,6 +10,7 @@ import { queueNotification } from "../utils/notifications";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
+import { pathForPage, subPathFor } from "../utils/routes";
 
 const LICENSE_TYPE_OPTIONS = [
   { value: "rental_license", label: "Rental License" },
@@ -2930,6 +2931,63 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
   const [showPropertyWizard, setShowPropertyWizard] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);
+
+  // ---- A PROPERTY IS A PLACE -----------------------------------------
+  // /properties/{id}. Same reasoning as tenants: opening one used to leave
+  // the address bar on /properties, so Back left the page, a refresh lost
+  // the property, and the URL could not be shared.
+  //
+  // Opening PUSHES so Back closes the property and returns to the list;
+  // closing REPLACES so it does not add a second entry for the same place.
+  const propUrlSyncing = React.useRef(false);
+
+  const openPropertyFromUrl = React.useCallback((list) => {
+    const sub = subPathFor("properties", window.location.pathname);
+    // "import", "import/add" and "import/edit" are their own PAGES under
+    // /properties, not property ids -- resolving one as an id would open
+    // nothing and clear the selection on every visit to the importer.
+    if (!sub || /^import(\/|$)/.test(sub)) return;
+    const id = sub.split("/")[0];
+    const p = (list || []).find(x => String(x.id) === String(id));
+    if (!p) return;
+    propUrlSyncing.current = true;
+    setSelectedProperty(p);
+    propUrlSyncing.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (properties.length) openPropertyFromUrl(properties);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties.length]);
+
+  useEffect(() => {
+    const onPop = () => {
+      const sub = subPathFor("properties", window.location.pathname);
+      if (!sub || /^import(\/|$)/.test(sub)) { propUrlSyncing.current = true; setSelectedProperty(null); propUrlSyncing.current = false; return; }
+      openPropertyFromUrl(properties);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties]);
+
+  useEffect(() => {
+    if (propUrlSyncing.current) return;
+    const base = pathForPage("properties");
+    const sub = subPathFor("properties", window.location.pathname);
+    if (/^import(\/|$)/.test(sub)) return;          // the importer owns its own path
+    const want = (selectedProperty ? `${base}/${selectedProperty.id}` : base)
+      + window.location.search + window.location.hash;
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    if (want === here) return;
+    const st = { ...(window.history.state || {}), page: "properties", screen: "app" };
+    try {
+      if (selectedProperty && !sub) window.history.pushState(st, "", want);
+      else window.history.replaceState(st, "", want);
+    } catch (_e) { /* never block the UI on a URL */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProperty?.id]);
   const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
   const [propertyDocs, setPropertyDocs] = useState([]);
   // Documents whose `property` field is empty/null — almost always
