@@ -1,0 +1,85 @@
+{
+  "_comment": [
+    "Name and address corrections for the Dropbox document import.",
+    "Dropbox folder names are the historical record and Housify is the current one,",
+    "so they disagree in ways no algorithm should resolve on its own: a tenant who",
+    "married and changed surname, a joint lease filed under one name, a typo that",
+    "has been on disk for years, a tenant who moved units. Each entry here is a",
+    "human decision, confirmed by Sahil -- never a guess the matcher made."
+  ],
+
+  "tenantAliases": [
+    {
+      "folderName": "Jacinda Key",
+      "tenantName": "Jacinda Proctor",
+      "note": "Same person, name changed. Confirmed 2026-09-15.",
+      "confirmed": true
+    },
+    {
+      "folderName": "Tanesha Underwood",
+      "tenantName": "Tanesha Chaunte",
+      "note": "Same person, name changed. Same property (6958 Hawthorne St). Confirmed 2026-09-15.",
+      "confirmed": true
+    }
+  ],
+
+  "_filingRules": [
+    "Where a lease folder sits under a different property than the tenant's",
+    "Housify record, the folder is NOT automatically authoritative -- Sahil",
+    "ruled on each one, and the three rulings went three different ways."
+  ],
+  "tenantFilingOverrides": [
+    {
+      "folderName": "Iesha Durham",
+      "folderProperty": "6932 Hawthorne St",
+      "fileToProperty": "2610 Kent Village Dr, Landover, MD 20785",
+      "note": "Housify is right; the Hawthorne folder is an older or prospective lease. File her documents against 2610 Kent Village, where her ledger is.",
+      "confirmed": true
+    },
+    {
+      "folderName": "Jacinda Key",
+      "folderProperty": "6408 Seat Pleasant Dr",
+      "fileToProperty": "6408 Seat Pleasant Dr, Capitol Heights, MD 20743",
+      "note": "She moved from 35 Watkins to 6408 Seat Pleasant. Folder location is correct.",
+      "confirmed": true
+    },
+    {
+      "folderName": "Viola Jones",
+      "folderProperty": "10407 Beacon Ridge Dr #8-104",
+      "fileToProperty": "10407 Beacon Ridge Drive, 8-104, Bowie, MD 20721",
+      "note": "Real tenant. Her Housify record is attached to the QuickBooks 'Overhead' account, not a property -- see needsRecordFix below.",
+      "confirmed": true
+    },
+    {
+      "folderName": "Nakia Champagne Hayes",
+      "folderProperty": "8457 Greenbelt Rd #202",
+      "fileToProperty": "8457 greenbelt #202, 202, Greenbelt, MD 20770",
+      "note": "The folder is right and Housify is wrong: she is at 8457 #202, not 8463 #102 -- see needsRecordFix below.",
+      "confirmed": true
+    }
+  ],
+
+  "_needsRecordFix": [
+    "These are NOT document-import problems. Sahil's answers mean two tenant",
+    "records point at the wrong property, which affects ledgers and reports,",
+    "not just where a PDF lands. Listed here so the decision is not lost;",
+    "fixing them is a separate, deliberate change."
+  ],
+  "needsRecordFix": [
+    {
+      "tenant": "VIOLA JONES",
+      "currentProperty": "Overhead",
+      "shouldBe": "10407 Beacon Ridge Drive, 8-104, Bowie, MD 20721",
+      "why": "'Overhead' is a QuickBooks overhead account that the import created as if it were a property."
+    },
+    {
+      "tenant": "nakia hayes",
+      "currentProperty": "8463 Greenbelt Rd #102, Greenbelt, MD 20770",
+      "shouldBe": "8457 greenbelt #202, 202, Greenbelt, MD 20770",
+      "why": "Wrong building and unit. Her $5,990 balance is currently attributed to 8463 #102, so moving her moves that balance too."
+    }
+  ],
+
+  "propertyAliases": [],
+  "ignoreFolders": []
+}

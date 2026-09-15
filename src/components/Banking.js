@@ -599,9 +599,24 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       };
       let { res: ltRes, data: ltData } = await mintToken(session.access_token);
       if (ltRes.status === 401) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        if (refreshed?.session?.access_token) {
-          ({ res: ltRes, data: ltData } = await mintToken(refreshed.session.access_token));
+        // Refresh only when the ACCESS token is the thing that expired. A
+        // blind refreshSession() is destructive: if the refresh token is also
+        // dead the endpoint answers 400, supabase-js clears the session, and
+        // the user is dumped on the marketing page mid-task. That happened on
+        // 2026-09-15 -- the retry added here turned a failed button click
+        // into a forced sign-out, which is worse than the bug it fixed.
+        let recovered = null;
+        try {
+          const { data: r, error: rErr } = await supabase.auth.refreshSession();
+          if (!rErr && r?.session?.access_token) recovered = r.session.access_token;
+        } catch { /* refresh token dead; handled below */ }
+        if (recovered) {
+          ({ res: ltRes, data: ltData } = await mintToken(recovered));
+        } else {
+          // Say so plainly and stay put, rather than letting the user discover
+          // they have been signed out by watching the page turn into an ad.
+          pmError("PM-5011", { raw: new Error("session refresh failed"), context: "creating Plaid link token" });
+          return;
         }
       }
       if (!ltRes.ok || !ltData.link_token) {

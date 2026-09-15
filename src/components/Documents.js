@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
-import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel} from "../utils/helpers";
+import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, DOC_TYPES, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -201,7 +201,10 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full">
-  {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
+  {/* Shared with the tenant panel's classifier: a type that can clear a
+      required-document check must be offered here too, or the two views
+      disagree about what a document can be. */}
+  {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
   </Select></div>
   <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-xl px-3 py-1.5 cursor-pointer">
   <Checkbox checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
@@ -219,7 +222,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   <div className="flex gap-2 mb-4 flex-wrap">
-  {["all", "Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => (
+  {["all", ...DOC_TYPES.map(t => t.value)].map(t => (
   <FilterPill key={t} active={filter === t} onClick={() => setFilter(t)}>{t}</FilterPill>
   ))}
   </div>

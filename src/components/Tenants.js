@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -13,6 +13,10 @@ import { queueNotification } from "../utils/notifications";
 import { pathForPage, subPathFor } from "../utils/routes";
 import { LeaseManagement } from "./Leases";
 import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
+
+// "ID" and "Utility Transfer" are stored values; people read the long form.
+const docTypeLabel = (v) => (DOC_TYPES.find(t => t.value === v) || {}).label || v || "Other";
+
 
 // One tenant's rows, precisely.
 //
@@ -1648,7 +1652,35 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
   <div>
   <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
+  <div className="text-xs text-neutral-400 flex items-center gap-2 flex-wrap mt-0.5">
+  {userRole === "tenant" ? <span>{docTypeLabel(d.type)}</span> : (
+  // Classifying a document is how an outstanding requirement gets cleared.
+  // Filenames cannot carry that meaning -- a scan called
+  // "Epson_11082024113258.pdf" is a renter's insurance certificate and no
+  // pattern will ever know it -- so saying what the file is has to be a
+  // control, not a label.
+  <select
+    value={DOC_TYPES.some(t => t.value === d.type) ? d.type : "Other"}
+    onClick={e => e.stopPropagation()}
+    onChange={async (e) => {
+      const nextType = e.target.value;
+      const prevType = d.type;
+      const { error } = await supabase.from("documents").update({ type: nextType }).eq("id", d.id).eq("company_id", companyId);
+      if (error) { pmError("PM-7004", { raw: error, context: "reclassify document" }); return; }
+      if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, { tenantId: selectedTenant.id, tenantName: selectedTenant.name, property: selectedTenant.property });
+      showToast(`Classified as ${docTypeLabel(nextType)}`, "success");
+      logAudit("update", "documents", `Reclassified document "${d.name}" from ${prevType || "(none)"} to ${nextType}`, d.id, userProfile?.email, userRole, companyId);
+      await fetchTenantDocs(selectedTenant);
+      fetchTenants();
+    }}
+    className="text-xs border border-neutral-200 rounded-md px-1.5 py-0.5 bg-white text-neutral-600 hover:border-brand-300 cursor-pointer"
+    title="Classify this document — this is what clears an outstanding requirement"
+  >
+    {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+  </select>
+  )}
+  <span>{d.uploaded_at?.slice(0, 10)}</span>
+  </div>
   </div>
   </div>
   <div className="flex items-center gap-2">

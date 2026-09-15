@@ -119,7 +119,26 @@ export const REQUIRED_TENANT_DOCS = [
   { label: "Signed Lease Agreement", types: ["Lease"], nameRe: /\blease\b/i },
   { label: "Government-Issued ID", types: ["ID"], nameRe: /\b(id|license|passport|government[-_\s]?issued)\b/i },
   { label: "Renters Insurance", types: ["Insurance"], nameRe: /\b(renters?[-_\s]?insurance|rental[-_\s]?insurance)\b/i },
-  { label: "Proof of Utility Transfer", types: ["Receipt", "Other"], nameRe: /\b(utility|utilities)\b/i },
+  // "Other" deliberately does NOT satisfy this: it is the default for
+  // anything unclassified, so accepting it would mark the requirement met
+  // for any tenant with a stray upload.
+  { label: "Proof of Utility Transfer", types: ["Utility Transfer"], nameRe: /\b(utility|utilities)\b/i },
+];
+
+// The classifications a document can carry. The first four exist so a
+// requirement above can be satisfied by SAYING what a file is, rather than
+// depending on whoever named it -- a scan called "Epson_11082024113258.pdf"
+// is a renter's insurance certificate and no regex will ever know that.
+export const DOC_TYPES = [
+  { value: "Lease", label: "Lease" },
+  { value: "ID", label: "Government-Issued ID" },
+  { value: "Insurance", label: "Renters Insurance" },
+  { value: "Utility Transfer", label: "Proof of Utility Transfer" },
+  { value: "Inspection", label: "Inspection" },
+  { value: "Maintenance", label: "Maintenance" },
+  { value: "Financial", label: "Financial" },
+  { value: "Notice", label: "Notice" },
+  { value: "Other", label: "Other" },
 ];
 
 // True if the given list of documents covers every REQUIRED_TENANT_DOCS entry.
@@ -127,10 +146,14 @@ export function hasAllRequiredTenantDocs(docs) {
   return REQUIRED_TENANT_DOCS.every(({ types, nameRe }) =>
     (docs || []).some(d => {
       const t = (d?.type || "").trim();
-      if (types.includes(t) && nameRe.test(d?.name || "")) return true;
-      // Fallback when the uploader didn't pick a matching type: accept
-      // if the filename itself is unambiguous. "insurance.pdf" alone
-      // still counts; "life_insurance.pdf" does not.
+      // An explicit classification is authoritative. It used to be ANDed with
+      // the filename test, and the fallback below was the same test again --
+      // so both branches came down to the filename, the `types` field did
+      // nothing, and classifying a document correctly could never clear a
+      // requirement. The only ways out were renaming the file or waiving it.
+      if (types.includes(t)) return true;
+      // Otherwise fall back to the filename, for documents nobody has
+      // classified yet. "insurance.pdf" counts; "life_insurance.pdf" does not.
       return nameRe.test(d?.name || "");
     })
   );
