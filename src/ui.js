@@ -743,101 +743,6 @@ export function MenuItem({ icon, tone = "neutral", onClick, disabled, children, 
   );
 }
 
-// ---- ROW ACTIONS OVERFLOW MENU ----
-// A table row has room for two or three buttons, not six. The tenants
-// table carried Ledger / Msg / Lease / Edit / Delete / Invite in a
-// flex-wrap, so every row rendered two lines tall and the table read as
-// a list of blocks rather than rows.
-//
-// So: the primary actions stay inline and the rest move behind a kebab.
-// The menu is position:fixed off the button's measured rect rather than
-// absolute inside the row, because the row's ancestor has overflow-x-auto
-// -- an absolutely positioned menu is clipped by it, which is the usual
-// reason these end up rendered into a portal.
-//
-// Fixed positioning does mean the menu is placed once, in page
-// coordinates, so a scroll would leave it behind; it closes on scroll and
-// resize instead of trying to follow.
-export function RowMenu({ items, label = "More actions", align = "right", className = "" }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef(null);
-  const MENU_W = 176;
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    const onKey = e => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const shown = (items || []).filter(Boolean);
-  if (!shown.length) return null;
-
-  const toggle = e => {
-    e.stopPropagation();
-    if (open) { setOpen(false); return; }
-    const r = btnRef.current?.getBoundingClientRect();
-    if (r) {
-      // Flip up when the button sits too close to the bottom of the
-      // viewport for the menu to fit below it.
-      const estH = 8 + shown.length * 42;
-      const below = window.innerHeight - r.bottom;
-      const left = align === "right" ? r.right - MENU_W : r.left;
-      setPos({
-        top: below < estH ? Math.max(8, r.top - estH - 4) : r.bottom + 4,
-        left: Math.max(8, Math.min(left, window.innerWidth - MENU_W - 8)),
-      });
-    }
-    setOpen(true);
-  };
-
-  return (
-    <span className={"relative inline-flex " + className}>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={toggle}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title={label}
-        className={"px-1.5 py-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 leading-none " + FOCUS_RING}
-      >
-        <span className="material-icons-outlined text-base align-middle">more_horiz</span>
-      </button>
-      {open && <>
-        <div className="fixed inset-0 z-30" onClick={e => { e.stopPropagation(); setOpen(false); }} />
-        <div
-          role="menu"
-          onClick={e => e.stopPropagation()}
-          className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-pop py-1"
-          style={{ top: pos.top, left: pos.left, minWidth: MENU_W }}
-        >
-          {shown.map((it, i) => (
-            <MenuItem
-              key={it.key || it.label || i}
-              icon={it.icon}
-              tone={it.tone}
-              disabled={it.disabled}
-              onClick={e => { if (e) e.stopPropagation(); setOpen(false); it.onClick?.(); }}
-            >
-              {it.label}
-            </MenuItem>
-          ))}
-        </div>
-      </>}
-    </span>
-  );
-}
-
 // ---- REMEMBERED VIEW PREFERENCE ----
 // Cards / Table / Compact was reset to Cards on every mount, so choosing
 // Table meant choosing it again after each visit to the page. The choice
@@ -986,11 +891,14 @@ export function clickable(onActivate) {
 // record's primary label through this so keyboard and screen-reader
 // users get exactly one correctly-named way in, without the container
 // swallowing everything else.
-export function CardOpenButton({ onActivate, label, className = "", children }) {
+export function CardOpenButton({ onActivate, label, title, className = "", children }) {
   return (
     <button
       type="button"
       aria-label={label}
+      // A name narrowed to fit its column is truncated by CSS, so the full
+      // value has to stay reachable on hover.
+      title={title}
       onClick={(e) => { e.stopPropagation(); onActivate(e); }}
       className={"text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 " + className}
     >{children}</button>
@@ -1288,7 +1196,13 @@ export function DataTable({
                   aria-orientation="vertical"
                   aria-label={`Resize ${typeof c.label === "string" ? c.label : c.key} column`}
                   title="Drag to resize — double-click to reset"
-                  className="absolute top-0 right-0 h-full w-2 translate-x-1/2 cursor-col-resize select-none hover:bg-brand-300/70 active:bg-brand-400"
+                  // z-20: the handle is translated half outside its own
+                  // <th>, and a later sibling cell paints over a static
+                  // element, so without a stacking order the right half of
+                  // every grab area was dead -- elementFromPoint at the
+                  // handle's centre returned the NEXT header, not the
+                  // handle. It looked draggable and was not.
+                  className="absolute top-0 right-0 z-20 h-full w-2 translate-x-1/2 cursor-col-resize select-none hover:bg-brand-300/70 active:bg-brand-400"
                 />
               )}
             </th>

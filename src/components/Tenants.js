@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, RowMenu, usePersistedView} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
@@ -2412,26 +2412,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (!bv) return -1;
     return av.localeCompare(bv, undefined, { sensitivity: "base", numeric: true }) * mul;
   });
-  // Six actions in a flex-wrap made every table row two lines tall. The
-  // three people reach for most stay inline; Edit / Invite / Delete move
-  // into the kebab, which also gets Delete away from the edge of a row
-  // that is itself a click target.
+  // All six actions are visible -- nothing behind a kebab. The room for
+  // them comes from the columns instead: Name, Property and Email are
+  // given fixed widths and truncate, rather than being allowed to size
+  // themselves to the longest value in the table. A tenant called
+  // "Alice E Allen Brown & Michael A Brown" was setting the width of the
+  // whole column, which is what pushed the actions onto a second line.
   const TenantActions = ({t}) => (
-  <div className="flex gap-1.5 items-center justify-end flex-nowrap whitespace-nowrap">
-  <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</TextLink>
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</TextLink>
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</TextLink>
-  <RowMenu
-    label={`More actions for ${t.name}`}
-    items={[
-      { key: "edit", label: "Edit tenant", icon: "edit", tone: "neutral", onClick: () => startEdit(t) },
-      { key: "invite", label: invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : (t.email ? "Invite to portal" : "Invite (needs an email)"),
-        icon: "mail", tone: "neutral",
-        disabled: !t.email || !!invitingTenant[t.id || t.email || ""],
-        onClick: () => inviteTenant(t) },
-      { key: "delete", label: "Delete tenant", icon: "delete", tone: "danger", onClick: () => deleteTenant(t.id, t.name) },
-    ]}
-  />
+  <div className="flex gap-1 items-center justify-end flex-nowrap whitespace-nowrap">
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-1.5 py-0.5 rounded-md hover:bg-brand-50">Ledger</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Msg</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Lease</TextLink>
+  <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
+  <TextLink tone="highlight" size="xs" disabled={!t.email || !!invitingTenant[t.id || t.email || ""]}
+    title={!t.email ? "Add an email to this tenant first" : "Send a portal invite"}
+    onClick={() => inviteTenant(t)}>{invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : "Invite"}</TextLink>
+  <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
   </div>
   );
   return <>
@@ -2493,29 +2489,29 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     columns={[
       // The select-all control lived in the <th>, so it went with the
       // header. A column label takes a node, which is where it belongs.
-      { key: "select", thClassName: "w-8",
+      { key: "select", thClassName: "w-8", width: 32,
         label: <Checkbox checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" />,
         render: t => (
           <span onClick={e => e.stopPropagation()}>
             <Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" />
           </span>
         ) },
-      { key: "name", label: "Name", sort: true,
+      { key: "name", label: "Name", sort: true, width: 150,
         render: t => (
-          <CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} className="font-medium text-brand-600 hover:underline text-left">{t.name}</CardOpenButton>
+          <CardOpenButton onActivate={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} label={`Open tenant ${t.name}`} title={t.name} className="font-medium text-brand-600 hover:underline text-left block w-full truncate">{t.name}</CardOpenButton>
         ) },
-      { key: "property", label: "Property", sort: true, className: "text-neutral-500",
-        render: t => propertyLabel(t.property) },
-      { key: "email", label: "Email", sort: true, className: "text-neutral-400 text-xs",
-        render: t => t.email },
-      { key: "lease_status", label: "Status", sort: true,
+      { key: "property", label: "Property", sort: true, className: "text-neutral-500", width: 128,
+        render: t => <span className="block truncate" title={t.property}>{propertyLabel(t.property)}</span> },
+      { key: "email", label: "Email", sort: true, className: "text-neutral-400 text-xs", width: 136,
+        render: t => <span className="block truncate" title={t.email}>{t.email}</span> },
+      { key: "lease_status", label: "Status", sort: true, width: 84,
         render: t => <Badge status={t.lease_status} /> },
-      { key: "rent", label: "Rent", sort: true, align: "right", className: "font-semibold",
+      { key: "rent", label: "Rent", sort: true, align: "right", className: "font-semibold", width: 80,
         render: t => (t.rent ? formatCurrency(t.rent) : "\u2014") },
-      { key: "balance", label: "Balance", sort: true, align: "right",
+      { key: "balance", label: "Balance", sort: true, align: "right", width: 92,
         className: t => `font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`,
         render: t => (t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)) },
-      { key: "actions", label: "", align: "right",
+      { key: "actions", label: "", align: "right", width: 276,
         render: t => <TenantActions t={t} /> },
     ]}
     rows={ft}
@@ -2523,6 +2519,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     sort={tenantSort}
     onSort={key => setTenantSort(sv => ({ key, dir: sv.key === key && sv.dir === "asc" ? "desc" : "asc" }))}
     className={undefined}
+    resizable
+    storageKey="tenants-table"
     empty="No tenants found"
   />
   </div>
