@@ -254,20 +254,31 @@ module.exports = async function handler(req, res) {
         // from the beginning, which is exactly what is wanted. The cost of
         // being wrong is one redundant full pull, deduplicated on insert;
         // the cost of the old behaviour was losing the history outright.
-        let hasEverImported = true;
+        // The unit of "has this been imported" is the ACCOUNT, not the
+        // connection. Asking it per connection was wrong and shipped wrong:
+        // 6027 was added to an Item that already held 0822 and 1402, whose
+        // 945 transactions made the connection look fully imported -- so the
+        // cursor was kept, and 6027's history stayed behind a marker that
+        // claimed it had already been seen. One never-imported account is
+        // enough to make the cursor unsafe, because a cursor is per Item and
+        // rewinding it is the only way to reach that account's backfill.
+        let everyFeedHasImported = true;
+        const emptyFeeds = [];
         if (addedCount === 0) {
           const feedIds = [...feedByAcct.values()].map(f => f.id).filter(Boolean);
-          if (!feedIds.length) hasEverImported = false;
+          if (!feedIds.length) everyFeedHasImported = false;
           else {
-            const { count } = await supabase
-              .from("bank_feed_transaction")
-              .select("id", { count: "exact", head: true })
-              .eq("company_id", conn.company_id)
-              .in("bank_account_feed_id", feedIds);
-            hasEverImported = (count || 0) > 0;
+            for (const fid of feedIds) {
+              const { count } = await supabase
+                .from("bank_feed_transaction")
+                .select("id", { count: "exact", head: true })
+                .eq("company_id", conn.company_id)
+                .eq("bank_account_feed_id", fid);
+              if (!(count || 0)) { everyFeedHasImported = false; emptyFeeds.push(fid); }
+            }
           }
         }
-        const historyPending = addedCount === 0 && !hasEverImported;
+        const historyPending = addedCount === 0 && !everyFeedHasImported;
 
         // Persist the new cursor + refresh balances/last_synced_at
         await supabase.from("bank_connection").update({

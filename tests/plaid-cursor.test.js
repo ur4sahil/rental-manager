@@ -18,9 +18,19 @@ function assert(name, cond, detail) {
   else { failed++; console.log("  ❌ " + name + (detail ? "\n       " + detail : "")); }
 }
 
-// The rule, as implemented in the route.
-function cursorToPersist({ addedCount, hasEverImported, cursorFromPlaid }) {
-  const historyPending = addedCount === 0 && !hasEverImported;
+// The rule, as implemented in the route. `feedTxnCounts` is per ACCOUNT on
+// the Item -- asking per CONNECTION was the first version, and it shipped
+// wrong: see the "account added to an existing Item" case below.
+function cursorToPersist({ addedCount, feedTxnCounts, cursorFromPlaid }) {
+  const everyFeedHasImported = (feedTxnCounts || []).length > 0
+    && feedTxnCounts.every(n => n > 0);
+  const historyPending = addedCount === 0 && !everyFeedHasImported;
+  return { stored: historyPending ? null : cursorFromPlaid, historyPending };
+}
+// The superseded version, kept so the regression stays visible.
+function cursorToPersist_v1({ addedCount, feedTxnCounts, cursorFromPlaid }) {
+  const connectionHasImported = (feedTxnCounts || []).some(n => n > 0);
+  const historyPending = addedCount === 0 && !connectionHasImported;
   return { stored: historyPending ? null : cursorFromPlaid, historyPending };
 }
 
@@ -28,7 +38,7 @@ console.log("\n=== Plaid cursor: never strand an Item's history ===");
 
 {
   // THE REGRESSION. Fresh connect, Plaid not ready, nothing imported.
-  const r = cursorToPersist({ addedCount: 0, hasEverImported: false, cursorFromPlaid: "CURSOR_FROM_EMPTY_PAGE" });
+  const r = cursorToPersist({ addedCount: 0, feedTxnCounts: [0, 0], cursorFromPlaid: "CURSOR_FROM_EMPTY_PAGE" });
   assert("fresh connection importing nothing does NOT store a cursor",
     r.stored === null,
     `stored ${JSON.stringify(r.stored)} — this is the exact bug: the next sync would ask "what changed since?" and lose the backfill`);
@@ -37,7 +47,7 @@ console.log("\n=== Plaid cursor: never strand an Item's history ===");
 
 {
   // Steady state: an established connection with genuinely nothing new.
-  const r = cursorToPersist({ addedCount: 0, hasEverImported: true, cursorFromPlaid: "CURSOR_B" });
+  const r = cursorToPersist({ addedCount: 0, feedTxnCounts: [743, 202], cursorFromPlaid: "CURSOR_B" });
   assert("established connection with no new activity DOES store the cursor",
     r.stored === "CURSOR_B",
     "otherwise every routine sync re-pulls the full window forever");
@@ -45,14 +55,31 @@ console.log("\n=== Plaid cursor: never strand an Item's history ===");
 }
 
 {
-  const r = cursorToPersist({ addedCount: 1895, hasEverImported: false, cursorFromPlaid: "CURSOR_C" });
+  const r = cursorToPersist({ addedCount: 1895, feedTxnCounts: [0, 0], cursorFromPlaid: "CURSOR_C" });
   assert("first successful import stores its cursor", r.stored === "CURSOR_C");
   assert("...and does not claim history is pending", r.historyPending === false);
 }
 
 {
-  const r = cursorToPersist({ addedCount: 12, hasEverImported: true, cursorFromPlaid: "CURSOR_D" });
+  const r = cursorToPersist({ addedCount: 12, feedTxnCounts: [743, 202], cursorFromPlaid: "CURSOR_D" });
   assert("normal incremental sync stores its cursor", r.stored === "CURSOR_D");
+}
+
+{
+  // THE SECOND REGRESSION, 2026-09-15. Account 6027 was added to the Item
+  // that already held 0822 (743 txns) and 1402 (202). The connection looked
+  // fully imported, so v1 kept the cursor -- and 6027's history stayed behind
+  // a marker claiming it had already been read. The card showed 0 forever.
+  const shape = { addedCount: 0, feedTxnCounts: [743, 202, 0], cursorFromPlaid: "CURSOR_PAST_6027" };
+  const v1 = cursorToPersist_v1(shape);
+  assert("v1 kept the cursor when a NEW account joined an imported Item — the bug",
+    v1.stored === "CURSOR_PAST_6027",
+    "if this fails, v1 was already correct and the second fix was unnecessary");
+  const now = cursorToPersist(shape);
+  assert("one never-imported account on the Item is enough to withhold the cursor",
+    now.stored === null,
+    `stored ${JSON.stringify(now.stored)} — 6027 can only be reached by rewinding`);
+  assert("...and it reports history_pending", now.historyPending === true);
 }
 
 console.log("\n=== PRODUCT_NOT_READY retries must terminate ===");
