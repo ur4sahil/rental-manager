@@ -648,12 +648,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       if (!hasCreds) return null;
       const u = await encryptCredential(username || '', companyId);
       const p = await encryptCredential(password || '', companyId, u.salt);
+      // NULL, never '': an empty ciphertext is indistinguishable from a
+      // real one in every IS NOT NULL and COUNT() check, which is how this
+      // table came to report stored logins for utilities that had none.
+      if (!u.encrypted || !p.encrypted) return null;
       return {
         username_encrypted: u.encrypted,
         password_encrypted: p.encrypted,
         encryption_iv: p.iv || u.iv,
         encryption_iv_username: u.iv || null,
         encryption_salt: u.salt || p.salt,
+        // Which key encrypted this. A rotation then shows up as a
+        // fingerprint mismatch -- "re-enter this credential" -- rather than
+        // as a credential that silently never opens again.
+        credential_key_fp: u.keyFp || p.keyFp || null,
       };
     }
 

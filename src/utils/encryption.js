@@ -70,11 +70,16 @@ export async function encryptCredential(plaintext, companyId, reuseSalt = null) 
 // straight into an <input value>, persisting the literal dots on save
 // and wiping the real stored credential. Callers that want a display
 // placeholder should coalesce: `(await decryptCredential(...)) || "—"`.
-export async function decryptCredential(encryptedB64, ivHex, companyId, salt = null, legacyScheme = null) {
+export async function decryptCredential(encryptedB64, ivHex, companyId, salt = null, legacyScheme = null, keyFp = null) {
   if (!encryptedB64 || !ivHex) return null;
   try {
+    // keyFp, when the row has one, lets the server say "encrypted under a
+    // different key -- re-enter this" instead of "decryption failed". The
+    // difference matters: one is actionable, the other sends someone
+    // looking for corruption that is not there.
     const body = { action: "decrypt", ciphertext: encryptedB64, iv: ivHex, companyId };
     if (salt) body.salt = salt;
+    if (keyFp) body.keyFp = keyFp;
     if (legacyScheme) body.legacyScheme = legacyScheme;
     const { plaintext } = await callEncryptApi(body);
     return plaintext || "";

@@ -25,6 +25,25 @@ const { setCors } = require("./_cors");
 
 const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
 
+// A fingerprint of the master key -- never the key itself. Stored beside
+// each credential so that "this cannot be decrypted" becomes "this was
+// encrypted under a different key", which is a diagnosis rather than a
+// mystery.
+//
+// ENCRYPTION_KEY was rotated at some point with nothing migrating the
+// existing ciphertext, and every stored utility credential silently became
+// unreadable. Nothing reported it: this endpoint derives one key and
+// throws, and the app shows a credential that simply never opens. Proven
+// rather than assumed -- encrypt-then-decrypt with the current key
+// round-trips perfectly while all 7 stored rows fail under it and under
+// every legacy scheme below.
+//
+// Truncated to 12 hex characters: enough to tell two keys apart, far too
+// little to attack the key itself.
+const KEY_FP = MASTER_KEY
+  ? crypto.createHash("sha256").update(MASTER_KEY).digest("hex").slice(0, 12)
+  : null;
+
 function deriveKeyFromSalt(saltBytes) {
   if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
   return crypto.pbkdf2Sync(MASTER_KEY, saltBytes, 100000, 32, "sha256");
@@ -120,7 +139,7 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme } = body;
+  const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme, keyFp } = body;
 
   const isQbImport = QB_ACTIONS.has(action);
   if (!VALID_ACTIONS.has(action) && !isQbImport) return res.status(400).json({ error: "Invalid action" });
@@ -209,7 +228,9 @@ module.exports = async function handler(req, res) {
       const saltHex = (typeof salt === "string" && salt.length >= 16) ? salt : randomSaltHex();
       const key = deriveKeyFromSalt(Buffer.from(saltHex, "hex"));
       const out = encryptPayload(plaintext, key);
-      return res.status(200).json({ ...out, salt: saltHex });
+      // keyFp travels with the ciphertext so the row can record WHICH key
+      // encrypted it. Callers persist it in credential_key_fp.
+      return res.status(200).json({ ...out, salt: saltHex, keyFp: KEY_FP });
     }
     if (action === "decrypt") {
       // Try candidate keys in order; use the first that authenticates.
@@ -242,8 +263,21 @@ module.exports = async function handler(req, res) {
           break;
         } catch (e) { lastErr = e; }
       }
-      if (plain === null) throw lastErr || new Error("decryption failed");
-      return res.status(200).json({ plaintext: plain });
+      if (plain === null) {
+        // Name the likely cause instead of "decryption failed". A caller
+        // that knows the row was encrypted under a different key can tell
+        // the user to re-enter it; a caller told only "failed" cannot.
+        const mismatched = typeof keyFp === "string" && KEY_FP && keyFp !== KEY_FP;
+        return res.status(422).json({
+          error: mismatched
+            ? "encrypted under a different ENCRYPTION_KEY — this credential must be re-entered"
+            : "decryption failed",
+          keyMismatch: !!mismatched,
+          currentKeyFp: KEY_FP,
+          storedKeyFp: typeof keyFp === "string" ? keyFp : null,
+        });
+      }
+      return res.status(200).json({ plaintext: plain, keyFp: KEY_FP });
     }
     return res.status(400).json({ error: "Unknown action" });
   } catch (e) {
