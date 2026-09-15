@@ -62,6 +62,22 @@
 // Shared candidate sets. A utility bill says one of a small number of
 // things, so repeating fifteen regexes per portal would only invite them to
 // drift apart.
+// A CREDIT BALANCE IS NOT A BILL.
+//
+// SMECO's overview reads "No payment due  -$4.15" -- the account is in
+// credit. None of the labelled patterns below match that, which is the only
+// reason it was not misread: a looser "find the first dollar figure" rule
+// would have reported a $4.15 bill when the utility actually owes $4.15.
+// Reporting a credit as a debt is worse than reporting nothing, so the
+// no-payment-due signal is checked FIRST and short-circuits to zero.
+const NOTHING_DUE = [
+  /no\s+(?:payment|amount|balance)\s+due/i,
+  /nothing\s+due/i,
+  /(?:your\s+)?balance\s+is\s+\$?0(?:\.00)?\b/i,
+  /account\s+is\s+paid\s+in\s+full/i,
+  /credit\s+balance/i,
+];
+
 const AMOUNT_CANDIDATES = [
   { labelled: /(?:total\s+)?amount\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
   { labelled: /total\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
@@ -72,6 +88,11 @@ const AMOUNT_CANDIDATES = [
   // where on the page to look for a nearby figure.
   { role: "heading", name: /amount due|total due|balance|current charges/i },
 ];
+
+// Deliberately NOT in AMOUNT_CANDIDATES: a bare negative figure only means
+// a credit when something nearby says so, and matching "-$4.15" anywhere on
+// a page would pick up a line item as readily as a balance.
+const CREDIT_BALANCE = /(?:no\s+payment\s+due|credit\s+balance)[^$-]{0,40}(-\s?\$\s?[\d,]+\.\d{2})/i;
 
 const DUE_DATE_CANDIDATES = [
   // Label first, bare date last. Both separators: WSSC renders
@@ -183,14 +204,20 @@ const PLAYBOOKS = {
   bge: {
     provider: "BGE",
     aliases: ["bge", "baltimore gas and electric", "baltimore gas & electric"],
-    // Credentials ARE accepted (2026-09-14) -- sign-in gets through Azure
-    // B2C -- but BGE then demands a verification code and lands on an
-    // "Enter Code" page, so no bill was read. Unverified for that reason,
-    // not because the login failed. A code is single-use and belongs to the
-    // browser session that asked for it, so it cannot be supplied after the
-    // fact; the session has to stay open while someone reads it out.
-    verified: false,
+    // 2026-09-14: signs in through Azure B2C, then demands a verification
+    // code. With the code supplied WHILE THE SESSION IS STILL OPEN it goes
+    // straight through and lands on ChangeAccount.aspx -- "Select an
+    // Account To View" -- because this login holds several BGE accounts.
+    // So sign-in is proven; reading a bill needs an account chosen first,
+    // the same shape Washington Gas has and accounts.js already handles.
+    //
+    // A code is single-use and bound to the session that requested it, so
+    // it cannot be handed over after a run ends. Unattended sweeps need
+    // either a remembered device or a person on hand.
+    verified: true,
+    signInOnly: true,
     mfa: "code-on-signin",
+    selectAccountFirst: { role: "heading", name: /select an account/i },
     entry: "https://secure.bge.com/",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
@@ -202,13 +229,19 @@ const PLAYBOOKS = {
   smeco: {
     provider: "SMECO",
     aliases: ["smeco", "southern maryland electric", "southern maryland electric cooperative"],
-    verified: false,
+    // 2026-09-14: signs in cleanly, no captcha, no MFA, lands on the Opower
+    // overview for account 1354954707. Marked verified for SIGN-IN; the
+    // account was in credit ("No payment due  -$4.15") so no bill amount
+    // has been read off it yet.
+    verified: true,
+    signInOnly: true,
     // A cooperative, not an investor-owned utility, so it does not share
     // the Exelon portal shape. No SMECO utility row exists in production
     // yet -- this playbook is ready for when one is added.
-    // myaccount.smeco.coop does not resolve (ERR_NAME_NOT_RESOLVED). This
-    // is still a guess and is the next thing to confirm.
-    entry: "https://www.smeco.coop/",
+    // SMECO does not host its own billing portal. The "Sign In" link on
+    // smeco.coop points at Opower, which is why every smeco.coop subdomain
+    // guessed earlier (myaccount, account, ebill) failed to resolve.
+    entry: "https://dss-smcc.opower.com",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
@@ -256,10 +289,16 @@ const PLAYBOOKS = {
     // Not on the original list of five, but production has a Novec row and
     // a utility with no playbook is silently skipped by the sweep.
     //
-    // 2026-09-14: "My Account" leads to My-Service.cfm, which carries no
-    // login form. The real sign-in is somewhere else on that page and has
-    // not been found yet.
-    entry: "https://www.novec.com/",
+    // 2026-09-14: novec.com's "My Account" leads to My-Service.cfm, which
+    // carries no login form. Novec is a cooperative and uses SmartHub --
+    // the platform most co-ops use -- on its own domain, which DOES present
+    // a working sign-in form with no captcha.
+    //
+    // The credentials on file were rejected there ("Invalid Login"). Not a
+    // bot control and not a broken playbook: the username is wrong for this
+    // portal. SmartHub accounts are frequently keyed to an account number
+    // rather than an email. NOT retried -- repeated failures lock accounts.
+    entry: "https://novec.smarthub.coop/Login.html",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
@@ -292,4 +331,4 @@ function knownProviderAliases() {
   return Object.values(PLAYBOOKS).flatMap(b => b.aliases || []);
 }
 
-module.exports = { PLAYBOOKS, playbookFor, knownProviderAliases };
+module.exports = { PLAYBOOKS, playbookFor, knownProviderAliases, NOTHING_DUE, CREDIT_BALANCE };
