@@ -631,9 +631,12 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const stateNotice = { MD: { pay_or_quit: 10, cure_or_quit: 14, unconditional_quit: 30 }, VA: { pay_or_quit: 5, cure_or_quit: 21, unconditional_quit: 30 }, DC: { pay_or_quit: 30, cure_or_quit: 30, unconditional_quit: 90 } };
   const state = (evCase.property || "").includes(", VA") ? "VA" : (evCase.property || "").includes(", DC") ? "DC" : "MD";
   const days = stateNotice[state]?.[evCase.notice_type] || evCase.notice_days || 30;
-  const serveDate = formatLocalDate(new Date());
+  // These two are printed on the notice and nowhere else -- they are read by
+  // a tenant and filed with a Maryland court, so they follow the same US
+  // convention as the rest of the app rather than the storage format.
+  const serveDate = fmtDate(new Date());
   const deadlineDate = new Date(); deadlineDate.setDate(deadlineDate.getDate() + days);
-  const deadline = formatLocalDate(deadlineDate);
+  const deadline = fmtDate(deadlineDate);
   // Query current tenant balance instead of using stale eviction case data
   let balanceOwed = evCase.balance_owed || 0;
   if (evCase.tenant_id) {

@@ -2919,7 +2919,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             : d.lines.length === 0 ? (
               <div className="text-xs text-neutral-500 py-1">
                 <p className="font-medium text-neutral-700 mb-1">No journal entry linked to this transaction.</p>
-                <p>It is marked <strong>{txn.status}</strong>{txn.accepted_by ? ` by ${txn.accepted_by}` : ""}{txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}, but no general-ledger lines reference it — so nothing was posted to the books. Use <strong>Undo</strong> to send it back to For Review and categorize it properly.</p>
+                <p>It is marked <strong>{txn.status}</strong>{txn.accepted_by ? ` by ${txn.accepted_by}` : ""}{txn.accepted_at ? ` on ${fmtDate(txn.accepted_at)}` : ""}, but no general-ledger lines reference it — so nothing was posted to the books. Use <strong>Undo</strong> to send it back to For Review and categorize it properly.</p>
                 {d.error && <p className="text-danger-600 mt-1">Detail could not be loaded — check your connection and reopen this row.</p>}
               </div>
             ) : (
@@ -2933,7 +2933,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{fmtDate(d.je.date)}</span></>}
                 <span className="ml-auto text-neutral-500">
                   {txn.accepted_by ? <>Accepted by <strong className="text-neutral-700">{txn.accepted_by}</strong></> : "No acceptor recorded"}
-                  {txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}
+                  {txn.accepted_at ? ` on ${fmtDate(txn.accepted_at)}` : ""}
                 </span>
               </div>
 
@@ -2995,7 +2995,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="px-4 py-3 bg-neutral-50 border-b border-neutral-200 text-xs text-neutral-500">
           <p className="mb-1">Excluded as <strong className="text-danger-600">{txn.exclusion_reason || "no reason recorded"}</strong>
           {txn.excluded_by ? <> by <strong className="text-neutral-700">{txn.excluded_by}</strong></> : ""}
-          {txn.excluded_at ? ` on ${formatLocalDate(new Date(txn.excluded_at))}` : ""}. Nothing was posted to the general ledger.</p>
+          {txn.excluded_at ? ` on ${fmtDate(txn.excluded_at)}` : ""}. Nothing was posted to the general ledger.</p>
           <p><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></p>
         </div>
         )}
