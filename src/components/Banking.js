@@ -11,6 +11,19 @@ import { Spinner } from "./shared";
 import { HOUSY, queueHousyJob } from "../utils/housy";
 import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 
+// Housy's mark on its own suggestions. Small and consistent, so a row that
+// Housy filled in is distinguishable at a glance from one a person coded --
+// the suggestion and the human decision land in the same column otherwise.
+function HousyMark() {
+  return (
+    <span className="inline-flex items-center gap-0.5 mr-1 align-middle" title="Suggested by Housy AI">
+      <span className="material-icons-outlined leading-none" style={{ fontSize: "11px" }}>auto_awesome</span>
+      <span className="text-2xs font-semibold tracking-tight">Housy</span>
+    </span>
+  );
+}
+
+
 // --- Account type constants (kept local for backward compat) ---
 const ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
 
@@ -2807,7 +2820,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         render: txn => (<span onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></span>) }] : []),
       { key: "posted_date", label: "DATE", className: "text-neutral-600 whitespace-nowrap",
         render: txn => txn.posted_date },
-      { key: "description", label: "DESCRIPTION", className: "text-neutral-800 max-w-xs truncate",
+      { key: "description", label: "DESCRIPTION", className: "text-neutral-800 max-w-md",
         render: txn => (<>
         {txn.bank_description_clean || txn.bank_description_raw}
         {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
@@ -2815,17 +2828,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {txn.suggestion_status === "suggested_ai" && (() => {
           const sg = txn.raw_payload_json?._suggestion || {};
           if (sg.source === "history" && sg.scope === "siblings") {
-            return <span className="ml-1.5 text-xs bg-info-100 text-info-700 px-1.5 py-0.5 rounded-full"
+            return <span className="ml-1.5 text-xs bg-info-100 text-info-700 px-1.5 py-0.5 rounded-full whitespace-nowrap"
               title={`Coded this way ${sg.support} time${sg.support === 1 ? "" : "s"} in your other companies — this one has no precedent yet`}>
-              Your other books {sg.support ? `· ${sg.support}` : ""}</span>;
+              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "Your other books"}{sg.support ? ` · ${sg.support}` : ""}
+              <span className="ml-1 opacity-70">(other books)</span></span>;
           }
           if (sg.source === "history") {
             // Evidence, not a score. "28 of 28 before" is checkable in a
             // way a model's self-rated confidence is not.
             const pct = sg.agreement != null ? Math.round(sg.agreement * 100) : null;
-            return <span className="ml-1.5 text-xs bg-positive-100 text-positive-700 px-1.5 py-0.5 rounded-full"
-              title={`You coded ${sg.support} similar transaction${sg.support === 1 ? "" : "s"} this way${pct != null ? ` (${pct}% of them)` : ""}`}>
-              History {sg.support ? `· ${sg.support}` : ""}</span>;
+            // Say WHAT is suggested, not merely that something is. The badge
+            // read "History · 105" and nothing else, so the only way to learn
+            // the suggested account was to expand each row in turn -- 142 of
+            // them on this company. A Recognized list you cannot read is not
+            // reviewable in bulk, which is the one thing it exists for.
+            return <span className="ml-1.5 text-xs bg-positive-100 text-positive-700 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+              title={`Housy AI — you coded ${sg.support} similar transaction${sg.support === 1 ? "" : "s"} this way${pct != null ? ` (${pct}% of them)` : ""}`}>
+              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "History"}{sg.support ? ` · ${sg.support}` : ""}</span>;
           }
           const c = sg.confidence;
           // The confidence is the MODEL'S own and is not calibrated -- it
