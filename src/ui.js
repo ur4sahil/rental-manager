@@ -743,6 +743,151 @@ export function MenuItem({ icon, tone = "neutral", onClick, disabled, children, 
   );
 }
 
+// ---- REMEMBERED LIST PREFERENCE ----
+// The array counterpart of usePersistedView, for multi-select filters.
+// Stored as JSON; an unparseable or non-array value is discarded rather
+// than crashing the page it is filtering.
+export function usePersistedList(key, initial = [], allowed = null) {
+  const storageKey = "pm-list:" + key;
+  const [list, setList] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const kept = allowed ? parsed.filter(v => allowed.includes(v)) : parsed;
+          return kept;
+        }
+      }
+    } catch { /* private window, blocked storage, or corrupt value */ }
+    return initial;
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify(list)); } catch { /* ignore */ }
+  }, [storageKey, list]);
+  return [list, setList];
+}
+
+// ---- MULTI-SELECT FILTER ----
+// A filter that can hold SEVERAL values, not one of many. A single-select
+// filter forces a question the data does not ask: "current or past?" when
+// the answer is "both, but not archived". Every filter on the tenants page
+// was single-select, so narrowing to two statuses was impossible.
+//
+// An empty selection means ALL -- the same thing the old "All Status"
+// option meant -- so the control has no separate "everything" entry to get
+// out of step with the checkboxes.
+//
+// A <select multiple> would be the cheap version, but it is unusable in
+// practice: no labels, ctrl-click to add, and a stray plain click wipes
+// the selection. Checkboxes in a popover say what is on.
+export function MultiSelect({
+  allLabel = "All",
+  options = [],            // [{ value, label }]
+  value = [],              // selected values; [] means all
+  onChange,
+  className = "",
+  ariaLabel,
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const MENU_W = 248;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = e => { if (e.key === "Escape") setOpen(false); };
+    // position:fixed, so it cannot follow a scroll -- close instead
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const sel = new Set(value);
+  const labelFor = v => (options.find(o => o.value === v) || {}).label || v;
+  // Name the first choice and count the rest: "Current +2" tells you what
+  // is on without a tooltip, where "3 selected" does not.
+  const summary = !value.length ? allLabel
+    : value.length === 1 ? labelFor(value[0])
+    : `${labelFor(value[0])} +${value.length - 1}`;
+
+  const toggle = (v) => {
+    const next = sel.has(v) ? value.filter(x => x !== v) : [...value, v];
+    onChange(next);
+  };
+
+  const openMenu = (e) => {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      const estH = 52 + options.length * 34;
+      const below = window.innerHeight - r.bottom;
+      setPos({
+        top: below < estH ? Math.max(8, r.top - estH - 4) : r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - MENU_W - 8)),
+      });
+    }
+    setOpen(true);
+  };
+
+  return (
+    <span className={"relative inline-flex " + className}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={openMenu}
+        aria-label={ariaLabel || allLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={"inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm bg-white text-left " +
+          (value.length ? "border-brand-400 text-brand-700 font-medium" : "border-neutral-200 text-neutral-600") +
+          " hover:border-brand-300 " + FOCUS_RING}
+      >
+        <span className="truncate max-w-48">{summary}</span>
+        {value.length > 0 && (
+          <span className="text-2xs bg-brand-100 text-brand-700 rounded-full px-1.5 py-0.5 font-semibold">{value.length}</span>
+        )}
+        <span className="material-icons-outlined text-base leading-none text-neutral-400">expand_more</span>
+      </button>
+      {open && <>
+        <div className="fixed inset-0 z-30" onClick={e => { e.stopPropagation(); setOpen(false); }} />
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          onClick={e => e.stopPropagation()}
+          className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-pop py-1 max-h-80 overflow-y-auto"
+          style={{ top: pos.top, left: pos.left, width: MENU_W }}
+        >
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className={"w-full text-left px-3 py-2 text-sm border-b border-neutral-100 " +
+              (value.length ? "text-brand-600 hover:bg-brand-50" : "text-neutral-400 cursor-default")}
+            disabled={!value.length}
+          >
+            {allLabel}{value.length ? " — clear selection" : " (showing everything)"}
+          </button>
+          {options.map(o => (
+            <label key={o.value}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 hover:bg-brand-50/60 cursor-pointer">
+              <input type="checkbox" checked={sel.has(o.value)} onChange={() => toggle(o.value)}
+                className="rounded accent-brand-600" />
+              <span className="truncate" title={o.label}>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </>}
+    </span>
+  );
+}
+
 // ---- REMEMBERED VIEW PREFERENCE ----
 // Cards / Table / Compact was reset to Cards on every mount, so choosing
 // Table meant choosing it again after each visit to the page. The choice

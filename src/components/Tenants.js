@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
@@ -115,15 +115,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = usePersistedView("tenants", "card", ["card", "table", "compact"]);
   const [tenantSearch, setTenantSearch] = useState("");
-  const [tenantFilter, setTenantFilter] = useState("all");
+  // Multi-select, and remembered. These were single-select, so "current
+  // AND past but not archived" was not expressible -- and every choice was
+  // lost on navigation. An empty list means everything, which is what the
+  // old "all" sentinel meant.
+  const [tenantFilter, setTenantFilter] = usePersistedList("tenants-status", [],
+    ["active", "current", "notice", "past", "expired", "inactive"]);
   // Name ascending is how the list was ordered before sorting existed, so
   // the default view does not change for anyone.
   const [tenantSort, setTenantSort] = useState({ key: "name", dir: "asc" });
   const SORTABLE = { name: "Name", property: "Property", email: "Email",
                      lease_status: "Status", rent: "Rent", balance: "Balance" };
-  const [tenantFilterProp, setTenantFilterProp] = useState("all");
-  const [tenantFilterBalance, setTenantFilterBalance] = useState("all");
-  const [tenantFilterLeaseExpiry, setTenantFilterLeaseExpiry] = useState("all");
+  const [tenantFilterProp, setTenantFilterProp] = usePersistedList("tenants-property", []);
+  const [tenantFilterBalance, setTenantFilterBalance] = usePersistedList("tenants-balance", [], ["delinquent", "current", "credit"]);
+  const [tenantFilterLeaseExpiry, setTenantFilterLeaseExpiry] = usePersistedList("tenants-lease", [], ["30", "60", "90", "expired", "no_lease"]);
   // Bulk selection
   const [selectedTenants, setSelectedTenants] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
@@ -2128,24 +2133,36 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Filters */}
   <div className="flex items-center gap-2 mb-4 flex-wrap">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="w-64" />
-  <Select filter aria-label="Filter tenants by status" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
   {/* Must cover every lease_status the app can write. PropertyImport
       stores "current"/"past" for imported tenants; omitting those made
       the filter silently return zero rows on any imported portfolio. */}
-  <option value="all">All Status</option><option value="active">Active</option><option value="current">Current</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
-  </Select>
-  <Select filter aria-label="Filter tenants by property" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
-  <option value="all">All Properties</option>
-  {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
-  </Select>
-  <Select filter aria-label="Filter tenants by balance" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="w-auto text-sm" >
-  <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
-  </Select>
-  <Select filter value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} className="w-auto text-sm" >
-  <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
-  </Select>
-  {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
-  <Btn variant="danger" size="sm" onClick={() => { setTenantFilter("all"); setTenantFilterProp("all"); setTenantFilterBalance("all"); setTenantFilterLeaseExpiry("all"); setTenantSearch(""); }}>Clear Filters</Btn>
+  <MultiSelect allLabel="All Status" ariaLabel="Filter tenants by status"
+    value={tenantFilter} onChange={setTenantFilter}
+    options={[
+      { value: "active", label: "Active" }, { value: "current", label: "Current" },
+      { value: "notice", label: "Notice" }, { value: "past", label: "Past" },
+      { value: "expired", label: "Expired" }, { value: "inactive", label: "Inactive" },
+    ]} />
+  <MultiSelect allLabel="All Properties" ariaLabel="Filter tenants by property"
+    value={tenantFilterProp} onChange={setTenantFilterProp}
+    options={[...new Set(tenants.map(t => t.property).filter(Boolean))].sort()
+      .map(p => ({ value: p, label: p.length > 34 ? p.slice(0, 34) + "\u2026" : p }))} />
+  <MultiSelect allLabel="All Balances" ariaLabel="Filter tenants by balance"
+    value={tenantFilterBalance} onChange={setTenantFilterBalance}
+    options={[
+      { value: "delinquent", label: "Delinquent (owes)" },
+      { value: "current", label: "Current ($0)" },
+      { value: "credit", label: "Credit (overpaid)" },
+    ]} />
+  <MultiSelect allLabel="All Leases" ariaLabel="Filter tenants by lease expiry"
+    value={tenantFilterLeaseExpiry} onChange={setTenantFilterLeaseExpiry}
+    options={[
+      { value: "30", label: "Expires in 30 days" }, { value: "60", label: "Expires in 60 days" },
+      { value: "90", label: "Expires in 90 days" }, { value: "expired", label: "Expired" },
+      { value: "no_lease", label: "No lease date" },
+    ]} />
+  {(tenantFilter.length || tenantFilterProp.length || tenantFilterBalance.length || tenantFilterLeaseExpiry.length || tenantSearch) && (
+  <Btn variant="danger" size="sm" onClick={() => { setTenantFilter([]); setTenantFilterProp([]); setTenantFilterBalance([]); setTenantFilterLeaseExpiry([]); setTenantSearch(""); }}>Clear Filters</Btn>
   )}
   </div>
   {/* Bulk action bar */}
@@ -2404,20 +2421,30 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // was ordered before sorting existed, so the default view is unchanged.
 
   const ft = tenants.filter(t => {
-  if (tenantFilter !== "all" && tenantFilter && t.lease_status !== tenantFilter) return false;
-  if (tenantFilterProp !== "all" && t.property !== tenantFilterProp) return false;
-  if (tenantFilterBalance === "delinquent" && !(safeNum(t.balance) > 0)) return false;
-  if (tenantFilterBalance === "current" && safeNum(t.balance) > 0) return false;
-  if (tenantFilterBalance === "credit" && !(safeNum(t.balance) < 0)) return false;
-  if (tenantFilterLeaseExpiry !== "all") {
+  // Each filter is now a LIST. An empty list means no constraint; several
+  // values mean OR within that filter, and the filters still AND with each
+  // other -- so "Current or Past, at 6932 Hawthorne, owing money" is one
+  // question instead of three searches.
+  if (tenantFilter.length && !tenantFilter.includes(t.lease_status)) return false;
+  if (tenantFilterProp.length && !tenantFilterProp.includes(t.property)) return false;
+  if (tenantFilterBalance.length) {
+  const bal = safeNum(t.balance);
+  const hit = tenantFilterBalance.some(f =>
+    (f === "delinquent" && bal > 0) || (f === "current" && bal === 0) || (f === "credit" && bal < 0));
+  if (!hit) return false;
+  }
+  if (tenantFilterLeaseExpiry.length) {
   const endDate = t.lease_end_date || t.move_out;
-  if (!endDate) return tenantFilterLeaseExpiry === "no_lease" ? true : false;
-  if (tenantFilterLeaseExpiry === "no_lease") return false;
+  if (!endDate) { if (!tenantFilterLeaseExpiry.includes("no_lease")) return false; }
+  else {
   const daysLeft = Math.ceil((parseLocalDate(endDate) - new Date()) / 86400000);
-  if (tenantFilterLeaseExpiry === "30" && daysLeft > 30) return false;
-  if (tenantFilterLeaseExpiry === "60" && daysLeft > 60) return false;
-  if (tenantFilterLeaseExpiry === "90" && daysLeft > 90) return false;
-  if (tenantFilterLeaseExpiry === "expired" && daysLeft > 0) return false;
+  // "no_lease" alongside a window keeps rows with no date AND rows in the
+  // window; on its own it keeps only the undated ones.
+  const hit = tenantFilterLeaseExpiry.some(f =>
+    (f === "30" && daysLeft <= 30) || (f === "60" && daysLeft <= 60) ||
+    (f === "90" && daysLeft <= 90) || (f === "expired" && daysLeft <= 0));
+  if (!hit) return false;
+  }
   }
   if (tenantSearch) {
   const q = tenantSearch.toLowerCase();
