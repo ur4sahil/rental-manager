@@ -2803,7 +2803,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
     type: property.type, property_status: property.status, notes: "Delete requested",
     approver_email: me?.manager_email || null,
   }]);
-  if (error) throw new Error("Failed to submit request: " + error.message);
+  if (error) {
+  // Same partial unique index as the tenant path: one pending request per
+  // property. A second click used to file a second identical row.
+  if (error.code === "23505") {
+  showToast(`A delete request for ${propertyLabel(property.address)} is already waiting for approval.`, "info");
+  return;
+  }
+  throw new Error("Failed to submit request: " + error.message);
+  }
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("create", "property_requests", "Requested delete: " + property.address, property.id, user?.email, userRole, companyId);
   const approverEmail = me?.manager_email || null;

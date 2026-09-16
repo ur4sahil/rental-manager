@@ -156,6 +156,27 @@ assert("approval reports a request whose tenant is already gone",
   /No active tenant named/.test(handler),
   "an already-archived tenant must say so, not silently succeed");
 
+// ---- 3b. one pending request per thing ----------------------------------
+// Sanya filed three archive requests for the same tenant -- 19:45, 20:02,
+// 20:22 -- because the first two appeared to do nothing, and nothing stopped
+// the second or the third. The approver was left with three identical rows
+// for one action.
+//
+// Two halves: partial unique indexes make it impossible (verified against the
+// test database -- the second insert raises 23505, and re-filing after a
+// rejection is still allowed), and the client turns that into a sentence.
+assert("the tenant path checks for a pending request before asking",
+  /eq\("status", "pending"\)[\s\S]{0,200}already submitted/.test(tenants),
+  "confirming a request and THEN being told one exists is worse than not being offered it");
+
+assert("a duplicate is reported as a message, not a database error",
+  /reqErr\.code === "23505"/.test(tenants),
+  "23505 from the partial unique index must read as 'already waiting for approval'");
+
+assert("the property delete path is guarded the same way",
+  /error\.code === "23505"/.test(properties),
+  "a second property delete request used to file a second identical row");
+
 // ---- 4. the label must not lie ------------------------------------------
 // Every type that was not "add" was badged "Edit", so a tenant archive
 // request read "Edit Property: Essence Ford" in the approvals list.

@@ -523,6 +523,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (checkRow?.archived_at) { showToast("This tenant is already archived.", "info"); return; }
   // Non-admin: submit delete request for admin approval
   if (!isAdmin) {
+  // Check before asking. Being told "already waiting" after confirming a
+  // second request is worse than not being offered it.
+  const { data: waiting } = await supabase.from("property_change_requests")
+    .select("id, requested_at").eq("company_id", companyId)
+    .eq("request_type", "delete_tenant").eq("tenant_id", id)
+    .eq("status", "pending").limit(1).maybeSingle();
+  if (waiting) {
+  showToast(`A request to archive "${name}" was already submitted on ${fmtDate(waiting.requested_at)} and is waiting for approval.`, "info");
+  return;
+  }
   if (!await showConfirm({ message: `Request to delete tenant "${name}"?\n\nAn admin will review and approve this request.` })) return;
   const { data: { user } } = await supabase.auth.getUser();
   const { data: me } = await supabase.from("app_users")
@@ -539,7 +549,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   tenant_id: id, tenant: name, address: reqTenant?.property || name,
   notes: "Archive tenant: " + name, approver_email: me?.manager_email || null,
   }]);
-  if (reqErr) { pmError("PM-3003", { raw: reqErr, context: "file tenant archive request" }); showToast("Could not submit the delete request: " + reqErr.message, "error"); return; }
+  if (reqErr) {
+  // 23505 is the partial unique index: one PENDING request per tenant.
+  // Sanya filed three for the same tenant because the first two looked like
+  // they did nothing, and the approver was left with three identical rows
+  // for one action. This is the friendly half of that fix -- the index is
+  // what makes it impossible, this is what makes it make sense.
+  if (reqErr.code === "23505") {
+  showToast(`A request to archive "${name}" is already waiting for approval — no need to send another.`, "info");
+  return;
+  }
+  pmError("PM-3003", { raw: reqErr, context: "file tenant archive request" });
+  showToast("Could not submit the delete request: " + reqErr.message, "error");
+  return;
+  }
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("request", "tenants", "Requested delete: " + name, id, user?.email, userRole, companyId);
   if (me?.manager_email) {
