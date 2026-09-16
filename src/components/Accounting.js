@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
+import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
@@ -2106,6 +2106,154 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     }
   }
 
+  // --- Reconciliation Report -------------------------------------------
+  //
+  // The existing "Reconciliation Summary" lists reconciliations and their
+  // status. It does not say what a reconciliation was MADE of, which is the
+  // question you have when a balance is queried six months later: what was
+  // the starting point, what cleared, and what was still outstanding on the
+  // day. QuickBooks prints exactly that, and it is the document an
+  // accountant asks for.
+  //
+  //   Beginning balance                     (the prior reconciliation's
+  //                                          ending balance, as STORED)
+  //   Cleared: payments  (n items)
+  //   Cleared: deposits  (n items)
+  //   Cleared balance                        = beginning + cleared movement
+  //   Statement ending balance
+  //   Difference                             = statement - cleared
+  //   Outstanding: payments (n items)        not ticked as at the date
+  //   Outstanding: deposits (n items)
+  //   Register balance as at the date        = cleared + outstanding
+  //
+  // Beginning balance is READ from the stored row, never recomputed. That is
+  // the whole point of a reconciliation: recomputing it means an edit to a
+  // transaction reconciled in March quietly moves April's starting point and
+  // nobody is told. The same rule the reconciler itself follows.
+  const [reconReport, setReconReport] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (activeView !== "viewer" || currentReport?.id !== "recon_detail" || !companyId || !selectedAccountId) {
+      setReconReport(null);
+      return;
+    }
+    (async () => {
+      setReconReport({ loading: true });
+      try {
+        // The reconciliation being reported on: the most recent one for this
+        // account at or before the as-of date. Scoped by account_id -- a
+        // reconciliation belongs to one bank account, and the period column
+        // alone would mix them.
+        const { data: rec, error: recErr } = await supabase
+          .from("bank_reconciliations")
+          .select("*")
+          .eq("company_id", companyId)
+          .eq("account_id", selectedAccountId)
+          .lte("statement_date", asOfDate)
+          .order("statement_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (recErr) {
+          pmError("PM-4009", { raw: recErr, context: "reconciliation report lookup", phase: "read" });
+          setReconReport({ error: recErr.message });
+          return;
+        }
+        if (!rec) { setReconReport({ none: true }); return; }
+
+        const stmtDate = rec.statement_date || asOfDate;
+
+        // What cleared comes from the STORED item lists, not from the
+        // reconciled flag on the ledger.
+        //
+        // This is the part I had wrong first, and the wrong version produced
+        // a believable number. acct_journal_lines.reconciled is cumulative
+        // and carries no date: once ticked it stays ticked, so summing every
+        // flagged line up to a statement date gives the running total from
+        // inception, not the movement this reconciliation accounted for. On
+        // 6027 that is 11,136.88 -- which happens to equal the statement
+        // ending balance -- so "beginning + flagged" came to 13,099.45 and
+        // looked like a real difference of 1,962.57.
+        //
+        // Nor can a date window fix it: reconciliation is as at a date, and
+        // an October cheque that clears in December belongs to December's
+        // reconciliation while carrying an October entry date.
+        //
+        // reconciled_items is the list the person actually ticked, written at
+        // save time. Checked against all three of 6027's reconciliations:
+        // beginning_balance + sum(reconciled_items) equals the stored
+        // cleared_balance to the penny in every one.
+        const parseItems = (v) => {
+          try {
+            const arr = typeof v === "string" ? JSON.parse(v || "[]") : (v || []);
+            return Array.isArray(arr) ? arr : [];
+          } catch (e) {
+            pmError("PM-8006", { raw: e, context: "parse reconciliation item list for report", silent: true });
+            return [];
+          }
+        };
+        const norm = (i) => ({
+          id: i.id, date: i.date || "", number: i.number || "",
+          description: i.description || "", reference: i.reference || "",
+          memo: i.memo || "", amount: safeNum(i.amount),
+        });
+        const clearedItems = parseItems(rec.reconciled_items).map(norm);
+        const openItems = parseItems(rec.unreconciled_items).map(norm);
+
+        const split = (arr) => ({
+          // On a bank account a positive amount is money in.
+          deposits: arr.filter(i => i.amount > 0),
+          payments: arr.filter(i => i.amount < 0),
+        });
+        const sum = (arr) => Math.round(arr.reduce((t, i) => t + i.amount, 0) * 100) / 100;
+
+        const beginning = safeNum(rec.beginning_balance);
+        const clearedMovement = sum(clearedItems);
+        const clearedBal = Math.round((beginning + clearedMovement) * 100) / 100;
+        const outstanding = sum(openItems);
+
+        // Separately: what is STILL unreconciled on this account as at the
+        // statement date, read from the ledger today. If that disagrees with
+        // what the reconciliation recorded, something was imported, edited or
+        // un-flagged after sign-off -- which is the single most useful thing
+        // this report can tell you, and the reason a stored snapshot alone
+        // is not enough.
+        const { rows: openNow, failed } = await fetchAllPaged(
+          () => supabase.from("acct_journal_lines")
+            .select("id, debit, credit, acct_journal_entries!inner(date, status)")
+            .eq("account_id", selectedAccountId)
+            .eq("reconciled", false)
+            .eq("acct_journal_entries.status", "posted")
+            .lte("acct_journal_entries.date", stmtDate)
+            .order("id")
+        );
+        if (cancelled) return;
+        const openNowCount = failed ? null : (openNow || []).length;
+        const openNowTotal = failed ? null
+          : Math.round((openNow || []).reduce((t, l) => t + (safeNum(l.debit) - safeNum(l.credit)), 0) * 100) / 100;
+
+        setReconReport({
+          account: accounts.find(a => a.id === selectedAccountId) || null,
+          record: rec, statementDate: stmtDate,
+          beginning,
+          cleared: split(clearedItems),
+          open: split(openItems),
+          clearedMovement, clearedBalance: clearedBal,
+          statementEnding: safeNum(rec.bank_ending_balance),
+          difference: Math.round((safeNum(rec.bank_ending_balance) - clearedBal) * 100) / 100,
+          storedDifference: safeNum(rec.difference),
+          storedClearedBalance: safeNum(rec.cleared_balance),
+          registerBalance: Math.round((clearedBal + outstanding) * 100) / 100,
+          outstanding,
+          openNowCount, openNowTotal,
+        });
+      } catch (e) {
+        if (!cancelled) setReconReport({ error: String(e.message || e) });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeView, currentReport, companyId, selectedAccountId, asOfDate, accounts]);
+
   // --- Report Catalog Definition ---
   const REPORT_CATALOG = [
     { category: "Business Overview", icon: "insights", reports: [
@@ -2140,6 +2288,7 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
       { id: "account_list", title: "Account Listing", description: "Chart of Accounts as a report", icon: "format_list_numbered" },
       { id: "audit_log", title: "Audit Log", description: "Who did what and when", icon: "history" },
       { id: "recon_summary", title: "Reconciliation Summary", description: "Bank reconciliation status history", icon: "check_circle" },
+      { id: "recon_detail", title: "Reconciliation Report", description: "Beginning, cleared and outstanding items for one reconciliation", icon: "fact_check" },
     ]},
     { category: "Property Performance", icon: "real_estate_agent", reports: [
       { id: "rent_roll", title: "Rent Roll", description: "All units with tenant, rent, lease dates", icon: "real_estate_agent" },
@@ -3239,6 +3388,73 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         });
       }
 
+    // ===================== RECONCILIATION REPORT =====================
+    // Live formulas, not baked totals: the point of exporting this is that
+    // an accountant can tick items off and watch the difference move. A
+    // spreadsheet of constants cannot be worked in.
+    } else if (id === "recon_detail") {
+      const r = reconReport;
+      if (!r || r.loading || r.error || r.none) { showToast("Open the report first — there is nothing to export yet.", "info"); return; }
+      addTitle("Reconciliation Report",
+        r.account ? [r.account.code, r.account.name].filter(Boolean).join(" — ") : "",
+        `Statement date ${acctFmtDate(r.statementDate)}`);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 12; ws.getColumn(3).width = 42;
+      ws.getColumn(4).width = 18; ws.getColumn(5).width = 16; ws.getColumn(5).numFmt = money;
+
+      const begRow = ws.rowCount + 1;
+      const rb = ws.addRow(["Beginning balance", "", "", "", $(r.beginning)]);
+      rb.getCell(5).numFmt = money;
+
+      // Each block writes its items, then totals them with a SUM over the
+      // rows it just wrote -- so deleting a line in Excel corrects the total.
+      function block(label, items) {
+        ws.addRow([]);
+        addSectionHeader(label.toUpperCase() + ` (${items.length})`, 5);
+        const hr = ws.addRow(["Date", "Entry", "Description", "Reference", "Amount"]); styleHeaderRow(hr, 5);
+        const first = ws.rowCount + 1;
+        items.forEach(i => {
+          const row = ws.addRow([acctFmtDate(i.date), i.number || "", i.description || i.memo || "", i.reference || "", $(i.amount)]);
+          row.getCell(5).numFmt = money;
+        });
+        const last = ws.rowCount;
+        const tr = ws.addRow([`Total ${label}`, "", "", "", last >= first ? { formula: `SUM(E${first}:E${last})` } : 0]);
+        tr.getCell(1).font = boldFont; tr.getCell(5).font = boldFont; tr.getCell(5).numFmt = money;
+        return ws.rowCount;   // the row holding this block's total
+      }
+
+      const clearedPayRow = block("cleared payments", r.cleared.payments);
+      const clearedDepRow = block("cleared deposits", r.cleared.deposits);
+
+      ws.addRow([]);
+      const cbRow = ws.rowCount + 1;
+      const cb = ws.addRow(["Cleared balance", "", "", "",
+        { formula: `E${begRow}+E${clearedPayRow}+E${clearedDepRow}` }]);
+      cb.getCell(1).font = totalFont; cb.getCell(5).font = totalFont;
+      cb.getCell(5).numFmt = money; cb.getCell(5).border = thickBorder;
+
+      const stmtRow = ws.rowCount + 1;
+      const sr = ws.addRow(["Statement ending balance", "", "", "", $(r.statementEnding)]);
+      sr.getCell(5).numFmt = money;
+
+      const dr = ws.addRow(["Difference", "", "", "", { formula: `E${stmtRow}-E${cbRow}` }]);
+      dr.getCell(1).font = totalFont; dr.getCell(5).font = totalFont;
+      dr.getCell(5).numFmt = money; dr.getCell(5).border = thickBorder;
+
+      const openPayRow = block("outstanding payments", r.open.payments);
+      const openDepRow = block("outstanding deposits", r.open.deposits);
+
+      ws.addRow([]);
+      const reg = ws.addRow([`Register balance as at ${acctFmtDate(r.statementDate)}`, "", "", "",
+        { formula: `E${cbRow}+E${openPayRow}+E${openDepRow}` }]);
+      reg.getCell(1).font = totalFont; reg.getCell(5).font = totalFont;
+      reg.getCell(5).numFmt = money; reg.getCell(5).border = thickBorder;
+
+      if (Math.abs(r.difference - r.storedDifference) >= 0.005) {
+        ws.addRow([]);
+        const warn = ws.addRow([`Saved with a difference of ${acctFmt(r.storedDifference)}; recomputed today it is ${acctFmt(r.difference)}. Something on this account changed after sign-off.`]);
+        warn.getCell(1).font = { italic: true, color: { argb: "FFB45309" } };
+      }
+
     } else {
       showToast("Export not available for this report.", "info"); return;
     }
@@ -3364,7 +3580,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     "budget_vs_actual",
     "gl", "journal", "txn_by_date", "audit_log",
     "ar_aging_detail", "open_invoices", "unpaid_bills",
-    "account_list", "recon_summary",
+    "account_list", "recon_summary", "recon_detail",
     "rent_roll", "rent_collection", "work_orders_summary",
     "security_deposits", "noi_by_property",
   ];
@@ -3377,7 +3593,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   // spinning. The financial ones -- rent_collection, collections,
   // noi_by_property, work_orders_summary, security_deposits -- do read
   // the ledger and stay gated.
-  const LEDGER_FREE = ["rent_roll", "vacancy", "lease_expirations", "license_compliance"];
+  // recon_detail belongs here for a different reason than the other four:
+  // it DOES read the ledger, but it reads its own -- a paged, account-scoped,
+  // date-bounded query in its own effect, because a reconciliation has to see
+  // every line on one account and the in-browser set is neither complete for
+  // that purpose nor scoped to it. Gating it on linesLoaded would leave it
+  // spinning on data it never looks at, which is exactly what happened to the
+  // Rent Roll.
+  const LEDGER_FREE = ["rent_roll", "vacancy", "lease_expirations", "license_compliance", "recon_detail"];
   const needsClientLedger = !RPC_BACKED.includes(reportId) && !LEDGER_FREE.includes(reportId);
   // For an RPC-backed report: wait while the aggregate is in flight, and
   // if it failed, wait for the lines so the fallback has something real
@@ -3412,10 +3635,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
   // Toolbar filter visibility
   const SHOW_PERIOD = true;
-  const SHOW_AS_OF = ["bs","tb","ar_aging_summary","ar_aging_detail","customer_balance_summary","security_deposits"].includes(reportId);
+  const SHOW_AS_OF = ["bs","tb","ar_aging_summary","ar_aging_detail","customer_balance_summary","security_deposits","recon_detail"].includes(reportId);
   const SHOW_COMPARE = ["pl","pl_by_class","bs"].includes(reportId);
   const SHOW_CLASS = ["pl","pl_compare","expenses_by_category","gl","noi_by_property","rent_collection"].includes(reportId);
-  const SHOW_ACCOUNT = reportId === "gl";
+  const SHOW_ACCOUNT = reportId === "gl" || reportId === "recon_detail";
 
   return (
   <div>
@@ -4583,6 +4806,92 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         rowKey={r => r.id}
         empty="Nothing to show"
       />)}
+    </div>)}
+
+    {/* Reconciliation Report — QuickBooks' layout, because it is the one
+        an accountant recognises and asks for by name. */}
+    {reportId === "recon_detail" && (<div>
+      <div className="text-center mb-6">
+        <h4 className="text-lg font-bold text-neutral-900">{companyName}</h4>
+        <p className="text-sm text-neutral-500 mt-1">Reconciliation Report</p>
+        {reconReport?.account && <p className="text-sm text-neutral-500">{[reconReport.account.code, reconReport.account.name].filter(Boolean).join(" — ")}</p>}
+        {reconReport?.statementDate && <p className="text-sm text-neutral-500">Statement date {acctFmtDate(reconReport.statementDate)}</p>}
+      </div>
+
+      {!selectedAccountId && <EmptyState size="compact" title="Choose a bank account above" />}
+      {selectedAccountId && reconReport?.loading && <Spinner />}
+      {reconReport?.error && <DetailAlert>Could not build the report: {reconReport.error}</DetailAlert>}
+      {reconReport?.none && (
+        <EmptyState size="compact" title="No reconciliation on or before this date"
+          hint="Reconcile this account first, then come back — this report describes a reconciliation that has been saved." />
+      )}
+
+      {reconReport && !reconReport.loading && !reconReport.error && !reconReport.none && (() => {
+        const r = reconReport;
+        const Row = ({ label, value, bold, rule, indent, muted }) => (
+          <div className={`flex items-baseline justify-between py-1.5 ${rule ? "border-t border-neutral-800 mt-1 pt-2" : ""} ${indent ? "pl-4" : ""}`}>
+            <span className={`text-sm ${bold ? "font-semibold text-neutral-900" : muted ? "text-neutral-500" : "text-neutral-700"}`}>{label}</span>
+            <span className={`text-sm tnum ${bold ? "font-semibold text-neutral-900" : "text-neutral-700"}`}>{acctFmt(value)}</span>
+          </div>
+        );
+        const ItemTable = ({ title, items }) => items.length === 0 ? null : (
+          <div className="mb-4">
+            <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{title} ({items.length})</div>
+            <DataTable
+              columns={[
+                { key: "date", label: "Date", render: i => <>{acctFmtDate(i.date)}</> },
+                { key: "number", label: "Entry", className: "text-neutral-500", render: i => <>{i.number || "—"}</> },
+                { key: "description", label: "Description", render: i => <span className="truncate">{i.description || i.memo || "—"}</span> },
+                { key: "reference", label: "Reference", className: "text-neutral-500", render: i => <>{i.reference || "—"}</> },
+                { key: "amount", label: "Amount", align: "right", className: "tnum", render: i => <>{acctFmt(i.amount)}</> },
+              ]}
+              rows={items} rowKey={i => i.id} empty="None" />
+          </div>
+        );
+        return (<div>
+          {/* The summary first: it is what the question is usually about. */}
+          <div className="max-w-xl mx-auto mb-8">
+            <Row label="Beginning balance" value={r.beginning} />
+            <div className="text-xs text-neutral-400 pl-4 pb-1">
+              {r.record.period ? `carried from the reconciliation to ${acctFmtDate(r.record.statement_date || r.record.period)}` : "no prior reconciliation — opening at zero"}
+            </div>
+            <Row indent muted label={`Cleared payments (${r.cleared.payments.length})`} value={r.cleared.payments.reduce((t, i) => t + i.amount, 0)} />
+            <Row indent muted label={`Cleared deposits (${r.cleared.deposits.length})`} value={r.cleared.deposits.reduce((t, i) => t + i.amount, 0)} />
+            <Row rule bold label="Cleared balance" value={r.clearedBalance} />
+            <Row label="Statement ending balance" value={r.statementEnding} />
+            <div className={`flex items-baseline justify-between py-2 mt-1 border-t border-neutral-800 ${Math.abs(r.difference) < 0.005 ? "text-success-700" : "text-danger-700"}`}>
+              <span className="text-sm font-semibold">Difference</span>
+              <span className="text-sm font-semibold tnum">{acctFmt(r.difference)}</span>
+            </div>
+            {Math.abs(r.clearedBalance - r.storedClearedBalance) >= 0.005 && (
+              <DetailAlert>
+                <strong>This does not add up to what was saved.</strong> The reconciliation recorded a cleared
+                balance of {acctFmt(r.storedClearedBalance)}, but its own beginning balance plus its own cleared
+                items come to {acctFmt(r.clearedBalance)}. The stored record and its item list disagree.
+              </DetailAlert>
+            )}
+            {r.openNowCount !== null && (r.openNowCount !== (r.open.payments.length + r.open.deposits.length)) && (
+              <DetailAlert>
+                <strong>The ledger has moved since this was signed off.</strong> This reconciliation recorded{" "}
+                {r.open.payments.length + r.open.deposits.length} outstanding item
+                {r.open.payments.length + r.open.deposits.length === 1 ? "" : "s"} as at {acctFmtDate(r.statementDate)};
+                reading the ledger today there are {r.openNowCount}, totalling {acctFmt(r.openNowTotal)}.
+                Transactions dated on or before that date have been imported, edited or un-ticked since.
+              </DetailAlert>
+            )}
+            <div className="mt-6">
+              <Row indent muted label={`Outstanding payments (${r.open.payments.length})`} value={r.open.payments.reduce((t, i) => t + i.amount, 0)} />
+              <Row indent muted label={`Outstanding deposits (${r.open.deposits.length})`} value={r.open.deposits.reduce((t, i) => t + i.amount, 0)} />
+              <Row rule bold label={`Register balance as at ${acctFmtDate(r.statementDate)}`} value={r.registerBalance} />
+            </div>
+          </div>
+
+          <ItemTable title="Cleared payments" items={r.cleared.payments} />
+          <ItemTable title="Cleared deposits" items={r.cleared.deposits} />
+          <ItemTable title="Outstanding payments" items={r.open.payments} />
+          <ItemTable title="Outstanding deposits" items={r.open.deposits} />
+        </div>);
+      })()}
     </div>)}
 
     {/* Budget vs Actuals */}
