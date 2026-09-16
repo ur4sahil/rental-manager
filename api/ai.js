@@ -34,6 +34,16 @@ const { extractLicense } = require("./_ai-extract");
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
 const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets"]);
+// Actions a SCHEDULER calls. A cron is nobody's session and has no current
+// company -- the sweep's whole job is to walk every company that has pending
+// work -- so requiring a companyId of it is requiring something that cannot
+// exist. It authenticates on CRON_SECRET inside the action instead, which is
+// why exempting it here removes no check.
+//
+// Without this the nightly sweep answered 400 "companyId is required" before
+// a line of it ran, every night since it shipped, and queued nothing ever.
+// The failure was invisible because a cron has nobody to tell.
+const CRON_ACTIONS = new Set(["sweep"]);
 
 function admin() {
   // BOTH names, because the two environments are not configured alike:
@@ -203,7 +213,7 @@ module.exports = async function handler(req, res) {
   const isWorker = WORKER_ACTIONS.has(action);
   if (isWorker) {
     if (!workerAuthorised(req)) return res.status(401).json({ error: "unauthorized" });
-  } else if (!body.companyId) {
+  } else if (!CRON_ACTIONS.has(action) && !body.companyId) {
     return res.status(400).json({ error: "companyId is required" });
   }
   const { companyId } = body;
@@ -409,13 +419,6 @@ module.exports = async function handler(req, res) {
         perCompany[companyId] = rows.length;
       }
   
-      return res.status(200).json({
-        companies_scanned: companyIds.length,
-        queued,
-        skipped_explained_by_history: skippedHistory,
-        already_queued: alreadyQueued,
-        per_company: perCompany,
-      });
       return res.status(200).json({
         companies_scanned: companyIds.length,
         queued,
