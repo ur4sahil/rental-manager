@@ -65,12 +65,12 @@ async function selectAccount(page, number) {
     const expanded = await switcher.getAttribute("aria-expanded").catch(() => null);
     if (expanded !== "true") {
       await switcher.click();
-      await page.getByRole("link", { name: new RegExp(number) }).first()
+      await page.getByRole("link", { name: acctPattern(number) }).first()
         .waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
     }
   }
 
-  const link = page.getByRole("link", { name: new RegExp(number) }).first();
+  const link = page.getByRole("link", { name: acctPattern(number) }).first();
   if (!(await link.count().catch(() => 0))) return { ok: false, reason: `account ${number} is not in the switcher` };
 
   await link.click();
@@ -174,6 +174,26 @@ async function listChooserAccounts(page) {
  * chooser is still on screen, the click did not take.
  */
 
+// An account number as the app stored it is not necessarily how the portal
+// prints it, and it is not necessarily clean.
+//
+// One Pepco row in production held "55035823818," -- a trailing comma from
+// whatever import created it. The account is real and Active on the portal,
+// but the comma meant the search box filtered to nothing and
+// new RegExp("55035823818,") could never match the rendered row. The sweep
+// reported "not on the chooser page", which reads as a wrong account number
+// and sent me looking at the portal instead of at the one bad character.
+//
+// So: digits only for typing into a search box, and a pattern that tolerates
+// separators BETWEEN digits for matching what the page renders -- some
+// portals print 5503-5823818. Building the regex from digits also means a
+// stray "(" in stored data can no longer throw on RegExp construction.
+function acctDigits(n) { return String(n ?? "").replace(/\D/g, ""); }
+function acctPattern(n) {
+  const d = acctDigits(n);
+  return d ? new RegExp(d.split("").join("[^0-9]*")) : new RegExp("(?!)");
+}
+
 /**
  * Bring an account into the DOM before trying to click it.
  *
@@ -223,9 +243,9 @@ async function revealAccount(page, number) {
     // fill() is enough: it dispatches an input event and DataTables filters on
     // it -- verified live, ten rows down to one. Enter is harmless but does
     // nothing here, so nothing depends on it.
-    await search.fill(String(number)).catch(() => {});
+    await search.fill(acctDigits(number)).catch(() => {});
     await page.waitForTimeout(1500);
-    if (await page.getByRole("row", { name: new RegExp(number) }).first().count().catch(() => 0)) {
+    if (await page.getByRole("row", { name: acctPattern(number) }).first().count().catch(() => 0)) {
       return "search box";
     }
   }
@@ -237,7 +257,7 @@ async function revealAccount(page, number) {
     if (biggest) {
       await lengthSel.selectOption(String(biggest)).catch(() => {});
       await page.waitForTimeout(1200);
-      if (await page.getByRole("row", { name: new RegExp(number) }).first().count().catch(() => 0)) {
+      if (await page.getByRole("row", { name: acctPattern(number) }).first().count().catch(() => 0)) {
         return `showing ${biggest} rows`;
       }
     }
@@ -294,9 +314,9 @@ function rowTarget(row) {
 
 async function selectChooserAccount(page, number) {
   const find = () => ({
-    link: page.getByRole("link", { name: new RegExp(number) }).first(),
-    button: page.getByRole("button", { name: new RegExp(number) }).first(),
-    row: page.getByRole("row", { name: new RegExp(number) }).first(),
+    link: page.getByRole("link", { name: acctPattern(number) }).first(),
+    button: page.getByRole("button", { name: acctPattern(number) }).first(),
+    row: page.getByRole("row", { name: acctPattern(number) }).first(),
   });
 
   let { link, button, row } = find();
