@@ -16,22 +16,35 @@ const CRON_SECRET = process.env.CRON_SECRET || "";
 
 const REMINDER_BUCKETS = [-1, 0, 7, 14, 30];
 
-// Must stay in sync with src/utils/helpers.js → COUNTY_TAX_SCHEDULES.
+// Must stay in sync with src/utils/helpers.js → COUNTY_TAX_SCHEDULES;
+// tests/county-schedule.test.js fails if they drift.
+//
+// They HAD drifted, in a way that mattered: this file billed Maryland as
+// two halves (30 Sep and 31 Dec) while the app billed it as one annual
+// instalment due 30 September. Maryland bills non-owner-occupied property
+// annually in full by 30 September -- the semi-annual split is an election
+// open to owner-occupants, which a rental portfolio is not. The app's
+// version is the correct one for these properties and this file now
+// matches it.
+//
+// If a property genuinely pays semi-annually, that belongs in
+// property_taxes.billing_frequency (which exists, and is null on all 36
+// Sigma rows) rather than in a jurisdiction-wide default.
 // Duplicated here because the API route is Node + no bundler; the helper
 // file is browser-side ESM. Keep the two in sync on schedule changes.
 const COUNTY_TAX_SCHEDULES = {
   "District of Columbia|DC": [{ label: "1st half (DC)", month: 3, day: 31 }, { label: "2nd half (DC)", month: 9, day: 15 }],
-  "Anne Arundel County|MD":    [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Baltimore County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Baltimore City|MD":         [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Calvert County|MD":         [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Charles County|MD":         [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Frederick County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Harford County|MD":         [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Howard County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Montgomery County|MD":      [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "Prince George's County|MD": [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
-  "St. Mary's County|MD":      [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Anne Arundel County|MD":    [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Baltimore County|MD":       [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Baltimore City|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Calvert County|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Charles County|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Frederick County|MD":       [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Harford County|MD":         [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Howard County|MD":          [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Montgomery County|MD":      [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "Prince George's County|MD": [{ label: "Annual (MD)", month: 9, day: 30 }],
+  "St. Mary's County|MD":      [{ label: "Annual (MD)", month: 9, day: 30 }],
   "Loudoun County|VA":         [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5 }],
   "Stafford County|VA":        [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5 }],
   "Spotsylvania County|VA":    [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5 }],
@@ -74,6 +87,38 @@ function isoDate(y, m, d) {
 // Fredericksburg: Dec 5 then Jun 5 → Jun 5 belongs to next year).
 // Keeps this file independent of utils/taxes.js so the cron still runs
 // without a shared import.
+// Look up a tax schedule tolerantly. MIRRORS src/utils/helpers.js →
+// findCountySchedule; tests/county-schedule.test.js asserts the two agree.
+//
+// The table is keyed "Charles County|MD" while properties store the county
+// as it was typed -- "Charles". This cron did a bare equality lookup, so on
+// Sigma Housing LLC it missed 58 of 61 properties (Prince George's alone is
+// 54) and counted them as out-of-area. No tax bill was ever generated for
+// them and nothing said why; Maryland's 1st-half is due 30 September.
+//
+// Ambiguity is not resolved by guessing: Maryland has both a "Baltimore
+// County" and a "Baltimore City", and a bare "Baltimore" matches both.
+function findCountySchedule(county, state) {
+  const st = String(state || "").trim().toUpperCase();
+  const raw = String(county || "").trim().replace(/\s+/g, " ");
+  if (!raw || !st) return { schedule: null, key: null, reason: "missing_input" };
+
+  const exact = COUNTY_TAX_SCHEDULES[raw + "|" + st];
+  if (exact) return { schedule: exact, key: raw + "|" + st, reason: "exact" };
+
+  const bare = (v) => v.replace(/\s+(County|City|Parish|Borough)$/i, "").toLowerCase();
+  const want = bare(raw);
+  const matches = Object.keys(COUNTY_TAX_SCHEDULES).filter(k => {
+    const [name, keySt] = k.split("|");
+    return keySt === st && bare(name) === want;
+  });
+  if (matches.length === 1) {
+    return { schedule: COUNTY_TAX_SCHEDULES[matches[0]], key: matches[0], reason: "normalised" };
+  }
+  if (matches.length > 1) return { schedule: null, key: null, reason: "ambiguous", candidates: matches };
+  return { schedule: null, key: null, reason: "no_schedule_for_jurisdiction" };
+}
+
 function resolveDueDates(schedule, startingYear) {
   const out = [];
   let y = startingYear;
@@ -108,9 +153,16 @@ async function rollforwardNextYear(supabase, todayIso) {
   let generated = 0, skipped = 0, noSchedule = 0;
 
   for (const p of props || []) {
-    const key = p.county + "|" + p.state;
-    const schedule = COUNTY_TAX_SCHEDULES[key];
-    if (!schedule || schedule.length === 0) { noSchedule++; continue; }
+    const found = findCountySchedule(p.county, p.state);
+    const schedule = found.schedule;
+    if (!schedule || schedule.length === 0) {
+      if (found.reason === "ambiguous") {
+        // Never guess between Baltimore County and Baltimore City: filing
+        // against the wrong jurisdiction's dates is worse than filing none.
+        console.warn("tax rollforward: ambiguous county", p.county, p.state, found.candidates);
+      }
+      noSchedule++; continue;
+    }
 
     // Resolve real due dates with fiscal-year bumping so Fredericksburg
     // et al. don't emit their "2nd half" ahead of their "1st half".

@@ -52,7 +52,7 @@
     "walkthrough": "node scripts/walkthrough.js",
     "user-flow:full": "node seed-clicktest-data.js && node scripts/walkthrough.js",
     "test:shortcuts": "node shortcuts.test.js",
-    "test:classint": "node class-integrity.test.js && node plaid-cursor.test.js && node doc-classify.test.js && node arrears-fifo.test.js",
+    "test:classint": "node class-integrity.test.js && node plaid-cursor.test.js && node doc-classify.test.js && node arrears-fifo.test.js && node county-schedule.test.js",
     "test:propimport": "node property-import.test.js",
     "test:undef": "node undefined-identifiers.test.js",
     "test:routes": "node route-integrity.test.js",
