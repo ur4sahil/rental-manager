@@ -6466,12 +6466,25 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
 
   {showReconcile && (
   <div>
-  <div className="flex justify-between items-center mb-4">
+  {/* Sticky, because the list below it can be thousands of rows. Scrolling
+      away from the difference you are trying to close, and from the button
+      that closes it, is the whole difficulty this screen had. */}
+  <div className="flex justify-between items-center mb-4 gap-3 flex-wrap sticky top-0 z-20 bg-white/95 backdrop-blur-sm py-3 -mx-1 px-1 border-b border-brand-50">
   <div>
-  <h3 className="font-semibold text-neutral-800">Reconcile — {reconPeriod}</h3>
-  <div className="text-xs text-neutral-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
+  <h3 className="font-semibold text-neutral-800">Reconcile — as at {fmtDate(reconRange.asAt)}</h3>
+  <div className="text-xs text-neutral-400">Bank balance: {formatCurrency(bankBalance || 0)} · Check items that match your bank statement</div>
   </div>
-  <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
+  {/* Save lives HERE as well as at the foot of the list.
+      An as-at reconciliation on an account with history can run to thousands
+      of rows -- 6027's first is 2,412 -- and the only Save button was below
+      all of them. A balanced reconciliation you cannot reach the button for
+      is not finished, it is stuck. */}
+  <div className="flex items-center gap-2">
+    <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
+    <Btn onClick={saveReconciliation} className="whitespace-nowrap">
+      {balancedUi ? "Save Reconciliation" : "Save…"}
+    </Btn>
+  </div>
   </div>
 
   {/* The reconciliation, stated as the sum it actually is. A single
@@ -6504,7 +6517,14 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   ))}
   </div>
 
-  <Btn size="lg" className="px-8" onClick={saveReconciliation}>Save Reconciliation</Btn>
+  <div className="flex items-center gap-3 flex-wrap">
+    <Btn size="lg" className="px-8" onClick={saveReconciliation}>Save Reconciliation</Btn>
+    <span className="text-xs text-neutral-400">
+      {balancedUi
+        ? `Balanced — ${reconciledCount} of ${reconItems.length} cleared`
+        : `Difference ${formatCurrency(diffUi)} — saving records a discrepancy`}
+    </span>
+  </div>
   </div>
   )}
   </div>
