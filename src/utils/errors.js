@@ -81,7 +81,19 @@ export const PM_ERRORS = {
   "PM-6006": { message: "Payment was recorded but the accounting entry could not be posted.", action: "contact", severity: "critical", module: "payments" },
   // PM-7xxx: WORK ORDERS & DOCS
   "PM-7001": { message: "Could not save the work order.", action: "retry", severity: "error", module: "work_orders" },
-  "PM-7002": { message: "Could not upload the file. Check the file size and type.", action: "retry", severity: "error", module: "work_orders" },
+  // module was "work_orders", which is where this code first lived. Document
+  // uploads happen in the property wizard, the tenant panel and the Documents
+  // page, so a Sentry alert tagged work_orders sent the reader to a module
+  // with no uploader in it.
+  "PM-7002": { message: "Could not upload the file. Check the file size and type.", action: "retry", severity: "error", module: "documents" },
+  // A 504 on the upload itself. Distinct from PM-7002 because the advice is
+  // the opposite: nothing is wrong with the file, and re-picking it or
+  // shrinking it will not help. Production logged
+  //   "HTTP 504 error" · wizard document upload for
+  //   Pamela Jones-HAPGC Rent Change 11-7-2024.pdf
+  // under PM-7002's "Check the file size and type", which sent the user to
+  // inspect a file that was perfectly fine.
+  "PM-7003": { message: "The upload timed out before it finished. The file is fine — try again.", action: "retry", severity: "error", module: "documents" },
   "PM-7003": { message: "File was uploaded but the record could not be saved.", action: "contact", severity: "warning", module: "work_orders" },
   "PM-7004": { message: "Could not delete the document.", action: "retry", severity: "error", module: "work_orders" },
   "PM-7005": { message: "Could not load work orders.", action: "retry", severity: "error", module: "work_orders" },

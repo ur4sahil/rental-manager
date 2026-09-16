@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
+import { archiveTenant } from "../utils/tenantArchive";
 import TenantPage from "./TenantPage";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
@@ -527,7 +528,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data: me } = await supabase.from("app_users")
     .select("manager_email").eq("company_id", companyId)
     .ilike("email", emailFilterValue(user?.email || "")).maybeSingle();
-  await supabase.from("property_change_requests").insert([{ company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown", address: name, notes: "Delete tenant: " + name, approver_email: me?.manager_email || null }]);
+  // tenant_id is what makes this request approvable. Filing only the NAME --
+  // which is all this used to do, in the `address` column -- left the approver
+  // guessing between same-name tenants, and there are five such groups in
+  // production. `address` now holds the property, which is what that column
+  // means on every other request type.
+  const { data: reqTenant } = await supabase.from("tenants").select("property").eq("id", id).eq("company_id", companyId).maybeSingle();
+  const { error: reqErr } = await supabase.from("property_change_requests").insert([{
+  company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown",
+  tenant_id: id, tenant: name, address: reqTenant?.property || name,
+  notes: "Archive tenant: " + name, approver_email: me?.manager_email || null,
+  }]);
+  if (reqErr) { pmError("PM-3003", { raw: reqErr, context: "file tenant archive request" }); showToast("Could not submit the delete request: " + reqErr.message, "error"); return; }
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("request", "tenants", "Requested delete: " + name, id, user?.email, userRole, companyId);
   if (me?.manager_email) {
@@ -562,116 +574,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   }
   if (!await showConfirm({ message: `Delete tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
-  // Get tenant's property before archiving for cascade updates
-  const { data: tenantDetail } = await supabase.from("tenants").select("property, balance").eq("id", id).eq("company_id", companyId).maybeSingle();
-  const tenantProperty = tenantDetail?.property;
-  // Soft-delete: archive instead of permanent deletion
-  const { error: archiveErr } = await supabase.from("tenants").update({
-  archived_at: new Date().toISOString(),
-  archived_by: userProfile?.email,
-  lease_status: "past"
-  }).eq("id", id).eq("company_id", companyId);
-  if (archiveErr) { pmError("PM-3003", { raw: archiveErr, context: "archive tenant" }); return; }
-  // Update property when tenant archived. At a multi-unit address we must
-  // NOT blanket-clear every tenant slot — that used to wipe siblings A, C,
-  // D, E when B was archived. Only mark the property vacant (and clear
-  // lease/rent fields) when this was the sole remaining tenant. Otherwise
-  // clear just the slot this tenant occupied.
-  if (tenantProperty) {
-  const { data: otherTenants } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", tenantProperty).neq("id", id).is("archived_at", null);
-  const hasOthers = (otherTenants || []).length > 0;
-  if (!hasOthers) {
-  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", lease_end: null, lease_start: "", rent: null, security_deposit: null }).eq("company_id", companyId).eq("address", tenantProperty);
-  if (propErr) pmError("PM-2002", { raw: propErr, context: "update property to vacant", silent: true });
-  } else {
-  // Find which slot this tenant occupies and clear only that one.
-  const { data: propRow } = await supabase.from("properties").select("tenant, tenant_2, tenant_3, tenant_4, tenant_5").eq("company_id", companyId).eq("address", tenantProperty).maybeSingle();
-  if (propRow) {
-  const slotUpdate = {};
-  if (propRow.tenant === name) slotUpdate.tenant = "";
-  else if (propRow.tenant_2 === name) Object.assign(slotUpdate, { tenant_2: "", tenant_2_email: "", tenant_2_phone: "" });
-  else if (propRow.tenant_3 === name) Object.assign(slotUpdate, { tenant_3: "", tenant_3_email: "", tenant_3_phone: "" });
-  else if (propRow.tenant_4 === name) Object.assign(slotUpdate, { tenant_4: "", tenant_4_email: "", tenant_4_phone: "" });
-  else if (propRow.tenant_5 === name) Object.assign(slotUpdate, { tenant_5: "", tenant_5_email: "", tenant_5_phone: "" });
-  if (Object.keys(slotUpdate).length > 0) {
-  const { error: propErr } = await supabase.from("properties").update(slotUpdate).eq("company_id", companyId).eq("address", tenantProperty);
-  if (propErr) pmError("PM-2002", { raw: propErr, context: "clear tenant slot on archive", silent: true });
-  }
-  }
-  }
-  }
-  // Terminate active leases for THIS tenant only. Scoping by tenant_id is
-  // authoritative; fall back to (tenant_name AND property) when the lease
-  // row predates tenant_id backfill. Previous .or() scoped by name OR
-  // property, which terminated every other active lease at a multi-unit
-  // address when one tenant was archived.
-  let leaseTermQ = supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("status", "active");
-  leaseTermQ = id ? leaseTermQ.or(`tenant_id.eq.${id},and(tenant_name.eq.${pgrestQuote(name)},property.eq.${pgrestQuote(tenantProperty || "")})`) : leaseTermQ.eq("tenant_name", name).eq("property", tenantProperty || "");
-  const { error: leaseErr } = await leaseTermQ;
-  if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
-  // Archive autopay schedules for this tenant
-  await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name).eq("property", tenantProperty);
-  // NOTE: this block is currently UNREACHABLE. The guard at the top of
-  // deleteTenant returns early whenever balance > 0 ("Cannot delete
-  // tenant ... with an outstanding balance"), which is the same condition
-  // this block requires. A negative balance fails the > 0 test and zero
-  // has nothing to write off, so no value can reach here. Verified by
-  // seeding a tenant at $250 and archiving: the guard fires, no journal
-  // entry is written.
-  //
-  // Left in place, and corrected, so that if the guard is ever relaxed to
-  // let an admin archive a debtor, the accounting beneath it is right:
-  // the credit relieves the tenant's OWN AR sub-account and the manual
-  // balance update is skipped when the DB trigger will recompute.
-  // Removing the guard without this would post to the bare 1100 parent.
-  const tenantBal = safeNum(tenantDetail?.balance);
-  if (tenantBal > 0 && id) {
-  const classId = tenantProperty ? await getPropertyClassId(tenantProperty, companyId) : null;
-  // Same rule as addLedgerEntry: the receivable leg has to relieve the
-  // tenant's OWN AR sub-account (1100-NNN), not the bare 1100 parent.
-  // ledger_entries only surfaces journal lines whose account carries a
-  // tenant_id, so a write-off credited to the company-wide parent was real
-  // in the GL but never appeared on that tenant's ledger — the ledger went
-  // on showing a debt the books had already written off.
-  const woArId = await getOrCreateTenantAR(companyId, name, id) || await resolveAccountId("1100", companyId);
-  let woArName = "Accounts Receivable", woArIsPerTenant = false;
-  if (woArId) {
-  const { data: woAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", woArId).maybeSingle();
-  if (woAcct?.name) woArName = woAcct.name;
-  woArIsPerTenant = !!woAcct?.tenant_id && String(woAcct.tenant_id) === String(id);
-  }
-  if (!woArId) {
-  // No receivable account resolvable at all. Post nothing rather than a
-  // null account_id, and leave tenants.balance alone so the debt stays
-  // visible. The tenant is already archived by this point, so the rest of
-  // the cleanup below still has to run — don't bail out of the function.
-  showToast("Could not resolve the Accounts Receivable account — the outstanding balance for \"" + name + "\" was not written off.", "error");
-  } else {
-  const woffJeId = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "AR write-off — tenant deleted — " + name, reference: "WOFF-" + shortId(), property: tenantProperty || "",
-  lines: [
-  { account_id: "5500", account_name: "Bad Debt Expense", debit: tenantBal, credit: 0, class_id: classId, memo: "Write-off at deletion — " + name },
-  { account_id: woArId, account_name: woArName, debit: 0, credit: tenantBal, class_id: classId, memo: "AR write-off — " + name },
-  ]
+  // The archive itself lives in utils/tenantArchive so the approval path in
+  // Properties.js runs THIS code rather than a second copy of it.
+  const { ok: archived } = await archiveTenant({
+  companyId, tenantId: id, name, archivedBy: userProfile?.email, userRole, onToast: showToast,
   });
-  // Zero out tenant balance — but ONLY when the credit leg missed the
-  // per-tenant sub-account. When it lands there, inserting the line fires
-  // sync_tenant_balance_lines → recompute_tenant_balance(), which rebuilds
-  // tenants.balance as SUM(debit)-SUM(credit) over that tenant's accounts
-  // and has therefore ALREADY taken it to 0. Applying -tenantBal on top
-  // would leave a phantom credit of the same size on an archived tenant.
-  // This is the identical gate addLedgerEntry uses for its balanceUpdate.
-  // Also gated on the JE actually posting: if it failed there is nothing
-  // to offset, and zeroing anyway would hide a live receivable.
-  if (woffJeId && !woArIsPerTenant) {
-  const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal });
-  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance zero-out on archive", silent: true });
-  }
-  }
-  }
-  // Deactivate tenant AR sub-accounts
-  await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);
+  if (!archived) return;
   addNotification("\u{1F5D1}\uFE0F", `Tenant deleted: ${name}`);
-  logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
   fetchTenants();
   } finally { guardRelease("deleteTenant"); }
   }

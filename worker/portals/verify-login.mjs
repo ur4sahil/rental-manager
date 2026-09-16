@@ -176,7 +176,19 @@ try {
   // the loose selector below counted that as a one-time-code prompt. The run
   // timed out and threw away a working session, and a person sat watching an
   // inbox for a message no portal had any reason to send.
-  const alreadyIn = !(await onLogin());
+  // Being through is not merely "no password box on screen".
+  //
+  // BGE's code screen has no password field, so the plain !onLogin() test
+  // reported SIGNED IN: YES while the page heading read "Enter Code" -- and
+  // it then SAVED that session. Loading it back landed straight on the login
+  // page: a worthless session recorded as a success, which would have had
+  // the account holder read out a verification code for nothing.
+  //
+  // A page that is still asking for anything -- a code, an identity, a
+  // password -- is not a page we are through. Require the absence of every
+  // challenge, not just the password one.
+  const codeScreen = /enter\s*code|verification\s*code|security\s*code|one[- ]time|we sent you a code|check your (email|phone|text)/i.test(body);
+  const alreadyIn = !(await onLogin()) && !codeScreen;
 
   // A real one-time-code prompt announces itself. `input[id*="code"]` does
   // not: postcode, zipcode, area code and promo code all match it. Require
@@ -186,10 +198,7 @@ try {
     'input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="verificationcode" i], '
     + 'input[id*="otp" i], input[maxlength="4"], input[maxlength="6"], input[maxlength="8"]'
   ).filter({ has: undefined }).count().catch(() => 0);
-  const wantsCode = !alreadyIn && (
-    /enter\s+(the\s+)?(verification|security|one[- ]time)\s+code|we sent you a code|check your (email|phone|text)/i.test(body)
-    || otpBox > 0
-  );
+  const wantsCode = !alreadyIn && (codeScreen || otpBox > 0);
   if (wantsCode) {
     console.log("\n*** THIS PORTAL WANTS A VERIFICATION CODE ***");
 
@@ -233,9 +242,18 @@ try {
       }
     }
 
-    console.log(`*** waiting up to 6 minutes for a code in ${CODE_FILE} ***`);
+    // A code from an EARLIER run is worse than no code: it is expired, and
+    // typing it burns an attempt against a real account. Clear the drop box
+    // before watching it, so what we read was written for this run.
+    try { unlinkSync(CODE_FILE); } catch {}
+
+    // Fifteen minutes, not six. The code goes to a person who has to read it
+    // out and get it back here; two codes were already wasted on a six-minute
+    // window that closed before the relay could complete. The portal's own
+    // code lifetime is the real limit, and it is longer than this.
+    console.log(`*** waiting up to 15 minutes for a code in ${CODE_FILE} ***`);
     let code = null;
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 300; i++) {
       if (existsSync(CODE_FILE)) {
         const t = readFileSync(CODE_FILE, "utf8").trim();
         if (/^\d{4,8}$/.test(t)) { code = t; break; }
@@ -261,7 +279,9 @@ try {
   // nothing else -- the next fetch would ask them for another. A code is
   // expensive precisely because a person has to be there; spending one and
   // keeping nothing is the waste worth fixing.
-  if (signedIn) {
+  // Save ONLY a session that is actually signed in. This saved on the code
+  // screen once, overwriting a good session file with a useless one.
+  if (signedIn && !(await onLogin())) {
     try {
       mkdirSync(SESSION_DIR, { recursive: true });
       const file = path.join(SESSION_DIR, `${PORTAL}.json`);

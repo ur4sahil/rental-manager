@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths && npm run test:parity && npm run test:scope",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths && npm run test:parity && npm run test:scope && npm run test:approvals",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -16,7 +16,7 @@
     "test:financial": "node financial-integrity.test.js",
     "test:refactor": "node refactor-validation.test.js",
     "test:opening": "node opening-balance.test.js",
-    "test:approvals": "node manager-approvals.test.js",
+    "test:approvals": "node approvals.test.js",
     "test:docsigs": "node doc-signatures.test.js",
     "test:taxbills": "node property-tax-bills.test.js",
     "test:taxes": "node property-taxes.test.js",

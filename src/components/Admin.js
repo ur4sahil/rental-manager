@@ -865,7 +865,14 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const email = userProfile?.email || "";
   (propReqs.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
-    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + fmtDate(r.requested_at), data: r, link: "properties" });
+    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: r.request_type === "delete_tenant" ? "👤" : "🏠",
+      // A tenant-archive request used to read "Edit Property: Essence Ford" --
+      // the tenant's name in the address slot, under the wrong noun, because
+      // every request_type that was not "add" was labelled an edit.
+      title: (r.request_type === "add" ? "New Property"
+        : r.request_type === "delete" ? "Delete Property"
+        : r.request_type === "delete_tenant" ? "Archive Tenant"
+        : "Edit Property") + ": " + (r.request_type === "delete_tenant" ? (r.tenant || r.address) : r.address), subtitle: "Requested by " + r.requested_by + " · " + fmtDate(r.requested_at), data: r, link: "properties" });
   });
   (docExceptions.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;

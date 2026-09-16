@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
+import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
@@ -1056,8 +1057,38 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       }
       try {
         const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
-        const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
-        if (uploadErr) { pmError("PM-7002", { raw: uploadErr, context: "wizard document upload for " + file.name }); continue; }
+        // Retry a GATEWAY TIMEOUT, and only that.
+        //
+        // Production logged "HTTP 504 error" uploading a 1-page PDF, reported
+        // as PM-7002 "Check the file size and type" -- which is advice about
+        // a file that was not the problem, and the upload was then abandoned
+        // silently with `continue`. A 504 is the storage edge being slow, so
+        // the same bytes usually succeed moments later.
+        //
+        // A rejection (wrong type, too large, name conflict) is NOT retried:
+        // repeating a request the server has already refused only wastes the
+        // user's time and muddies the log.
+        let uploadErr = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const res = await supabase.storage.from("documents")
+            .upload(fileName, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
+          uploadErr = res.error;
+          if (!uploadErr) break;
+          const msg = String(uploadErr.message || "");
+          const transient = /50[0234]|timeout|timed out|network|fetch failed/i.test(msg);
+          if (!transient || attempt === 3) break;
+          await new Promise(r => setTimeout(r, attempt * 1200));
+        }
+        if (uploadErr) {
+          const msg = String(uploadErr.message || "");
+          const timedOut = /50[0234]|timeout|timed out/i.test(msg);
+          pmError(timedOut ? "PM-7003" : "PM-7002",
+            { raw: uploadErr, context: "wizard document upload for " + file.name });
+          showToast(timedOut
+            ? `${file.name} timed out after 3 attempts — the file is fine, try it again.`
+            : `Could not upload ${file.name}: ${msg.slice(0, 80)}`, "error");
+          continue;
+        }
         const docName = docUploadType === "Other" ? docDescription : docUploadType + " — " + file.name.replace(/\.[^/.]+$/, "");
         // For a fresh wizard, savedAddress is empty until commitWizard
         // sets it post-RPC. Use the composite address from propForm as
@@ -2840,6 +2871,42 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } else if (req.request_type === "delete" && req.property_id) {
   await deleteProperty(req.property_id, req.address);
   addNotification("✅", `Property delete approved: ${req.address}`);
+  } else if (req.request_type === "delete_tenant") {
+  // This branch did not exist. `delete_tenant` was written by Tenants.js and
+  // read by nothing: the request fell through every arm above, the row was
+  // marked approved, and the audit trail recorded an archive that never
+  // happened. Staff filed them, admins approved them, and the tenants stayed.
+  const who = req.tenant || req.address;
+  let tid = req.tenant_id || null;
+  if (!tid) {
+  // Filed before tenant_id existed, so the NAME is all we have -- it was
+  // written into `address`. Resolve it, and refuse rather than guess: five
+  // groups of same-name tenants exist, and archiving the wrong person
+  // terminates their lease and writes off their balance.
+  const { data: matches, error: mErr } = await supabase.from("tenants")
+    .select("id, name, property").eq("company_id", companyId)
+    .eq("name", who).is("archived_at", null).limit(5);
+  if (mErr) { showToast("Could not look up the tenant: " + mErr.message, "error"); return; }
+  const found = matches || [];
+  if (found.length === 0) {
+  showToast(`No active tenant named "${who}" — they may already be archived. Reject this request.`, "error");
+  return;
+  }
+  if (found.length > 1) {
+  showToast(`${found.length} active tenants are named "${who}" (${found.map(t => t.property || "no property").join(", ")}). This request predates tenant ids, so it cannot say which one. Ask ${req.requested_by} to file it again from the Tenants page.`, "error");
+  return;
+  }
+  tid = found[0].id;
+  }
+  // The same code path an admin's own delete takes -- one implementation,
+  // so the approval cannot drift from the direct action.
+  const { ok: tOk, error: tErr } = await archiveTenant({
+  companyId, tenantId: tid, name: who,
+  archivedBy: userProfile?.email, userRole, onToast: showToast,
+  });
+  if (!tOk) { showToast("Could not archive " + who + (tErr ? ": " + tErr.message : ""), "error"); return; }
+  addNotification("✅", `Tenant archive approved: ${who}`);
+  if (req.requested_by) addNotification("✅", `Your request to archive ${who} was approved.`, { recipient: req.requested_by, type: "delete_tenant" });
   }
   const { data: { user } } = await supabase.auth.getUser();
   const { error: statusErr } = await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
@@ -3643,7 +3710,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-start justify-between gap-3">
   <div>
   <div className="flex items-center gap-2 mb-1">
-  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-success-100 text-success-700" : "bg-info-100 text-info-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
+  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-success-100 text-success-700" : req.request_type === "delete" || req.request_type === "delete_tenant" ? "bg-danger-100 text-danger-700" : "bg-info-100 text-info-700"}`}>{req.request_type === "add" ? "New" : req.request_type === "delete_tenant" ? "Archive tenant" : req.request_type === "delete" ? "Delete" : "Edit"}</span>
   <span className="text-xs text-neutral-400">by {req.requested_by}</span>
   </div>
   <p className="font-semibold text-neutral-800">{req.address}</p>
