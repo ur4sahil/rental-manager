@@ -183,6 +183,9 @@ const PLAYBOOKS = {
   // property it belongs to, or it is unattributable.
   // ═══════════════════════════════════════════════════════════════════
   pepco: {
+    // Bounced to the public site = signed out. The button names drift with
+    // every redesign; the hostname does not.
+    signedOutUrl: /^https?:\/\/www\.pepco\.com/,
     provider: "Pepco",
     aliases: ["pepco", "potomac electric", "potomac electric power"],
     // VERIFIED 2026-09-14: signed in end to end and read $513.99 due
@@ -202,6 +205,9 @@ const PLAYBOOKS = {
   },
 
   bge: {
+    // Bounced to the public site = signed out. The button names drift with
+    // every redesign; the hostname does not.
+    signedOutUrl: /^https?:\/\/www\.bge\.com/,
     provider: "BGE",
     aliases: ["bge", "baltimore gas and electric", "baltimore gas & electric"],
     // 2026-09-14: signs in through Azure B2C, then demands a verification

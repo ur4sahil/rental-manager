@@ -178,6 +178,14 @@ const isoDate = (s) => {
     // Signed out? Check FIRST, before touching anything. An expired session
     // that gets clicked around is how automation ends up typing into the
     // wrong form.
+    // A URL check first: it cannot be fooled by a redesign renaming a
+    // button, and Pepco's expiry bounces us to www.pepco.com, where none of
+    // the anchored name regexes match. Without this the expired session was
+    // reported as fourteen wrong accounts.
+    if (book.signedOutUrl && book.signedOutUrl.test(page.url())) {
+      record("signed out", `landed on ${page.url()}`);
+      finish("needs_signin", { error: "the saved session has expired — run enroll.js again", screenshot: shot });
+    }
     for (const sig of book.signedOutSignals) {
       // Ask for the role the playbook actually declared. This used to send
       // everything that was not a textbox to getByRole("button"), so the

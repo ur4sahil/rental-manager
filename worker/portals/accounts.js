@@ -173,28 +173,107 @@ async function listChooserAccounts(page) {
  * would conflate "the switch worked" with "the bill loaded". If the
  * chooser is still on screen, the click did not take.
  */
+
+/**
+ * Bring an account into the DOM before trying to click it.
+ *
+ * Pepco's chooser is a DataTable: 10 rows per page across 8 pages, ~75
+ * accounts. Only the visible 10 exist in the DOM, so 13 of 14 wanted
+ * accounts reported "not on the chooser page" -- which reads as "this
+ * account does not exist" when the truth is "it is on page 4".
+ *
+ * Use the controls the page already offers, in the order that costs least:
+ * type into its own search box, else ask it to show every row. Both are
+ * things a person does at the same screen.
+ */
+async function revealAccount(page, number) {
+  // 1. A search box filters server- or client-side and is the cheapest.
+  const search = page.getByRole("textbox", { name: /account\s*(number|#)?\s*search|search/i })
+    .or(page.locator('input[type="search"], input[placeholder*="search" i]')).first();
+  if (await search.count().catch(() => 0)) {
+    await search.fill(String(number)).catch(() => {});
+    await search.press("Enter").catch(() => {});
+    await page.waitForTimeout(1200);
+    if (await page.getByRole("row", { name: new RegExp(number) }).first().count().catch(() => 0)) {
+      return "search box";
+    }
+  }
+  // 2. "Show N entries" -- take the largest option the page offers.
+  const lengthSel = page.locator('select[name*="length" i], select[aria-label*="entries" i]').first();
+  if (await lengthSel.count().catch(() => 0)) {
+    const opts = await lengthSel.locator("option").allTextContents().catch(() => []);
+    const biggest = opts.map(t => parseInt(t, 10)).filter(Number.isFinite).sort((a, b) => b - a)[0];
+    if (biggest) {
+      await lengthSel.selectOption(String(biggest)).catch(() => {});
+      await page.waitForTimeout(1200);
+      if (await page.getByRole("row", { name: new RegExp(number) }).first().count().catch(() => 0)) {
+        return `showing ${biggest} rows`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The clickable thing inside a chooser row.
+ *
+ * Pepco's rows contain no <a> at all: "View", "Unlink" and "Hide" are
+ * <span class="ng-scope"> carrying an Angular ng-click. The old code asked
+ * for the first link, found none, and fell back to clicking the <tr> --
+ * which has no handler, so the click landed on nothing and the chooser
+ * simply stayed put. That was reported as "the switch did not take",
+ * pointing at the account rather than at the row markup.
+ */
+function rowTarget(row) {
+  return [
+    row.getByRole("link").first(),
+    row.getByRole("button", { name: /view|select|open|go/i }).first(),
+    row.locator("[ng-click], [data-ng-click], [onclick]").first(),
+    row.getByText(/^\s*view\s*$/i).first(),
+    row,
+  ];
+}
+
 async function selectChooserAccount(page, number) {
-  const target = page.getByRole("link", { name: new RegExp(number) }).first();
-  const alt = page.getByRole("button", { name: new RegExp(number) }).first();
-  const row = page.getByRole("row", { name: new RegExp(number) }).first();
+  const find = () => ({
+    link: page.getByRole("link", { name: new RegExp(number) }).first(),
+    button: page.getByRole("button", { name: new RegExp(number) }).first(),
+    row: page.getByRole("row", { name: new RegExp(number) }).first(),
+  });
+
+  let { link, button, row } = find();
+  let via = "chooser page";
+  const present = async () =>
+    (await link.count().catch(() => 0)) || (await button.count().catch(() => 0)) || (await row.count().catch(() => 0));
+
+  // Not in the DOM is not the same as not existing. Ask the page to show it
+  // before concluding anything about the account.
+  if (!(await present())) {
+    const how = await revealAccount(page, number);
+    if (how) { ({ link, button, row } = find()); via = `chooser page via ${how}`; }
+  }
+  if (!(await present())) {
+    return { ok: false, reason: `account ${number} is not on the chooser page, and neither its search box nor its row-count control brought it into view` };
+  }
 
   let clicked = false;
-  for (const loc of [target, alt, row]) {
-    if (!(await loc.count().catch(() => 0))) continue;
-    // A row is not itself clickable on every portal; its first link is.
-    const inner = loc.getByRole("link").first();
-    const el = (await inner.count().catch(() => 0)) ? inner : loc;
+  const outer = (await link.count().catch(() => 0)) ? link
+    : (await button.count().catch(() => 0)) ? button : row;
+  for (const el of rowTarget(outer)) {
+    if (!(await el.count().catch(() => 0))) continue;
     await el.click({ timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    // Stop at the first click that actually moved us off the chooser.
+    if (!(await onChooserPage(page))) { clicked = true; break; }
     clicked = true;
-    break;
   }
-  if (!clicked) return { ok: false, reason: `account ${number} is not on the chooser page` };
+  if (!clicked) return { ok: false, reason: `account ${number} is on the chooser page but nothing in its row responded to a click` };
 
   await page.waitForLoadState("networkidle", { timeout: 25000 }).catch(() => {});
   if (await onChooserPage(page)) {
     return { ok: false, reason: `clicked ${number} but the chooser is still showing — the switch did not take` };
   }
-  return { ok: true, already: false, via: "chooser page" };
+  return { ok: true, already: false, via };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -207,13 +286,61 @@ async function listAccountsAny(page) {
   return listAccounts(page);
 }
 
+/**
+ * Select an account, from wherever we happen to be standing.
+ *
+ * Pepco has TWO ways to change account and they do not offer the same
+ * accounts. The chooser page lists all ~75; the switcher dropdown on the
+ * dashboard lists a handful. The first account of a sweep is picked from the
+ * chooser, which lands us on the dashboard -- and every account after it was
+ * then looked for in the switcher, where most of them are not. Ten accounts
+ * reported "not in the switcher", which sounds like a data problem and is
+ * really a "you are standing in the wrong room" problem.
+ *
+ * So: try where we are, and if the account is not there, walk back to the
+ * chooser and ask again. Portals that have only one mechanism are unaffected
+ * -- there is no chooser to walk back to, and the first answer stands.
+ */
 async function selectAccountAny(page, number) {
   if (await onChooserPage(page)) return selectChooserAccount(page, number);
-  return selectAccount(page, number);
+
+  const first = await selectAccount(page, number);
+  if (first.ok) return first;
+
+  if (!(await backToChooser(page))) return first;
+  const second = await selectChooserAccount(page, number);
+  // Keep the reason from the place that actually looked, so a failure still
+  // names the room it searched.
+  return second.ok ? { ...second, via: (second.via || "chooser page") + " (after the switcher did not have it)" } : second;
+}
+
+/**
+ * Get back to the chooser. Every portal that has one offers a way there --
+ * a "Change Account" control, or the page itself at a known address.
+ */
+async function backToChooser(page) {
+  const link = page.getByRole("link", { name: /change account|switch account|select an account|my accounts|all accounts/i })
+    .or(page.getByRole("button", { name: /change account|switch account|select an account/i })).first();
+  if (await link.count().catch(() => 0)) {
+    await link.click({ timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+    if (await onChooserPage(page)) return true;
+  }
+  // Fall back to the address the portal uses for it, derived from where we
+  // already are so this carries no hardcoded hostname.
+  try {
+    const u = new URL(page.url());
+    for (const path of ["/Pages/ChangeAccount.aspx", "/pages/changeaccount.aspx"]) {
+      await page.goto(u.origin + path, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+      if (await onChooserPage(page)) return true;
+    }
+  } catch (_e) { /* a URL we cannot parse is not worth failing over */ }
+  return false;
 }
 
 module.exports = {
   listAccounts, selectAccount, currentAccount,
   onChooserPage, listChooserAccounts, selectChooserAccount,
-  listAccountsAny, selectAccountAny,
+  listAccountsAny, selectAccountAny, backToChooser,
 };

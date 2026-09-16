@@ -142,6 +142,27 @@ try {
   await pwd().type(PASS, { delay: 70 });
   console.log("\nsubmitting once...");
   const submit = page.getByRole("button", { name: /^(log\s?in|sign\s?in|submit|continue)$/i }).first();
+  // Ask to be remembered, where the portal offers it.
+  //
+  // BGE's real auth cookies -- ASP.NET_SessionId and the chunked
+  // .AspNet.cookie/C1/C2 -- carry no expiry, so they ride a SERVER-side
+  // session that BGE drops after about thirty minutes idle. The session
+  // file restores them faithfully and the server has already forgotten
+  // them, which is why an enrolment done at 11:18 was dead by the first
+  // sweep. The login redirect said so out loud: rememberMe=false.
+  //
+  // Ticking the portal's own box is what makes the cookie persistent. It
+  // is the difference between an enrolment that lasts an afternoon and one
+  // that lasts until the portal decides otherwise.
+  const remember = page.getByRole("checkbox", { name: /remember\s*(me|this device|my)?/i })
+    .or(page.locator('input[type="checkbox"][id*="remember" i], input[type="checkbox"][name*="remember" i]')).first();
+  if (await remember.count().catch(() => 0)) {
+    if (!(await remember.isChecked().catch(() => true))) {
+      await remember.check({ timeout: 5000 }).catch(() => {});
+      console.log("ticked \"Remember me\" so the session outlives the portal's idle timeout");
+    }
+  }
+
   if (await submit.count().catch(() => 0)) await submit.click(); else await pwd().press("Enter");
   await settle();
   console.log("landed:", page.url());
