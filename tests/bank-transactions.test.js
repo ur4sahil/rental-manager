@@ -429,9 +429,15 @@ function testExcelExport() {
 function testLedgerNavigation() {
   console.log('\n🧭 LEDGER NAVIGATION');
 
-  assert(APP_CODE.includes('pendingLedgerReturn'), 'Pending ledger return state exists');
+  // pendingLedgerReturn was replaced by jeOrigin on 2026-09-14 (c92de38),
+  // which generalised return-to-origin from the tenant ledger's save path to
+  // all five ways into a journal entry. These two assertions went on naming
+  // the old variable and have been red ever since -- asserting the absence of
+  // a mechanism that was deliberately removed, which is worse than no test:
+  // it trains the suite's readers to expect two failures.
+  assert(APP_CODE.includes('jeOrigin'), 'Journal entry records where it was opened from');
   assert(APP_CODE.includes('onCloseJEDetail'), 'JE detail has close callback for back-to-ledger');
-  assert(APP_CODE.includes('setPendingLedgerReturn'), 'Ledger saves state before navigating to JE');
+  assert(APP_CODE.includes('setJeOrigin'), 'Origin is set on the way in, consumed on the way out');
 }
 
 // ═══════════════════════════════════════════
