@@ -3894,10 +3894,24 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           // With one column per property an unpinned TOTAL is off-screen,
           // which reads as "this report has no totals".
           stickyLastColumn
-          // On a phone this is the widest thing in the app: a column per
-          // property plus a TOTAL. Scaled to fit so the whole report is
-          // readable at a glance, then pinch to zoom into a figure.
-          fitToWidth
+          // fitToWidth is deliberately NOT set here, though it reads like the
+          // obvious answer to a 42-column report. Two reasons, both measured
+          // on Sigma Housing LLC at 1600px:
+          //
+          // 1. position:sticky does not work inside a transform. A transform
+          //    establishes a new containing block, so the pinned first and
+          //    last columns lose their relationship to the scroll parent --
+          //    TOTAL rendered at x=797, floating mid-table, rather than
+          //    pinned right. The two features above are incompatible with it.
+          //
+          // 2. The scale fed back on itself. FitToWidth sets the inner width
+          //    to 100/scale%, which changes scrollWidth, which is the input
+          //    to the next measurement -- so it converged on the 0.45 floor
+          //    instead of the 0.59 this table needed, rendering 14px text at
+          //    6.3px. Unreadable, and still wider than the viewport.
+          //
+          // Scrolling horizontally with both edges pinned is what a wide
+          // columnar report wants anyway, and it is what QuickBooks does.
           columns={[
             { key: "label", label: "", thClassName: "min-w-48",
               className: r => (r.bold ? boldLabelCls : labelCls),
