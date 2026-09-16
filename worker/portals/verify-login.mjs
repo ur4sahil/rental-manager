@@ -47,7 +47,11 @@ for (const base of [fileURLToPath(import.meta.url),
 }
 if (!chromium) { console.error("playwright not installed — run: cd tests && npm i playwright"); process.exit(1); }
 
-const SHOT = "/private/tmp/claude-501/-Users-aggar/8a15045e-55e7-45a7-98de-0507f4e462e1/scratchpad";
+// Screenshots of each step, which is how a refusal gets diagnosed after the
+// fact. This was hardcoded to one laptop's scratchpad directory, so the tool
+// crashed with EACCES on the VPS -- the only machine it actually needs to
+// run on. Same env var the rest of the worker uses.
+const SHOT = process.env.HOUSY_SHOT_DIR || path.join(__dirname_, "..", "..", ".housy-shots");
 const CODE_FILE = "/tmp/portal-code.txt";
 const PORTAL = process.argv[2];
 const ENTRY_OVERRIDE = process.argv[3] || null;
