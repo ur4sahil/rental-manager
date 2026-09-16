@@ -52,10 +52,23 @@ const MAX_ROWS = 1000
 
 // A count query costs a round trip, so only pay it when truncation is actually
 // possible: the response is exactly the cap. Under it, nothing was cut.
-async function assertNotTruncated(result, context, rerunForCount) {
+async function assertNotTruncated(result, context, rerunForCount, deliberate) {
   try {
     if (!result || result.error || !Array.isArray(result.data)) return result
     if (result.data.length !== MAX_ROWS) return result
+    // A caller that PAGED is not being truncated, whatever the count says.
+    //
+    // This check used to sit only in front of the count RE-FETCH, while the
+    // count the caller had already requested was read unconditionally below.
+    // So a paged query that asked for { count: "exact" } -- which is how you
+    // page properly, since you need the total to know when to stop -- was
+    // refused on its own first page. That is precisely the Bank Transactions
+    // fetch: range(0,999) with count exact over 1,060 rows. The guard handed
+    // it data:null and the screen rendered nothing at all.
+    //
+    // A guard that blanks a working page is worse than the silent truncation
+    // it was written to catch.
+    if (deliberate) return result
     // Exactly 1000 rows. Either the table holds exactly 1000 matching rows, or
     // we have been truncated. `count` distinguishes them, and supabase-js does
     // surface it when asked for -- callers that already pass { count } get it
@@ -118,15 +131,27 @@ client.from = function guardedFrom(table) {
       return nativeThen(
         async result => {
           // An explicit .range() or .limit() is the caller SAYING they want a
-          // page. fetchAllPaged issues exactly .range(0,999) and would
-          // otherwise be refused on its own first page -- the guard breaking
-          // the very helper that exists to satisfy it. Only an UNBOUNDED
-          // select can be truncated without anybody asking for it.
+          // page. Only an UNBOUNDED select can be truncated without anybody
+          // asking for it.
+          //
+          // .limit() lands in the URL as ?limit=. .range() does NOT: it sends
+          // an HTTP Range header and leaves the URL bare. Checking only the
+          // URL therefore read every .range() page as unbounded -- and since
+          // a full page IS exactly MAX_ROWS, the guard refused it and returned
+          // data:null. That emptied the whole Bank Transactions screen: its
+          // fetch is range(0,999) over 1,060 rows, so the first page was
+          // rejected and the page rendered nothing at all.
+          //
+          // A guard that blanks a working screen is worse than the silent
+          // truncation it was written to catch. Both forms are checked now.
           const asked = (() => {
             try {
               const p = new URL(fb.url.toString()).searchParams
-              return p.has('limit') || p.has('offset')
+              if (p.has('limit') || p.has('offset')) return true
             } catch (_e) { return true }   // unreadable URL: assume deliberate
+            // supabase-js stores .range() as a Range header on the builder.
+            const h = fb.headers || {}
+            return !!(h.Range || h.range || h['Range-Unit'])
           })()
           const boundary = !asked && Array.isArray(result?.data) && result.data.length === MAX_ROWS
           // Ask the SDK for the count, on a fresh builder carrying the SAME
@@ -152,7 +177,7 @@ client.from = function guardedFrom(table) {
             const { count } = await q
             return { count: typeof count === 'number' ? count : null }
           }
-          const checked = await assertNotTruncated(result, table, boundary ? rerun : null)
+          const checked = await assertNotTruncated(result, table, boundary ? rerun : null, asked)
           return onFulfilled ? onFulfilled(checked) : checked
         },
         onRejected

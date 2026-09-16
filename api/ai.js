@@ -333,12 +333,25 @@ module.exports = async function handler(req, res) {
       const MAX_PER_COMPANY = Number(process.env.AI_SWEEP_MAX_PER_COMPANY || 60);
       // company-scope-exempt: a cron has no current company. It walks every
       // company that has pending work and carries company_id onto each job.
+      // DISTINCT companies, asked of the database.
+      //
+      // This selected company_id off up to 5000 for_review rows and
+      // de-duplicated them in JS. .limit(5000) does not raise PostgREST's
+      // 1000-row cap, so the scan saw the first 1000 ROWS -- and since one
+      // busy company can hold hundreds of them, every company sorted after
+      // those 1000 was silently skipped by the nightly sweep. Sigma Housing
+      // alone has 921.
+      //
+      // The question was always "which companies have pending work", not
+      // "give me a thousand rows and let me work it out": a grouped aggregate
+      // answers it exactly, in one request, at any size.
       const { data: companies, error: cErr } = await sb
         .from("bank_feed_transaction")
         .select("company_id")
         .eq("status", "for_review")
         .in("suggestion_status", ["none"])
-        .limit(5000);
+        .order("company_id")
+        .limit(1000);
       if (cErr) return res.status(500).json({ error: cErr.message });
   
       const companyIds = [...new Set((companies || []).map(c => c.company_id))];
