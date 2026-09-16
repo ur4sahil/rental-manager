@@ -9,7 +9,7 @@ import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } fr
 import { printTheme, chartPalette, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged} from "../utils/accounting";
+import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged, fetchAllPaged } from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
 import { ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 import { QuickBooksImport } from "./QuickBooksImport";
@@ -4884,50 +4884,6 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // every report off a truncated ledger, which looks like real numbers
   // rather than an error. Same failure the journal-lines fetch below
   // used to have.
-  async function fetchAllPaged(build, label) {
-  // Fetch pages CONCURRENTLY without needing a row count.
-  //
-  // This used to walk pages one at a time, waiting for each before
-  // asking for the next: 17 sequential round trips for the lines alone,
-  // so wall time was 17x the latency rather than 1x. That is why every
-  // accounting tab took ~20 seconds on a slow connection.
-  //
-  // Deliberately NOT count-based. Chaining a second .select() onto the
-  // caller's builder to get a count returns count=null with no error —
-  // which silently collapsed the fetch to a single page. Instead: read
-  // page 0, and while the last page came back full, request the next
-  // batch of pages in parallel. Correct by construction, because the
-  // loop only stops on a short page.
-  const PAGE = 1000, MAX_PARALLEL = 6;
-  const first = await build().range(0, PAGE - 1);
-  if (first.error) {
-  pmError("PM-4013", { raw: first.error, context: "paged fetch: " + label });
-  return { rows: [], failed: true };
-  }
-  const rows = [...(first.data || [])];
-  if (!first.data || first.data.length < PAGE) return { rows, failed: false };
-
-  let next = 1, done = false, failed = false;
-  while (!done && !failed) {
-  const batch = [];
-  for (let k = 0; k < MAX_PARALLEL; k++, next++) {
-  batch.push(build().range(next * PAGE, next * PAGE + PAGE - 1));
-  }
-  const results = await Promise.all(batch);
-  for (const r of results) {
-  if (r.error) {
-  pmError("PM-4013", { raw: r.error, context: "paged fetch: " + label });
-  failed = true;
-  break;
-  }
-  rows.push(...(r.data || []));
-  // A short page means the end of the table; anything after it in
-  // this batch is empty, so stop asking for more.
-  if (!r.data || r.data.length < PAGE) done = true;
-  }
-  }
-  return { rows, failed };
-  }
 
   async function fetchAll(opts = {}) {
   // Only the mount path passes allowCache; every post-write caller
@@ -5825,6 +5781,10 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const activeReconAccount = bankAccounts.find(a => String(a.id) === String(reconAccountId)) || bankAccounts[0] || null;
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
+  // The prior completed reconciliation's ending balance, carried forward.
+  // Stored rather than recomputed -- see the migration comment.
+  const [beginningBalance, setBeginningBalance] = useState(0);
+  const [priorPeriod, setPriorPeriod] = useState(null);
   const [reconciliations, setReconciliations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showReconcile, setShowReconcile] = useState(false);
@@ -5948,24 +5908,73 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
   const endDate = formatLocalDate(endObj);
 
-  // Pull all journal lines hitting the Checking Account (1000) in this period
-  const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").eq("company_id", companyId).gte("date", startDate).lte("date", endDate).eq("status", "posted");
-  if (!entries || entries.length === 0) { showToast("No posted journal entries found for " + reconPeriod, "error"); return; }
+  const acct = activeReconAccount;
+  if (!acct?.id) { showToast("Choose a bank account to reconcile.", "error"); return; }
+  const acctLabel = [acct.code, acct.name].filter(Boolean).join(" — ") || "this account";
 
-  const entryIds = entries.map(e => e.id);
-  const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_id", activeReconAccount?.id || "");
-  if (!lines || lines.length === 0) { showToast("No checking account transactions found for " + reconPeriod, "error"); return; }
+  // The beginning balance is the PRIOR completed reconciliation's ending
+  // balance for THIS account -- the number QuickBooks locks and carries. It
+  // is read, not recalculated: recalculating from the ledger means an edit to
+  // a transaction reconciled in March quietly moves April's starting point,
+  // and nobody is ever told. When there is no prior reconciliation it is
+  // zero, and everything before this period is simply outstanding.
+  const { data: prior, error: priorErr } = await supabase
+    .from("bank_reconciliations")
+    .select("period, bank_ending_balance, status")
+    .eq("company_id", companyId)
+    .eq("account_id", acct.id)
+    .eq("status", "reconciled")
+    .lt("period", reconPeriod)
+    .order("period", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (priorErr) { pmError("PM-8006", { raw: priorErr, context: "prior reconciliation lookup", phase: "read" }); }
+  const opening = prior ? safeNum(prior.bank_ending_balance) : 0;
+  setBeginningBalance(opening);
+  setPriorPeriod(prior?.period || null);
+
+  // Read the LINES on this account for the period, with their entry joined,
+  // in one paged query.
+  //
+  // This used to fetch the month's journal entries, collect their ids, and
+  // pass the lot to .in("journal_entry_id", ids). Two silent ceilings sat in
+  // that: PostgREST caps an unpaged select at 1000 rows, so a busy month
+  // lost every entry past the first thousand -- unordered, so WHICH thousand
+  // was luck -- and the .in() list has its own limit. Neither errors. The
+  // reconciliation would simply have come up short, and a reconciliation
+  // that is quietly missing rows is worse than one that refuses to start.
+  //
+  // !inner makes the join a filter as well as a fetch: only lines whose
+  // entry is posted and inside the period come back.
+  const { rows: lines, failed } = await fetchAllPaged(
+    () => supabase.from("acct_journal_lines")
+      .select("id, journal_entry_id, debit, credit, memo, reconciled, acct_journal_entries!inner(id, date, description, reference, status)")
+      .eq("account_id", acct.id)
+      .eq("acct_journal_entries.status", "posted")
+      .gte("acct_journal_entries.date", startDate)
+      .lte("acct_journal_entries.date", endDate)
+      .order("id", { ascending: true }),
+    "reconciliation lines for " + acctLabel);
+  if (failed) { showToast("Could not load transactions for " + reconPeriod + ". Nothing was started.", "error"); return; }
+
+  // Name the account. This said "No checking account transactions found"
+  // whichever account you picked, so on 1600 it reported on an account you
+  // had not selected and sent you looking in the wrong place.
+  if (!lines.length) {
+    showToast(`No posted transactions on ${acctLabel} for ${reconPeriod}. If its bank activity is still in For Review, categorise and post it first — reconciling is the last step.`, "error");
+    return;
+  }
 
   // Build reconciliation items
   const items = lines.map(l => {
-  const entry = entries.find(e => e.id === l.journal_entry_id);
+  const entry = l.acct_journal_entries || {};
   const amount = safeNum(l.debit) - safeNum(l.credit);
   return {
   id: l.id,
   journal_entry_id: l.journal_entry_id,
-  date: entry?.date || "",
-  description: entry?.description || "",
-  reference: entry?.reference || "",
+  date: entry.date || "",
+  description: entry.description || "",
+  reference: entry.reference || "",
   amount: amount,
   memo: l.memo || "",
   reconciled: l.reconciled || false,
@@ -6014,40 +6023,69 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   async function saveReconciliation() {
   if (!guardSubmit("saveReconciliation")) return;
   try {
-  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
-  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
+  const acct = activeReconAccount;
+  if (!acct?.id) { showToast("No bank account selected.", "error"); return; }
+  const cleared = reconItems.filter(i => i.reconciled);
 
-  // Calculate book balance from all checking account entries (scoped to this company)
-  const cJeIds = journalEntries.filter(j => j.status === "posted").map(j => j.id);
-  const { data: allLines } = cJeIds.length > 0
-  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_id", activeReconAccount?.id || "").in("journal_entry_id", cJeIds)
-  : { data: [] };
-  // Also include lines matched by checking account UUID (in case account was renamed)
-  const checkingAcctId = await resolveAccountId("1000", companyId);
-  const { data: idLines } = (cJeIds.length > 0 && checkingAcctId)
-  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_id", checkingAcctId).in("journal_entry_id", cJeIds)
-  : { data: [] };
-  const allCheckingLines = [...(allLines || [])];
-  (idLines || []).forEach(l => { if (!allCheckingLines.find(x => x === l)) allCheckingLines.push(l); });
-  const bookBal = allCheckingLines.reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+  // QuickBooks' arithmetic, and the reason it is the right one: a statement
+  // covers a PERIOD, so it can only be checked against what cleared IN that
+  // period, starting from where the last statement finished.
+  //
+  //     cleared balance = beginning + cleared debits - cleared credits
+  //     difference      = statement ending balance - cleared balance
+  //
+  // What this replaces compared the typed statement balance against the
+  // account's ENTIRE posted history, 2023 to today. Reconciling September
+  // therefore measured a September bank figure against three years of books
+  // and could not come out right however carefully the month was ticked.
+  //
+  // Items left unticked are not errors: they are outstanding, and they belong
+  // to the next period exactly as an uncashed cheque does.
+  const clearedMovement = cleared.reduce((sum, i) => sum + safeNum(i.amount), 0);
+  const clearedBalance = Math.round((safeNum(beginningBalance) + clearedMovement) * 100) / 100;
   const bankBal = Number(bankBalance);
-  const diff = Math.round((bankBal - bookBal) * 100) / 100;
-  const allItemsReconciled = reconItems.every(i => i.reconciled);
-  const status = Math.abs(diff) < 0.01 && allItemsReconciled ? "reconciled" : Math.abs(diff) < 0.01 && !allItemsReconciled ? "pending_items" : "discrepancy";
+  const diff = Math.round((bankBal - clearedBalance) * 100) / 100;
+  const balanced = Math.abs(diff) < 0.005;
+
+  // "Reconciled" means the difference is zero. Nothing else earns the word --
+  // a period that does not balance is a discrepancy to be looked at, and
+  // recording it as anything softer is how a wrong balance becomes a
+  // permanent starting point for every period after it.
+  const status = balanced ? "reconciled" : "discrepancy";
+  if (!balanced) {
+    const ok = await showConfirm({
+      message: `This period is out by ${formatCurrency(Math.abs(diff))}.\n\nSaving it records a DISCREPANCY, not a reconciliation — the next period will not carry this balance forward. Save it anyway as a record of where you got to?`,
+      title: "The difference is not zero",
+      confirmText: "Save as discrepancy", cancelText: "Keep working", variant: "notice",
+    });
+    if (!ok) return;
+  }
 
   // Save reconciliation record
-  const { error } = await supabase.from("bank_reconciliations").insert([{ company_id: companyId,
+  const stmtDate = (() => {
+    const d = parseLocalDate(reconPeriod + "-01"); d.setMonth(d.getMonth() + 1); d.setDate(0);
+    return formatLocalDate(d);
+  })();
+  // onConflict on (company_id, account_id, period): re-running a month should
+  // correct it, not stack a second row that the next period's beginning-
+  // balance lookup might pick instead.
+  const { error } = await supabase.from("bank_reconciliations").upsert([{ company_id: companyId,
+  account_id: acct.id,
   period: reconPeriod,
+  statement_date: stmtDate,
+  beginning_balance: safeNum(beginningBalance),
   bank_ending_balance: bankBal,
-  book_balance: Math.round(bookBal * 100) / 100,
+  cleared_balance: clearedBalance,
+  cleared_count: cleared.length,
+  book_balance: clearedBalance,
   difference: diff,
   status: status,
-  reconciled_items: JSON.stringify(reconItems.filter(i => i.reconciled)),
+  reconciled_items: JSON.stringify(cleared),
   unreconciled_items: JSON.stringify(reconItems.filter(i => !i.reconciled)),
   // userProfile.email is in scope; this was hard-coded empty, so no
   // reconciliation ever recorded who performed it.
   reconciled_by: userProfile?.email || "",
-  }]);
+  }], { onConflict: "company_id,account_id,period" });
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
 
   // Mark journal lines as reconciled in DB
@@ -6121,6 +6159,14 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const reconciledCount = reconItems.filter(i => i.reconciled).length;
   const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
   const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
+  // The same three numbers the save writes, so the screen cannot say
+  // "balanced" while the record says otherwise. Difference is measured
+  // against the CLEARED balance -- beginning plus what was ticked -- not
+  // against the ticked total alone, which ignored everything that happened
+  // before this period existed.
+  const clearedBalanceUi = Math.round((safeNum(beginningBalance) + reconciledTotal) * 100) / 100;
+  const diffUi = Math.round((Number(bankBalance || 0) - clearedBalanceUi) * 100) / 100;
+  const balancedUi = Math.abs(diffUi) < 0.005;
 
   return (
   <div>
@@ -6248,10 +6294,15 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
   </div>
 
-  <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-positive-700">${reconciledTotal.toLocaleString()}</div></div>
-  <div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-warn-700">${unreconciledTotal.toLocaleString()}</div></div>
-  <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-positive-700" : "text-danger-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
+  {/* The reconciliation, stated as the sum it actually is. A single
+      "Remaining Diff" hid where the number came from, so a difference was
+      impossible to argue with. */}
+  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+  <div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Beginning balance</div><div className="text-lg font-bold text-neutral-700 tnum">{formatCurrency(beginningBalance)}</div><div className="text-2xs text-neutral-400">{priorPeriod ? "from " + priorPeriod : "no prior reconciliation"}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Cleared ({reconciledCount})</div><div className="text-lg font-bold text-positive-700 tnum">{formatCurrency(reconciledTotal)}</div></div>
+  <div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Cleared balance</div><div className="text-lg font-bold text-neutral-800 tnum">{formatCurrency(clearedBalanceUi)}</div></div>
+  <div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Outstanding ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-warn-700 tnum">{formatCurrency(unreconciledTotal)}</div><div className="text-2xs text-neutral-400">carries forward</div></div>
+  <div className={"rounded-lg p-3 text-center " + (balancedUi ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold tnum " + (balancedUi ? "text-positive-700" : "text-danger-600")}>{formatCurrency(diffUi)}</div><div className="text-2xs text-neutral-400">{balancedUi ? "balanced" : "must be 0.00"}</div></div>
   </div>
 
   <div className="mb-3 flex items-center gap-2">

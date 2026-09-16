@@ -291,15 +291,48 @@ module.exports = async function handler(req, res) {
 
         try {
           const balRes = await plaid.accountsBalanceGet({ access_token: accessToken });
+          const now = new Date().toISOString();
+          const snapshots = [];
           for (const acct of balRes.data.accounts || []) {
             const feed = feedByAcct.get(acct.account_id);
             if (!feed) continue;
+            const current = acct.balances?.current != null ? parseFloat(acct.balances.current) : null;
+            const available = acct.balances?.available != null ? parseFloat(acct.balances.available) : null;
             await supabase.from("bank_account_feed").update({
-              bank_balance_current: acct.balances?.current != null ? parseFloat(acct.balances.current) : null,
-              last_synced_at: new Date().toISOString(),
+              bank_balance_current: current,
+              last_synced_at: now,
             }).eq("id", feed.id);
+            if (current != null) {
+              snapshots.push({
+                // conn.company_id, not feed.company_id: the feeds query selects
+                // only id/plaid_account_id/status, so feed.company_id is undefined
+                // and company_id is NOT NULL -- every insert would have failed,
+                // logged quietly, and the snapshot table would have stayed empty.
+                company_id: conn.company_id, bank_account_feed_id: feed.id,
+                captured_at: now, balance_current: current, balance_available: available,
+                source: "plaid",
+              });
+            }
           }
-        } catch {}
+          // Keep the balance, not just the latest balance.
+          //
+          // bank_account_feed.bank_balance_current is overwritten every sync,
+          // so the figure that was true when a period closed is destroyed by
+          // the next poll. Reconciling January then means deriving the balance
+          // backwards from today, which is only sound while every intervening
+          // transaction is present -- and on one of these feeds 114 rows stand
+          // against 659 book lines, so it is not.
+          //
+          // Append-only, one row per account per sync. Failing to record it
+          // must never fail the sync: the transactions are the point, this is
+          // the audit trail.
+          if (snapshots.length) {
+            const { error: snapErr } = await supabase.from("bank_balance_snapshot").insert(snapshots);
+            if (snapErr) console.error("[plaid-sync] balance snapshot failed:", snapErr.message);
+          }
+        } catch (e) {
+          console.error("[plaid-sync] balance fetch failed:", e?.message || e);
+        }
 
         await supabase.from("plaid_sync_event")
           .update({ completed_at: new Date().toISOString(), added_count: addedCount, status: "success" })

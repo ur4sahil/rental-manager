@@ -807,3 +807,59 @@ if (error && error.code !== "23505") pmError("PM-4006", { raw: error, context: "
 }
 delete _acctIdCache[cid];
 }
+
+// ---------------------------------------------------------------------------
+// Read every page of a query, not just the first.
+//
+// PostgREST caps an unpaged select at 1000 rows and says nothing about it, so
+// a caller that forgets this gets a plausible-looking short answer. That is
+// the worst shape of bug in an accounting app: a reconciliation missing rows
+// past the first thousand still balances to something.
+//
+// Lived in Accounting.js, in ONE of its components. The reconciler sits in a
+// different component in the same file and could not see it -- which is how
+// the bank reconciliation came to hold its own ceiling-bound query instead.
+export async function fetchAllPaged(build, label) {
+// Fetch pages CONCURRENTLY without needing a row count.
+//
+// This used to walk pages one at a time, waiting for each before
+// asking for the next: 17 sequential round trips for the lines alone,
+// so wall time was 17x the latency rather than 1x. That is why every
+// accounting tab took ~20 seconds on a slow connection.
+//
+// Deliberately NOT count-based. Chaining a second .select() onto the
+// caller's builder to get a count returns count=null with no error —
+// which silently collapsed the fetch to a single page. Instead: read
+// page 0, and while the last page came back full, request the next
+// batch of pages in parallel. Correct by construction, because the
+// loop only stops on a short page.
+const PAGE = 1000, MAX_PARALLEL = 6;
+const first = await build().range(0, PAGE - 1);
+if (first.error) {
+pmError("PM-4013", { raw: first.error, context: "paged fetch: " + label });
+return { rows: [], failed: true };
+}
+const rows = [...(first.data || [])];
+if (!first.data || first.data.length < PAGE) return { rows, failed: false };
+
+let next = 1, done = false, failed = false;
+while (!done && !failed) {
+const batch = [];
+for (let k = 0; k < MAX_PARALLEL; k++, next++) {
+batch.push(build().range(next * PAGE, next * PAGE + PAGE - 1));
+}
+const results = await Promise.all(batch);
+for (const r of results) {
+if (r.error) {
+pmError("PM-4013", { raw: r.error, context: "paged fetch: " + label });
+failed = true;
+break;
+}
+rows.push(...(r.data || []));
+// A short page means the end of the table; anything after it in
+// this batch is empty, so stop asking for more.
+if (!r.data || r.data.length < PAGE) done = true;
+}
+}
+return { rows, failed };
+}
