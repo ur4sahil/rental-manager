@@ -29,7 +29,7 @@
 //     nothing" are otherwise indistinguishable.
 const { spawn } = require("child_process");
 const path = require("path");
-const { PLAYBOOKS, playbookFor, knownProviderAliases } = require("./playbooks");
+const { PLAYBOOKS, playbookFor } = require("./playbooks");
 
 const API = (process.env.HOUSY_API_BASE || "").replace(/\/$/, "");
 const TOKEN = process.env.AI_WORKER_TOKEN || "";
@@ -48,8 +48,10 @@ if (!API || !TOKEN || !COMPANY) {
 //
 // A utility row is matched to a playbook through its ALIASES, because
 // utilities.provider is free text someone typed: production holds
-// "Wash Gas" and "Washington Gas", "BGE" and "bge". Exact matching skipped
-// the variants silently.
+// "Wash Gas" and "Washington Gas", "BGE" and "bge". Exact matching skips
+// the variants silently -- which is exactly what the server-side provider
+// filter used to do to every row. Matching happens in ONE place now,
+// playbookFor(), and it lowercases before it compares.
 
 async function api(action, body) {
   const h = { "Content-Type": "application/json", "x-worker-token": TOKEN };
@@ -88,11 +90,17 @@ function runFetch(portal, account) {
   const portals = Object.keys(PLAYBOOKS).filter(p => !only || p === only);
   const summary = [];
 
-  const { targets } = await api("sweep-targets", {
-    // Ask for every spelling any playbook answers to, so a row typed
-    // "Wash Gas" comes back rather than being filtered out server-side.
-    companyId: COMPANY, providers: knownProviderAliases(),
-  });
+  // Ask for the company's utility rows and nothing else. Sending the alias
+  // list looked like a helpful pre-filter and was the reason this never read
+  // a single bill: api/ai.js applies it as .in("provider", aliases), which is
+  // exact and case-sensitive, while the aliases are lowercase and production
+  // holds "BGE", "Pepco", "WSSC". All 78 rows were dropped server-side and
+  // the sweep reported "no utility rows for this company" for every portal.
+  //
+  // Filtering here was never load-bearing anyway -- the line below resolves
+  // every row through playbookFor(), which IS case-insensitive and is the
+  // authoritative answer. One filter that works beats two that disagree.
+  const { targets } = await api("sweep-targets", { companyId: COMPANY });
 
   for (const portal of portals) {
     const book = PLAYBOOKS[portal];
