@@ -412,3 +412,11 @@ select {
   letter-spacing: normal;
 }
 .ProseMirror-focused .merge-tag:hover::before { content: none; }
+
+/* A scroll affordance only when there is something to scroll.
+   TabBar carries overflow-x-auto so a long tab strip can scroll on a phone.
+   With two short tabs there is nothing to scroll, but macOS still reserves
+   and paints the track -- a grey slab under the tabs that reads as a loading
+   bar or a rendering artefact. Hiding the bar keeps the scrolling. */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

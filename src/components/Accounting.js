@@ -5959,7 +5959,10 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const [lockDate, setLockDate] = useState("");
   const [reconTab, setReconTab] = useState("reconcile"); // reconcile | period_lock
 
-  useEffect(() => { fetchRecons(); fetchPeriodLock(); }, [companyId]);
+  // Refetch when the ACCOUNT changes too, not only the company -- scoping the
+  // query to an account is pointless if the list is never asked again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchRecons(); fetchPeriodLock(); }, [companyId, activeReconAccount?.id]);
 
   async function fetchPeriodLock() {
     const { data } = await supabase.from("accounting_period_lock").select("*").eq("company_id", companyId).maybeSingle();
@@ -6062,7 +6065,17 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   }
 
   async function fetchRecons() {
-  const { data } = await supabase.from("bank_reconciliations").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
+  // Scoped to the SELECTED account. This fetched every reconciliation in the
+  // company, so 6027's 2025-12-31 appeared under "Previous Reconciliations"
+  // while 5248 was selected -- an account that has never been reconciled
+  // showing someone else's history, with someone else's balances beside it.
+  //
+  // Legacy rows carry account_id NULL (the column did not exist until today).
+  // They are shown against every account rather than hidden, because they are
+  // real history and nothing records which account they belonged to.
+  let q = supabase.from("bank_reconciliations").select("*").eq("company_id", companyId);
+  if (activeReconAccount?.id) q = q.or(`account_id.eq.${activeReconAccount.id},account_id.is.null`);
+  const { data } = await q.order("created_at", { ascending: false });
   setReconciliations(data || []);
   setLoading(false);
   }
@@ -6448,7 +6461,11 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
         onChange={e => setReconAsAt(e.target.value)} className="text-xs" />
     </div>
     <div className="text-2xs text-neutral-400 mt-1">
-      Everything not yet reconciled up to {fmtDate(reconRange.asAt)}
+      {/* Name the account. "Everything not yet reconciled up to 12/31/2025"
+          is true of whichever account is selected, so on a freshly-picked
+          account it read as a claim that the account was already reconciled
+          to that date. */}
+      Unreconciled on {activeReconAccount ? (activeReconAccount.code || activeReconAccount.name) : "this account"} up to {fmtDate(reconRange.asAt)}
       {reconRange.custom && (
         <TextLink tone="brand" size="xs" className="ml-2"
           onClick={() => setReconAsAt("")}>use month end</TextLink>

@@ -298,50 +298,6 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // when an entry actually changed.
   }, [companyId, journalEntries]);
 
-  // Outstanding items -- the Xero half of the arithmetic.
-  //
-  //     statement balance + outstanding receipts - outstanding payments
-  //         = balance in the books
-  //
-  // "Outstanding" means a book entry that no bank statement line stands
-  // behind yet: a cheque written but not presented, a deposit recorded but
-  // not landed. acct_journal_lines.bank_feed_transaction_id is exactly that
-  // link, so its absence is the definition.
-  //
-  // Stated as named parts rather than folded into one difference, because a
-  // single opaque number is impossible to argue with -- and this company's
-  // real problem turns out to be a QuickBooks import whose entries sit
-  // alongside the very feed rows they duplicate. That shows up here as a
-  // large outstanding figure, which is the truth, instead of vanishing into
-  // a diff nobody can decompose.
-  const [outstandingIndex, setOutstandingIndex] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (!companyId || !feeds.length) return undefined;
-    (async () => {
-      const acctIds = feeds.map(f => f.gl_account_id).filter(Boolean);
-      if (!acctIds.length) { setOutstandingIndex({}); return; }
-      const { data, error } = await supabase
-        .from("acct_journal_lines")
-        .select("account_id, debit, credit, acct_journal_entries!inner(status)")
-        .in("account_id", acctIds)
-        .is("bank_feed_transaction_id", null)
-        .eq("acct_journal_entries.status", "posted")
-        .limit(5000);
-      if (cancelled) return;
-      if (error) { setOutstandingIndex(null); return; }
-      const idx = {};
-      for (const l of data || []) {
-        if (!idx[l.account_id]) idx[l.account_id] = { receipts: 0, payments: 0 };
-        // A debit to a bank account is money in; a credit is money out.
-        idx[l.account_id].receipts += safeNum(l.debit);
-        idx[l.account_id].payments += safeNum(l.credit);
-      }
-      setOutstandingIndex(idx);
-    })();
-    return () => { cancelled = true; };
-  }, [companyId, feeds, journalEntries]);
-
   const balanceIndex = serverBalanceIndex || clientBalanceIndex;
   // Books is trustworthy once EITHER source has real figures: the server
   // index having arrived, or the full ledger having loaded for the fallback.
@@ -417,24 +373,28 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       bankBal = latest ? safeNum(latest.balance_after) : null;
     }
 
-    // Xero's arithmetic, written out so every term is visible:
+    // bank - books - pending. Back to this, deliberately.
     //
-    //   statement balance
-    //     - feed lines still in For Review   (on the statement, not in books)
-    //     + outstanding receipts             (in books, no statement line yet)
-    //     - outstanding payments
-    //     = what the books SHOULD say
+    // I replaced it with Xero's form -- statement balance + outstanding
+    // receipts - outstanding payments -- taking "outstanding" to mean a book
+    // line with no bank_feed_transaction_id behind it. That is exactly what it
+    // means in Xero, where entries are matched to feed lines as a matter of
+    // course, so unmatched really does mean "not yet on a statement".
     //
-    // The old form was bank - book - pendingNet: the same idea with the
-    // outstanding terms missing entirely, so anything recorded in the books
-    // that the feed had never matched simply widened the gap with no name on
-    // it. On 0822 that unnamed remainder was 610,000.
-    const out = (outstandingIndex || {})[feed.gl_account_id] || { receipts: 0, payments: 0 };
-    const outstandingNet = isDebitNormal
-      ? out.receipts - out.payments
-      : out.payments - out.receipts;
+    // It is not what it means here. The QuickBooks import linked NOTHING: all
+    // 1,009 posted lines on 1402 have a null bank_feed_transaction_id, so the
+    // outstanding term came to 112,107.85 -- the entire book balance -- and
+    // adding it to a difference that was already 0.00 produced a confident
+    // -209.14 Mismatch on an account that reconciles perfectly. An account
+    // that had been square was suddenly reported broken, by a change meant to
+    // make the number easier to trust.
+    //
+    // The lesson is about the premise, not the arithmetic: an equation is only
+    // as good as what its terms mean in THIS data. Until the import links its
+    // entries to feed rows, "unmatched" is a fact about the migration, not
+    // about the bank.
     const expectedBook = bankBal == null ? null
-      : Math.round((bankBal - pendingNet + outstandingNet) * 100) / 100;
+      : Math.round((bankBal - pendingNet) * 100) / 100;
     const diff = bankBal == null ? null : Math.round((expectedBook - bookBal) * 100) / 100;
     const isReconciled = diff != null && Math.abs(diff) < 0.01;
     // Both inputs to bookBal and pendingNet arrive asynchronously, and both
@@ -449,10 +409,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     //     balances.
     //   * pending roll-up: feedPending has no key for a feed until its
     //     fetch resolves; every feed gets one, [] included.
-    const ready = booksReady && feedPending[feed.id] !== undefined && outstandingIndex !== null;
+    const ready = booksReady && feedPending[feed.id] !== undefined;
     return { bankBal, bookBal, pendingNet, pendingCount: pendingTxns.length,
-             outstandingReceipts: out.receipts, outstandingPayments: out.payments,
-             outstandingNet, expectedBook, diff, isReconciled, ready };
+             expectedBook, diff, isReconciled, ready };
   }
 
   // Fetch on mount + whenever date-range window changes (re-fetches txns)

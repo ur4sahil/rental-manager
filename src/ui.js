@@ -61,25 +61,90 @@ const BTN_SIZES = {
 };
 const BTN_SHAPE = "rounded-lg";
 
-export function Btn({ variant = "primary", size = "md", className = "", icon, type, children, ...props }) {
+export function Btn({ variant = "primary", size = "md", className = "", icon, type, children, busy, busyLabel, onClick, disabled, ...props }) {
   // Default to type="button". HTML's <button> defaults to type="submit",
   // which — if the button ever ends up inside a <form> — can fire an
   // implicit submit on Enter and trigger the *first* button's onClick
   // instead of the one the user intended. Pin type so our buttons stay
   // inert to form semantics unless a caller explicitly opts in.
+  //
+  // WORK IN PROGRESS IS SHOWN, NOT HIDDEN.
+  //
+  // The app has 101 guardSubmit calls, so double-clicking rarely does damage
+  // — but guardSubmit is module-level state the UI cannot see, so it drops
+  // the second click SILENTLY. The button keeps its full colour and does not
+  // move, which reads as "my click missed" and invites another. Saving a
+  // reconciliation writes thousands of rows; it sat indigo and inert the
+  // whole time, then announced success from nowhere.
+  //
+  // So: if onClick returns a promise, this button knows it is working. It
+  // disables itself, shows a spinner, and re-enables when the promise
+  // settles — including when it rejects, because a button stuck disabled
+  // after a failure is worse than one that never disabled at all. No call
+  // site has to opt in; an async handler is the opt-in.
+  const [selfBusy, setSelfBusy] = React.useState(false);
+  const alive = React.useRef(true);
+  React.useEffect(() => () => { alive.current = false; }, []);
+
+  const handle = onClick && ((e) => {
+    const r = onClick(e);
+    // Only track a thenable. A sync handler must STAY sync -- wrapping every
+    // click in async would defer it by a microtask and change ordering across
+    // the app for no benefit.
+    if (!r || typeof r.then !== "function") return r;
+    setSelfBusy(true);
+    // Re-enable on rejection as well as success. A button left disabled after
+    // a failure is worse than one that never disabled: the error is dismissed
+    // and the control is dead with nothing explaining why.
+    //
+    // The catch also stops a rejecting handler becoming an unhandled rejection
+    // it would not have been before this wrapper existed -- it is re-thrown on
+    // its own so window.onunhandledrejection still sees it and Sentry still
+    // records it, but the click itself resolves cleanly.
+    r.then(
+      () => { if (alive.current) setSelfBusy(false); },
+      (err) => { if (alive.current) setSelfBusy(false); setTimeout(() => { throw err; }); }
+    );
+    return r;
+  });
+
+  const isBusy = busy || selfBusy;
   return (
-    <button type={type || "button"} className={`${BTN_BASE} ${BTN_SHAPE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
-      {icon && <span className="material-icons-outlined text-sm">{icon}</span>}
-      {children}
+    <button type={type || "button"} onClick={handle} disabled={disabled || isBusy}
+      aria-busy={isBusy || undefined}
+      className={`${BTN_BASE} ${BTN_SHAPE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
+      {isBusy
+        ? <span className="inline-block w-3.5 h-3.5 mr-1.5 rounded-full border-2 border-current border-r-transparent animate-spin" aria-hidden="true" />
+        : icon && <span className="material-icons-outlined text-sm">{icon}</span>}
+      {isBusy && busyLabel ? busyLabel : children}
     </button>
   );
 }
 
 // ---- ICON BUTTON ----
-export function IconBtn({ icon, className = "", title, ...props }) {
+export function IconBtn({ icon, className = "", title, onClick, disabled, ...props }) {
+  // Same rule as Btn: an async handler makes the button show it is working.
+  // An icon button is the likeliest to be clicked twice, because there is no
+  // label to re-read and nothing else on it that could change.
+  const [busy, setBusy] = React.useState(false);
+  const alive = React.useRef(true);
+  React.useEffect(() => () => { alive.current = false; }, []);
+  const handle = onClick && ((e) => {
+    const r = onClick(e);
+    if (!r || typeof r.then !== "function") return r;
+    setBusy(true);
+    r.then(
+      () => { if (alive.current) setBusy(false); },
+      (err) => { if (alive.current) setBusy(false); setTimeout(() => { throw err; }); }
+    );
+    return r;
+  });
   return (
-    <button className={`w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors ${FOCUS_RING} ${className}`} title={title} {...props}>
-      <span className="material-icons-outlined text-lg">{icon}</span>
+    <button onClick={handle} disabled={disabled || busy} aria-busy={busy || undefined}
+      className={`w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING} ${className}`} title={title} {...props}>
+      {busy
+        ? <span className="inline-block w-4 h-4 rounded-full border-2 border-current border-r-transparent animate-spin" aria-hidden="true" />
+        : <span className="material-icons-outlined text-lg">{icon}</span>}
     </button>
   );
 }
@@ -387,9 +452,12 @@ const TAB_SIZE = {
 export function TabBar({ tabs, active, onChange, size = "md", variant = "underline", className = "" }) {
   const pad = TAB_SIZE[size] || TAB_SIZE.md;
   const items = tabs.map(t => (Array.isArray(t) ? { id: t[0], label: t[1] } : t));
+  // no-scrollbar: the strip still scrolls when it needs to, but macOS stops
+  // painting a track under two short tabs, which read as a grey loading bar
+  // sitting beneath them.
   const wrap = variant === "pill"
-    ? "flex gap-1 overflow-x-auto"
-    : "flex gap-1 overflow-x-auto border-b border-neutral-200";
+    ? "flex gap-1 overflow-x-auto no-scrollbar"
+    : "flex gap-1 overflow-x-auto no-scrollbar border-b border-neutral-200";
   return (
     <div className={`${wrap} ${className}`} role="tablist">
       {items.map(t => {
