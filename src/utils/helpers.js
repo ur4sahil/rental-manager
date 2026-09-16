@@ -142,6 +142,19 @@ export const DOC_TYPES = [
 ];
 
 // True if the given list of documents covers every REQUIRED_TENANT_DOCS entry.
+// Is ONE requirement met by this document set? Exported because the
+// checklist in the tenant panel needs the same answer per row, and kept its
+// own copy of the old rule when hasAllRequiredTenantDocs was fixed -- so
+// classifying a document updated doc_status while the visible checklist
+// still showed it outstanding. One rule, two callers.
+export function isRequiredDocMet(docs, { types, nameRe }) {
+  return (docs || []).some(d => {
+    const t = (d?.type || "").trim();
+    if (types.includes(t)) return true;          // an explicit classification is authoritative
+    return nameRe.test(d?.name || "");           // else fall back to the filename
+  });
+}
+
 export function hasAllRequiredTenantDocs(docs) {
   return REQUIRED_TENANT_DOCS.every(({ types, nameRe }) =>
     (docs || []).some(d => {

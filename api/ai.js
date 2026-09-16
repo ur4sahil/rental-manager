@@ -25,6 +25,7 @@
 // the same submit-and-poll shape OpenAI Batch and Vertex LRO use.
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
 const { embed, toVectorLiteral } = require("./_ai-embed");
@@ -294,6 +295,136 @@ module.exports = async function handler(req, res) {
     // all 28 previous Washington Gas payments went there." The model is
     // for the ~17% with no precedent at all, which is the only part where
     // a guess beats nothing.
+    // CRON: queue Gemma on whatever the cheap tiers cannot explain.
+    //
+    // Lives here rather than in its own route because Vercel's Hobby plan
+    // allows 12 serverless functions and the project is at the limit --
+    // the same reason plaid-link carries both its actions.
+    //
+    // Order matters and this is deliberately LAST: a user's rule, then
+    // suggest_accounts_for_pending (history + counterparty + the property
+    // the memo names) -- both instant and able to say why -- and only then
+    // the model, at ~20s a transaction, on the residue. Running the model
+    // first would spend hours guessing at what a regex settles exactly.
+    //
+    // It QUEUES rather than answers: hundreds of transactions is hours of
+    // box time, which belongs overnight. Nothing here posts; the worker
+    // writes a suggestion that pre-fills the form for a person to confirm.
+    if (action === "sweep") {
+      const CRON_SECRET = process.env.CRON_SECRET || "";
+      const authHeader = req.headers.authorization || "";
+      const bodySecret = (body && body.cron_secret) || "";
+      const cronOk = CRON_SECRET && CRON_SECRET.length >= 8 && (
+        isCronSecretBearer(authHeader, CRON_SECRET) || cronSecretMatches(bodySecret, CRON_SECRET)
+      );
+      if (!cronOk) return res.status(401).json({ error: "Unauthorized" });
+
+      const MAX_PER_RUN = Number(process.env.AI_SWEEP_MAX || 200);
+      const MAX_PER_COMPANY = Number(process.env.AI_SWEEP_MAX_PER_COMPANY || 60);
+      // company-scope-exempt: a cron has no current company. It walks every
+      // company that has pending work and carries company_id onto each job.
+      const { data: companies, error: cErr } = await sb
+        .from("bank_feed_transaction")
+        .select("company_id")
+        .eq("status", "for_review")
+        .in("suggestion_status", ["none"])
+        .limit(5000);
+      if (cErr) return res.status(500).json({ error: cErr.message });
+  
+      const companyIds = [...new Set((companies || []).map(c => c.company_id))];
+      let queued = 0, skippedHistory = 0, alreadyQueued = 0;
+      const perCompany = {};
+  
+      for (const companyId of companyIds) {
+        if (queued >= MAX_PER_RUN) break;
+  
+        // Ask the cheap tiers FIRST and exclude anything they answer. Passing
+        // p_txn_ids null lets one query cover the whole company.
+        const { data: suggested } = await sb.rpc("suggest_accounts_for_pending", {
+          p_company_id: companyId, p_txn_ids: null,
+          p_min_support: 3, p_min_agree: 0.6, p_allow_siblings: true,
+        });
+        const explained = new Set((suggested || []).map(s => s.transaction_id));
+  
+        const { data: pending } = await sb
+          .from("bank_feed_transaction")
+          .select("id, posted_date, amount, direction, bank_description_raw, bank_description_clean, payee_normalized")
+          .eq("company_id", companyId)
+          .eq("status", "for_review")
+          .in("suggestion_status", ["none"])
+          .order("posted_date", { ascending: false })
+          .limit(MAX_PER_COMPANY * 3);
+  
+        const residue = (pending || []).filter(t => !explained.has(t.id));
+        skippedHistory += (pending || []).length - residue.length;
+        if (!residue.length) continue;
+  
+        // Don't re-queue what is already waiting or running.
+        const ids = residue.map(t => String(t.id));
+        const { data: existing } = await sb
+          .from("ai_jobs")
+          .select("subject_id")
+          .eq("company_id", companyId)
+          .eq("kind", "categorise_txn")
+          .in("status", ["queued", "running", "proposed"])
+          .in("subject_id", ids.slice(0, 500));
+        const waiting = new Set((existing || []).map(j => j.subject_id));
+  
+        // The chart of accounts the model may choose from. Only income and
+        // expense: a transfer between your own accounts is not a coding
+        // decision and has its own flow.
+        const { data: accounts } = await sb
+          .from("acct_accounts")
+          .select("code, name, type")
+          .eq("company_id", companyId)
+          .in("type", ["Revenue", "Expense", "Other Income"]);
+  
+        const rows = [];
+        for (const t of residue) {
+          if (rows.length >= MAX_PER_COMPANY || queued + rows.length >= MAX_PER_RUN) break;
+          if (waiting.has(String(t.id))) { alreadyQueued++; continue; }
+          const description = t.bank_description_clean || t.bank_description_raw || "";
+          if (!description.trim()) continue;      // nothing to reason about
+          rows.push({
+            company_id: companyId,
+            kind: "categorise_txn",
+            status: "queued",
+            subject_table: "bank_feed_transaction",
+            subject_id: String(t.id),
+            input: {
+              date: t.posted_date, direction: t.direction,
+              amount: Math.abs(Number(t.amount) || 0),
+              description, payee: t.payee_normalized || "",
+              accounts: (accounts || []).map(a => ({ code: a.code, name: a.name, type: a.type })),
+            },
+            priority: 0,
+            created_by: "cron:ai-sweep",
+          });
+        }
+        if (!rows.length) continue;
+  
+        const { error: insErr } = await sb.from("ai_jobs").insert(rows);
+        if (insErr) { console.error("ai-sweep insert failed for", companyId, insErr.message); continue; }
+        queued += rows.length;
+        perCompany[companyId] = rows.length;
+      }
+  
+      return res.status(200).json({
+        companies_scanned: companyIds.length,
+        queued,
+        skipped_explained_by_history: skippedHistory,
+        already_queued: alreadyQueued,
+        per_company: perCompany,
+      });
+      return res.status(200).json({
+        companies_scanned: companyIds.length,
+        queued,
+        skipped_explained_by_history: skippedHistory,
+        already_queued: alreadyQueued,
+        per_company: perCompany,
+      });
+    }
+
     if (action === "code-transactions") {
       const { transactions = [], accounts = [], minSupport = 3, minAgreement = 0.7 } = body;
       if (!Array.isArray(transactions) || !transactions.length) {

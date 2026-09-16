@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1555,12 +1555,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
   {REQUIRED_TENANT_DOCS.map(({ label, types, nameRe }) => {
-  const uploaded = tenantDocs.some(d => {
-    const type = (d?.type || "").trim();
-    const name = d?.name || "";
-    if (types.includes(type) && nameRe.test(name)) return true;
-    return nameRe.test(name);
-  });
+  // Shared with hasAllRequiredTenantDocs. This block used to carry its own
+  // copy of the rule, which still required the FILENAME to match -- so
+  // setting a document's type to "Lease" cleared doc_status while this list
+  // went on showing "Signed Lease Agreement" outstanding.
+  const uploaded = isRequiredDocMet(tenantDocs, { types, nameRe });
   // Per-doc exception state. `approved_doc_exceptions` on the tenant
   // row captures which specific required-docs have been waived
   // individually (jsonb array of REQUIRED_TENANT_DOCS labels); a

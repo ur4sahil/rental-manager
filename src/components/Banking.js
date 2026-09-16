@@ -468,7 +468,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (!companyId || !rows?.length) return rows;
     try {
       const { data, error } = await supabase.rpc("suggest_accounts_for_pending", {
-        p_company_id: companyId, p_txn_ids: null, p_min_support: 3, p_min_agree: 0.7,
+        // 0.6, not 0.7: a counterparty coded 35 Construction / 13 Repairs /
+        // 3 Labour sits at 69% agreement, so the stricter cut suppressed all
+        // 16 of that person's pending transactions rather than offering the
+        // coding they get four times out of five. Nothing posts from here.
+        p_company_id: companyId, p_txn_ids: null, p_min_support: 3, p_min_agree: 0.6,
         // Falls back to the account-NAME vocabulary learned in your other
         // companies when this one has no precedent of its own -- which is
         // the cold-start case: a company with 1,502 pending transactions
