@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE} from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -20,7 +20,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   { label: "Status", key: "status" },
   { label: "Assigned", key: "assigned" },
   { label: "Cost", key: "cost" },
-  { label: "Created", key: "created_at" },
+  { label: "Created", key: r => fmtDate(r.created_at) },
   ], "work_orders_" + new Date().toLocaleDateString(), showToast);
   }
   const [maintTab, setMaintTab] = useState("workorders");
@@ -487,7 +487,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Assigned</span><div className="font-semibold text-neutral-700">{w.assigned || "Unassigned"}</div></div>
-  <div><span className="text-neutral-400">Created</span><div className="font-semibold text-neutral-700">{w.created || "—"}</div></div>
+  <div><span className="text-neutral-400">Created</span><div className="font-semibold text-neutral-700">{fmtDate(w.created) || "—"}</div></div>
   <div><span className="text-neutral-400">Cost</span><div className="font-semibold text-neutral-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
   </div>
   {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
@@ -513,7 +513,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   { label: "Property", key: "property" },
   { label: "Type", key: "type" },
   { label: "Inspector", key: "inspector" },
-  { label: "Date", key: "date" },
+  { label: "Date", key: r => fmtDate(r.date) },
   { label: "Status", key: "status" },
   { label: "Notes", key: "notes" },
   ], "inspections_" + new Date().toLocaleDateString(), showToast);
@@ -582,7 +582,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <Modal title={`Inspection — ${selectedInspection.property}`} onClose={() => setSelectedInspection(null)}>
   <div className="space-y-2 mb-4">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Type</span><span className="font-medium">{selectedInspection.type}</span></div>
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Date</span><span className="font-medium">{selectedInspection.date}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Date</span><span className="font-medium">{fmtDate(selectedInspection.date)}</span></div>
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Status</span><Badge status={selectedInspection.status} /></div>
   </div>
@@ -662,7 +662,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <Badge status={insp.status} label={insp.status} />
   </div>
   <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-  <div><span className="text-neutral-400">Date</span><div className="font-semibold text-neutral-700">{insp.date}</div></div>
+  <div><span className="text-neutral-400">Date</span><div className="font-semibold text-neutral-700">{fmtDate(insp.date)}</div></div>
   <div><span className="text-neutral-400">Type</span><div className="font-semibold text-neutral-700">{insp.type}</div></div>
   </div>
   <div className="mt-3 flex gap-2 flex-wrap">
@@ -690,7 +690,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
   // Find tenant at this property for the WO
   const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
-  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
+  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${fmtDate(insp.date)}` }]);
   if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
   showToast("Work order created. Go to Maintenance to view it.", "success");
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
@@ -917,7 +917,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 mb-4">
   <div className="font-semibold text-danger-800 text-sm mb-1">Insurance Expiring Soon</div>
   {insuranceExpiring.map(v => (
-  <div key={v.id} className="text-xs text-danger-700">{v.name} ({v.specialty}) — expires {v.insurance_expiry}</div>
+  <div key={v.id} className="text-xs text-danger-700">{v.name} ({v.specialty}) — expires {fmtDate(v.insurance_expiry)}</div>
   ))}
   </div>
   )}
@@ -1022,7 +1022,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {v.flat_rate > 0 && <div><span className="text-neutral-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
   <div><span className="text-neutral-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
   <div><span className="text-neutral-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
-  {v.insurance_expiry && <div><span className="text-neutral-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-danger-600" : insExpiring ? "text-warn-600" : "text-positive-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
+  {v.insurance_expiry && <div><span className="text-neutral-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-danger-600" : insExpiring ? "text-warn-600" : "text-positive-600")}>{fmtDate(v.insurance_expiry)}{insExpired ? " (EXPIRED)" : ""}</span></div>}
   </div>
   {v.notes && <div className="text-xs text-neutral-400 mb-2">{v.notes}</div>}
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
@@ -1062,9 +1062,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
   {inv.property && <div><span className="text-neutral-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
-  <div><span className="text-neutral-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
-  {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-danger-600" : "")}>{inv.due_date}</span></div>}
-  {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-positive-600">{inv.paid_date}</span></div>}
+  <div><span className="text-neutral-400">Date:</span> <span className="font-medium">{fmtDate(inv.invoice_date)}</span></div>
+  {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-danger-600" : "")}>{fmtDate(inv.due_date)}</span></div>}
+  {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-positive-600">{fmtDate(inv.paid_date)}</span></div>}
   </div>
   {(inv.status === "pending" || inv.status === "approved") && (
   <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">

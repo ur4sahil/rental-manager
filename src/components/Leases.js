@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue, fmtDate, fmtDateTime } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -504,7 +504,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3 md:grid-cols-4">
-  <div><span className="text-neutral-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
+  <div><span className="text-neutral-400">Term:</span> <span className="font-medium">{fmtDate(l.start_date)} to {fmtDate(l.end_date)}</span></div>
   <div><span className="text-neutral-400">Rent:</span> <span className="font-bold text-neutral-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
   <div><span className="text-neutral-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
   <div><span className="text-neutral-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
@@ -555,7 +555,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
   addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
   // Tenant-facing copy.
-  if (showRentIncrease.tenant_email) addNotification("📈", `Your rent was updated to ${formatCurrency(newAmt)}/mo, effective ${rentIncreaseForm.effective_date}.`, { recipient: showRentIncrease.tenant_email, type: "rent_increase" });
+  if (showRentIncrease.tenant_email) addNotification("📈", `Your rent was updated to ${formatCurrency(newAmt)}/mo, effective ${fmtDate(rentIncreaseForm.effective_date)}.`, { recipient: showRentIncrease.tenant_email, type: "rent_increase" });
   logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
   setShowRentIncrease(null);
   fetchData();
@@ -740,7 +740,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         {/* Lease summary */}
         <div className="bg-brand-50 rounded-lg p-3">
           <div className="text-sm font-semibold text-brand-800">{lease.property}</div>
-          <div className="text-xs text-brand-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
+          <div className="text-xs text-brand-600">{fmtDate(lease.start_date)} to {fmtDate(lease.end_date)} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
         </div>
 
         {!doc && (
@@ -784,7 +784,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-neutral-800 truncate">{s.signer_name || s.signer_email}</div>
                       <div className="text-xs text-neutral-400 capitalize">{(s.signer_role || "").replace(/_/g, " ")} · {s.signer_email}</div>
-                      {s.signed_at && <div className="text-2xs text-neutral-400 mt-0.5">Signed {new Date(s.signed_at).toLocaleString()}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
+                      {s.signed_at && <div className="text-2xs text-neutral-400 mt-0.5">Signed {fmtDateTime(s.signed_at)}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {s.status === "signed" ? (

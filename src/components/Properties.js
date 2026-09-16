@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
+import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -1694,7 +1695,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <div className="flex justify-between text-sm"><span className="text-neutral-500">Tenant{[tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].some(t => t?.trim()) ? "s" : ""}</span><span className="font-medium text-neutral-800">{[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{propertyLabel(savedAddress)}</span></div>
                 {tenantForm.lease_start && tenantForm.lease_end && (
-                  <div className="flex justify-between text-sm"><span className="text-neutral-500">Lease</span><span className="font-medium text-neutral-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-500">Lease</span><span className="font-medium text-neutral-800">{fmtDate(tenantForm.lease_start)} - {fmtDate(tenantForm.lease_end)}</span></div>
                 )}
               </div>
               <div>
@@ -2065,7 +2066,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div className="text-xs text-neutral-500 space-y-0.5">
                       <div>{tenantForm.tenant} — {tenantForm.tenant_email}</div>
                       <div>Rent: ${Number(tenantForm.rent || 0).toLocaleString()}/mo — Deposit: ${Number(tenantForm.security_deposit || 0).toLocaleString()}</div>
-                      <div>Lease: {tenantForm.lease_start} to {tenantForm.lease_end}</div>
+                      <div>Lease: {fmtDate(tenantForm.lease_start)} to {fmtDate(tenantForm.lease_end)}</div>
                     </div>
                   ) : null}
                 </div>
@@ -2152,7 +2153,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="text-xs text-neutral-500">
                     <div>{insurance.provider} — Policy #{insurance.policy_number || "N/A"}</div>
                     <div>Premium: ${Number(insurance.premium_amount || 0).toLocaleString()} {insurance.premium_frequency}</div>
-                    {insurance.expiration_date && <div>Expires: {insurance.expiration_date}</div>}
+                    {insurance.expiration_date && <div>Expires: {fmtDate(insurance.expiration_date)}</div>}
                   </div>
                 ) : completedSteps.has("insurance") ? <p className="text-xs text-neutral-400">No insurance</p> : null}
               </div>
@@ -2169,7 +2170,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 {completedSteps.has("property_tax") && taxes.enabled ? (
                   <div className="text-xs text-neutral-500">
                     <div>${Number(taxes.annual_tax_amount || 0).toLocaleString()}/yr · {taxes.billing_frequency.replace("_"," ")}{propForm.county ? " · " + propForm.county : ""}</div>
-                    {taxes.next_due_date && <div>Next due: {taxes.next_due_date}</div>}
+                    {taxes.next_due_date && <div>Next due: {fmtDate(taxes.next_due_date)}</div>}
                     {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow</div>}
                     {!taxes.escrow_paid_by_lender && <div className="text-brand-600 text-2xs">Bill reminders auto-generated from jurisdiction schedule</div>}
                   </div>
@@ -2350,12 +2351,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   async function openPropertyDetail(p) {
   setSelectedProperty(p);
-  setPropertyDetailTab("overview");
+  setPropertyDetailTab("documents");
   setHistoricalTenantDetail(null);
-  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes, licRes] = await Promise.all([
+  const [docsRes, wosRes, archivedTenantsRes, liveTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes, licRes] = await Promise.all([
   supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
+  supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("lease_start", { ascending: false }),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("property", p.address).in("status", ["terminated", "expired"]).order("end_date", { ascending: false }),
   supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
@@ -2372,6 +2374,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setOrphanDocs(orphans || []);
   setPropertyWorkOrders(wosRes.data || []);
   setPropertyUtilities(utilRes.data || []);
+  setPropertyTenants(liveTenantsRes.data || []);
   setPropertyHoas(hoaRes.data || []);
   setPropertyLoans(loanRes.data || []);
   setPropertyInsurance(insRes.data || []);
@@ -2998,6 +3001,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [propertyWorkOrders, setPropertyWorkOrders] = useState([]);
   const [historicalTenants, setHistoricalTenants] = useState([]);
   const [propertyUtilities, setPropertyUtilities] = useState([]);
+  // The page draws every tenancy on one track, so it needs the LIVE
+  // tenants too -- historicalTenants only ever held the archived ones.
+  const [propertyTenants, setPropertyTenants] = useState([]);
   const [propertyHoas, setPropertyHoas] = useState([]);
   const [propertyLoans, setPropertyLoans] = useState([]);
   const [propertyInsurance, setPropertyInsurance] = useState([]);
@@ -3103,6 +3109,410 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }), [properties, filter, filterType, filterOwnership, filterOwner, filterCity, debouncedSearch]);
   if (loading) return <Spinner />;
 
+
+  // ---- a property is a place, so it gets a page ------------------------
+  // The drawer this replaces listed occupants as `tenant`, `tenant_2`,
+  // `tenant_3` with no dates at all, so the one question a property screen
+  // exists to answer -- who is in it, and since when -- could not be
+  // answered from it. PropertyPage draws the tenancies on one track.
+  if (selectedProperty) {
+    const wizardFor = (extra = {}) => ({
+      propertyId: selectedProperty.id, address: selectedProperty.address,
+      isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "",
+      rent: Number(selectedProperty.rent) || 0, isEdit: true, ...extra,
+    });
+    return (
+      <>
+        <PropertyPage
+          property={selectedProperty}
+          tenants={[...propertyTenants, ...historicalTenants]}
+          utilities={propertyUtilities}
+          hoas={propertyHoas}
+          loans={propertyLoans}
+          insurance={propertyInsurance}
+          userRole={userRole}
+          readOnly={isReadOnly(selectedProperty)}
+          onBack={() => setSelectedProperty(null)}
+          onEdit={() => { setShowPropertyWizard(wizardFor({
+            leaseStart: selectedProperty.lease_start || "", leaseEnd: selectedProperty.lease_end || "",
+            securityDeposit: Number(selectedProperty.security_deposit) || 0 })); setSelectedProperty(null); }}
+          onAddTenant={() => { setShowPropertyWizard(wizardFor()); setSelectedProperty(null); }}
+          onUploadDoc={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}
+          onWorkOrder={() => { setPage("maintenance"); setSelectedProperty(null); }}
+          onOpenTenant={t => { setSelectedProperty(null); setPage("tenants", { openTenantId: t.id, tenantName: t.name }); }}
+          onArchive={() => deleteProperty(selectedProperty.id, selectedProperty.address)}
+          tabs={<>
+  {/* Tab Navigation */}
+  <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
+  <TabBar size="lg" active={propertyDetailTab}
+    tabs={[["documents","Documents"],["licenses","Licenses"],["workorders","Work Orders"],["history","History"]]}
+    onChange={id => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} />
+  </div>
+
+  {/* Details Tab — comprehensive property info */}
+  {propertyDetailTab === "documents" && (
+  <div className="px-6 py-4 flex-1">
+  <div className="flex items-center justify-between mb-3">
+  <div className="text-sm font-semibold text-neutral-700">Documents</div>
+  <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
+  </div>
+  {orphanDocs.length > 0 && (
+  <div className="mb-4 bg-warning-50 border border-warning-200 rounded-lg p-3">
+  <div className="flex items-center gap-2 mb-2">
+  <span className="material-icons-outlined text-warning-600 text-base">link_off</span>
+  <div className="text-sm font-semibold text-warning-800">Unlinked documents ({orphanDocs.length})</div>
+  </div>
+  <div className="text-xs text-warning-700 mb-2">These files were uploaded but never got attached to a property. Attach them here if they belong to this property.</div>
+  <div className="space-y-1.5">
+  {orphanDocs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm">
+  <div className="flex items-center gap-2 min-w-0">
+  <span className="material-icons-outlined text-neutral-400 text-base flex-shrink-0">insert_drive_file</span>
+  <div className="truncate">
+  <div className="font-medium text-neutral-700 truncate">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type || "—"} · {fmtDate(d.uploaded_at)}</div>
+  </div>
+  </div>
+  <div className="flex items-center gap-2 flex-shrink-0">
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</TextLink>
+  <TextLink tone="positive" size="xs" onClick={async () => {
+    if (!guardSubmit("attachDoc", d.id)) return;
+    try {
+      const { error } = await supabase.from("documents")
+        .update({ property: selectedProperty.address })
+        .eq("id", d.id).eq("company_id", companyId);
+      if (error) { pmError("PM-7003", { raw: error, context: "attach orphan doc" }); return; }
+      setOrphanDocs(prev => prev.filter(x => x.id !== d.id));
+      setPropertyDocs(prev => [{ ...d, property: selectedProperty.address }, ...prev]);
+      showToast("Attached: " + d.name, "success");
+      logAudit("update", "documents", "Attached orphan doc: " + d.name, d.id, userProfile?.email, userRole, companyId);
+    } finally { guardRelease("attachDoc", d.id); }
+  }}>Attach here</TextLink>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+  {propertyDocs.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
+  <div className="text-sm text-neutral-400">No documents uploaded yet</div>
+  <TextLink tone="brand" size="xs" className="mt-3" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}>Upload your first document</TextLink>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {propertyDocs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
+  <div className="flex items-center gap-3">
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
+  <div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type} · {fmtDate(d.uploaded_at)}{d.tenant ? " · " + d.tenant : ""}{d.archived_by ? " · deleted by " + d.archived_by : ""}</div>
+  </div>
+  </div>
+  <div className="flex items-center gap-2">
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
+  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
+  if (!guardSubmit("delPropDoc", d.id)) return;
+  try {
+  if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
+  const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
+  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
+  showToast("Document deleted: " + d.name, "success");
+  logAudit("delete", "documents", "Deleted document: " + d.name, d.id, userProfile?.email, userRole, companyId);
+  const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
+  setPropertyDocs(refreshed || []);
+  } finally { guardRelease("delPropDoc", d.id); }
+  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></TextLink>
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Licenses Tab */}
+  {propertyDetailTab === "licenses" && (
+  <div className="px-6 py-4">
+  <div className="flex items-center justify-between mb-3">
+  <div>
+  <div className="text-sm font-semibold text-neutral-700">Rental Licenses & Permits</div>
+  <div className="text-xs text-neutral-400 mt-0.5">Track license numbers, jurisdictions, and expiry dates</div>
+  </div>
+  <Btn variant="primary" size="sm" onClick={() => setShowLicenseForm({ propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })}><span className="material-icons-outlined text-sm">add</span>Add License</Btn>
+  </div>
+  {propertyLicenses.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">verified</span>
+  <div className="text-sm text-neutral-400">No licenses on file</div>
+  <div className="text-xs text-neutral-400 mt-1">Add rental licenses, lead paint certs, fire inspections, etc.</div>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {propertyLicenses.map(lic => {
+  const today = new Date();
+  const expiry = new Date(lic.expiry_date + "T00:00:00");
+  const daysLeft = Math.floor((expiry - today) / 86400000);
+  const isExpired = daysLeft < 0;
+  const isUrgent = daysLeft >= 0 && daysLeft <= 30;
+  const isSoon = daysLeft > 30 && daysLeft <= 90;
+  const badgeColor = isExpired ? "bg-danger-100 text-danger-700 border-danger-200"
+    : isUrgent ? "bg-warn-100 text-warn-700 border-warn-200"
+    : isSoon ? "bg-caution-50 text-caution-700 border-caution-200"
+    : "bg-positive-50 text-positive-700 border-positive-200";
+  const statusLabel = isExpired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`;
+  const typeLabel = LICENSE_TYPE_LABELS[lic.license_type] || lic.license_type_custom || lic.license_type;
+  return (
+  <div key={lic.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-2 flex-wrap">
+  <div className="text-sm font-medium text-neutral-700">{typeLabel}</div>
+  <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>{statusLabel}</span>
+  {lic.status === "pending_renewal" && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full border bg-brand-50 text-brand-700 border-brand-200">Renewal filed</span>}
+  </div>
+  <div className="text-xs text-neutral-400 mt-0.5">
+  {lic.license_number && <span>#{lic.license_number}</span>}
+  {lic.jurisdiction && <span>{lic.license_number ? " · " : ""}{lic.jurisdiction}</span>}
+  <span>{(lic.license_number || lic.jurisdiction) ? " · " : ""}Expires {fmtDate(lic.expiry_date)}</span>
+  </div>
+  </div>
+  <div className="flex items-center gap-2 shrink-0">
+  {lic.status !== "pending_renewal" && !isExpired && (
+  <TextLink tone="brand" size="xs" onClick={async () => {
+  if (!guardSubmit("licRenew", lic.id)) return;
+  try {
+  const { error } = await supabase.from("property_licenses").update({ status: "pending_renewal" }).eq("id", lic.id).eq("company_id", companyId);
+  if (error) { pmError("PM-2002", { raw: error, context: "license mark pending renewal" }); return; }
+  showToast("Marked as pending renewal", "success");
+  logAudit("update", "property_licenses", `Marked license pending renewal: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
+  setPropertyLicenses(propertyLicenses.map(l => l.id === lic.id ? { ...l, status: "pending_renewal" } : l));
+  } finally { guardRelease("licRenew", lic.id); }
+  }}  title="Mark as pending renewal">Renew</TextLink>
+  )}
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</TextLink>
+  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
+  if (!guardSubmit("licDel", lic.id)) return;
+  try {
+  if (!await showConfirm({ message: `Archive license "${typeLabel}"?\n\nIt can be restored within 180 days.`, variant: "danger", confirmText: "Archive" })) return;
+  const { error } = await supabase.from("property_licenses").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", lic.id).eq("company_id", companyId);
+  if (error) { pmError("PM-2003", { raw: error, context: "license archive" }); return; }
+  showToast("License archived", "success");
+  logAudit("delete", "property_licenses", `Archived license: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
+  setPropertyLicenses(propertyLicenses.filter(l => l.id !== lic.id));
+  } finally { guardRelease("licDel", lic.id); }
+  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span>Archive</TextLink>
+  </div>
+  </div>
+  );
+  })}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Work Orders Tab */}
+  {propertyDetailTab === "workorders" && (
+  <div className="px-6 py-4">
+  <div className="flex items-center justify-between mb-3">
+  <div className="text-sm font-semibold text-neutral-700">Work Orders</div>
+  <Btn variant="primary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">add</span>New</Btn>
+  </div>
+  {propertyWorkOrders.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">build</span>
+  <div className="text-sm text-neutral-400">No work orders</div>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {propertyWorkOrders.map(w => (
+  <div key={w.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
+  <div><div className="text-sm font-medium text-neutral-700">{w.issue}</div><div className="text-xs text-neutral-400">{w.priority} · {fmtDate(w.created)}</div></div>
+  <Badge status={w.status} />
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Historical Tenants Tab */}
+  {propertyDetailTab === "history" && !historicalTenantDetail && (
+  <div className="px-6 py-4 flex-1">
+  <div className="text-sm font-semibold text-neutral-700 mb-3">Previous Tenants</div>
+  {historicalTenants.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">history</span>
+  <div className="text-sm text-neutral-400">No previous tenants at this property</div>
+  </div>
+  ) : (
+  <div className="space-y-3">
+  {historicalTenants.map((t, i) => {
+  const lease = t._leases?.[0];
+  return (
+  <div key={t.id || i} onClick={async () => {
+  // Fetch full detail for this historical tenant
+  // ilike against a user-supplied name without escapeFilterValue can
+  // match cross-tenant rows when the name contains % or _. Classic
+  // scope-leak pattern — escape the LIKE meta-chars before query.
+  const tSafe = escapeFilterValue(t.name || "");
+  // Scoped to this tenant, not to their name. The ternary already
+  // checked t.id but the query then matched on the NAME anyway, so a
+  // namesake at another property had their ledger, documents and
+  // messages merged into this one's history. tenant_id is authoritative;
+  // (name, property) is the fallback for rows predating the backfill and
+  // is unique among active tenants.
+  const tQuoted = pgrestQuote(t.name || "");
+  const tProp = pgrestQuote(t.property || "");
+  const scoped = (q, nameCol = "tenant") => t.id
+    ? q.or(`tenant_id.eq.${t.id},and(${nameCol}.eq.${tQuoted},property.eq.${tProp})`)
+    : q.eq(nameCol, t.name || "").eq("property", t.property || "");
+  const [ledgerRes, docsRes, msgsRes] = await Promise.all([
+  t.id ? scoped(supabase.from("ledger_entries").select("*").eq("company_id", companyId)).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
+  scoped(supabase.from("documents").select("*").eq("company_id", companyId)).order("uploaded_at", { ascending: false }).limit(100),
+  scoped(supabase.from("messages").select("*").eq("company_id", companyId)).order("created_at", { ascending: true }).limit(100),
+  ]);
+  setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
+  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-card transition-all">
+  <div className="flex items-center justify-between mb-2">
+  <div className="flex items-center gap-3">
+  <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
+  <div>
+  <div className="font-semibold text-neutral-800">{t.name}</div>
+  <div className="text-xs text-neutral-400">{t.email || ""}{t.phone ? " · " + t.phone : ""}</div>
+  </div>
+  </div>
+  <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-1 rounded-full">{lease?.status || t.lease_status || "archived"}</span>
+  </div>
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+  <div><span className="text-neutral-400 block">Move In</span><span className="font-medium text-neutral-700">{fmtDate(lease?.start_date || t.lease_start || t.move_in, "—")}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{fmtDate(lease?.end_date || t.move_out, "—")}</span></div>
+  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{lease?.rent_amount ? formatCurrency(lease.rent_amount) : t.rent ? formatCurrency(t.rent) : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Deposit</span><span className="font-medium text-neutral-700">{lease?.security_deposit ? formatCurrency(lease.security_deposit) : "—"}{lease?.deposit_status ? " · " + lease.deposit_status : ""}</span></div>
+  </div>
+  {t.archived_at && <div className="text-xs text-neutral-400 mt-2">Archived {fmtDate(t.archived_at)}{t.archived_by ? " by " + t.archived_by : ""}</div>}
+  </div>
+  );
+  })}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Historical Tenant Detail View */}
+  {propertyDetailTab === "history" && historicalTenantDetail && (
+  <div className="px-6 py-4 flex-1">
+  <TextLink tone="brand" size="xs" onClick={() => setHistoricalTenantDetail(null)} className="mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</TextLink>
+  <div className="flex items-center gap-3 mb-4">
+  <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
+  <div>
+  <div className="font-bold text-neutral-800 text-lg">{historicalTenantDetail.tenant.name}</div>
+  <div className="text-xs text-neutral-400">{historicalTenantDetail.tenant.email || ""}{historicalTenantDetail.tenant.phone ? " · " + historicalTenantDetail.tenant.phone : ""}</div>
+  </div>
+  </div>
+  {/* Sub-tabs */}
+  <div className="flex border-b border-neutral-200 mb-4">
+  {[["overview","Overview"],["ledger","Ledger"],["docs","Documents"],["messages","Messages"]].map(([id, label]) => (
+  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
+  ))}
+  </div>
+
+  {/* Overview */}
+  {historicalTenantDetail.activeTab === "overview" && (
+  <div>
+  {historicalTenantDetail.leases.length > 0 && (
+  <div className="mb-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Lease History</div>
+  {historicalTenantDetail.leases.map((l, i) => (
+  <div key={l.id || i} className="bg-neutral-50 rounded-lg p-3 mb-2">
+  <div className="grid grid-cols-2 gap-2 text-xs">
+  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{fmtDate(l.start_date, "—")} → {fmtDate(l.end_date, "—")}</span></div>
+  <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
+  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
+  {l.deposit_returned > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-positive-600">{formatCurrency(l.deposit_returned)}</span></div>}
+  {l.deposit_deductions && <div className="col-span-2"><span className="text-neutral-400 block">Deductions</span><span className="font-medium text-neutral-700">{l.deposit_deductions}</span></div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  <div className="grid grid-cols-2 gap-3 text-xs">
+  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-danger-500" : "text-positive-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{fmtDate(historicalTenantDetail.tenant.move_out, "—")}</span></div>
+  </div>
+  </div>
+  )}
+
+  {/* Ledger */}
+  {historicalTenantDetail.activeTab === "ledger" && (
+  <div>
+  {historicalTenantDetail.ledger.length === 0 ? <EmptyState size="inline" title={"No transaction history"} /> : (
+  <div className="space-y-1">
+  {historicalTenantDetail.ledger.map((e, i) => (
+  <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
+  <div>
+  <div className="font-medium text-neutral-700">{e.description}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(e.date)}{e.type ? " · " + e.type : ""}</div>
+  </div>
+  <div className="text-right">
+  <div className={"font-semibold tnum " + (e.amount < 0 ? "text-positive-600" : "text-danger-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Documents */}
+  {historicalTenantDetail.activeTab === "docs" && (
+  <div>
+  {historicalTenantDetail.docs.length === 0 ? <EmptyState size="inline" title={"No documents"} /> : (
+  <div className="space-y-2">
+  {historicalTenantDetail.docs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
+  <div className="flex items-center gap-3">
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
+  <div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type} · {fmtDate(d.uploaded_at)}</div>
+  </div>
+  </div>
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Messages */}
+  {historicalTenantDetail.activeTab === "messages" && (
+  <div>
+  {historicalTenantDetail.messages.length === 0 ? <EmptyState size="inline" title={"No messages"} /> : (
+  <div className="space-y-2 max-h-64 overflow-y-auto">
+  {historicalTenantDetail.messages.map((m, i) => (
+  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
+  <div>{m.message}</div>
+  <div className="text-xs text-neutral-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+  </div>
+  )}
+          </>}
+        />
+      </>
+    );
+  }
+
+
   return (
   <div>
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
@@ -3140,7 +3550,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
         <span className="text-xl">📋</span>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-neutral-800 text-sm truncate">{display}</div>
-          <div className="text-xs text-neutral-400">Step {d.current_step || 1} of 9 · {doneCount} step{doneCount === 1 ? "" : "s"} filled · Last edited {new Date(d.updated_at || d.created_at).toLocaleDateString()}</div>
+          <div className="text-xs text-neutral-400">Step {d.current_step || 1} of 9 · {doneCount} step{doneCount === 1 ? "" : "s"} filled · Last edited {fmtDate(d.updated_at || d.created_at)}</div>
         </div>
         <Btn variant="primary" size="sm" onClick={() => setShowPropertyWizard({
           propertyId: d.property_id && d.property_id !== "" ? d.property_id : null,
@@ -3172,7 +3582,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} className="bg-white rounded-xl border border-neutral-200 p-4 flex items-center gap-4 opacity-70">
   <div className="flex-1">
   <div className="font-semibold text-subtle-700 text-sm">{p.address}</div>
-  <div className="text-xs text-subtle-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
+  <div className="text-xs text-subtle-400">Archived {fmtDate(p.archived_at)} by {p.archived_by || "unknown"}</div>
   <div className="text-xs text-warn-600 mt-1">{p.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(p.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
   </div>
   <Btn variant="success" size="sm" onClick={() => restoreProperty(p)}>Restore</Btn>
@@ -3290,557 +3700,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}
-  {selectedProperty && (
-  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop overflow-y-auto">
-  {/* Header */}
-  <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-success-600 to-success-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-warn-500 to-warn-700" : "bg-gradient-to-r from-subtle-600 to-subtle-800")}>
-  <div className="flex items-center justify-between">
-  <div>
-  <h2 className="text-lg font-bold">{selectedProperty.address_line_1 || selectedProperty.address}</h2>
-  <div className="text-sm opacity-80">{[selectedProperty.city, selectedProperty.state, selectedProperty.zip].filter(Boolean).join(", ")}</div>
-  {selectedProperty.address_line_2 && <div className="text-xs opacity-60">{selectedProperty.address_line_2}</div>}
-  </div>
-  <IconBtn icon="close" onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white" />
-  </div>
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
-  </div>
-  </div>
-
-  {/* Tenant Info */}
-  {selectedProperty.tenant && (
-  <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4 || selectedProperty.tenant_5) ? "s" : ""}</div>
-  <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold">{selectedProperty.tenant?.[0]}</div>
-  <div>
-  <div className="font-semibold text-neutral-800">{selectedProperty.tenant}</div>
-  <div className="text-xs text-neutral-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
-  </div>
-  </div>
-  {selectedProperty.tenant_2 && (
-  <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_2?.[0]}</div>
-  <div>
-  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_2}</div>
-  <div className="text-xs text-neutral-400">{selectedProperty.tenant_2_email || ""} · {selectedProperty.tenant_2_phone || ""}</div>
-  </div>
-  </div>
-  )}
-  {selectedProperty.tenant_3 && (
-  <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_3?.[0]}</div>
-  <div>
-  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_3}</div>
-  <div className="text-xs text-neutral-400">{selectedProperty.tenant_3_email || ""} · {selectedProperty.tenant_3_phone || ""}</div>
-  </div>
-  </div>
-  )}
-  {selectedProperty.tenant_4 && (
-  <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_4?.[0]}</div>
-  <div>
-  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_4}</div>
-  <div className="text-xs text-neutral-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
-  </div>
-  </div>
-  )}
-  {selectedProperty.tenant_5 && (
-  <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_5?.[0]}</div>
-  <div>
-  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_5}</div>
-  <div className="text-xs text-neutral-400">{selectedProperty.tenant_5_email || ""} · {selectedProperty.tenant_5_phone || ""}</div>
-  </div>
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Tab Navigation */}
-  <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
-  <TabBar size="lg" active={propertyDetailTab}
-    tabs={[["overview","Details"],["documents","Documents"],["licenses","Licenses"],["workorders","Work Orders"],["history","History"]]}
-    onChange={id => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} />
-  </div>
-
-  {/* Details Tab — comprehensive property info */}
-  {propertyDetailTab === "overview" && (
-  <div className="px-6 py-4 space-y-4">
-
-  {/* Quick Actions */}
-  <div className="flex gap-2">
-  {!isReadOnly(selectedProperty) && <Btn variant="primary" size="sm" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, leaseStart: selectedProperty.lease_start || "", leaseEnd: selectedProperty.lease_end || "", securityDeposit: Number(selectedProperty.security_deposit) || 0, isEdit: true }); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">edit</span>Edit Setup</Btn>}
-  <Btn variant="secondary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload_file</span>Upload Doc</Btn>
-  <Btn variant="secondary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">build</span>Work Order</Btn>
-  </div>
-
-  {/* Lease & Financials */}
-  {selectedProperty.status === "occupied" && (
-  <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Lease & Financials</div>
-  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-  <div><span className="text-neutral-400 text-xs">Monthly Rent</span><div className="font-semibold text-neutral-800">{formatCurrency(selectedProperty.rent)}</div></div>
-  <div><span className="text-neutral-400 text-xs">Security Deposit</span><div className="font-semibold text-neutral-800">{selectedProperty.security_deposit ? formatCurrency(selectedProperty.security_deposit) : "—"}</div></div>
-  <div><span className="text-neutral-400 text-xs">Lease Start</span><div className="font-medium text-neutral-700">{selectedProperty.lease_start || "—"}</div></div>
-  <div><span className="text-neutral-400 text-xs">Lease End</span><div className="font-medium text-neutral-700">{selectedProperty.lease_end || "—"}</div></div>
-  </div>
-  </div>
-  )}
-
-  {/* Utilities */}
-  <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
-  {propertyUtilities.length === 0 ? <p className="text-xs text-neutral-400">No utilities configured</p> : (
-  <div className="space-y-2">
-  {propertyUtilities.map((u, i) => (
-  <div key={u.id || i} className="flex items-center justify-between text-sm">
-  <div className="flex items-center gap-2">
-  <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">{u.type || "Other"}</span>
-  <span className="text-neutral-700">{u.provider}</span>
-  </div>
-  <span className="text-xs text-neutral-400">{u.responsibility === "tenant_pays" ? "Tenant pays" : "Owner pays"}{u.due_date ? " · Due " + u.due_date : ""}</span>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-
-  {/* HOA */}
-  <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
-  {propertyHoas.length === 0 ? <p className="text-xs text-neutral-400">No HOA</p> : (
-  <div className="space-y-2">
-  {propertyHoas.map((h, i) => (
-  <div key={h.id || i} className="flex items-center justify-between text-sm">
-  <span className="text-neutral-700 font-medium">{h.hoa_name || h.name}</span>
-  <span className="text-neutral-500">{formatCurrency(h.amount)} · {h.frequency || "Monthly"}</span>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-
-  {/* Loans — admin/owner only */}
-  {(userRole === "admin" || userRole === "owner") && (
-  <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
-  {propertyLoans.length === 0 ? <p className="text-xs text-neutral-400">No loan configured</p> : (
-  <div className="space-y-2">
-  {propertyLoans.map((l, i) => (
-  <div key={l.id || i} className="text-sm">
-  <div className="flex items-center justify-between">
-  <span className="text-neutral-700 font-medium">{l.lender_name}</span>
-  <span className="text-xs bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">{l.loan_type || "Conventional"}</span>
-  </div>
-  <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-neutral-500">
-  <div><span className="block text-neutral-400">Payment</span>{l.monthly_payment ? formatCurrency(l.monthly_payment) : "—"}</div>
-  <div><span className="block text-neutral-400">Balance</span>{l.current_balance ? formatCurrency(l.current_balance) : "—"}</div>
-  <div><span className="block text-neutral-400">Rate</span>{l.interest_rate ? l.interest_rate + "%" : "—"}</div>
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Insurance */}
-  <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
-  {propertyInsurance.length === 0 ? <p className="text-xs text-neutral-400">No insurance configured</p> : (
-  <div className="space-y-2">
-  {propertyInsurance.map((ins, i) => (
-  <div key={ins.id || i} className="flex items-center justify-between text-sm">
-  <div>
-  <span className="text-neutral-700 font-medium">{ins.provider}</span>
-  {ins.policy_number && <span className="text-xs text-neutral-400 ml-2">#{ins.policy_number}</span>}
-  </div>
-  <div className="text-right text-xs text-neutral-500">
-  {ins.premium_amount ? formatCurrency(ins.premium_amount) + "/" + (ins.premium_frequency || "year").toLowerCase().slice(0, 3) : "—"}
-  {ins.expiration_date && <div className={new Date(ins.expiration_date) < new Date() ? "text-danger-500 font-medium" : ""}>{ins.expiration_date < new Date().toISOString().slice(0, 10) ? "Expired " : "Exp "}{ins.expiration_date}</div>}
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-
-  {/* Property Manager & Notes */}
-  {(selectedProperty.pm_company_name || selectedProperty.notes) && (
-  <div className="bg-neutral-50 rounded-xl p-4">
-  {selectedProperty.pm_company_name && <div className="text-sm mb-2"><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-highlight-700">{selectedProperty.pm_company_name}</span></div>}
-  {selectedProperty.notes && <div className="text-sm"><span className="text-neutral-400 text-xs block">Notes</span><span className="text-neutral-500">{selectedProperty.notes}</span></div>}
-  </div>
-  )}
-
-  </div>
-  )}
-
-  {/* Documents Tab */}
-  {propertyDetailTab === "documents" && (
-  <div className="px-6 py-4 flex-1">
-  <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-neutral-700">Documents</div>
-  <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
-  </div>
-  {orphanDocs.length > 0 && (
-  <div className="mb-4 bg-warning-50 border border-warning-200 rounded-lg p-3">
-  <div className="flex items-center gap-2 mb-2">
-  <span className="material-icons-outlined text-warning-600 text-base">link_off</span>
-  <div className="text-sm font-semibold text-warning-800">Unlinked documents ({orphanDocs.length})</div>
-  </div>
-  <div className="text-xs text-warning-700 mb-2">These files were uploaded but never got attached to a property. Attach them here if they belong to this property.</div>
-  <div className="space-y-1.5">
-  {orphanDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm">
-  <div className="flex items-center gap-2 min-w-0">
-  <span className="material-icons-outlined text-neutral-400 text-base flex-shrink-0">insert_drive_file</span>
-  <div className="truncate">
-  <div className="font-medium text-neutral-700 truncate">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type || "—"} · {d.uploaded_at?.slice(0, 10)}</div>
-  </div>
-  </div>
-  <div className="flex items-center gap-2 flex-shrink-0">
-  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</TextLink>
-  <TextLink tone="positive" size="xs" onClick={async () => {
-    if (!guardSubmit("attachDoc", d.id)) return;
-    try {
-      const { error } = await supabase.from("documents")
-        .update({ property: selectedProperty.address })
-        .eq("id", d.id).eq("company_id", companyId);
-      if (error) { pmError("PM-7003", { raw: error, context: "attach orphan doc" }); return; }
-      setOrphanDocs(prev => prev.filter(x => x.id !== d.id));
-      setPropertyDocs(prev => [{ ...d, property: selectedProperty.address }, ...prev]);
-      showToast("Attached: " + d.name, "success");
-      logAudit("update", "documents", "Attached orphan doc: " + d.name, d.id, userProfile?.email, userRole, companyId);
-    } finally { guardRelease("attachDoc", d.id); }
-  }}>Attach here</TextLink>
-  </div>
-  </div>
-  ))}
-  </div>
-  </div>
-  )}
-  {propertyDocs.length === 0 ? (
-  <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
-  <div className="text-sm text-neutral-400">No documents uploaded yet</div>
-  <TextLink tone="brand" size="xs" className="mt-3" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}>Upload your first document</TextLink>
-  </div>
-  ) : (
-  <div className="space-y-2">
-  {propertyDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
-  <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
-  <div>
-  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}{d.tenant ? " · " + d.tenant : ""}{d.archived_by ? " · deleted by " + d.archived_by : ""}</div>
-  </div>
-  </div>
-  <div className="flex items-center gap-2">
-  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
-  if (!guardSubmit("delPropDoc", d.id)) return;
-  try {
-  if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
-  const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
-  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
-  showToast("Document deleted: " + d.name, "success");
-  logAudit("delete", "documents", "Deleted document: " + d.name, d.id, userProfile?.email, userRole, companyId);
-  const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
-  setPropertyDocs(refreshed || []);
-  } finally { guardRelease("delPropDoc", d.id); }
-  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></TextLink>
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Licenses Tab */}
-  {propertyDetailTab === "licenses" && (
-  <div className="px-6 py-4">
-  <div className="flex items-center justify-between mb-3">
-  <div>
-  <div className="text-sm font-semibold text-neutral-700">Rental Licenses & Permits</div>
-  <div className="text-xs text-neutral-400 mt-0.5">Track license numbers, jurisdictions, and expiry dates</div>
-  </div>
-  <Btn variant="primary" size="sm" onClick={() => setShowLicenseForm({ propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })}><span className="material-icons-outlined text-sm">add</span>Add License</Btn>
-  </div>
-  {propertyLicenses.length === 0 ? (
-  <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">verified</span>
-  <div className="text-sm text-neutral-400">No licenses on file</div>
-  <div className="text-xs text-neutral-400 mt-1">Add rental licenses, lead paint certs, fire inspections, etc.</div>
-  </div>
-  ) : (
-  <div className="space-y-2">
-  {propertyLicenses.map(lic => {
-  const today = new Date();
-  const expiry = new Date(lic.expiry_date + "T00:00:00");
-  const daysLeft = Math.floor((expiry - today) / 86400000);
-  const isExpired = daysLeft < 0;
-  const isUrgent = daysLeft >= 0 && daysLeft <= 30;
-  const isSoon = daysLeft > 30 && daysLeft <= 90;
-  const badgeColor = isExpired ? "bg-danger-100 text-danger-700 border-danger-200"
-    : isUrgent ? "bg-warn-100 text-warn-700 border-warn-200"
-    : isSoon ? "bg-caution-50 text-caution-700 border-caution-200"
-    : "bg-positive-50 text-positive-700 border-positive-200";
-  const statusLabel = isExpired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`;
-  const typeLabel = LICENSE_TYPE_LABELS[lic.license_type] || lic.license_type_custom || lic.license_type;
-  return (
-  <div key={lic.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
-  <div className="flex-1 min-w-0">
-  <div className="flex items-center gap-2 flex-wrap">
-  <div className="text-sm font-medium text-neutral-700">{typeLabel}</div>
-  <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>{statusLabel}</span>
-  {lic.status === "pending_renewal" && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full border bg-brand-50 text-brand-700 border-brand-200">Renewal filed</span>}
-  </div>
-  <div className="text-xs text-neutral-400 mt-0.5">
-  {lic.license_number && <span>#{lic.license_number}</span>}
-  {lic.jurisdiction && <span>{lic.license_number ? " · " : ""}{lic.jurisdiction}</span>}
-  <span>{(lic.license_number || lic.jurisdiction) ? " · " : ""}Expires {lic.expiry_date}</span>
-  </div>
-  </div>
-  <div className="flex items-center gap-2 shrink-0">
-  {lic.status !== "pending_renewal" && !isExpired && (
-  <TextLink tone="brand" size="xs" onClick={async () => {
-  if (!guardSubmit("licRenew", lic.id)) return;
-  try {
-  const { error } = await supabase.from("property_licenses").update({ status: "pending_renewal" }).eq("id", lic.id).eq("company_id", companyId);
-  if (error) { pmError("PM-2002", { raw: error, context: "license mark pending renewal" }); return; }
-  showToast("Marked as pending renewal", "success");
-  logAudit("update", "property_licenses", `Marked license pending renewal: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
-  setPropertyLicenses(propertyLicenses.map(l => l.id === lic.id ? { ...l, status: "pending_renewal" } : l));
-  } finally { guardRelease("licRenew", lic.id); }
-  }}  title="Mark as pending renewal">Renew</TextLink>
-  )}
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</TextLink>
-  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
-  if (!guardSubmit("licDel", lic.id)) return;
-  try {
-  if (!await showConfirm({ message: `Archive license "${typeLabel}"?\n\nIt can be restored within 180 days.`, variant: "danger", confirmText: "Archive" })) return;
-  const { error } = await supabase.from("property_licenses").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", lic.id).eq("company_id", companyId);
-  if (error) { pmError("PM-2003", { raw: error, context: "license archive" }); return; }
-  showToast("License archived", "success");
-  logAudit("delete", "property_licenses", `Archived license: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
-  setPropertyLicenses(propertyLicenses.filter(l => l.id !== lic.id));
-  } finally { guardRelease("licDel", lic.id); }
-  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span>Archive</TextLink>
-  </div>
-  </div>
-  );
-  })}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Work Orders Tab */}
-  {propertyDetailTab === "workorders" && (
-  <div className="px-6 py-4">
-  <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-neutral-700">Work Orders</div>
-  <Btn variant="primary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">add</span>New</Btn>
-  </div>
-  {propertyWorkOrders.length === 0 ? (
-  <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">build</span>
-  <div className="text-sm text-neutral-400">No work orders</div>
-  </div>
-  ) : (
-  <div className="space-y-2">
-  {propertyWorkOrders.map(w => (
-  <div key={w.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
-  <div><div className="text-sm font-medium text-neutral-700">{w.issue}</div><div className="text-xs text-neutral-400">{w.priority} · {w.created}</div></div>
-  <Badge status={w.status} />
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Historical Tenants Tab */}
-  {propertyDetailTab === "history" && !historicalTenantDetail && (
-  <div className="px-6 py-4 flex-1">
-  <div className="text-sm font-semibold text-neutral-700 mb-3">Previous Tenants</div>
-  {historicalTenants.length === 0 ? (
-  <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">history</span>
-  <div className="text-sm text-neutral-400">No previous tenants at this property</div>
-  </div>
-  ) : (
-  <div className="space-y-3">
-  {historicalTenants.map((t, i) => {
-  const lease = t._leases?.[0];
-  return (
-  <div key={t.id || i} onClick={async () => {
-  // Fetch full detail for this historical tenant
-  // ilike against a user-supplied name without escapeFilterValue can
-  // match cross-tenant rows when the name contains % or _. Classic
-  // scope-leak pattern — escape the LIKE meta-chars before query.
-  const tSafe = escapeFilterValue(t.name || "");
-  // Scoped to this tenant, not to their name. The ternary already
-  // checked t.id but the query then matched on the NAME anyway, so a
-  // namesake at another property had their ledger, documents and
-  // messages merged into this one's history. tenant_id is authoritative;
-  // (name, property) is the fallback for rows predating the backfill and
-  // is unique among active tenants.
-  const tQuoted = pgrestQuote(t.name || "");
-  const tProp = pgrestQuote(t.property || "");
-  const scoped = (q, nameCol = "tenant") => t.id
-    ? q.or(`tenant_id.eq.${t.id},and(${nameCol}.eq.${tQuoted},property.eq.${tProp})`)
-    : q.eq(nameCol, t.name || "").eq("property", t.property || "");
-  const [ledgerRes, docsRes, msgsRes] = await Promise.all([
-  t.id ? scoped(supabase.from("ledger_entries").select("*").eq("company_id", companyId)).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
-  scoped(supabase.from("documents").select("*").eq("company_id", companyId)).order("uploaded_at", { ascending: false }).limit(100),
-  scoped(supabase.from("messages").select("*").eq("company_id", companyId)).order("created_at", { ascending: true }).limit(100),
-  ]);
-  setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-card transition-all">
-  <div className="flex items-center justify-between mb-2">
-  <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
-  <div>
-  <div className="font-semibold text-neutral-800">{t.name}</div>
-  <div className="text-xs text-neutral-400">{t.email || ""}{t.phone ? " · " + t.phone : ""}</div>
-  </div>
-  </div>
-  <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-1 rounded-full">{lease?.status || t.lease_status || "archived"}</span>
-  </div>
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-  <div><span className="text-neutral-400 block">Move In</span><span className="font-medium text-neutral-700">{lease?.start_date || t.lease_start || t.move_in || "—"}</span></div>
-  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{lease?.end_date || t.move_out || "—"}</span></div>
-  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{lease?.rent_amount ? formatCurrency(lease.rent_amount) : t.rent ? formatCurrency(t.rent) : "—"}</span></div>
-  <div><span className="text-neutral-400 block">Deposit</span><span className="font-medium text-neutral-700">{lease?.security_deposit ? formatCurrency(lease.security_deposit) : "—"}{lease?.deposit_status ? " · " + lease.deposit_status : ""}</span></div>
-  </div>
-  {t.archived_at && <div className="text-xs text-neutral-400 mt-2">Archived {new Date(t.archived_at).toLocaleDateString()}{t.archived_by ? " by " + t.archived_by : ""}</div>}
-  </div>
-  );
-  })}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Historical Tenant Detail View */}
-  {propertyDetailTab === "history" && historicalTenantDetail && (
-  <div className="px-6 py-4 flex-1">
-  <TextLink tone="brand" size="xs" onClick={() => setHistoricalTenantDetail(null)} className="mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</TextLink>
-  <div className="flex items-center gap-3 mb-4">
-  <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
-  <div>
-  <div className="font-bold text-neutral-800 text-lg">{historicalTenantDetail.tenant.name}</div>
-  <div className="text-xs text-neutral-400">{historicalTenantDetail.tenant.email || ""}{historicalTenantDetail.tenant.phone ? " · " + historicalTenantDetail.tenant.phone : ""}</div>
-  </div>
-  </div>
-  {/* Sub-tabs */}
-  <div className="flex border-b border-neutral-200 mb-4">
-  {[["overview","Overview"],["ledger","Ledger"],["docs","Documents"],["messages","Messages"]].map(([id, label]) => (
-  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
-  ))}
-  </div>
-
-  {/* Overview */}
-  {historicalTenantDetail.activeTab === "overview" && (
-  <div>
-  {historicalTenantDetail.leases.length > 0 && (
-  <div className="mb-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Lease History</div>
-  {historicalTenantDetail.leases.map((l, i) => (
-  <div key={l.id || i} className="bg-neutral-50 rounded-lg p-3 mb-2">
-  <div className="grid grid-cols-2 gap-2 text-xs">
-  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
-  <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
-  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
-  <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
-  {l.deposit_returned > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-positive-600">{formatCurrency(l.deposit_returned)}</span></div>}
-  {l.deposit_deductions && <div className="col-span-2"><span className="text-neutral-400 block">Deductions</span><span className="font-medium text-neutral-700">{l.deposit_deductions}</span></div>}
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  <div className="grid grid-cols-2 gap-3 text-xs">
-  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-danger-500" : "text-positive-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
-  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{historicalTenantDetail.tenant.move_out || "—"}</span></div>
-  </div>
-  </div>
-  )}
-
-  {/* Ledger */}
-  {historicalTenantDetail.activeTab === "ledger" && (
-  <div>
-  {historicalTenantDetail.ledger.length === 0 ? <EmptyState size="inline" title={"No transaction history"} /> : (
-  <div className="space-y-1">
-  {historicalTenantDetail.ledger.map((e, i) => (
-  <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
-  <div>
-  <div className="font-medium text-neutral-700">{e.description}</div>
-  <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
-  </div>
-  <div className="text-right">
-  <div className={"font-semibold tnum " + (e.amount < 0 ? "text-positive-600" : "text-danger-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
-  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Documents */}
-  {historicalTenantDetail.activeTab === "docs" && (
-  <div>
-  {historicalTenantDetail.docs.length === 0 ? <EmptyState size="inline" title={"No documents"} /> : (
-  <div className="space-y-2">
-  {historicalTenantDetail.docs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
-  <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
-  <div>
-  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
-  </div>
-  </div>
-  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Messages */}
-  {historicalTenantDetail.activeTab === "messages" && (
-  <div>
-  {historicalTenantDetail.messages.length === 0 ? <EmptyState size="inline" title={"No messages"} /> : (
-  <div className="space-y-2 max-h-64 overflow-y-auto">
-  {historicalTenantDetail.messages.map((m, i) => (
-  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
-  <div>{m.message}</div>
-  <div className="text-xs text-neutral-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  )}
-  </div>
-  )}
-
-  </div>
-  </div>
   )}
 
 
@@ -3885,7 +3744,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-sm text-neutral-500 space-y-1">
   <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
   {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{formatAllTenants(p)}</span></div>}
-  {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
+  {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{fmtDate(p.lease_end)}</span></div>}
   </div>
   {isReadOnly(p) && <div className="mt-2 text-xs text-highlight-600 bg-highlight-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
   {p.status === "inactive" && <div className="mt-2 text-xs text-warn-600 bg-warn-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
@@ -3999,7 +3858,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="text-lg">{item._type === "payment" ? "💰" : item._type === "work_order" ? "🔧" : "📄"}</span>
   <div>
   <p className="text-sm font-medium text-neutral-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
-  <p className="text-xs text-neutral-400">{new Date(item._date).toLocaleDateString()}</p>
+  <p className="text-xs text-neutral-400">{fmtDate(item._date)}</p>
   </div>
   </div>
   ))}

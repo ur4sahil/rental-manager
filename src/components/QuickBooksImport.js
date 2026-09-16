@@ -12,7 +12,7 @@
 import React, { useState, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, Select, TextLink, DataTable} from "../ui";
-import { formatCurrency, safeNum } from "../utils/helpers";
+import { formatCurrency, safeNum, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { Spinner } from "./shared";
@@ -442,7 +442,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       {grouped && (
       <div className="text-xs text-neutral-600 bg-neutral-50 rounded-lg px-3 py-2">
         {grouped.totals.entries.toLocaleString()} transactions · {grouped.totals.lines.toLocaleString()} lines ·
-        {" "}{grouped.totals.dateFrom} to {grouped.totals.dateTo} ·
+        {" "}{fmtDate(grouped.totals.dateFrom)} to {fmtDate(grouped.totals.dateTo)} ·
         {" "}debits {formatCurrency(grouped.totals.debit)} / credits {formatCurrency(grouped.totals.credit)}
         {Math.abs(grouped.totals.difference) >= 0.005 && (
           <span className="text-warn-700"> · out of balance by {formatCurrency(grouped.totals.difference)}</span>

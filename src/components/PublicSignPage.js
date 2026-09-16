@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import SignaturePad, { ESIGN_CONSENT_VERSION } from "./SignaturePad";
+import { fmtDate, fmtDateTime } from "../utils/helpers";
 
 // Public page rendered at /sign/:token — no auth required.
 // Uses anon-callable SECURITY DEFINER RPCs:
@@ -44,7 +45,7 @@ export default function PublicSignPage({ token }) {
       if (rpcErr) { setError("Could not load this signature request. Please check the link and try again."); setLoading(false); return; }
       if (data?.error) {
         if (data.error === "not available" && data.status === "signed") {
-          setError("You have already signed this document on " + new Date(data.signed_at).toLocaleString() + ".");
+          setError("You have already signed this document on " + fmtDateTime(data.signed_at) + ".");
         } else if (data.error === "token expired") {
           setError("This signing link has expired. Please contact the sender for a new one.");
         } else if (data.error === "token not found" || data.error === "invalid token") {
@@ -306,7 +307,7 @@ export default function PublicSignPage({ token }) {
         />
 
         <p className="text-2xs text-neutral-400 text-center mt-4">
-          This link expires {payload.expires_at ? "on " + new Date(payload.expires_at).toLocaleDateString() : "in 30 days"}.
+          This link expires {payload.expires_at ? "on " + fmtDate(payload.expires_at) : "in 30 days"}.
           Your IP address, browser information, and a cryptographic hash of this document are recorded for audit purposes.
         </p>
       </div>

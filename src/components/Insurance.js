@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -172,7 +172,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
       { key: "coverage", label: "Coverage", align: "right", className: "font-semibold",
         render: p => (<>{formatCurrency(p.coverage_amount)}</>) },
       { key: "expiry", label: "Expiry", className: "text-neutral-400",
-        render: p => (<>{p.expiration_date || "—"}</>) },
+        render: p => (<>{fmtDate(p.expiration_date) || "—"}</>) },
       { key: "portal", label: "Portal", className: "text-xs",
         render: p => (<>
           {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}

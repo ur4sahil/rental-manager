@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -412,7 +412,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div key={s.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
   <div className="text-sm font-semibold text-neutral-800">{s.owner_name} — {s.period}</div>
-  <div className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(s.created_at)}</div>
   </div>
   <div className="flex items-center gap-4">
   <div className="text-right">
@@ -434,7 +434,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
-  <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {fmtDate(viewStatement.created_at)}</div>
   </div>
   <div className="flex items-center gap-2">
   {viewStatement.status === "draft" && <Btn variant="secondary" size="xs" onClick={() => sendStatement(viewStatement)}>📧 Send</Btn>}
@@ -454,7 +454,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
-  <span className="text-neutral-500">{item.date} — {item.description}</span>
+  <span className="text-neutral-500">{fmtDate(item.date)} — {item.description}</span>
   <span className={"font-bold " + (item.amount >= 0 ? "text-positive-600" : "text-danger-500")}>${Math.abs(item.amount).toLocaleString()}</span>
   </div>
   ))}
@@ -473,7 +473,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {/* owner_distributions stores only owner_id — resolve the display
       name from the owners list rather than a non-existent column. */}
   <div className="text-sm font-medium text-neutral-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown owner"} — ${safeNum(d.amount).toLocaleString()}</div>
-  <div className="text-xs text-neutral-400">{d.reference} · {d.date}{d.notes ? " · " + d.notes : ""}</div>
+  <div className="text-xs text-neutral-400">{d.reference} · {fmtDate(d.date)}{d.notes ? " · " + d.notes : ""}</div>
   </div>
   <div className="flex items-center gap-2">
   <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-positive-100 text-positive-700">{d.method?.toUpperCase()}</span>
@@ -509,7 +509,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{wo.issue}</div>
-  <div className="text-xs text-neutral-400">{wo.property} · {wo.created || "—"}</div>
+  <div className="text-xs text-neutral-400">{wo.property} · {fmtDate(wo.created, "—")}</div>
   </div>
   <div className="text-right">
   <span className="text-xs">{statusIcon[wo.status] || "⚪"} {wo.status}</span>
@@ -660,7 +660,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div key={s.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
   <div className="text-sm font-semibold text-neutral-800">{s.period}</div>
-  <div className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(s.created_at)}</div>
   </div>
   <div className="flex items-center gap-4">
   <div className="text-right">
@@ -683,7 +683,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
-  <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {fmtDate(viewStatement.created_at)}</div>
   </div>
   <div className="flex items-center gap-2">
   <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
@@ -702,7 +702,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
-  <span className="text-neutral-500">{item.date} — {item.description}</span>
+  <span className="text-neutral-500">{fmtDate(item.date)} — {item.description}</span>
   <span className={"font-bold " + (item.amount >= 0 ? "text-positive-600" : "text-danger-500")}>${Math.abs(item.amount).toLocaleString()}</span>
   </div>
   ))}
@@ -719,7 +719,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div key={d.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-neutral-800">${safeNum(d.amount).toLocaleString()}</div>
-  <div className="text-xs text-neutral-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{d.reference} · {fmtDate(d.date)}</div>
   </div>
   <div className="text-right">
   <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-positive-100 text-positive-700">{d.method?.toUpperCase()}</span>

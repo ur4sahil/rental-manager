@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, FileInput, Input, PageHeader, Select, Textarea, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue, escapeFilterValue } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue, escapeFilterValue, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -724,7 +724,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
   <div className="text-xs text-brand-200">Lease End</div>
-  <div className="text-sm font-bold mt-1">{tenantData.lease_end_date || tenantData.move_out || "—"}</div>
+  <div className="text-sm font-bold mt-1">{fmtDate(tenantData.lease_end_date || tenantData.move_out, "—")}</div>
   </div>
   </div>
   </div>
@@ -734,7 +734,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <div className="space-y-4">
   <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
-  {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.lease_start || tenantData.move_in || "—"], ["Lease End", tenantData.lease_end_date || tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
+  {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", fmtDate(tenantData.lease_start || tenantData.move_in, "—")], ["Lease End", fmtDate(tenantData.lease_end_date || tenantData.move_out, "—")], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
   <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className={"font-medium text-neutral-800" + (l === "Status" ? " capitalize" : "")}>{v}</span></div>
   ))}
   </div>
@@ -751,7 +751,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <h3 className="font-semibold text-neutral-700 mb-3">Recent Activity</h3>
   {payments.slice(0, 3).map(p => (
   <div key={p.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
-  <div><span className="text-positive-600 font-medium">Payment</span> <span className="text-neutral-400">— {p.date}</span></div>
+  <div><span className="text-positive-600 font-medium">Payment</span> <span className="text-neutral-400">— {fmtDate(p.date)}</span></div>
   <span className="font-semibold text-neutral-800">${safeNum(p.amount).toLocaleString()}</span>
   </div>
   ))}
@@ -996,7 +996,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       <p className="text-xs text-neutral-400">All charges and payments on your account.</p>
     </div>
     <Btn variant="secondary" size="xs" onClick={() => exportToCSV(rows.map(r => ({
-      date: r.acct_journal_entries?.date || "",
+      date: fmtDate(r.acct_journal_entries?.date),
       description: r.acct_journal_entries?.description || r.memo || "",
       charge: r.debit > 0 ? r.debit : "",
       payment: r.credit > 0 ? r.credit : "",
@@ -1022,7 +1022,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
       const isPayment = safeNum(l.credit) > 0;
       return (
       <div key={l.id} className="md:grid md:grid-cols-[1fr_2fr_auto_auto_auto] md:gap-4 flex flex-col px-4 py-3 border-b border-brand-50/50 last:border-0 text-sm">
-      <div className="text-neutral-500 text-xs md:text-sm">{je.date || "—"}</div>
+      <div className="text-neutral-500 text-xs md:text-sm">{fmtDate(je.date, "—")}</div>
       <div className="text-neutral-800 font-medium">{tenantLedgerLabel(je.description, l.memo, isPayment)}</div>
       <div className="md:text-right text-danger-600 font-semibold">{isCharge ? formatCurrency(safeNum(l.debit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
       <div className="md:text-right text-positive-600 font-semibold">{isPayment ? formatCurrency(safeNum(l.credit)) : <span className="text-neutral-400" aria-hidden="true">—</span>}</div>
@@ -1040,7 +1040,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
         <div key={p.id} className="bg-white border border-brand-50 rounded-xl px-4 py-3 flex justify-between items-center">
         <div>
           <div className="text-sm font-medium text-neutral-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
-          <div className="text-xs text-neutral-400">{p.date} · {p.method}</div>
+          <div className="text-xs text-neutral-400">{fmtDate(p.date)} · {p.method}</div>
         </div>
         <div className="flex items-center gap-3">
           <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>
@@ -1119,7 +1119,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   </div>
   <div>
   <div className="text-sm font-medium text-neutral-800">{d.name || d.file_name}</div>
-  <div className="text-xs text-neutral-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{d.type || "Document"} · {fmtDate(d.uploaded_at)}</div>
   </div>
   </div>
   <Btn variant="secondary" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</Btn>

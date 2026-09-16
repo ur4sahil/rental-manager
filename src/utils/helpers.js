@@ -15,6 +15,121 @@ export function formatLocalDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+// ---------------------------------------------------------------------------
+// DISPLAY dates. formatLocalDate above is the STORAGE format (YYYY-MM-DD, what
+// Postgres and <input type="date"> want) and must not change. Everything the
+// user reads goes through fmtDate instead, so the app shows one US format
+// rather than the three it drifted into: raw YYYY-MM-DD straight from the
+// column, toLocaleDateString() with no locale (whatever the browser feels
+// like), and toDateString()'s "Mon Sep 01 2026".
+//
+// A date-only string is parsed LOCAL, never through new Date("2026-09-16"),
+// which the spec reads as UTC and renders as the 15th west of Greenwich.
+function toDate(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  if (typeof value === "number") { const d = new Date(value); return isNaN(d.getTime()) ? null : d; }
+  const str = String(value).trim();
+  if (!str) return null;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (dateOnly) {
+    const y = +dateOnly[1], mo = +dateOnly[2], day = +dateOnly[3];
+    const d = new Date(y, mo - 1, day);
+    // the Date constructor rolls overflow forward silently, so "2026-13-45"
+    // would come back as 02/14/2027 rather than being rejected
+    if (isNaN(d.getTime()) || d.getMonth() !== mo - 1 || d.getDate() !== day) return null;
+    return d;
+  }
+  // an ISO timestamp is a real instant, so let the engine localise it
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// "09/16/2026". Returns fallback (default "") for null/blank/unparseable, so a
+// missing date reads as empty rather than "Invalid Date" or "NaN/NaN/NaN".
+export function fmtDate(value, fallback = "") {
+  const d = toDate(value);
+  if (!d) return fallback;
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${m}/${day}/${d.getFullYear()}`;
+}
+
+// "09/16/2026 3:42 PM" — for timestamps where the time of day matters
+// (sync runs, audit entries, uploads).
+export function fmtDateTime(value, fallback = "") {
+  const d = toDate(value);
+  if (!d) return fallback;
+  let h = d.getHours();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${fmtDate(d)} ${h}:${String(d.getMinutes()).padStart(2, "0")} ${ampm}`;
+}
+
+// "09/2026" — statement and report period headings.
+export function fmtMonthYear(value, fallback = "") {
+  const d = toDate(value);
+  if (!d) return fallback;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+// Excel wants a real Date in the cell plus a US number format, so the column
+// still sorts and filters as a date instead of as text.
+// ---------------------------------------------------------------------------
+// Co-tenants. The schema stores one tenancy as one row, so two people on one
+// lease arrive as name "Jamie Mahoney & Kevin Herrington" with BOTH phone
+// numbers crammed into `phone` as "(443) 793-5630, 443-591-3701" and often no
+// email at all. Rather than change the schema, read the row as the several
+// people it describes: contact details are personal, money is not.
+//
+// Contacts are paired to names BY POSITION, which is the only signal the data
+// carries. One contact for two names means it belongs to nobody in particular,
+// so it stays on the tenancy rather than being attributed to the first person.
+const PARTY_SPLIT = /\s*(?:&|\+|\band\b|\/)\s*/i;
+
+export function splitParties(tenant) {
+  const whole = String(tenant?.name || "").trim();
+  if (!whole) return [];
+  const names = whole.split(PARTY_SPLIT).map(n => n.trim()).filter(Boolean);
+  // "Smith & Sons LLC" is one party, not two. Two people on a lease are each
+  // written as at least a first and last name, so a fragment that is a single
+  // word, or that carries a company suffix, means the "&" was never a join.
+  const looksLikeEntity = n => /\b(llc|l\.l\.c|inc|corp|co|ltd|lp|llp|trust|properties|management|holdings|sons|associates)\b\.?$/i.test(n);
+  const isPerson = n => n.length >= 3 && /\s/.test(n) && !looksLikeEntity(n);
+  if (names.length < 2 || !names.every(isPerson)) {
+    return [{ name: whole, email: tenant?.email || "", phone: tenant?.phone || "" }];
+  }
+  const split = (v) => String(v || "").split(/[,;]+/).map(x => x.trim()).filter(Boolean);
+  const emails = split(tenant?.email), phones = split(tenant?.phone);
+  return names.map((name, i) => ({
+    name,
+    // one contact shared between several names identifies no one
+    email: emails.length === names.length ? emails[i] : "",
+    phone: phones.length === names.length ? phones[i] : "",
+  }));
+}
+
+// Contacts that belong to the tenancy rather than to a named person: what is
+// left when the per-person pairing above could not claim them.
+export function sharedContacts(tenant) {
+  const parties = splitParties(tenant);
+  if (parties.length < 2) return { emails: [], phones: [] };
+  const claimed = parties.some(p => p.email || p.phone);
+  if (claimed) return { emails: [], phones: [] };
+  const split = (v) => String(v || "").split(/[,;]+/).map(x => x.trim()).filter(Boolean);
+  return { emails: split(tenant?.email), phones: split(tenant?.phone) };
+}
+
+export function initialsFor(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export const EXCEL_DATE_FMT = "mm/dd/yyyy";
+export function excelDate(value) { return toDate(value); }
+
 // Short random ID for references (avoids Date.now() collisions)
 export function shortId() {
   const arr = new Uint8Array(6);

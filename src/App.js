@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink, CompanyScope, SearchTrigger, MenuItem} from "./ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "./utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest, fmtDate } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
@@ -1050,7 +1050,7 @@ function AppInner() {
   .eq("data->>tenant", lease.tenant_name)
   .eq("data->>month", monthKey).limit(1);
   if (!already?.length) {
-  await queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: nextDue.toLocaleDateString(), property: lease.property, month: monthKey }, cid);
+  await queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: fmtDate(nextDue), property: lease.property, month: monthKey }, cid);
   queued++;
   }
   }
@@ -1093,7 +1093,7 @@ function AppInner() {
   id: n.id, icon: n.icon, message: n.message,
   time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   read: n.read, dbId: n.id,
-  date: new Date(n.created_at).toLocaleDateString(),
+  date: fmtDate(n.created_at),
   })));
   setUnreadCount(data.filter(n => !n.read).length);
   }

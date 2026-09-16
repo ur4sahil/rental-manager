@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -205,7 +205,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "balance", label: "Balance", align: "right", className: "font-semibold",
         render: l => (<>{formatCurrency(l.current_balance)}</>) },
       { key: "maturity", label: "Maturity", className: "text-neutral-400",
-        render: l => (<>{l.maturity_date || "—"}</>) },
+        render: l => (<>{fmtDate(l.maturity_date) || "—"}</>) },
       { key: "portal", label: "Portal", className: "text-xs",
         render: l => (<>
           {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}

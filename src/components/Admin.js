@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable, TabBar, Switch} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel} from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -101,7 +101,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   <div className="text-xs text-subtle-400">
   {item.property && <span>{item.property} · </span>}
   {item.amount && <span>${Number(item.amount).toLocaleString()} · </span>}
-  Archived {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ""}
+  Archived {fmtDate(item.archived_at)}
   {item.archived_by && <span> by {item.archived_by}</span>}
   </div>
   <div className="text-xs text-warn-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
@@ -615,7 +615,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   }
 
   function getItemSubtitle(item) {
-  return item.property || item.email || item.type || item.status || item.fee_type || item.role || item.due_date || "";
+  return item.property || item.email || item.type || item.status || item.fee_type || item.role || (item.due_date ? fmtDate(item.due_date) : "");
   }
 
   return (
@@ -653,7 +653,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   <div className="flex-1 min-w-0">
   <div className="font-semibold text-neutral-800 text-sm">{getItemTitle(item)}</div>
   <div className="text-xs text-neutral-400">{item._label} · {getItemSubtitle(item)}</div>
-  <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-danger-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+  <div className="text-xs text-neutral-300 mt-0.5">Archived {fmtDate(item.archived_at)} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-danger-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
   </div>
   <div className="flex gap-2 shrink-0">
   <Btn variant="success" size="sm" onClick={() => restoreItem(item)}>♻️ Restore</Btn>
@@ -865,14 +865,14 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const email = userProfile?.email || "";
   (propReqs.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
-    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" });
+    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + fmtDate(r.requested_at), data: r, link: "properties" });
   });
   (docExceptions.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
-    allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "tenants" });
+    allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + fmtDate(r.created_at), data: r, link: "tenants" });
   });
   if (userRole === "admin" || userRole === "owner") {
-    (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "roles" }));
+    (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + fmtDate(r.created_at), data: r, link: "roles" }));
   }
   // Tasks
   const t = tenants.data || [];
@@ -1237,7 +1237,7 @@ function ErrorLogDashboard({ companyId, showToast }) {
   <div className="flex items-center gap-2 mb-1 flex-wrap">
   <span className={"text-xs tnum px-1.5 py-0.5 rounded font-bold " + (e.severity === "critical" || e.severity === "error" ? "bg-danger-100 text-danger-700" : "bg-warning-100 text-warning-700")}>{e.error_code}</span>
   <span className="text-xs text-neutral-400 capitalize">{e.severity}</span>
-  <span className="text-xs text-neutral-300">{new Date(e.created_at).toLocaleString()}</span>
+  <span className="text-xs text-neutral-300">{fmtDateTime(e.created_at)}</span>
   {e.user_email && <span className="text-xs text-neutral-400">{e.user_email}</span>}
   {e.reported_by_user && <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">Reported</span>}
   </div>
@@ -1509,7 +1509,7 @@ function AuditTrail({ companyId }) {
   <DataTable
     columns={[
       { key: "time", label: "Time", className: "text-xs text-neutral-400 whitespace-nowrap",
-        render: log => (<>{new Date(log.created_at).toLocaleString()}</>) },
+        render: log => (<>{fmtDateTime(log.created_at)}</>) },
       { key: "user", label: "User", className: "text-neutral-700 font-medium text-xs",
         render: log => (<>{log.user_email}</>) },
       { key: "role", label: "Role",

@@ -14,6 +14,7 @@
 // class, and strand the whole ledger on the old one.
 
 import JSZip from "jszip";
+import { excelDate, EXCEL_DATE_FMT } from "./helpers";
 import {
   EXTRA_SHEETS, SHEET_RECURRING, UTILITY_RESPONSIBILITY, HOA_FREQUENCY,
   LOAN_TYPES, PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
@@ -250,7 +251,7 @@ function styleRow(ws, rowIdx, columns, record) {
       cell.fill = GAP_FILL;   // a blank on an existing row is something to fill in
     }
     if (c.numeric) cell.numFmt = c.integer ? "0" : "#,##0.00";
-    if (c.date) cell.numFmt = "yyyy-mm-dd";
+    if (c.date) cell.numFmt = EXCEL_DATE_FMT;
   });
 }
 
@@ -297,7 +298,7 @@ export async function buildTemplate(ExcelJS, {
   writeHeader(wsP, propertyColumns);
   properties.forEach((p, i) => {
     const row = wsP.getRow(i + 2);
-    propertyColumns.forEach((c, ci) => { row.getCell(ci + 1).value = p[c.key] ?? null; });
+    propertyColumns.forEach((c, ci) => { row.getCell(ci + 1).value = c.date ? excelDate(p[c.key]) : (p[c.key] ?? null); });
     styleRow(wsP, i + 2, propertyColumns, p);
   });
   for (let i = 0; i < blankRows; i++) styleRow(wsP, properties.length + 2 + i, propertyColumns, null);
@@ -315,7 +316,7 @@ export async function buildTemplate(ExcelJS, {
   writeHeader(wsT, tenantColumns);
   tenants.forEach((t, i) => {
     const row = wsT.getRow(i + 2);
-    tenantColumns.forEach((c, ci) => { row.getCell(ci + 1).value = t[c.key] ?? null; });
+    tenantColumns.forEach((c, ci) => { row.getCell(ci + 1).value = c.date ? excelDate(t[c.key]) : (t[c.key] ?? null); });
     styleRow(wsT, i + 2, tenantColumns, t);
   });
   for (let i = 0; i < blankRows; i++) styleRow(wsT, tenants.length + 2 + i, tenantColumns, null);
@@ -344,7 +345,7 @@ export async function buildTemplate(ExcelJS, {
     const rows = isAdd ? [] : (extras[key] || []);
     rows.forEach((r, i) => {
       const row = ws.getRow(i + 2);
-      columns.forEach((c, ci) => { row.getCell(ci + 1).value = r[c.key] ?? null; });
+      columns.forEach((c, ci) => { row.getCell(ci + 1).value = c.date ? excelDate(r[c.key]) : (r[c.key] ?? null); });
       styleRow(ws, i + 2, columns, r);
     });
     for (let i = 0; i < blankRows; i++) styleRow(ws, rows.length + i + 2, columns, null);

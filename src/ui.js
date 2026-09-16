@@ -1463,3 +1463,50 @@ function FitToWidth({ children, minScale = 0.45 }) {
     </div>
   );
 }
+
+// ---- detail pages -------------------------------------------------------
+// TenantPage and PropertyPage are the same shape: an identity header, a strip
+// of reference panels, then cards. These four were written twice, once in
+// each, which is the duplication this file exists to absorb.
+export function DetailPanel({ title, children }) {
+  return (
+    <section className="p-3 border-r border-brand-50 last:border-r-0 max-md:border-r-0 max-md:border-b">
+      <h3 className="text-[10.5px] font-semibold tracking-[0.07em] uppercase text-neutral-400 mb-1.5">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+export function DetailRow({ label, children, tone }) {
+  return (
+    <div className="flex justify-between gap-3 text-[13px] py-0.5">
+      <span className="text-neutral-400">{label}</span>
+      <span className={tone === "warn" ? "text-warn-700 font-semibold" : "text-neutral-700"}>{children}</span>
+    </div>
+  );
+}
+
+export function DetailCard({ title, sub, action, children, flush }) {
+  return (
+    <div className="bg-white border border-brand-50 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-brand-50">
+        <h2 className="text-sm font-semibold flex-1 text-neutral-700">{title}</h2>
+        {sub && <span className="text-xs text-neutral-400">{sub}</span>}
+        {action}
+      </div>
+      <div className={flush ? "" : "px-4 py-3.5"}>{children}</div>
+    </div>
+  );
+}
+
+// A record's own contradictions, stated where they are true rather than
+// collected on a dashboard nobody opens.
+export function DetailAlert({ children, fix, onFix }) {
+  return (
+    <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-[13.5px] text-neutral-600">
+      <span className="material-icons-outlined text-base text-warn-600">warning_amber</span>
+      <div className="flex-1">{children}</div>
+      {fix && <TextLink tone="brand" size="xs" onClick={onFix} className="whitespace-nowrap">{fix}</TextLink>}
+    </div>
+  );
+}

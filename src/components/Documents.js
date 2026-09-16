@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
-import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, DOC_TYPES, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel} from "../utils/helpers";
+import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, DOC_TYPES, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -239,7 +239,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
           <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span>
         </>) },
       { key: "date", label: "Date", className: "text-neutral-400",
-        render: d => (<>{d.uploaded_at?.slice(0, 10)}</>) },
+        render: d => (<>{fmtDate(d.uploaded_at)}</>) },
       { key: "tenant_visible", label: "Tenant Visible",
         render: d => (<>{d.tenant_visible ? "✅" : "🔒"}</>) },
       { key: "actions", label: "Actions",
@@ -1201,7 +1201,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   function renderSignaturesBlock(sigs) {
   if (!sigs || sigs.length === 0) return "";
   const rows = sigs.map(s => {
-    const dateStr = s.signed_at ? new Date(s.signed_at).toLocaleString() : "";
+    const dateStr = s.signed_at ? fmtDateTime(s.signed_at) : "";
     let sigVisual = "";
     if (s.signature_data) {
       if (s.signature_data.startsWith("data:image")) {
@@ -1242,7 +1242,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
         + '<div style="color:' + printTheme.inkMuted + ';">' + escapeForHtml(s.signer_email || "") + '</div>'
         + '<div style="color:' + printTheme.inkSubtle + ';text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>' },
     { label: "Signed at", style: `font-size:11px;color:${printTheme.inkStrong};vertical-align:top`,
-      render: s => (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:' + printTheme.danger + ';">Not signed</span>') },
+      render: s => (s.signed_at ? escapeForHtml(fmtDateTime(s.signed_at)) : '<span style="color:' + printTheme.danger + ';">Not signed</span>') },
     { label: "IP", style: `font-size:10px;color:${printTheme.inkMuted};vertical-align:top`,
       render: s => escapeForHtml(s.signer_ip || "\u2014") },
     { label: "Integrity hash", style: `font-size:10px;color:${printTheme.inkMuted};vertical-align:top;font-family:monospace;word-break:break-all`,
@@ -1263,15 +1263,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     + '<ul style="padding-left:20px;">'
     + '<li><strong>Document ID:</strong> ' + escapeForHtml(doc.id) + '</li>'
     + (doc.property_address ? '<li><strong>Property:</strong> ' + escapeForHtml(doc.property_address) + '</li>' : '')
-    + '<li><strong>Envelope sent:</strong> ' + escapeForHtml(doc.envelope_sent_at ? new Date(doc.envelope_sent_at).toLocaleString() : "—") + '</li>'
-    + '<li><strong>Envelope completed:</strong> ' + escapeForHtml(doc.envelope_completed_at ? new Date(doc.envelope_completed_at).toLocaleString() : "not yet complete") + '</li>'
+    + '<li><strong>Envelope sent:</strong> ' + escapeForHtml(doc.envelope_sent_at ? fmtDateTime(doc.envelope_sent_at) : "—") + '</li>'
+    + '<li><strong>Envelope completed:</strong> ' + escapeForHtml(doc.envelope_completed_at ? fmtDateTime(doc.envelope_completed_at) : "not yet complete") + '</li>'
     + '<li><strong>Signers:</strong> ' + signedCount + ' of ' + total + ' completed</li>'
     + '</ul>'
     + '</div>'
     + '<div style="margin-bottom:24px;">' + printTable({ columns: SIG_COLUMNS, rows: sigs || [] }) + '</div>' 
     + (uaList ? '<div style="margin-top:16px;padding:12px;background:' + printTheme.surfaceMuted + ';border-radius:6px;"><div style="font-size:10px;font-weight:600;color:' + printTheme.inkMuted + ';margin-bottom:6px;">BROWSER INFORMATION</div>' + uaList + '</div>' : '')
     + '<div style="margin-top:32px;padding-top:16px;border-top:1px solid ' + printTheme.borderLight + ';font-size:10px;color:' + printTheme.inkSubtle + ';text-align:center;">'
-    + 'Each integrity hash is a SHA-256 digest over the document body, signer email, signature payload, and timestamp at the moment of signing. Any alteration to the signed document or signature will cause the hash to no longer match. Certificate generated ' + escapeForHtml(new Date().toLocaleString()) + '.'
+    + 'Each integrity hash is a SHA-256 digest over the document body, signer email, signature payload, and timestamp at the moment of signing. Any alteration to the signed document or signature will cause the hash to no longer match. Certificate generated ' + escapeForHtml(fmtDateTime(new Date())) + '.'
     + '</div>'
     + '</div>';
   }
@@ -2529,7 +2529,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {envBadge && <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + envBadge.cls}>{envBadge.label}</span>}
   {d.tenant_name && <span className="text-xs text-neutral-400">{d.tenant_name}</span>}
   {d.property_address && <span className="text-xs text-neutral-400">· {d.property_address}</span>}
-  <span className="text-xs text-neutral-400">· {new Date(d.created_at).toLocaleDateString()}</span>
+  <span className="text-xs text-neutral-400">· {fmtDate(d.created_at)}</span>
   </div>
   </div>
   <div className="flex gap-2 shrink-0">
@@ -2559,7 +2559,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="material-icons-outlined text-sm">{icon}</span>
   <span className="font-semibold truncate">{s.signer_name || s.signer_email}</span>
   <span className="text-neutral-400 truncate">· {s.signer_role}</span>
-  {s.signed_at && <span className="text-neutral-400 ml-auto shrink-0">{new Date(s.signed_at).toLocaleDateString()}</span>}
+  {s.signed_at && <span className="text-neutral-400 ml-auto shrink-0">{fmtDate(s.signed_at)}</span>}
   {!s.signed_at && s.status === "sent" && <TextLink tone="brand" size="xs" className="ml-auto shrink-0" onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))}>copy link</TextLink>}
   </div>
   );

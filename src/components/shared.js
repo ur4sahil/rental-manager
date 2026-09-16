@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
@@ -335,7 +335,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
   <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {entry.tenantName}</span></div>
   <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
-  <div className="flex justify-between mt-1"><span>Next charge</span><span className="font-medium">{nextPostDate}</span></div>
+  <div className="flex justify-between mt-1"><span>Next charge</span><span className="font-medium">{fmtDate(nextPostDate)}</span></div>
   </div>
   </div>
   <div className="flex gap-3 mt-4">
@@ -416,7 +416,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
 }
 
 export function generatePaymentReceipt(payment, companyName = "Housify") {
-  const receiptDate = parseLocalDate(payment.date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const receiptDate = fmtDate(payment.date);
   const receiptNum = "REC-" + String(payment.id || shortId()).slice(-8).toUpperCase();
 
   const html = `

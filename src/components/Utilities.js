@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, exportToCSV } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -16,9 +16,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   { label: "Provider", key: "provider" },
   { label: "Type", key: "type" },
   { label: "Amount", key: "amount" },
-  { label: "Due Date", key: "due" },
+  { label: "Due Date", key: u => fmtDate(u.due) },
   { label: "Status", key: "status" },
-  ], "utilities_" + new Date().toLocaleDateString(), showToast);
+  ], "utilities_" + fmtDate(new Date()), showToast);
   }
   const [utilities, setUtilities] = useState([]);
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
@@ -274,7 +274,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div key={i} className="bg-brand-50/30 rounded-lg px-4 py-3">
   <div className="flex justify-between">
   <span className="text-sm font-semibold text-positive-600">{a.action}</span>
-  <span className="text-xs text-neutral-400">{new Date(a.paid_at).toLocaleString()}</span>
+  <span className="text-xs text-neutral-400">{fmtDateTime(a.paid_at)}</span>
   </div>
   <div className="text-sm text-neutral-500 mt-1">${a.amount} — {a.property}</div>
   </div>
@@ -344,7 +344,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="grid grid-cols-2 gap-2 text-xs mt-2">
   <div><span className="text-subtle-400">Account #</span><div className="font-semibold text-subtle-700">{acct.account_number || "—"}</div></div>
   <div><span className="text-subtle-400">Type</span><div className="font-semibold text-subtle-700 capitalize">{acct.account_type?.replace("_", "/")}</div></div>
-  <div><span className="text-subtle-400">Last Checked</span><div className="font-semibold text-subtle-700">{acct.last_checked_at ? new Date(acct.last_checked_at).toLocaleDateString() : "Never"}</div></div>
+  <div><span className="text-subtle-400">Last Checked</span><div className="font-semibold text-subtle-700">{fmtDate(acct.last_checked_at, "Never")}</div></div>
   <div><span className="text-subtle-400">Frequency</span><div className="font-semibold text-subtle-700 capitalize">{acct.check_frequency}</div></div>
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
@@ -362,7 +362,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="space-y-2">
   {autoBills.map(bill => (
   <div key={bill.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 flex items-center gap-4">
-  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
+  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
   {bill.status === "pending_review" && <Btn variant="positive" size="sm" onClick={() => authorizeBillPayment(bill, "default_on_file")}>Authorize Pay</Btn>}
@@ -384,7 +384,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="space-y-2">
   {autoJobs.map(job => (
   <div key={job.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 flex items-center gap-4">
-  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-subtle-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
+  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-subtle-400">{job.triggered_by} · {fmtDateTime(job.created_at)}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-positive-100 text-positive-700" : job.status === "failed" ? "bg-danger-100 text-danger-700" : job.status === "running" ? "bg-info-100 text-info-700" : "bg-subtle-100 text-subtle-500")}>{job.status}</span>
   {job.error_message && <div className="text-xs text-danger-500 max-w-xs truncate">{job.error_message}</div>}
   </div>
@@ -464,9 +464,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-  <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{u.due}</div></div>
+  <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
   <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold capitalize text-neutral-700">{u.responsibility}</div></div>
-  <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
+  <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   <div className="mt-3 flex gap-2">
   {u.status === "pending" && <TextLink tone="positive" size="xs" underline={false} onClick={() => approvePay(u)} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Pay</TextLink>}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, PageHeader, DataTable, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -90,7 +90,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <PageHeader title="Stripe Payments" subtitle="Online rent received via Stripe. Non-Stripe payments live in Accounting." />
   <div className="flex gap-2">
   <Btn variant="secondary" onClick={() => exportToCSV(payments, [
-  { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" },
+  { label: "Date", key: r => fmtDate(r.date) }, { label: "Tenant", key: "tenant" },
   { label: "Property", key: "property" }, { label: "Amount", key: "amount" },
   { label: "Type", key: "type" }, { label: "Method", key: "method" },
   { label: "Reference", key: "reference" },
@@ -134,7 +134,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <DataTable
     columns={[
       { key: "date", label: "Date", className: "text-neutral-500",
-        render: p => (<>{p.date}</>) },
+        render: p => (<>{fmtDate(p.date)}</>) },
       { key: "je", label: "JE #", className: "tnum text-xs text-positive-600",
         render: p => (<>{p.number || "—"}</>) },
       { key: "tenant", label: "Tenant", className: "font-medium text-neutral-800",
@@ -326,7 +326,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   }
   }
   if (s.end_date && next > parseLocalDate(s.end_date)) return "Expired";
-  return next.toLocaleDateString();
+  return fmtDate(next);
   }
 
   if (loading) return <Spinner />;
@@ -397,8 +397,8 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
   <div><span className="text-neutral-400">Frequency</span><div className="font-semibold text-neutral-700 capitalize">{s.frequency}</div></div>
   <div><span className="text-neutral-400">Day</span><div className="font-semibold text-neutral-700">{s.day_of_month}{s.day_of_month === "1" ? "st" : s.day_of_month === "2" ? "nd" : s.day_of_month === "3" ? "rd" : "th"} of month</div></div>
-  <div><span className="text-neutral-400">Start</span><div className="font-semibold text-neutral-700">{s.start_date}</div></div>
-  <div><span className="text-neutral-400">End</span><div className="font-semibold text-neutral-700">{s.end_date || "Ongoing"}</div></div>
+  <div><span className="text-neutral-400">Start</span><div className="font-semibold text-neutral-700">{fmtDate(s.start_date)}</div></div>
+  <div><span className="text-neutral-400">End</span><div className="font-semibold text-neutral-700">{fmtDate(s.end_date) || "Ongoing"}</div></div>
   </div>
   <div className="mt-2 flex items-center justify-between">
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>

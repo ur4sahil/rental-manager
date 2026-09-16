@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, shortId, fmtDate, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -2378,7 +2378,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         const abs = Math.abs(Number(t.amount) || 0);
         const signed = t.direction === "outflow" ? -abs : abs;
         ws.addRow({
-          date: t.posted_date,
+          date: excelDate(t.posted_date),
           feed: feedName(t.bank_account_feed_id),
           source: t.source_type || "",
           description: t.bank_description_clean || t.bank_description_raw || "",
@@ -2392,6 +2392,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           reference: t.reference_number || "",
         });
       }
+      ws.getColumn("date").numFmt = EXCEL_DATE_FMT;
       ws.getColumn("signed").numFmt = '"$"#,##0.00;[Red]"-$"#,##0.00';
       ws.getColumn("absAmount").numFmt = '"$"#,##0.00';
       const buf = await wb.xlsx.writeBuffer();
@@ -2501,7 +2502,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {!isInactive && isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
         <div className="flex justify-between items-center mt-2">
           <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
-          {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
+          {feed.last_synced_at && <span className="text-xs text-neutral-400">{fmtDate(feed.last_synced_at)}</span>}
           {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
         {/* Per-card live reconciliation block. Replaces the page-level
@@ -2823,7 +2824,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         label: <Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" />,
         render: txn => (<span onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></span>) }] : []),
       { key: "posted_date", label: "DATE", className: "text-neutral-600 whitespace-nowrap",
-        render: txn => txn.posted_date },
+        render: txn => fmtDate(txn.posted_date) },
       { key: "description", label: "DESCRIPTION", className: "text-neutral-800 max-w-md",
         render: txn => (<>
         {txn.bank_description_clean || txn.bank_description_raw}
@@ -2929,7 +2930,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 {d.je?.status && <span className={`px-1.5 py-0.5 rounded-full ${d.je.status === "posted" ? "bg-success-100 text-success-700" : d.je.status === "voided" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700"}`}>{d.je.status}</span>}
                 <span className="text-neutral-400">·</span>
                 <span className="text-neutral-600">{d.kind}</span>
-                {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{d.je.date}</span></>}
+                {d.je?.date && <><span className="text-neutral-400">·</span><span className="text-neutral-600">{fmtDate(d.je.date)}</span></>}
                 <span className="ml-auto text-neutral-500">
                   {txn.accepted_by ? <>Accepted by <strong className="text-neutral-700">{txn.accepted_by}</strong></> : "No acceptor recorded"}
                   {txn.accepted_at ? ` on ${formatLocalDate(new Date(txn.accepted_at))}` : ""}
@@ -3245,7 +3246,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <DataTable
           columns={[
             { key: "date", label: "Date",
-              render: r => (<>{r.date || "—"}</>) },
+              render: r => (<>{fmtDate(r.date) || "—"}</>) },
             { key: "description", label: "Description", className: "truncate max-w-48",
               render: r => (<>{r.description}</>) },
             { key: "amount", label: "Amount", align: "right", className: r => (`tnum ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`),

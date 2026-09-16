@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink, DataTable} from "../ui";
-import { formatLocalDate, formatCurrency, parseLocalDate, propertyLabel} from "../utils/helpers";
+import { formatLocalDate, formatCurrency, parseLocalDate, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -271,7 +271,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                                                 <div className="text-2xs text-neutral-400">{b.tax_year}</div>
                     </>) },
                   { key: "due", label: "Due", className: "tnum text-xs text-neutral-600",
-                    render: b => (<>{b.due_date}</>) },
+                    render: b => (<>{fmtDate(b.due_date)}</>) },
                   { key: "expected", label: "Expected", align: "right", className: "tnum text-xs text-neutral-600",
                     render: b => (<>{b.expected_amount ? formatCurrency(b.expected_amount) : "—"}</>) },
                   { key: "paid", label: "Paid", align: "right", className: "tnum text-xs text-neutral-600",

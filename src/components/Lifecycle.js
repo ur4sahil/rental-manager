@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, ACTIVE_LEASE } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, ACTIVE_LEASE, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -504,7 +504,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="space-y-3 text-sm">
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Tenant</span><span className="font-semibold text-neutral-700">{selectedTenant?.name}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{moveOutDate}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{fmtDate(moveOutDate)}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-success-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit → Tenant Ledger</span><span className="font-semibold text-neutral-700">${safeNum(depositAmount).toFixed(2)}</span></div>
   {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>}
@@ -907,12 +907,12 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Key Dates</div>
   <div className="grid grid-cols-2 gap-2 text-sm">
-  <div><span className="text-neutral-400 text-xs block">Notice Sent</span><span className="font-semibold text-neutral-700">{selectedCase.notice_date || "—"}</span></div>
-  <div><span className="text-neutral-400 text-xs block">Cure Deadline</span><span className="font-semibold text-danger-600">{selectedCase.cure_deadline || "—"}</span></div>
-  {selectedCase.filing_date && <div><span className="text-neutral-400 text-xs block">Filed</span><span className="font-semibold text-neutral-700">{selectedCase.filing_date}</span></div>}
-  {selectedCase.hearing_date && <div><span className="text-neutral-400 text-xs block">Hearing</span><span className="font-semibold text-neutral-700">{selectedCase.hearing_date}</span></div>}
-  {selectedCase.judgment_date && <div><span className="text-neutral-400 text-xs block">Judgment</span><span className="font-semibold text-neutral-700">{selectedCase.judgment_date}</span></div>}
-  {selectedCase.lockout_date && <div><span className="text-neutral-400 text-xs block">Lockout</span><span className="font-semibold text-neutral-700">{selectedCase.lockout_date}</span></div>}
+  <div><span className="text-neutral-400 text-xs block">Notice Sent</span><span className="font-semibold text-neutral-700">{fmtDate(selectedCase.notice_date) || "—"}</span></div>
+  <div><span className="text-neutral-400 text-xs block">Cure Deadline</span><span className="font-semibold text-danger-600">{fmtDate(selectedCase.cure_deadline) || "—"}</span></div>
+  {selectedCase.filing_date && <div><span className="text-neutral-400 text-xs block">Filed</span><span className="font-semibold text-neutral-700">{fmtDate(selectedCase.filing_date)}</span></div>}
+  {selectedCase.hearing_date && <div><span className="text-neutral-400 text-xs block">Hearing</span><span className="font-semibold text-neutral-700">{fmtDate(selectedCase.hearing_date)}</span></div>}
+  {selectedCase.judgment_date && <div><span className="text-neutral-400 text-xs block">Judgment</span><span className="font-semibold text-neutral-700">{fmtDate(selectedCase.judgment_date)}</span></div>}
+  {selectedCase.lockout_date && <div><span className="text-neutral-400 text-xs block">Lockout</span><span className="font-semibold text-neutral-700">{fmtDate(selectedCase.lockout_date)}</span></div>}
   </div>
   </div>
 
@@ -1021,8 +1021,8 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   ))}
   </div>
   <div className="flex gap-4 mt-2 text-xs text-neutral-400">
-  <span>Notice: {c.notice_date}</span>
-  <span>Cure by: {c.cure_deadline}</span>
+  <span>Notice: {fmtDate(c.notice_date)}</span>
+  <span>Cure by: {fmtDate(c.cure_deadline)}</span>
   {safeNum(c.total_costs) > 0 && <span className="text-danger-500">Costs: {formatCurrency(c.total_costs)}</span>}
   </div>
   </div>

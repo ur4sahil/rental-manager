@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { supabase } from "../supabase";
+import TenantPage from "./TenantPage";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -94,9 +95,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   { label: "Rent", key: "rent" },
   { label: "Balance", key: "balance" },
   { label: "Status", key: "status" },
-  { label: "Lease Start", key: "lease_start" },
-  { label: "Lease End", key: "lease_end" },
-  ], "tenants_" + new Date().toLocaleDateString(), showToast);
+  { label: "Lease Start", key: t => fmtDate(t.lease_start) },
+  { label: "Lease End", key: t => fmtDate(t.lease_end) },
+  ], "tenants_" + fmtDate(new Date()), showToast);
   }
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -220,9 +221,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     urlSyncing.current = true;
     setSelectedTenant(t);
     setActivePanel(panel);
-    if (panel === "documents") fetchTenantDocs(t);
-    if (panel === "ledger") openLedger(t);
-    if (panel === "messages") openMessages(t);
+    // The page shows the ledger and the documents together, so a deep link
+    // has to load both. The drawer could defer each to the tab that owned it.
+    openLedger(t);
+    openMessages(t);
     urlSyncing.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1210,15 +1212,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </head>
   <body>
   <h1>RESIDENTIAL LEASE AGREEMENT</h1>
-  <p style="text-align:center;color:${printTheme.inkMuted};">Generated on ${new Date().toLocaleDateString()}</p>
+  <p style="text-align:center;color:${printTheme.inkMuted};">Generated on ${fmtDate(new Date())}</p>
   <h2>Parties</h2>
   <div class="field"><strong>Tenant:</strong> ${escapeHtml(tenant.name)}</div>
   <div class="field"><strong>Email:</strong> ${escapeHtml(tenant.email)}</div>
   <div class="field"><strong>Property:</strong> ${escapeHtml(tenant.property)}</div>
   <h2>Lease Terms</h2>
   <div class="field"><strong>Monthly Rent:</strong> $${escapeHtml(String(tenant.rent))}/month</div>
-  <div class="field"><strong>Move-In Date:</strong> ${escapeHtml(tenant.move_in || "\u2014")}</div>
-  <div class="field"><strong>Move-Out Date:</strong> ${escapeHtml(tenant.move_out || "\u2014")}</div>
+  <div class="field"><strong>Move-In Date:</strong> ${escapeHtml(fmtDate(tenant.move_in, "\u2014"))}</div>
+  <div class="field"><strong>Move-Out Date:</strong> ${escapeHtml(fmtDate(tenant.move_out, "\u2014"))}</div>
   <h2>Terms & Conditions</h2>
   <div class="clause">1. <strong>Rent Payment.</strong> Tenant agrees to pay $${escapeHtml(String(tenant.rent))} per month on the 1st of each month. A late fee will be applied after the grace period.</div>
   <div class="clause">2. <strong>Security Deposit.</strong> A security deposit equal to one month's rent is required prior to occupancy and will be returned within " + (companySettings?.deposit_return_days || 30) + " days of move-out, less any deductions for damages.</div>
@@ -1246,7 +1248,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button class="btn btn-primary" onclick="saveAndPrint()">✓ Sign & Save as PDF</button>
   <button class="btn btn-clear" onclick="window.print()">\u{1F5A8}\uFE0F Print</button>
   </div>
-  <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">✅ SIGNED — ${new Date().toLocaleDateString()}</div>
+  <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">✅ SIGNED — ${fmtDate(new Date())}</div>
   <script>
   function makeDrawable(canvasId) {
   const canvas = document.getElementById(canvasId);
@@ -1280,8 +1282,113 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   if (loading) return <Spinner />;
 
-  return (
-  <div>
+
+  // ---- what the tenant PAGE calls --------------------------------------
+  //
+  // These four were inline arrow functions buried in a 400-line drawer.
+  // Naming them is what let the markup leave this file for TenantPage.js:
+  // the writes stay here, beside the data, the guards and the toasts.
+
+  // Only a current tenant has a lease to close. This used to navigate
+  // regardless, so a past tenant landed on the Move-Out wizard, met an error
+  // there, and had lost the panel they were working in. Say it where the
+  // click happened and stay put.
+  async function pageMoveOut(t) {
+    const st = String(t?.lease_status || "").toLowerCase();
+    if (st !== "current" && st !== "active") {
+      await showConfirm({
+        message: `${t?.name} is marked "${st || "unknown"}", so there is no active lease to close.\n\nMove-Out applies to a current tenant. If they are still in the property, set them to Current first — Edit tenant, or the Review tab.`,
+        title: "No active lease to close",
+        confirmText: "Got it", cancelText: "Close", variant: "notice",
+      });
+      return;
+    }
+    setPage("moveout");
+  }
+
+  async function pageSetDocType(d, nextType) {
+    const prevType = d.type;
+    const { error } = await supabase.from("documents").update({ type: nextType }).eq("id", d.id).eq("company_id", companyId);
+    if (error) { pmError("PM-7004", { raw: error, context: "reclassify document" }); return; }
+    if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, { tenantId: selectedTenant.id, tenantName: selectedTenant.name, property: selectedTenant.property });
+    showToast(`Classified as ${docTypeLabel(nextType)}`, "success");
+    logAudit("update", "documents", `Reclassified document "${d.name}" from ${prevType || "(none)"} to ${nextType}`, d.id, userProfile?.email, userRole, companyId);
+    await fetchTenantDocs(selectedTenant);
+    fetchTenants();
+  }
+
+  async function pageViewDoc(d) {
+    const url = await getSignedUrl("documents", d.file_name || d.url);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  // Admin/owner only. Waiving is per-requirement: the other required docs
+  // stay required, which is why the label is stored rather than a flag.
+  async function pageWaive(t, label) {
+    if (!guardSubmit("waive_" + label)) return;
+    try {
+      if (!await showConfirm({ message: `Waive "${label}" for ${t.name}? Other required docs stay required.` })) return;
+      const current = (() => {
+        const v = t.approved_doc_exceptions;
+        if (Array.isArray(v)) return v;
+        if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
+        return [];
+      })();
+      const next = Array.from(new Set([...current, label]));
+      const { error } = await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", t.id);
+      if (error) { pmError("PM-7004", { raw: error, context: "waive required document" }); return; }
+      // A request already in the queue for this doc is now answered.
+      const pendingReq = (docExceptions || []).find(r => r.status === "pending" && r.tenant_name === t.name && r.doc_type === label);
+      if (pendingReq) {
+        await supabase.from("doc_exception_requests")
+          .update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() })
+          .eq("id", pendingReq.id);
+        if (pendingReq.requested_by) addNotification("✅", `Your doc exception for ${t.name} (${label}) was approved.`, { recipient: pendingReq.requested_by, type: "doc_exception" });
+      }
+      if (t.email) addNotification("📄", `${label} requirement was waived on your account.`, { recipient: t.email, type: "doc_exception" });
+      logAudit("approve", "tenants", "Doc exception (" + label + ") approved for " + t.name, t.id, userProfile?.email, userRole, companyId);
+      showToast(`"${label}" waived for ${t.name}`, "success");
+      setSelectedTenant({ ...t, approved_doc_exceptions: next });
+      fetchTenants();
+      fetchDocExceptions();
+    } finally { guardRelease("waive_" + label); }
+  }
+
+  // Everyone else asks. The reviewer is the requester's assigned manager,
+  // falling back to the first active admin, so the request lands in an inbox
+  // rather than waiting to be discovered in Tasks & Approvals.
+  async function pageRequestException(t, label) {
+    if (!guardSubmit("reqExc_" + label)) return;
+    try {
+      if (!await showConfirm({ message: `Request an exception for "${label}" for ${t.name}? A manager will review.` })) return;
+      const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle();
+      let reviewerEmail = me?.manager_email || null;
+      if (!reviewerEmail) {
+        const { data: adm } = await supabase.from("company_members")
+          .select("user_email").eq("company_id", companyId).eq("role", "admin").eq("status", "active")
+          .limit(1).maybeSingle();
+        reviewerEmail = adm?.user_email || null;
+      }
+      const { error } = await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: t.name, property: t.property, requested_by: userProfile?.email || "", approver_email: reviewerEmail, doc_type: label }]);
+      if (error) { pmError("PM-7004", { raw: error, context: "request doc exception" }); return; }
+      if (reviewerEmail) {
+        addNotification("📋", `${userProfile?.email || "Staff"} requested a doc exception for ${t.name}: ${label}`, { recipient: reviewerEmail, type: "doc_exception" });
+        queueNotification("approval_pending", reviewerEmail, {
+          kind: "doc_exception", tenant: t.name, property: t.property,
+          doc_type: label, requested_by: userProfile?.email || "",
+        }, companyId);
+      }
+      addNotification("📤", `Exception request sent for ${t.name}: ${label}`, { type: "doc_exception" });
+      logAudit("request", "tenants", "Doc exception requested (" + label + ") for " + t.name, t.id, userProfile?.email, userRole, companyId);
+      showToast("Request submitted", "success");
+      fetchDocExceptions();
+    } finally { guardRelease("reqExc_" + label); }
+  }
+
+  // The renew/lease drawer still opens OVER the page, so it renders in both
+  // branches from one definition rather than being copied into each.
+  function renderLeasePanel() {
+    return (<>
   {activePanel && selectedTenant && activePanel === "lease" && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop">
@@ -1312,8 +1419,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ["Tenant", selectedTenant.name],
   ["Property", selectedTenant.property],
   ["Monthly Rent", selectedTenant.rent ? `${formatCurrency(selectedTenant.rent)}/mo` : "\u2014"],
-  ["Move-In Date", selectedTenant.move_in || "\u2014"],
-  ["Move-Out Date", selectedTenant.move_out || "\u2014"],
+  ["Move-In Date", fmtDate(selectedTenant.move_in, "\u2014")],
+  ["Move-Out Date", fmtDate(selectedTenant.move_out, "\u2014")],
   ["Lease Status", selectedTenant.lease_status],
   ].map(([l, v]) => (
   <div key={l} className="flex justify-between py-1.5 border-b border-brand-50/50">
@@ -1372,410 +1479,74 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   )}
+    </>);
+  }
 
-  {/* ===== TENANT DETAIL VIEW ===== */}
-  {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
-  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
-  <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop overflow-y-auto">
-  {/* Header */}
-  <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-6 text-white">
-  <div className="flex items-center justify-between">
-  <div className="flex items-center gap-4">
-  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">{selectedTenant.name?.[0]}</div>
-  <div>
-  <h2 className="text-xl font-bold">{selectedTenant.name}</h2>
-  <div className="text-brand-200 text-sm">{selectedTenant.property}</div>
-  </div>
-  </div>
-  <IconBtn icon="close" onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white" />
-  </div>
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "\u2014"}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : formatCurrency(0)}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
-  <div className="bg-white/10 rounded-lg px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "\u2014"}</div></div>
-  </div>
-  {selectedTenant.is_voucher && (
-  <div className="mt-3 bg-white/10 rounded-lg px-4 py-3">
-  <div className="flex items-center gap-2 mb-2"><span className="text-xs bg-highlight-400 text-white px-2 py-0.5 rounded-full font-bold">VOUCHER</span><span className="text-sm text-brand-200">{selectedTenant.voucher_number || ""}</span></div>
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-  <div><span className="text-brand-300">Voucher Portion</span><div className="font-bold text-white">{formatCurrency(selectedTenant.voucher_portion || 0)}</div></div>
-  <div><span className="text-brand-300">Tenant Portion</span><div className="font-bold text-white">{formatCurrency(selectedTenant.tenant_portion || 0)}</div></div>
-  <div><span className="text-brand-300">Re-exam Date</span><div className="font-bold text-white">{selectedTenant.reexam_date || "\u2014"}</div></div>
-  <div><span className="text-brand-300">Case Manager</span><div className="font-bold text-white">{selectedTenant.case_manager_name || "\u2014"}</div></div>
-  </div>
-  </div>
-  )}
-  </div>
+  // ---- the detail is a PAGE, not a drawer over the list -----------------
+  // Everything a tenant record holds fits on one screen; five tabs each
+  // hiding the other four did not make it smaller, only harder to read.
+  if (selectedTenant && activePanel) {
+    return (<>
+      {renderLeasePanel()}
+      <TenantPage
+        tenant={selectedTenant} ledger={ledger} docs={tenantDocs}
+        docExceptions={docExceptions} userRole={userRole}
+        onBack={closePanel}
+        onOpenProperty={t => setPage("properties", { openProperty: t.property })}
+        onEdit={startEdit}
+        onMessage={openMessages}
+        onInvite={inviteTenant}
+        onRenew={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }}
+        onMoveOut={pageMoveOut}
+        onArchive={t => deleteTenant(t.id, t.name)}
+        onAddEntry={() => setShowAddTxn(true)}
+        onSetRent={startEdit}
+        onExportPdf={exportLedgerPDF}
+        onApplyLateFee={() => setPage("latefees")}
+        onPrepareFiling={() => setPage("evictions")}
+        onUploadDoc={t => setShowDocUpload({ property: t.property || "", tenant: t.name || "" })}
+        onViewDoc={pageViewDoc}
+        onSetDocType={pageSetDocType}
+        onWaiveDoc={pageWaive}
+        onRequestException={pageRequestException}
+        ledgerShowAll={ledgerShowAll}
+        onToggleLedgerAll={() => setLedgerShowAll(v => !v)}
+        lateFeeAction={safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0
+          ? <Btn variant="danger" size="sm" className="w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
+          : null}
+        addEntryForm={showAddTxn ? (
+          <div className="bg-brand-50/30 rounded-xl p-3">
+            <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
+            <div className="grid grid-cols-3 gap-2">
+              <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} aria-label="Transaction type">
+                <option value="charge">Charge</option>
+                <option value="payment">Payment</option>
+                <option value="credit">Credit</option>
+                <option value="late_fee">Late Fee</option>
+              </Select>
+              <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
+              <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Btn size="sm" className="flex-1" onClick={addLedgerEntry}>Add Transaction</Btn>
+              <Btn size="sm" variant="slate" onClick={() => setShowAddTxn(false)}>Cancel</Btn>
+            </div>
+          </div>
+        ) : null}
+        messagesPanel={<>
+          <MessageThread messages={messages} viewerRole={userRole || "admin"} viewerName={userProfile?.name || "You"}
+            tenantName={selectedTenant?.name} onDelete={deleteStaffMessage} emptyLabel="No messages yet" />
+          <MessageComposer value={newMessage} onChange={setNewMessage} onSend={sendMessage} sending={sendingMsg}
+            attachment={msgAttachment} onAttachmentChange={setMsgAttachment} showToast={showToast}
+            placeholder={"Message " + selectedTenant.name + "…"} />
+        </>}
+      />
+    </>);
+  }
 
-  {/* Contact Info */}
-  <div className="px-6 py-4 border-b border-brand-50">
-  <div className="space-y-2 text-sm">
-  <div><span className="text-xs text-neutral-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-brand-600 hover:underline break-all">{selectedTenant.email || "\u2014"}</a></div>
-  <div className="grid grid-cols-2 gap-3">
-  <div><span className="text-xs text-neutral-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-brand-600 hover:underline">{selectedTenant.phone || "\u2014"}</a></div>
-  <div><span className="text-xs text-neutral-400 block">Lease Start</span><span className="text-neutral-700">{selectedTenant.lease_start || selectedTenant.move_in || "\u2014"}</span></div>
-  </div>
-  </div>
-  </div>
 
-  {/* Tab navigation */}
-  <div className="flex border-b border-brand-50 px-6 overflow-x-auto">
-  {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
-  ))}
-  </div>
-
-  {/* Tab content */}
-  <div className="px-6 py-4 flex-1 overflow-y-auto">
-
-  {/* Ledger tab (default).
-      This is the ONLY reachable tenant ledger panel. A second, richer
-      copy used to sit inside the lease drawer above, permanently dead
-      behind that drawer's `activePanel === "lease"` gate. Hoisting it
-      would have put two ledgers on screen at once, so it was deleted
-      and its exclusive features — Export PDF, Apply Late Fee, the
-      inline Add Transaction form and the per-entry running balance —
-      were folded in here instead. */}
-  {(activePanel === "detail" || activePanel === "ledger") && (
-  <div>
-  <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-  <h3 className="text-sm font-semibold text-neutral-700">Transaction History</h3>
-  <div className="flex gap-2">
-  <Btn variant="danger" size="sm" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
-  <Btn variant="primary" size="sm" onClick={() => setShowAddTxn(v => !v)}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
-  {/* Carries where it came from, so posting the entry returns to THIS
-      tenant's ledger. It used to hand Accounting the bare string "newJE",
-      which told it to open the form but not where the user had been —
-      so every entry posted this way ended on the journal list. */}
-  <Btn variant="ghost" size="sm" onClick={() => setPage("accounting", { newJE: true, returnTo: { page: "tenants", openTenantId: selectedTenant?.id, tenantName: selectedTenant?.name, panel: "ledger" } })} title="Open the full journal entry form in Accounting">Full entry</Btn>
-  </div>
-  </div>
-  {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
-  <Btn variant="danger" size="sm" className="mb-3 w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
-  )}
-  {/* The add form used to sit open permanently, taking the top of the
-      panel and duplicating the New Entry button beside it. Behind a
-      toggle now. */}
-  {showAddTxn && (
-  <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
-  <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
-  <div className="grid grid-cols-3 gap-2">
-  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} aria-label="Transaction type">
-  <option value="charge">Charge</option>
-  <option value="payment">Payment</option>
-  <option value="credit">Credit</option>
-  <option value="late_fee">Late Fee</option>
-  </Select>
-  <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
-  <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
-  </div>
-  <div className="flex gap-2 mt-2">
-  <Btn size="sm" className="flex-1" onClick={addLedgerEntry}>Add Transaction</Btn>
-  <Btn size="sm" variant="slate" onClick={() => setShowAddTxn(false)}>Cancel</Btn>
-  </div>
-  </div>
-  )}
-  {ledger.length === 0 ? <EmptyState size="inline" title={"No transactions yet"} /> : (() => {
-  // A charge raises what is owed, a payment or credit lowers it.
-  // Everything else -- a write-off, an adjustment -- is a charge-side
-  // movement, which is why "Bad debt" used to show as green money in.
-  const isCredit = (e) => e.type === "payment" || e.type === "credit";
-  const charged = ledger.reduce((n, e) => n + (isCredit(e) ? 0 : Math.abs(safeNum(e.amount))), 0);
-  const paid = ledger.reduce((n, e) => n + (isCredit(e) ? Math.abs(safeNum(e.amount)) : 0), 0);
-  const rows = ledgerShowAll ? ledger : ledger.slice(0, 20);
   return (
-  <>
-  {/* Totals, so the panel answers "what happened here" without adding up
-      forty rows by eye. */}
-  <div className="grid grid-cols-3 gap-2 mb-3">
-  <div className="bg-danger-50 rounded-xl px-3 py-2 text-center">
-  <div className="text-2xs text-danger-600">Charged</div>
-  <div className="text-sm font-bold text-danger-700 tnum">{formatCurrency(charged)}</div>
-  </div>
-  <div className="bg-positive-50 rounded-xl px-3 py-2 text-center">
-  <div className="text-2xs text-positive-700">Paid / credited</div>
-  <div className="text-sm font-bold text-positive-700 tnum">{formatCurrency(paid)}</div>
-  </div>
-  <div className="bg-neutral-100 rounded-xl px-3 py-2 text-center">
-  <div className="text-2xs text-neutral-500">Balance</div>
-  <div className={"text-sm font-bold tnum " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-700" : "text-neutral-700")}>{formatCurrency(safeNum(selectedTenant.balance))}</div>
-  </div>
-  </div>
-
-  {/* Aligned columns. The amount and the running balance used to be
-      stacked in one right-hand block, which made a column of figures
-      impossible to scan. */}
-  <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-2xs font-semibold uppercase tracking-wide text-neutral-400 pb-1 border-b border-brand-50">
-  <div>Transaction</div><div className="text-right w-24">Amount</div><div className="text-right w-24">Balance</div>
-  </div>
   <div>
-  {rows.map((e, i) => {
-    // "Journal Entry #1478 Bad debt" leads with an internal number.
-    // Show the number quietly and let the description read first.
-    const m = String(e.description || "").match(/^Journal Entry #(\d+)\s*(.*)$/i);
-    const ref = m ? m[1] : null;
-    const label = m && m[2] ? m[2] : e.description;
-    const credit = isCredit(e);
-    return (
-    <div key={e.id || i} className="grid grid-cols-[1fr_auto_auto] gap-x-3 items-center py-2 border-b border-brand-50/50 text-sm">
-    <div className="min-w-0">
-    <div className="font-medium text-neutral-700 truncate">{label}</div>
-    <div className="text-xs text-neutral-400">{e.date}{ref ? ` · JE #${ref}` : ""}</div>
-    </div>
-    <div className={"text-right w-24 font-semibold tnum " + (credit ? "text-positive-600" : "text-danger-600")}>
-    {credit ? "+" : "\u2212"}{formatCurrency(Math.abs(safeNum(e.amount)))}
-    </div>
-    <div className="text-right w-24 text-xs text-neutral-500 tnum">
-    {e.balance != null ? formatCurrency(e.balance) : "\u2014"}
-    </div>
-    </div>
-    );
-  })}
-  </div>
-  {/* It used to cut off at 20 with nothing to say so. */}
-  {ledger.length > 20 && (
-  <div className="text-center pt-3">
-  <TextLink tone="brand" size="sm" onClick={() => setLedgerShowAll(v => !v)}>
-  {ledgerShowAll ? `Show first 20 only` : `Show all ${ledger.length} transactions`}
-  </TextLink>
-  </div>
-  )}
-  </>
-  );
-  })()}
-  </div>
-  )}
-
-  {/* Documents tab */}
-  {activePanel === "documents" && (
-  <div>
-  <h3 className="text-sm font-semibold text-neutral-700 mb-3">Tenant Documents</h3>
-  {/* Required docs checklist */}
-  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
-  <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
-  {REQUIRED_TENANT_DOCS.map(({ label, types, nameRe }) => {
-  // Shared with hasAllRequiredTenantDocs. This block used to carry its own
-  // copy of the rule, which still required the FILENAME to match -- so
-  // setting a document's type to "Lease" cleared doc_status while this list
-  // went on showing "Signed Lease Agreement" outstanding.
-  const uploaded = isRequiredDocMet(tenantDocs, { types, nameRe });
-  // Per-doc exception state. `approved_doc_exceptions` on the tenant
-  // row captures which specific required-docs have been waived
-  // individually (jsonb array of REQUIRED_TENANT_DOCS labels); a
-  // pending doc_exception_request with this label blocks further
-  // requests until a reviewer acts.
-  const approvedList = (() => {
-    const v = selectedTenant?.approved_doc_exceptions;
-    if (Array.isArray(v)) return v;
-    if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
-    return [];
-  })();
-  const isWaived = approvedList.includes(label);
-  const pendingReq = (docExceptions || []).find(r => r.status === "pending" && r.tenant_name === selectedTenant?.name && r.doc_type === label);
-  const satisfied = uploaded || isWaived;
-  const canApprove = userRole === "admin" || userRole === "owner";
-  return (
-  <div key={label} className="flex items-center gap-2 py-1 text-sm">
-  <span className={satisfied ? "text-positive-500" : "text-warn-400"}>{satisfied ? "\u2705" : "\u2610"}</span>
-  <span className={satisfied ? "text-neutral-700" : "text-warn-700"}>{label}</span>
-  {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
-  {isWaived && !uploaded && <span className="text-xs text-info-600 bg-info-50 px-2 py-0.5 rounded-full">Exception waived</span>}
-  {!uploaded && !isWaived && pendingReq && <span className="text-xs text-warn-700 bg-warn-100 px-2 py-0.5 rounded-full">Exception pending review</span>}
-  {!uploaded && !isWaived && !pendingReq && (
-    canApprove ? (
-      <TextLink tone="info" size="xs" onClick={async () => {
-        if (!guardSubmit("approveExcInline_" + label)) return;
-        try {
-          if (!await showConfirm({ message: `Waive "${label}" for ${selectedTenant.name}? Other required docs stay required.` })) return;
-          const next = Array.from(new Set([...approvedList, label]));
-          await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", selectedTenant.id);
-          // If a pending request existed for this doc, mark it
-          // resolved and notify the staff member who submitted it.
-          if (pendingReq) {
-            await supabase.from("doc_exception_requests")
-              .update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() })
-              .eq("id", pendingReq.id);
-            if (pendingReq.requested_by) addNotification("✅", `Your doc exception for ${selectedTenant.name} (${label}) was approved.`, { recipient: pendingReq.requested_by, type: "doc_exception" });
-          }
-          // Notify the tenant too — they'll see "X doc was waived"
-          // next time they open their portal. Scoped via recipient.
-          if (selectedTenant?.email) addNotification("📄", `${label} requirement was waived on your account.`, { recipient: selectedTenant.email, type: "doc_exception" });
-          logAudit("approve", "tenants", "Doc exception (" + label + ") approved for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
-          showToast(`"${label}" waived for ${selectedTenant.name}`, "success");
-          setSelectedTenant({ ...selectedTenant, approved_doc_exceptions: next });
-          fetchTenants();
-          fetchDocExceptions();
-        } finally { guardRelease("approveExcInline_" + label); }
-      }}>Admin: Waive</TextLink>
-    ) : (
-      <TextLink tone="warn" size="xs" onClick={async () => {
-        if (!guardSubmit("reqExcInline_" + label)) return;
-        try {
-          if (!await showConfirm({ message: `Request an exception for "${label}" for ${selectedTenant.name}? A manager will review.` })) return;
-          const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle();
-          // Resolve the reviewer: assigned manager_email if set,
-          // else first active admin. The notification lands in their
-          // inbox so they don't have to poll Tasks & Approvals to
-          // discover pending review work.
-          let reviewerEmail = me?.manager_email || null;
-          if (!reviewerEmail) {
-            const { data: adm } = await supabase.from("company_members")
-              .select("user_email").eq("company_id", companyId).eq("role", "admin").eq("status", "active")
-              .limit(1).maybeSingle();
-            reviewerEmail = adm?.user_email || null;
-          }
-          await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: reviewerEmail, doc_type: label }]);
-          if (reviewerEmail) {
-            addNotification("📋", `${userProfile?.email || "Staff"} requested a doc exception for ${selectedTenant.name}: ${label}`, { recipient: reviewerEmail, type: "doc_exception" });
-            queueNotification("approval_pending", reviewerEmail, {
-              kind: "doc_exception", tenant: selectedTenant.name, property: selectedTenant.property,
-              doc_type: label, requested_by: userProfile?.email || "",
-            }, companyId);
-          }
-          // Also drop a self-note so the requester sees the outbound
-          // request in their own Activity feed.
-          addNotification("📤", `Exception request sent for ${selectedTenant.name}: ${label}`, { type: "doc_exception" });
-          logAudit("request", "tenants", "Doc exception requested (" + label + ") for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
-          showToast("Request submitted", "success");
-          fetchDocExceptions();
-        } finally { guardRelease("reqExcInline_" + label); }
-      }}>Request Exception</TextLink>
-    )
-  )}
-  </div>
-  );
-  })}
-  </div>
-  {/* Uploaded docs list */}
-  {tenantDocs.length === 0 ? <EmptyState size="inline" title={"No documents uploaded for this tenant"} /> : (
-  <div className="space-y-2">
-  {tenantDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
-  <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
-  <div>
-  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400 flex items-center gap-2 flex-wrap mt-0.5">
-  {userRole === "tenant" ? <span>{docTypeLabel(d.type)}</span> : (
-  // Classifying a document is how an outstanding requirement gets cleared.
-  // Filenames cannot carry that meaning -- a scan called
-  // "Epson_11082024113258.pdf" is a renter's insurance certificate and no
-  // pattern will ever know it -- so saying what the file is has to be a
-  // control, not a label.
-  <select
-    value={DOC_TYPES.some(t => t.value === d.type) ? d.type : "Other"}
-    onClick={e => e.stopPropagation()}
-    onChange={async (e) => {
-      const nextType = e.target.value;
-      const prevType = d.type;
-      const { error } = await supabase.from("documents").update({ type: nextType }).eq("id", d.id).eq("company_id", companyId);
-      if (error) { pmError("PM-7004", { raw: error, context: "reclassify document" }); return; }
-      if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, { tenantId: selectedTenant.id, tenantName: selectedTenant.name, property: selectedTenant.property });
-      showToast(`Classified as ${docTypeLabel(nextType)}`, "success");
-      logAudit("update", "documents", `Reclassified document "${d.name}" from ${prevType || "(none)"} to ${nextType}`, d.id, userProfile?.email, userRole, companyId);
-      await fetchTenantDocs(selectedTenant);
-      fetchTenants();
-    }}
-    className="text-xs border border-neutral-200 rounded-md px-1.5 py-0.5 bg-white text-neutral-600 hover:border-brand-300 cursor-pointer"
-    title="Classify this document — this is what clears an outstanding requirement"
-  >
-    {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-  </select>
-  )}
-  <span>{d.uploaded_at?.slice(0, 10)}</span>
-  </div>
-  </div>
-  </div>
-  <div className="flex items-center gap-2">
-  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  {userRole !== "tenant" && <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
-  if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
-  const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
-  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
-  if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, { tenantId: selectedTenant.id, tenantName: selectedTenant.name, property: selectedTenant.property });
-  showToast("Document deleted: " + d.name, "success");
-  logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
-  fetchTenantDocs(selectedTenant);
-  }}  title="Delete document" className="flex items-center gap-1"><span className="material-icons-outlined text-sm">delete</span>Delete</TextLink>}
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
-  <Btn variant="primary" size="sm" className="mt-3" onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })}>Upload Documents</Btn>
-  </div>
-  )}
-
-  {/* Messages tab */}
-  {activePanel === "messages" && (
-  <div className="flex flex-col" style={{ minHeight: "400px" }}>
-  <h3 className="text-sm font-semibold text-neutral-700 mb-3">Messages</h3>
-  <div className="flex-1 flex flex-col rounded-xl border border-neutral-200 overflow-hidden" style={{ minHeight: "300px", maxHeight: "60vh" }}>
-  <MessageThread
-    messages={messages}
-    viewerRole={userRole || "admin"}
-    viewerName={userProfile?.name || "You"}
-    tenantName={selectedTenant?.name}
-    onDelete={deleteStaffMessage}
-    emptyLabel="No messages yet"
-  />
-  <MessageComposer
-    value={newMessage}
-    onChange={setNewMessage}
-    onSend={sendMessage}
-    sending={sendingMsg}
-    attachment={msgAttachment}
-    onAttachmentChange={setMsgAttachment}
-    showToast={showToast}
-    placeholder={"Message " + selectedTenant.name + "…"}
-  />
-  </div>
-  </div>
-  )}
-
-  {/* Actions tab */}
-  {activePanel === "actions" && (
-  <div className="grid grid-cols-2 gap-3">
-  <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-lg p-4 text-center hover:bg-brand-50/50 transition-all">
-  <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
-  </button>
-  <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-lg p-4 text-center hover:bg-highlight-100 transition-all">
-  <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
-  </button>
-  {/* The renewal form renders inside the Lease panel, so switching to it
-      is what makes this button do anything. Without that the click set
-      the state and nothing appeared. */}
-  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }} className="bg-positive-50 rounded-lg p-4 text-center hover:bg-positive-100 transition-all">
-  <div className="text-2xl mb-1">{"\u{1F504}"}</div><div className="text-sm font-semibold text-positive-700">Renew Lease</div>
-  </button>
-  {/* Only a current tenant can be moved out. This used to navigate
-      regardless, so a past tenant landed on the Move-Out wizard and met
-      an error there, having lost the panel they were working in. Say it
-      where the click happened and stay put. */}
-  <button onClick={async () => {
-    const st = String(selectedTenant?.lease_status || "").toLowerCase();
-    if (st !== "current" && st !== "active") {
-      await showConfirm({
-        message: `${selectedTenant?.name} is marked "${st || "unknown"}", so there is no active lease to close.\n\nMove-Out applies to a current tenant. If they are still in the property, set them to Current first — Actions → Edit Tenant, or the Review tab.`,
-        title: "No active lease to close",
-        confirmText: "Got it", cancelText: "Close", variant: "notice",
-      });
-      return;
-    }
-    setPage("moveout");
-  }} className="bg-notice-50 rounded-lg p-4 text-center hover:bg-notice-100 transition-all">
-  <div className="text-2xl mb-1"><span className="material-icons-outlined text-notice-600">exit_to_app</span></div><div className="text-sm font-semibold text-notice-700">Move-Out</div>
-  </button>
-  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-danger-50 rounded-lg p-4 text-center hover:bg-danger-100 transition-all">
-  <div className="text-2xl mb-1">{"\u{1F4E6}"}</div><div className="text-sm font-semibold text-danger-700">Archive Tenant</div>
-  </button>
-  </div>
-  )}
-  </div>
-  </div>
-  </div>
-  )}
 
   {/* Tab Navigation */}
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-brand-50 pb-3">
@@ -1805,7 +1576,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
           <div className="font-semibold text-neutral-800 truncate">{t.name}</div>
           <div className="text-xs text-neutral-500 truncate">
             {t.property || "no property"}
-            {t.lease_end_date ? ` · lease ended ${t.lease_end_date}` : ""}
+            {t.lease_end_date ? ` · lease ended ${fmtDate(t.lease_end_date)}` : ""}
             {safeNum(t.balance) ? ` · balance ${formatCurrency(t.balance)}` : ""}
           </div>
         </div>
@@ -1864,7 +1635,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }}>
   <div className="flex-1">
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
-  <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}{t.archived_by ? " by " + t.archived_by : ""}</div>
+  <div className="text-xs text-subtle-400">{t.property} · Archived {fmtDate(t.archived_at)}{t.archived_by ? " by " + t.archived_by : ""}</div>
   </div>
   <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
   </div>
@@ -1909,7 +1680,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {archivedDetail.leases.map((l, i) => (
   <div key={l.id || i} className="bg-neutral-50 rounded-lg p-3 mb-2">
   <div className="grid grid-cols-2 gap-2 text-xs">
-  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{fmtDate(l.start_date, "—")} → {fmtDate(l.end_date, "—")}</span></div>
   <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
   <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
   <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
@@ -1922,8 +1693,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   <div className="grid grid-cols-2 gap-3 text-xs">
   <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(archivedDetail.tenant.balance) > 0 ? "text-danger-500" : "text-positive-600")}>{archivedDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(archivedDetail.tenant.balance))) + (safeNum(archivedDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
-  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.move_out || "—"}</span></div>
-  <div><span className="text-neutral-400 block">Archived</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.archived_at ? new Date(archivedDetail.tenant.archived_at).toLocaleDateString() : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{fmtDate(archivedDetail.tenant.move_out, "—")}</span></div>
+  <div><span className="text-neutral-400 block">Archived</span><span className="font-medium text-neutral-700">{fmtDate(archivedDetail.tenant.archived_at, "—")}</span></div>
   <div><span className="text-neutral-400 block">Archived By</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.archived_by || "—"}</span></div>
   </div>
   </div>
@@ -1936,7 +1707,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
   <div>
   <div className="font-medium text-neutral-700">{e.description}</div>
-  <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(e.date)}{e.type ? " · " + e.type : ""}</div>
   </div>
   <div className="text-right">
   <div className={"font-semibold tnum " + (safeNum(e.amount) < 0 ? "text-positive-600" : "text-danger-500")}>{safeNum(e.amount) < 0 ? "+" : "-"}{formatCurrency(Math.abs(safeNum(e.amount)))}</div>
@@ -1955,7 +1726,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
   <div>
   <div className="font-medium text-neutral-700">{p.method || p.type || "Payment"}</div>
-  <div className="text-xs text-neutral-400">{p.date}{p.status ? " · " + p.status : ""}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(p.date)}{p.status ? " · " + p.status : ""}</div>
   </div>
   <div className="text-right font-semibold tnum text-positive-600">{formatCurrency(p.amount)}</div>
   </div>
@@ -1973,7 +1744,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
   <div>
   <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type || "Document"}{d.uploaded_at ? " · " + d.uploaded_at.slice(0, 10) : ""}</div>
+  <div className="text-xs text-neutral-400">{d.type || "Document"}{d.uploaded_at ? " · " + fmtDate(d.uploaded_at) : ""}</div>
   </div>
   </div>
   <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
@@ -1993,7 +1764,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     <div key={m.id} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (fromStaff ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
     <div>{m.message}</div>
     {m.attachment_name && <div className="text-xs text-neutral-500 italic mt-1">📎 {m.attachment_name}</div>}
-    <div className="text-xs text-neutral-400 mt-1">{m.sender || role}{m.created_at ? " · " + m.created_at.slice(0, 16).replace("T", " ") : ""}</div>
+    <div className="text-xs text-neutral-400 mt-1">{m.sender || role}{m.created_at ? " · " + fmtDateTime(m.created_at) : ""}</div>
     </div>
     );
   })}
@@ -2010,7 +1781,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-sm font-medium text-neutral-700">{w.issue || "Work order"}</div>
   <span className="text-xs bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full capitalize">{w.status || "—"}</span>
   </div>
-  <div className="text-xs text-neutral-400 mt-1">{w.created ? String(w.created).slice(0, 10) : ""}{w.priority ? " · " + w.priority : ""}{w.vendor_name ? " · " + w.vendor_name : ""}</div>
+  <div className="text-xs text-neutral-400 mt-1">{fmtDate(w.created)}{w.priority ? " · " + w.priority : ""}{w.vendor_name ? " · " + w.vendor_name : ""}</div>
   {w.notes && <div className="text-xs text-neutral-500 mt-2">{w.notes}</div>}
   </div>
   ))}
@@ -2059,7 +1830,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div key={r.id} className="bg-white rounded-xl border border-warn-100 px-4 py-3 flex items-center justify-between">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.tenant_name}</div>
-  <div className="text-xs text-neutral-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{r.property} · Requested by {r.requested_by} · {fmtDate(r.created_at)}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success" size="sm" onClick={async () => {

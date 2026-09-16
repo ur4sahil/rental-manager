@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { PageHeader, TextLink, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, priorityColors } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, priorityColors, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Badge, StatCard, Spinner } from "./shared";
 
@@ -233,7 +233,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="text-xs text-neutral-400 truncate">{propById[lic.property_id] || "Unknown property"}</div>
   </div>
   <div className="text-right shrink-0 ml-2">
-  <div className="text-sm font-semibold">{lic.expiry_date}</div>
+  <div className="text-sm font-semibold">{fmtDate(lic.expiry_date)}</div>
   <div className={`text-xs font-bold ${expired ? "text-danger-600" : daysLeft <= 30 ? "text-danger-500" : daysLeft <= 60 ? "text-warn-600" : "text-positive-600"}`}>{expired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`}</div>
   </div>
   </div>
@@ -263,7 +263,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="text-xs text-neutral-400 truncate">{tb.property}</div>
   </div>
   <div className="text-right shrink-0 ml-2">
-  <div className="text-sm font-semibold">{tb.due_date}</div>
+  <div className="text-sm font-semibold">{fmtDate(tb.due_date)}</div>
   <div className={`text-xs font-bold ${overdue ? "text-danger-600" : daysLeft <= 7 ? "text-danger-500" : daysLeft <= 14 ? "text-warn-600" : "text-warn-600"}`}>{overdue ? `Overdue ${-daysLeft}d` : daysLeft === 0 ? "Due today" : `${daysLeft}d left`}</div>
   </div>
   </div>
@@ -305,7 +305,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="text-xs text-neutral-400">{t.property}{t.voucher_number ? " · " + t.voucher_number : ""}</div>
   </div>
   <div className="text-right">
-  <div className="text-sm font-semibold">{t.reexam_date}</div>
+  <div className="text-sm font-semibold">{fmtDate(t.reexam_date)}</div>
   <div className={`text-xs font-bold ${daysLeft <= 0 ? "text-danger-600" : daysLeft <= 30 ? "text-danger-500" : daysLeft <= 60 ? "text-warn-600" : "text-highlight-600"}`}>{daysLeft <= 0 ? "OVERDUE" : `${daysLeft} days left`}</div>
   </div>
   </div>);

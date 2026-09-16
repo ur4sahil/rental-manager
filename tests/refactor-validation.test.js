@@ -192,7 +192,16 @@ function testFileStructure() {
   // becomes a human decision, so it is the component that keeps every AI
   // action out of the business tables until someone approves it. That is
   // not weight this bound should be fighting.
-  assert(totalLines <= 44500, `Total src lines <= 44500 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 45800 on 2026-09-16: TenantPage.js and PropertyPage.js. These REPLACE a
+  // 402-line tenant drawer and a 552-line property modal, so two whole pages
+  // cost +411 net, and both host files got lighter (Properties 4082 -> 3941,
+  // Tenants 2620 -> 2391). Their four shared layout primitives went to ui.js
+  // rather than being written twice, which is where this bound wants weight.
+  // Being straight about the rest: src was ALREADY 813 over 44500 before this
+  // work began -- the sweep, the provider normaliser, the counterparty
+  // suggestions and the Gemma cron each landed without the bound being moved,
+  // so this raise is paying that debt too, not just covering the pages.
+  assert(totalLines <= 45800, `Total src lines <= 45800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

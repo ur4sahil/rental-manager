@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, propertyLabel} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -195,7 +195,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       { key: "amount", label: "Amount", align: "right", className: "font-semibold",
         render: h => (<>${safeNum(h.amount).toLocaleString()}</>) },
       { key: "due_date", label: "Due Date", className: "text-neutral-400",
-        render: h => (<>{h.due_date}</>) },
+        render: h => (<>{fmtDate(h.due_date)}</>) },
       { key: "frequency", label: "Frequency", className: "text-neutral-500 capitalize",
         render: h => (<>{h.frequency}</>) },
       { key: "status", label: "Status",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, TextLink, MenuItem} from "../ui";
-import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue } from "../utils/helpers";
+import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage } from "../utils/routes";
 import { logAudit } from "../utils/audit";
@@ -632,7 +632,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.user_name || r.user_email}</div>
-  <div className="text-xs text-neutral-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{r.user_email} · Requested: {fmtDate(r.created_at)}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "approve")}>Approve</Btn>
@@ -695,7 +695,7 @@ function PendingPMAssignments({ companyId, addNotification, showToast }) {
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.property_address}</div>
-  <div className="text-xs text-neutral-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
+  <div className="text-xs text-neutral-400">Owner requested: {fmtDate(r.requested_at)} · {r.requested_by}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "accept")}>Accept</Btn>

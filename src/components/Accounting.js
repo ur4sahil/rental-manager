@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -708,7 +708,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   {allLines.map((l, i) => (
   <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-brand-50/40 transition-colors active:bg-brand-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
-  <div className="text-xs text-neutral-500">{l.date}</div>
+  <div className="text-xs text-neutral-500">{fmtDate(l.date)}</div>
   <div className={`tnum text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
   </div>
   <div className="text-sm text-neutral-700 mb-1 leading-tight">{l.description}</div>
@@ -983,7 +983,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
           </div>
           <div>
             <h3 className="text-lg font-display font-bold text-neutral-800">Opening balance posted</h3>
-            <p className="text-sm text-neutral-400">As of {posted.date} · {posted.number}</p>
+            <p className="text-sm text-neutral-400">As of {fmtDate(posted.date)} · {posted.number}</p>
           </div>
         </div>
         <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4 text-sm text-info-800">
@@ -2833,9 +2833,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries).filter(l => l.date >= start && l.date <= end);
       addTitle("General Ledger", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
       const hr = ws.addRow(["Date", "Entry", "Description", "Memo", "Debit", "Credit", "Balance"]); styleHeaderRow(hr, 7);
-      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 35; ws.getColumn(4).width = 25;
+      ws.getColumn(1).width = 12; ws.getColumn(1).numFmt = EXCEL_DATE_FMT; ws.getColumn(2).width = 10; ws.getColumn(3).width = 35; ws.getColumn(4).width = 25;
       [5,6,7].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
-      glLines.forEach(l => { const r = ws.addRow([l.date, l.jeNumber || "", l.description, l.memo || "", $(l.debit), $(l.credit), $(l.balance)]); [5,6,7].forEach(c => r.getCell(c).numFmt = money); });
+      glLines.forEach(l => { const r = ws.addRow([excelDate(l.date), l.jeNumber || "", l.description, l.memo || "", $(l.debit), $(l.credit), $(l.balance)]); [5,6,7].forEach(c => r.getCell(c).numFmt = money); });
       ws.addRow([]);
       const totR = ws.addRow(["", "", "", "Totals", { formula: `SUM(E${hr.number+1}:E${ws.rowCount-1})` }, { formula: `SUM(F${hr.number+1}:F${ws.rowCount-1})` }, ""]);
       [5,6].forEach(c => totR.getCell(c).numFmt = money); styleTotalRow(totR, 7, true);
@@ -2899,10 +2899,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getOpenInvoices(asOfDate);
       addTitle("Open Invoices", null, `As of ${acctFmtDate(asOfDate)}`);
       const hr = ws.addRow(["Tenant", "Date", "Description", "Original", "Paid", "Due", "Days Out"]); styleHeaderRow(hr, 7);
-      ws.getColumn(1).width = 25; ws.getColumn(2).width = 12; ws.getColumn(3).width = 30;
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 12; ws.getColumn(2).numFmt = EXCEL_DATE_FMT; ws.getColumn(3).width = 30;
       [4,5,6].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }); ws.getColumn(7).width = 10;
       const dStart = ws.rowCount + 1;
-      data.forEach(i => { const r = ws.addRow([i.tenant, i.date, i.description, $(i.originalAmount), $(i.amountPaid), $(i.amountDue), i.daysOutstanding]); [4,5,6].forEach(c => r.getCell(c).numFmt = money); });
+      data.forEach(i => { const r = ws.addRow([i.tenant, excelDate(i.date), i.description, $(i.originalAmount), $(i.amountPaid), $(i.amountDue), i.daysOutstanding]); [4,5,6].forEach(c => r.getCell(c).numFmt = money); });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "Totals"]); [4,5,6].forEach(c => { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; });
       styleTotalRow(totR, 7, true);
@@ -2936,9 +2936,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getUnpaidBills();
       addTitle("Unpaid Bills", null, `As of ${acctFmtDate(asOfDate)}`);
       const hr = ws.addRow(["Date", "Vendor", "Description", "Reference", "Amount"]); styleHeaderRow(hr, 5);
-      ws.getColumn(1).width = 12; ws.getColumn(2).width = 25; ws.getColumn(3).width = 35; ws.getColumn(4).width = 12; ws.getColumn(5).width = 16; ws.getColumn(5).numFmt = money;
+      ws.getColumn(1).width = 12; ws.getColumn(1).numFmt = EXCEL_DATE_FMT; ws.getColumn(2).width = 25; ws.getColumn(3).width = 35; ws.getColumn(4).width = 12; ws.getColumn(5).width = 16; ws.getColumn(5).numFmt = money;
       const dStart = ws.rowCount + 1;
-      data.forEach(b => { ws.addRow([b.date, b.vendor, b.description, b.jeNumber || "", $(b.amount)]).getCell(5).numFmt = money; });
+      data.forEach(b => { ws.addRow([excelDate(b.date), b.vendor, b.description, b.jeNumber || "", $(b.amount)]).getCell(5).numFmt = money; });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "", "Total", dEnd >= dStart ? { formula: `SUM(E${dStart}:E${dEnd})` } : 0]); totR.getCell(5).numFmt = money; styleTotalRow(totR, 5, true);
 
@@ -2982,9 +2982,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       addTitle("Rent Roll", null, `As of ${acctFmtDate(asOfDate)}`);
       const hr = ws.addRow(["Property", "Tenant", "Rent", "Deposit", "Lease Start", "Lease End", "Status"]); styleHeaderRow(hr, 7);
       ws.getColumn(1).width = 30; ws.getColumn(2).width = 25; ws.getColumn(3).width = 14; ws.getColumn(3).numFmt = money; ws.getColumn(4).width = 14; ws.getColumn(4).numFmt = money;
-      ws.getColumn(5).width = 12; ws.getColumn(6).width = 12; ws.getColumn(7).width = 12;
+      ws.getColumn(5).width = 12; ws.getColumn(5).numFmt = EXCEL_DATE_FMT; ws.getColumn(6).width = 12; ws.getColumn(6).numFmt = EXCEL_DATE_FMT; ws.getColumn(7).width = 12;
       const dStart = ws.rowCount + 1;
-      data.forEach(r => { const row = ws.addRow([r.property, r.tenant, $(r.rent), $(r.deposit || 0), r.leaseStart, r.leaseEnd, r.status]); row.getCell(3).numFmt = money; row.getCell(4).numFmt = money; });
+      data.forEach(r => { const row = ws.addRow([r.property, r.tenant, $(r.rent), $(r.deposit || 0), excelDate(r.leaseStart), excelDate(r.leaseEnd), r.status]); row.getCell(3).numFmt = money; row.getCell(4).numFmt = money; });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "Total Rent", dEnd >= dStart ? { formula: `SUM(C${dStart}:C${dEnd})` } : 0]); totR.getCell(3).numFmt = money; styleTotalRow(totR, 7, true);
 
@@ -2993,9 +2993,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getVacancyReport();
       addTitle("Vacancy Report", null, `As of ${acctFmtDate(asOfDate)}`);
       const hr = ws.addRow(["Property", "Last Tenant", "Move Out", "Days Vacant", "Last Rent", "Est. Lost Revenue"]); styleHeaderRow(hr, 6);
-      ws.getColumn(1).width = 30; ws.getColumn(2).width = 20; ws.getColumn(3).width = 12; ws.getColumn(4).width = 14; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money; ws.getColumn(6).width = 18; ws.getColumn(6).numFmt = money;
+      ws.getColumn(1).width = 30; ws.getColumn(2).width = 20; ws.getColumn(3).width = 12; ws.getColumn(3).numFmt = EXCEL_DATE_FMT; ws.getColumn(4).width = 14; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money; ws.getColumn(6).width = 18; ws.getColumn(6).numFmt = money;
       const dStart = ws.rowCount + 1;
-      data.forEach(v => { const r = ws.addRow([v.property, v.lastTenant || "—", v.moveOutDate || "—", v.daysVacant, $(v.lastRent || 0), $(v.estimatedLost || 0)]); r.getCell(5).numFmt = money; r.getCell(6).numFmt = money; });
+      data.forEach(v => { const r = ws.addRow([v.property, v.lastTenant || "—", excelDate(v.moveOutDate), v.daysVacant, $(v.lastRent || 0), $(v.estimatedLost || 0)]); r.getCell(5).numFmt = money; r.getCell(6).numFmt = money; });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "", "", "", dEnd >= dStart ? { formula: `SUM(F${dStart}:F${dEnd})` } : 0]); totR.getCell(6).numFmt = money; styleTotalRow(totR, 6, true);
 
@@ -3004,9 +3004,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getLicenseCompliance();
       addTitle("License Compliance Report", null, `As of ${acctFmtDate(asOfDate)}`);
       const hr = ws.addRow(["Property", "Type", "Number", "Jurisdiction", "Issue Date", "Expiry Date", "Days Until", "Status", "Fee"]); styleHeaderRow(hr, 9);
-      ws.getColumn(1).width = 32; ws.getColumn(2).width = 22; ws.getColumn(3).width = 16; ws.getColumn(4).width = 26; ws.getColumn(5).width = 12; ws.getColumn(6).width = 12; ws.getColumn(7).width = 10; ws.getColumn(8).width = 16; ws.getColumn(9).width = 12; ws.getColumn(9).numFmt = money;
+      ws.getColumn(1).width = 32; ws.getColumn(2).width = 22; ws.getColumn(3).width = 16; ws.getColumn(4).width = 26; ws.getColumn(5).width = 12; ws.getColumn(5).numFmt = EXCEL_DATE_FMT; ws.getColumn(6).width = 12; ws.getColumn(6).numFmt = EXCEL_DATE_FMT; ws.getColumn(7).width = 10; ws.getColumn(8).width = 16; ws.getColumn(9).width = 12; ws.getColumn(9).numFmt = money;
       const dStart = ws.rowCount + 1;
-      data.forEach(r => { const row = ws.addRow([r.property, r.type, r.number || "—", r.jurisdiction || "—", r.issueDate || "—", r.expiryDate, r.daysUntil, r.status.replace("_", " "), $(r.fee || 0)]); row.getCell(9).numFmt = money; });
+      data.forEach(r => { const row = ws.addRow([r.property, r.type, r.number || "—", r.jurisdiction || "—", excelDate(r.issueDate), excelDate(r.expiryDate), r.daysUntil, r.status.replace("_", " "), $(r.fee || 0)]); row.getCell(9).numFmt = money; });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "", "", "", "", "", "TOTAL FEES", dEnd >= dStart ? { formula: `SUM(I${dStart}:I${dEnd})` } : 0]); totR.getCell(9).numFmt = money; styleTotalRow(totR, 9, true);
 
@@ -3015,8 +3015,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getLeaseExpirations(90);
       addTitle("Lease Expirations", null, "Next 90 Days");
       const hr = ws.addRow(["Tenant", "Property", "Lease End", "Days Until", "Rent"]); styleHeaderRow(hr, 5);
-      ws.getColumn(1).width = 25; ws.getColumn(2).width = 30; ws.getColumn(3).width = 12; ws.getColumn(4).width = 12; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money;
-      data.forEach(l => { ws.addRow([l.tenant, l.property, l.leaseEnd, l.daysUntilExpiration, $(l.rent)]).getCell(5).numFmt = money; });
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 30; ws.getColumn(3).width = 12; ws.getColumn(3).numFmt = EXCEL_DATE_FMT; ws.getColumn(4).width = 12; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money;
+      data.forEach(l => { ws.addRow([l.tenant, l.property, excelDate(l.leaseEnd), l.daysUntilExpiration, $(l.rent)]).getCell(5).numFmt = money; });
 
     // ===================== RENT COLLECTION =====================
     } else if (id === "rent_collection") {
@@ -3086,10 +3086,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getTransactionsByDate(start, end);
       addTitle("Transaction List by Date", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
       const hr = ws.addRow(["Date", "Entry", "Account", "Type", "Description", "Memo", "Debit", "Credit"]); styleHeaderRow(hr, 8);
-      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 25; ws.getColumn(4).width = 14; ws.getColumn(5).width = 30; ws.getColumn(6).width = 20;
+      ws.getColumn(1).width = 12; ws.getColumn(1).numFmt = EXCEL_DATE_FMT; ws.getColumn(2).width = 10; ws.getColumn(3).width = 25; ws.getColumn(4).width = 14; ws.getColumn(5).width = 30; ws.getColumn(6).width = 20;
       [7,8].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
       const dStart = ws.rowCount + 1;
-      data.forEach(t => { const r = ws.addRow([t.date, t.jeNumber || "", t.accountName, t.accountType || "", t.description, t.memo || "", $(t.debit), $(t.credit)]); [7,8].forEach(c => r.getCell(c).numFmt = money); });
+      data.forEach(t => { const r = ws.addRow([excelDate(t.date), t.jeNumber || "", t.accountName, t.accountType || "", t.description, t.memo || "", $(t.debit), $(t.credit)]); [7,8].forEach(c => r.getCell(c).numFmt = money); });
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "", "", "", "Totals", dEnd >= dStart ? { formula: `SUM(G${dStart}:G${dEnd})` } : 0, dEnd >= dStart ? { formula: `SUM(H${dStart}:H${dEnd})` } : 0]);
       [7,8].forEach(c => totR.getCell(c).numFmt = money); styleTotalRow(totR, 8, true);
@@ -3099,11 +3099,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const data = getJournalReport(start, end);
       addTitle("Journal", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
       const hr = ws.addRow(["Date", "Entry", "Description", "Account", "Memo", "Debit", "Credit"]); styleHeaderRow(hr, 7);
-      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 30; ws.getColumn(4).width = 25; ws.getColumn(5).width = 20;
+      ws.getColumn(1).width = 12; ws.getColumn(1).numFmt = EXCEL_DATE_FMT; ws.getColumn(2).width = 10; ws.getColumn(3).width = 30; ws.getColumn(4).width = 25; ws.getColumn(5).width = 20;
       [6,7].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
       data.forEach(je => {
         (je.lines || []).forEach((l, i) => {
-          const r = ws.addRow([i === 0 ? je.date : "", i === 0 ? je.jeNumber : "", i === 0 ? je.description : "", l.accountName, l.memo || "", $(l.debit), $(l.credit)]);
+          const r = ws.addRow([i === 0 ? excelDate(je.date) : "", i === 0 ? je.jeNumber : "", i === 0 ? je.description : "", l.accountName, l.memo || "", $(l.debit), $(l.credit)]);
           [6,7].forEach(c => r.getCell(c).numFmt = money);
           if (i === 0) { r.getCell(1).font = boldFont; r.getCell(2).font = boldFont; r.getCell(3).font = boldFont; }
         });
@@ -3209,7 +3209,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
               <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
                 <p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{c.name}</p>
                 <p className="text-xs text-neutral-400 mt-0.5">{c.reportTitle} · {c.period}</p>
-                <p className="text-xs text-neutral-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
+                <p className="text-xs text-neutral-300 mt-0.5">Saved {fmtDate(c.savedAt)}</p>
               </div>
               <TextLink tone="neutral" size="xs" underline={false} onClick={() => deleteCustomReport(c.id)}><span className="material-icons-outlined text-sm">close</span></TextLink>
             </div>
@@ -3437,7 +3437,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {showExpenses && plData.expenses.filter(a => showZeros || a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><LedgerLink ids={[a.id]} title={a.name} onOpenLedger={onOpenLedger} className="text-sm">{a.name}</LedgerLink><span className="tnum text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showExpenses && <PLTotal label="Total Expenses" amount={plData.totalExpenses} ids={plIds(plData.expenses)} indent={24} className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" />}
       <PLTotal label="NET INCOME" amount={plData.netIncome} ids={[...plIds(plData.revenue), ...plIds(plData.expenses)]} className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3" amountClassName={`tnum text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`} />
-      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
+      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{fmtDateTime(new Date())}</span></div>
     </div>
     );})()}
 
@@ -3479,7 +3479,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black">{onOpenLedger ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">TOTAL LIABILITIES AND EQUITY</LedgerLink> : <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>}{onOpenLedger
       ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</LedgerLink>
       : <span className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>}</div>
-      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
+      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{fmtDateTime(new Date())}</span></div>
     </div>);
     })()}
 
@@ -3673,7 +3673,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <DataTable
         columns={[
           { key: "date", label: "Date", className: "text-xs text-neutral-400",
-            render: t => (<>{t.date}</>) },
+            render: t => (<>{fmtDate(t.date)}</>) },
           { key: "entry", label: "Entry", className: "text-xs text-brand-600 tnum",
             render: t => (<>{t.jeNumber||""}</>) },
           { key: "account", label: "Account", className: "text-neutral-700",
@@ -3973,7 +3973,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "rent", label: "Rent", align: "right", className: "tnum",
             render: r => (<>{r.rent > 0 ? acctFmt(r.rent) : "—"}</>) },
           { key: "lease_end", label: "Lease End", className: "text-xs text-neutral-400",
-            render: r => (<>{r.leaseEnd||"—"}</>) },
+            render: r => (<>{fmtDate(r.leaseEnd, "—")}</>) },
           { key: "status", label: "Status",
             render: r => (<>
               <span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span>
@@ -4051,7 +4051,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
             { key: "jurisdiction", label: "Jurisdiction", className: "text-xs text-neutral-500",
               render: r => (<>{r.jurisdiction || "—"}</>) },
             { key: "expiry", label: "Expiry", className: "text-xs text-neutral-500",
-              render: r => (<>{r.expiryDate}</>) },
+              render: r => (<>{fmtDate(r.expiryDate)}</>) },
             { key: "days", label: "Days", align: "right", className: r => (`tnum ${r.daysUntil <= -99998 ? "text-neutral-400" : r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`),
               // The sentinels that sort absent licences to the top are not
               // days and must not be printed -- a row read "-99999".
@@ -4082,7 +4082,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "property", label: "Property", className: "text-neutral-500",
             render: r => (<>{propertyLabel(r.property)}</>) },
           { key: "lease_end", label: "Lease End", className: "text-neutral-500",
-            render: r => (<>{r.leaseEnd}</>) },
+            render: r => (<>{fmtDate(r.leaseEnd)}</>) },
           { key: "days_left", label: "Days Left", align: "right", className: r => (`tnum ${r.daysUntilExpiration <= 30 ? "text-danger-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-warn-600" : ""}`),
             render: r => (<>{r.daysUntilExpiration}</>) },
           { key: "rent", label: "Rent", align: "right", className: "tnum",
@@ -4127,7 +4127,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           { key: "tenant", label: "Tenant", className: "text-neutral-700",
             render: r => (<>{r.tenant}</>) },
           { key: "date", label: "Date", className: "text-xs text-neutral-400",
-            render: r => (<>{r.date}</>) },
+            render: r => (<>{fmtDate(r.date)}</>) },
           { key: "description", label: "Description", className: "text-xs text-neutral-500 max-w-48 truncate",
             render: r => (<>{r.description}</>) },
           { key: "original", label: "Original", align: "right", className: "tnum",
@@ -4179,7 +4179,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400",
-            render: tx => (<>{tx.date}</>) },
+            render: tx => (<>{fmtDate(tx.date)}</>) },
           { key: "entry", label: "Entry", className: "text-brand-600 tnum",
             render: tx => (<>{tx.jeNumber||""}</>) },
           { key: "description", label: "Description", className: "text-neutral-600 truncate max-w-40",
@@ -4269,7 +4269,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <EmptyState size="compact" title={"No distributions in this period"} /> : (<DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400",
-            render: r => (<>{r.date}</>) },
+            render: r => (<>{fmtDate(r.date)}</>) },
           { key: "entry", label: "Entry", className: "tnum text-xs text-brand-600",
             render: r => (<>{r.jeNumber||""}</>) },
           { key: "description", label: "Description", className: "text-neutral-700",
@@ -4315,7 +4315,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         hideHeader
         columns={[
           { key: "col0", label: "", className: "text-neutral-400 w-20",
-            render: t => (<>{t.date}</>) },
+            render: t => (<>{fmtDate(t.date)}</>) },
           { key: "col1", label: "", className: "text-brand-600 tnum w-16",
             render: t => (<>{t.jeNumber||""}</>) },
           { key: "col2", label: "", className: "text-neutral-600",
@@ -4392,7 +4392,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {(() => { const data = getUnpaidBills(); return data.length === 0 ? <EmptyState size="compact" title={"No unpaid bills found"} /> : (<DataTable
         columns={[
           { key: "date", label: "Date", className: "text-neutral-400 text-xs",
-            render: r => (<>{r.date}</>) },
+            render: r => (<>{fmtDate(r.date)}</>) },
           { key: "vendor", label: "Vendor", className: "text-neutral-700",
             render: r => (<>{r.vendor}</>) },
           { key: "description", label: "Description", className: "text-xs text-neutral-500 truncate max-w-48",
@@ -4433,7 +4433,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {auditData.length === 0 ? <EmptyState size="compact" title={"No audit entries in this period"} /> : (<DataTable
         columns={[
           { key: "time", label: "Time", className: "text-xs text-neutral-400 whitespace-nowrap",
-            render: r => (<>{new Date(r.created_at).toLocaleString()}</>) },
+            render: r => (<>{fmtDateTime(r.created_at)}</>) },
           { key: "user", label: "User", className: "text-xs text-neutral-600",
             render: r => (<>{r.user_email}</>) },
           { key: "module", label: "Module", className: "text-xs",
@@ -5741,7 +5741,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
               <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-success-400":je.status==="draft"?"bg-warn-400":"bg-neutral-300"}`} />
               <div>
                 <p className="text-sm text-neutral-700">{je.description}</p>
-                <p className="text-xs text-neutral-400">{je.number} · {je.date}{je.property ? " · " + propertyLabel(je.property) : ""}</p>
+                <p className="text-xs text-neutral-400">{je.number} · {fmtDate(je.date)}{je.property ? " · " + propertyLabel(je.property) : ""}</p>
               </div>
             </div>
             <div className="text-right">
@@ -6139,8 +6139,8 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-danger-800">Period locked through {periodLock.lock_date}</div>
-            <div className="text-xs text-danger-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
+            <div className="text-sm font-semibold text-danger-800">Period locked through {fmtDate(periodLock.lock_date)}</div>
+            <div className="text-xs text-danger-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {fmtDate(periodLock.locked_at)}</div>
             {periodLock.notes && <div className="text-xs text-danger-500 mt-1">{periodLock.notes}</div>}
           </div>
           {(userRole === "admin" || userRole === "owner" || userRole === "manager") ? (
@@ -6192,7 +6192,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div key={r.id} className="bg-white rounded-xl border border-neutral-200 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
   <div>
   <div className="text-sm font-medium text-neutral-800">{r.period}</div>
-  <div className="text-xs text-neutral-400">{new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(r.created_at)}</div>
   </div>
   <div className="flex items-center gap-3">
   <div className="text-right text-xs">
@@ -6222,7 +6222,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   </div>
   <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <div className="flex justify-between items-start mb-4">
-  <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
+  <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{fmtDate(viewRecon.created_at)}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : viewRecon.status === "reopened" ? "bg-neutral-100 text-neutral-600" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
@@ -6232,7 +6232,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   </div>
   {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse reconciliation items", silent: true }); } return items.length > 0 ? (
   <div><div className="font-semibold text-danger-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
-  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-neutral-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-neutral-500">{fmtDate(it.date)} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
   </div>) : null; })()}
   </div>
   </div>
@@ -6266,7 +6266,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-brand-500 border-positive-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm text-neutral-800 truncate">{item.description}</div>
-  <div className="text-xs text-neutral-400">{item.date} · {item.reference} · {item.memo}</div>
+  <div className="text-xs text-neutral-400">{fmtDate(item.date)} · {item.reference} · {item.memo}</div>
   </div>
   <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-positive-600" : "text-danger-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
   </div>
