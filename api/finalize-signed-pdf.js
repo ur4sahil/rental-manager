@@ -129,7 +129,17 @@ module.exports = async (req, res) => {
   try {
     const { data: signed } = await sb.storage.from("signed-documents")
       .createSignedUrl(path, 24 * 60 * 60); // 24 hours
-    downloadUrl = signed?.signedUrl || null;
+    // This link is EMAILED to whoever signed, so the hostname is the one
+    // place it is read by someone who has never seen our app. Route it
+    // through our own domain via the /docs rewrite in vercel.json rather
+    // than sending a tenant a link to <project-ref>.supabase.co. Same
+    // signature, same expiry -- only the host changes.
+    const MARK = "/storage/v1/object/sign/";
+    const raw = signed?.signedUrl || null;
+    const base = (process.env.APP_URL || "").replace(/\/$/, "");
+    downloadUrl = raw && base && raw.includes(MARK)
+      ? base + "/docs/" + raw.slice(raw.indexOf(MARK) + MARK.length)
+      : raw;
   } catch (_e) {
     // Non-fatal — the row is in queue, worker can re-sign later.
   }

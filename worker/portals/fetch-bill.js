@@ -37,6 +37,67 @@ const MONTHS = { january:1, february:2, march:3, april:4, may:5, june:6, july:7,
 // "due on September 23, 2026" in words. A numeric-only pattern read the
 // amount and silently returned no date -- and a bill with no due date is
 // the one that gets paid late.
+
+// ---- when the selectors find nothing, look at the page ------------------
+// SMECO signs in cleanly and lands on an overview its playbook matches
+// nothing on, so the regex path returns null on a page a person can read at
+// a glance. That is the one case worth a model: we are already signed in,
+// we already have the screenshot, and the alternative is reporting
+// "not_found" for a bill that is plainly on screen.
+//
+// Deliberately narrow. This runs ONLY after every selector has failed, it
+// never overrides a figure the playbook found, and what it returns is
+// marked as read-from-image all the way to the record so nobody downstream
+// mistakes a model's reading for the page's own words.
+//
+// Streamed, because Ollama holds the response headers until the first token
+// and undici abandons a request whose headers take over 300s -- a vision
+// call on a CPU box crosses that comfortably.
+async function readWithVision(shotPath) {
+  const AI = (process.env.AI_BASE_URL || "").replace(/\/$/, "");
+  const MODEL = process.env.HOUSY_VISION_MODEL || "qwen2.5vl:7b";
+  if (!AI) return null;
+  const img = fs.readFileSync(shotPath).toString("base64");
+  const res = await fetch(`${AI}/api/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(process.env.AI_TOKEN ? { Authorization: `Bearer ${process.env.AI_TOKEN}` } : {}),
+    },
+    body: JSON.stringify({
+      model: MODEL, stream: true, format: "json", images: [img],
+      options: { num_predict: 160, temperature: 0 },
+      prompt:
+        "This is a screenshot of a signed-in utility account page. Report ONLY what is " +
+        "printed on it. Answer as JSON " +
+        '{"amount_due": number|null, "due_date": "YYYY-MM-DD"|null, "in_credit": boolean}. ' +
+        "amount_due is what the customer owes. If the page shows a credit or a negative " +
+        "balance, set in_credit true and give amount_due as that figure without a minus " +
+        "sign. If no amount is shown anywhere, answer null -- do not infer one.",
+    }),
+    signal: AbortSignal.timeout(20 * 60 * 1000),
+  });
+  if (!res.ok) throw new Error(`vision: HTTP ${res.status}`);
+  let out = "", tail = "";
+  const dec = new TextDecoder();
+  for await (const chunk of res.body) {
+    tail += dec.decode(chunk, { stream: true });
+    const lines = tail.split("\n"); tail = lines.pop() || "";
+    for (const l of lines) {
+      if (!l.trim()) continue;
+      try { out += JSON.parse(l).response || ""; } catch { /* keep-alive line */ }
+    }
+  }
+  let j;
+  try { j = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch { return null; }
+  const n = Number(j.amount_due);
+  if (!Number.isFinite(n)) return null;
+  // A model that reads $513.99 as $51399 must not reach the books. Anything
+  // outside what a utility bill plausibly is gets refused, not rounded.
+  if (Math.abs(n) > 50000) return null;
+  return { amount: j.in_credit ? -Math.abs(n) : n, due: j.due_date || null, model: MODEL };
+}
+
 const isoDate = (s) => {
   const txt = String(s);
   const words = txt.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
@@ -257,9 +318,24 @@ const isoDate = (s) => {
     // Finding nothing is a real answer, not a failure to report. A bill
     // that is not yet issued looks exactly like a page that changed, and
     // guessing between them is how a wrong amount reaches the books.
+    let readByVision = false;
+    if (amount == null) {
+      record("selectors", "found no amount — asking the vision model to read the page");
+      const seen = await readWithVision(shot).catch(e => { record("vision", "failed: " + e.message); return null; });
+      if (seen) {
+        amount = seen.amount;
+        if (!due && seen.due) due = seen.due;
+        readByVision = true;
+        record("vision", `${seen.model} read ${amount}${seen.due ? " due " + seen.due : ""}`);
+      }
+    }
     if (amount == null) {
       finish("not_found", { error: "signed in, but no amount found — the bill may not be issued yet, or the page changed", screenshot: shot, treeChars: tree.length });
     }
+    // A figure a model read off a picture is not the same evidence as one
+    // the page labelled, so it travels with that fact attached rather than
+    // arriving indistinguishable from the rest.
+    if (readByVision && amount < 0 && credit == null) credit = Math.abs(amount);
     // amount_due is SIGNED. A credit is negative, which is what makes it
     // impossible to mistake for a bill downstream: pay-runner refuses any
     // amount <= 0, so a credit can never be "paid", and the in-credit
@@ -273,6 +349,7 @@ const isoDate = (s) => {
       amount_due: amount, due_date: due,
       credit_balance: credit,
       nothing_due: amount === 0 || credit != null,
+      read_by: readByVision ? "vision" : "selectors",
       screenshot: shot, url: page.url(),
     });
   } catch (e) {

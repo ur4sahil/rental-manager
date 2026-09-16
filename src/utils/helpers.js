@@ -195,11 +195,38 @@ export function formatCurrency(amount) {
 // NOTE: pmError is injected via setHelperPmError to avoid circular dependency with errors.js
 let _pmError = null;
 export function setHelperPmError(fn) { _pmError = fn; }
+// Supabase signs a URL on its own domain:
+//
+//   https://<project-ref>.supabase.co/storage/v1/object/sign/<bucket>/<path>?token=...
+//
+// which is what a tenant saw in the address bar when they opened their own
+// lease. Three things wrong with that: it puts the project ref in front of
+// whoever the link is forwarded to, it reads as somebody else's website on
+// a document with our name on it, and the address is not ours to keep --
+// every saved or shared link breaks the day the storage host changes.
+//
+// vercel.json rewrites /docs/* to that same signing endpoint at the EDGE, so
+// this costs no serverless function -- which matters at 12 of 12 on Hobby.
+// The signature still travels in ?token=, so access control is unchanged:
+// this moves the hostname and nothing else.
+const STORAGE_PATH = "/storage/v1/object/sign/";
+
+export function proxiedStorageUrl(signedUrl, origin) {
+  if (!signedUrl) return "";
+  const here = origin || (typeof window !== "undefined" ? window.location.origin : "");
+  // Only where the rewrite exists. `npm start` serves from CRA's dev server,
+  // which knows nothing about vercel.json, so a proxied URL there 404s.
+  if (!/^https:\/\/([a-z-]+\.)?housify365\.com$/.test(here)) return signedUrl;
+  const i = signedUrl.indexOf(STORAGE_PATH);
+  if (i === -1) return signedUrl;   // not a storage URL — hand it back untouched
+  return here + "/docs/" + signedUrl.slice(i + STORAGE_PATH.length);
+}
+
 export async function getSignedUrl(bucket, filePath, expiresIn = 3600) {
   if (!filePath) return "";
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, expiresIn);
   if (error) { if (_pmError) _pmError("PM-8006", { raw: error, context: "signed URL for " + filePath, silent: true }); return ""; }
-  return data?.signedUrl || "";
+  return proxiedStorageUrl(data?.signedUrl || "");
 }
 
 // Format phone: accepts digits, adds +1 prefix, formats as (XXX) XXX-XXXX

@@ -29,7 +29,7 @@
 // control" -- SMECO, Novec, Dominion -- turned out to be URLs I had guessed
 // and never checked. A guessed URL and a blocked portal look identical
 // until something signs in.
-import { existsSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,9 @@ if (!chromium) { console.error("playwright not installed — run: cd tests && np
 // fact. This was hardcoded to one laptop's scratchpad directory, so the tool
 // crashed with EACCES on the VPS -- the only machine it actually needs to
 // run on. Same env var the rest of the worker uses.
+// Same directory enroll.js writes and fetch-bill.js reads, so a session
+// earned here is one fetch-bill can use.
+const SESSION_DIR = process.env.HOUSY_SESSION_DIR || path.join(__dirname_, "..", "..", ".housy-sessions");
 const SHOT = process.env.HOUSY_SHOT_DIR || path.join(__dirname_, "..", "..", ".housy-shots");
 const CODE_FILE = "/tmp/portal-code.txt";
 const PORTAL = process.argv[2];
@@ -74,9 +77,10 @@ const HEADLESS = process.env.HEADLESS === "1";
 let b = null;
 try { b = await chromium.launch({ channel: "chrome", headless: HEADLESS }); }
 catch { b = await chromium.launch({ headless: HEADLESS }); }
-const page = await (await b.newContext({
+const ctx = await b.newContext({
   viewport: { width: 1360, height: 950 }, locale: "en-US", timezoneId: "America/New_York",
-})).newPage();
+});
+const page = await ctx.newPage();
 
 const pwd = () => page.locator('input[type="password"]:visible').first();
 const onLogin = async () => (await pwd().count().catch(() => 0)) > 0;
@@ -170,6 +174,19 @@ try {
 
   const signedIn = !(await onLogin());
   console.log("SIGNED IN:", signedIn ? "YES" : "no");
+  // Keep the session. This used to prove a login and then throw it away, so
+  // a verification code read out by the account holder bought one run and
+  // nothing else -- the next fetch would ask them for another. A code is
+  // expensive precisely because a person has to be there; spending one and
+  // keeping nothing is the waste worth fixing.
+  if (signedIn) {
+    try {
+      mkdirSync(SESSION_DIR, { recursive: true });
+      const file = path.join(SESSION_DIR, `${PORTAL}.json`);
+      writeFileSync(file, JSON.stringify(await ctx.storageState()), { mode: 0o600 });
+      console.log("session saved:", file);
+    } catch (e) { console.log("could not save session:", e.message); }
+  }
   if (!signedIn) {
     const m = body.match(/(invalid|incorrect|locked|disabled|suspended|too many|temporarily|unable to|does not match|not a robot|captcha|try again)[^.!]{0,120}/i);
     console.log("  page says:", m ? m[0].slice(0, 140) : "(no error message found)");
