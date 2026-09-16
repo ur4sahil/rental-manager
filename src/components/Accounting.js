@@ -5897,6 +5897,16 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   // reconPeriod stays the LABEL and the key these rows are stored under; the
   // dates below are what is actually queried.
   const [reconAsAt, setReconAsAt] = useState("");
+  // Sorting the list is how you find a figure you are hunting for on a
+  // statement. Default by date, because that is the order a statement prints.
+  const [reconSort, setReconSort] = useState({ key: "date", dir: "asc" });
+  // Saving a first reconciliation writes thousands of rows -- 6027's is 2,412
+  // -- and the button gave no sign it had started. It sat indigo and inert
+  // while the work ran, so the readings available were "my click missed" and
+  // "this is broken", and then a success toast arrived from nowhere.
+  const [savingRecon, setSavingRecon] = useState(false);
+  const sortRecon = (key) => setReconSort(s2 =>
+    s2.key === key ? { key, dir: s2.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
   const monthBounds = (ym) => {
     const a = parseLocalDate(ym + "-01");
     const b = parseLocalDate(ym + "-01"); b.setMonth(b.getMonth() + 1); b.setDate(0);
@@ -6178,6 +6188,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
 
   async function saveReconciliation() {
   if (!guardSubmit("saveReconciliation")) return;
+  setSavingRecon(true);
   try {
   const acct = activeReconAccount;
   if (!acct?.id) { showToast("No bank account selected.", "error"); return; }
@@ -6247,10 +6258,49 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
   if (reconIds.length > 0) {
   const today = formatLocalDate(new Date());
-  // Verify these lines belong to this company's JEs before marking reconciled
-  const validJeIds = new Set((journalEntries || []).map(j => j.id));
-  const { data: checkLines } = await supabase.from("acct_journal_lines").select("id, journal_entry_id").in("id", reconIds);
-  const safeIds = (checkLines || []).filter(l => validJeIds.has(l.journal_entry_id)).map(l => l.id);
+  // Verify these lines belong to this company before marking them reconciled.
+  //
+  // This used to check membership against `journalEntries`, the list the page
+  // has LOADED -- but the company has 7,807 entries and that list is paged, so
+  // an id absent from it is usually just an id nobody scrolled to, not a
+  // foreign one. Ownership is a question the database can answer exactly, via
+  // the line's own company_id, so ask it there instead of inferring it from
+  // whatever happens to be in memory.
+  // CHUNKED, and for two reasons that both bite.
+  //
+  // .in() is a URL parameter, so thousands of ids is a query string the edge
+  // rejects. And the answer is capped at 1000 rows server-side regardless of
+  // how many were asked about -- so this select returned 1000 of 6027's 2412
+  // ids, the chunked update below faithfully flagged exactly those 1000, and
+  // the reconciliation row recorded cleared_count 2412. The record said the
+  // period was reconciled while 1412 lines remained open, which is the worst
+  // outcome available: not a visible failure, a quiet disagreement between
+  // the reconciliation and the ledger it claims to have reconciled.
+  //
+  // Third time today this 1000-row cap has produced a believable wrong
+  // number. It is the only Postgrest behaviour in this codebase that fails by
+  // returning plausible data.
+  const checkLines = [];
+  for (let i = 0; i < reconIds.length; i += 500) {
+    const { data: part, error: checkErr } = await supabase.from("acct_journal_lines")
+      .select("id, journal_entry_id")
+      .eq("company_id", companyId)
+      .in("id", reconIds.slice(i, i + 500));
+    if (checkErr) {
+      pmError("PM-8006", { raw: checkErr, context: "verify reconciliation lines" });
+      showToast("Could not verify every line — nothing was marked reconciled.", "error");
+      return;
+    }
+    checkLines.push(...(part || []));
+  }
+  const safeIds = checkLines.map(l => l.id);
+  // A reconciliation that flags fewer lines than it claims is a lie in the
+  // books. Refuse rather than record one.
+  if (safeIds.length !== reconIds.length) {
+    pmError("PM-8006", { raw: new Error(`verified ${safeIds.length} of ${reconIds.length} lines`), context: "reconciliation line verification short" });
+    showToast(`Only ${safeIds.length} of ${reconIds.length} cleared items could be verified. Nothing was saved.`, "error");
+    return;
+  }
   // Scoped by safeIds only. safeIds was ALREADY filtered against
   // validJeIds one statement above, so re-sending every JE id in the
   // company was redundant -- and fatal: with 16,000+ entries that is
@@ -6311,7 +6361,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   setBankBalance("");
   setReconItems([]);
   fetchRecons();
-  } finally { guardRelease("saveReconciliation"); }
+  } finally { setSavingRecon(false); guardRelease("saveReconciliation"); }
   }
 
   if (loading) return <Spinner />;
@@ -6481,8 +6531,8 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       is not finished, it is stuck. */}
   <div className="flex items-center gap-2">
     <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
-    <Btn onClick={saveReconciliation} className="whitespace-nowrap">
-      {balancedUi ? "Save Reconciliation" : "Save…"}
+    <Btn onClick={saveReconciliation} disabled={savingRecon} className="whitespace-nowrap">
+      {savingRecon ? `Saving ${reconciledCount.toLocaleString()}…` : balancedUi ? "Save Reconciliation" : "Save…"}
     </Btn>
   </div>
   </div>
@@ -6518,10 +6568,28 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div className="border border-brand-50 rounded-xl overflow-hidden mb-4">
   <div className="grid grid-cols-[34px_86px_minmax(0,1fr)_110px_110px] gap-2 px-3 py-2 bg-neutral-50 border-b border-brand-50
     text-2xs font-semibold uppercase tracking-wide text-neutral-400">
-    <span></span><span>Date</span><span>Description</span>
-    <span className="text-right">Payment</span><span className="text-right">Deposit</span>
+    {[["cleared",""],["date","Date"],["description","Description"],["amount","Payment"],["amount","Deposit"]].map(([k,label],ci) => (
+      <button key={ci} type="button" onClick={() => sortRecon(k)}
+        className={"flex items-center gap-1 hover:text-neutral-700 uppercase tracking-wide "
+          + (ci >= 3 ? "justify-end" : "")}>
+        {label}
+        {reconSort.key === k && label && <span className="text-[9px]">{reconSort.dir === "asc" ? "▲" : "▼"}</span>}
+      </button>
+    ))}
   </div>
-  {reconItems.map((item, i) => (
+  {/* Sorted for DISPLAY only. The checkbox has to toggle the item itself, so
+      each row carries its original index -- sorting a list whose ticks are
+      addressed by position is how the wrong line gets cleared. */}
+  {reconItems.map((item, i) => ({ item, i }))
+    .sort((a, b) => {
+      const { key, dir } = reconSort, m = dir === "asc" ? 1 : -1;
+      if (key === "amount") return (a.item.amount - b.item.amount) * m;
+      if (key === "cleared") return ((a.item.reconciled ? 1 : 0) - (b.item.reconciled ? 1 : 0)) * m;
+      if (key === "description") return String(a.item.description || "").localeCompare(String(b.item.description || "")) * m;
+      return String(a.item.date || "").localeCompare(String(b.item.date || "")) * m
+        || (a.i - b.i);
+    })
+    .map(({ item, i }) => (
   <div key={i} onClick={() => toggleReconItem(i)}
     className="grid grid-cols-[34px_86px_minmax(0,1fr)_110px_110px] gap-2 px-3 py-2 items-center cursor-pointer
       border-b border-brand-50 last:border-b-0 hover:bg-neutral-50 text-sm">
@@ -6545,7 +6613,9 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   </div>
 
   <div className="flex items-center gap-3 flex-wrap">
-    <Btn size="lg" className="px-8" onClick={saveReconciliation}>Save Reconciliation</Btn>
+    <Btn size="lg" className="px-8" onClick={saveReconciliation} disabled={savingRecon}>
+      {savingRecon ? `Saving ${reconciledCount.toLocaleString()} items…` : "Save Reconciliation"}
+    </Btn>
     <span className="text-xs text-neutral-400">
       {balancedUi
         ? `Balanced — ${reconciledCount} of ${reconItems.length} cleared`

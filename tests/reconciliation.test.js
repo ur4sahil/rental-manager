@@ -227,5 +227,28 @@ assert("the ledger's opening balance is read in pages",
   "an opening balance short by a thousand rows still looks like a balance");
 
 
+// ---- the flags must match what the record claims --------------------------
+// 6027's first reconciliation recorded cleared_count 2412 and flagged 1000.
+// The chunked UPDATE was correct; the SELECT that fed it was not -- an
+// unpaged .in() lookup, capped at 1000 rows, so safeIds held 1000 of 2412 and
+// the update dutifully flagged exactly those. The reconciliation row then
+// asserted a reconciled period over a ledger where 1412 lines were still
+// open: not a visible failure, a quiet disagreement between the record and
+// the books it describes.
+const saveAll = acctSrc.slice(acctSrc.indexOf("async function saveReconciliation"));
+assert("the line-verification select is chunked, not one .in() call",
+  /for \(let i = 0; i < reconIds\.length; i \+= 500\)/.test(saveAll),
+  "an unpaged .in() answers at most 1000 rows however many ids it is given");
+
+assert("a short verification refuses the save",
+  /safeIds\.length !== reconIds\.length[\s\S]{0,600}?return;/.test(saveAll),
+  "flagging fewer lines than the record claims puts a lie in the books");
+
+assert("ownership is checked against company_id, not the loaded page",
+  /\.eq\("company_id", companyId\)\s*\n\s*\.in\("id", reconIds\.slice/.test(saveAll)
+    && !/validJeIds\.has/.test(saveAll),
+  "journalEntries is paged over 7,807 rows, so absence from it means unloaded, not foreign");
+
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);
