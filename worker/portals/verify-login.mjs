@@ -147,10 +147,71 @@ try {
   console.log("landed:", page.url());
 
   let body = await bodyText();
-  const wantsCode = /enter\s+code|verification\s+code|security\s+code|one[- ]time|we sent you a code|passcode/i.test(body)
-    || (await page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="code" i]').count().catch(() => 0)) > 0;
+
+  // Are we THROUGH? Ask this before asking whether a code is wanted, because
+  // the answer makes the second question moot. WSSC signed in cleanly and was
+  // then told to wait six minutes for a code that was never sent: the account
+  // page has a field whose id contains "code" -- a postcode will do it -- and
+  // the loose selector below counted that as a one-time-code prompt. The run
+  // timed out and threw away a working session, and a person sat watching an
+  // inbox for a message no portal had any reason to send.
+  const alreadyIn = !(await onLogin());
+
+  // A real one-time-code prompt announces itself. `input[id*="code"]` does
+  // not: postcode, zipcode, area code and promo code all match it. Require
+  // the browser's own autocomplete hint, an explicit otp/verification name,
+  // or a short numeric field -- a 6-digit box, never a 40-character address.
+  const otpBox = await page.locator(
+    'input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="verificationcode" i], '
+    + 'input[id*="otp" i], input[maxlength="4"], input[maxlength="6"], input[maxlength="8"]'
+  ).filter({ has: undefined }).count().catch(() => 0);
+  const wantsCode = !alreadyIn && (
+    /enter\s+(the\s+)?(verification|security|one[- ]time)\s+code|we sent you a code|check your (email|phone|text)/i.test(body)
+    || otpBox > 0
+  );
   if (wantsCode) {
     console.log("\n*** THIS PORTAL WANTS A VERIFICATION CODE ***");
+
+    // Say WHAT it is asking and WHERE the code is going. Without this the
+    // account holder is told "read me the code" with no idea which inbox to
+    // open -- and, worse, may be waiting for a code nobody ever requested.
+    const shotCode = path.join(SHOT, `${PORTAL}-code-step.png`);
+    await page.screenshot({ path: shotCode, fullPage: false }).catch(() => {});
+    console.log("code screen:", shotCode);
+    const onScreen = (body.match(/[^.\n]*\b(sent|send|deliver|receive|choose|select)\b[^.\n]{0,110}/gi) || [])
+      .slice(0, 4).map(t => t.replace(/\s+/g, " ").trim());
+    onScreen.forEach(t => console.log("  page says:", t));
+    // Any masked destination the page prints, e.g. "j***@gmail.com" or
+    // "(***) ***-1234". That is the single most useful line for a person
+    // about to go looking for the message.
+    (body.match(/[A-Za-z0-9*.]+@[A-Za-z0-9*.]+\.[A-Za-z]{2,}|\(?\*{3}\)?[ -]?\*{3}[ -]?\d{4}/g) || [])
+      .slice(0, 3).forEach(d => console.log("  destination shown:", d));
+
+    // A code is only in flight if the portal actually sent one. Several
+    // portals show a DELIVERY CHOICE first -- "how would you like to receive
+    // your code?" -- which matches the text test above while nothing has
+    // been sent, so the account holder waits for a message that was never
+    // requested. If there is no code box yet but there is a button offering
+    // to send one, press it once. That is what a person would do; it asks
+    // the portal for a code through its own front door and evades nothing.
+    const codeBox = () => page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="code" i], input[name*="code" i]').first();
+    if ((await codeBox().count().catch(() => 0)) === 0) {
+      const send = page.getByRole("button", { name: /(send|email|text|sms|get)\b.{0,24}code|send.{0,12}(me|it)|request.{0,12}code/i })
+        .or(page.getByRole("link", { name: /(send|email|text|sms|get)\b.{0,24}code/i })).first();
+      if (await send.count().catch(() => 0)) {
+        const label = (await send.textContent().catch(() => "") || "").replace(/\s+/g, " ").trim();
+        console.log(`  no code box yet — pressing "${label.slice(0, 50)}" to request one`);
+        await send.click().catch(() => {});
+        await settle();
+        body = await bodyText();
+        await page.screenshot({ path: shotCode, fullPage: false }).catch(() => {});
+        (body.match(/[A-Za-z0-9*.]+@[A-Za-z0-9*.]+\.[A-Za-z]{2,}|\(?\*{3}\)?[ -]?\*{3}[ -]?\d{4}/g) || [])
+          .slice(0, 3).forEach(d => console.log("  destination shown:", d));
+      } else {
+        console.log("  no code box and no send-code button — the code may already be in flight");
+      }
+    }
+
     console.log(`*** waiting up to 6 minutes for a code in ${CODE_FILE} ***`);
     let code = null;
     for (let i = 0; i < 120; i++) {

@@ -179,9 +179,15 @@ const isoDate = (s) => {
     // that gets clicked around is how automation ends up typing into the
     // wrong form.
     for (const sig of book.signedOutSignals) {
-      const loc = sig.role === "textbox"
-        ? page.getByRole("textbox", { name: sig.name })
-        : page.getByRole("button", { name: sig.name });
+      // Ask for the role the playbook actually declared. This used to send
+      // everything that was not a textbox to getByRole("button"), so the
+      // { role: "link" } signal that six of the eight playbooks carry could
+      // never match anything. BGE's logged-out homepage has two "Sign In"
+      // LINKS and no such button, so an expired session read as "still
+      // valid" -- and every account then failed as `wrong_account`, which
+      // sends you looking at account numbers when the truth is you are
+      // signed out. Sweep summarised it as needsSignin: 0.
+      const loc = page.getByRole(sig.role || "button", { name: sig.name });
       if (await loc.count().catch(() => 0)) {
         record("signed out", `saw ${sig.role} matching ${sig.name}`);
         finish("needs_signin", { error: "the saved session has expired — run enroll.js again", screenshot: shot });
