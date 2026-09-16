@@ -165,8 +165,11 @@ const isoDate = (s) => {
   const page = await ctx.newPage();
 
   try {
-    record("open", book.entry);
-    await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 45000 });
+    // A signed-in run starts at the signed-in landing page, never at the
+    // sign-in entry -- see signedInEntry in playbooks.js.
+    const startUrl = book.signedInEntry || book.entry;
+    record("open", startUrl);
+    await page.goto(startUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForTimeout(6000);
     record("landed", page.url());
 

@@ -162,7 +162,8 @@ async function visionCheck(pngPath) {
   const page = await ctx.newPage();
 
   try {
-    await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 45000 });
+    // Signed-in runs start at the signed-in landing page. See signedInEntry.
+    await page.goto(book.signedInEntry || book.entry, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForLoadState("networkidle", { timeout: 25000 }).catch(() => {});
 
     if (await page.getByRole("textbox", { name: /UserName|User ID/i }).count().catch(() => 0)) {

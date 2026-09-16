@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, shortId, fmtDate, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
+import { AccountPicker, EntityPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem, usePersistedView} from "../ui";
+import { escapeFilterValue, safeNum, formatLocalDate, formatCurrency, shortId, fmtDate, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -95,6 +95,38 @@ function csvBuildFingerprint(feedId, date, direction, absAmount, description) {
 
 // --- Main Component ---
 export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE, onOpenRegister, linesLoaded = true }) {
+  // Adding a vendor from here, because there was no way to add one from this
+  // page at all -- the dropdown was the only vendor surface on it, and it was
+  // read-only. Returns the created row so the picker can select it; the
+  // picker deliberately selects nothing when this returns null, since a
+  // reference to a vendor that failed to insert breaks the save further along
+  // instead of here.
+  async function createVendor(name) {
+    const clean = String(name || "").trim();
+    if (!clean || !companyId) return null;
+    // Case-insensitive: "Home Depot" and "home depot" are one vendor, and
+    // two rows is how a payee list stops being useful.
+    const { data: dupe } = await supabase.from("vendors")
+      .select("id, name").eq("company_id", companyId).is("archived_at", null)
+      .ilike("name", escapeFilterValue(clean)).limit(1).maybeSingle();
+    if (dupe?.id) {
+      showToast(`"${dupe.name}" is already on the vendor list — selected it.`, "info");
+      return dupe;
+    }
+    const { data, error } = await supabase.from("vendors")
+      .insert([{ company_id: companyId, name: clean }]).select("id, name").maybeSingle();
+    if (error) {
+      pmError("PM-5001", { raw: error, context: "add vendor from bank transactions" });
+      showToast("Could not add the vendor: " + error.message, "error");
+      return null;
+    }
+    showToast(`Vendor "${clean}" added.`, "success");
+    // The vendor list is a prop from Accounting's fetchAll, so the parent has
+    // to refetch or the new name vanishes from the picker on the next render.
+    if (onRefreshAccounting) onRefreshAccounting();
+    return data;
+  }
+
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -2801,22 +2833,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       </div>
       <div>
         <label className="text-xs font-medium text-neutral-500 block mb-1">Tenant / vendor</label>
-        <Select value={bulkForm.entityId ? `${bulkForm.entityType}:${bulkForm.entityId}` : ""}
-          onChange={e => {
-            if (!e.target.value) { setBulkForm(f => ({ ...f, entityType: "", entityId: "", entityName: "" })); return; }
-            const [type, id] = e.target.value.split(":");
-            // String-compared: the select value is text while tenants.id
-            // is a number, so === would never match.
-            const name = type === "customer"
-              ? (tenants.find(t => String(t.id) === String(id))?.name || "")
-              : (vendors.find(v => String(v.id) === String(id))?.name || "");
-            setBulkForm(f => ({ ...f, entityType: type, entityId: id, entityName: name }));
-          }}
-          className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-          <option value="">None</option>
-          <optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup>
-          <optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
-        </Select>
+        <EntityPicker
+          value={bulkForm.entityId ? `${bulkForm.entityType}:${bulkForm.entityId}` : ""}
+          onChange={(_v, e) => setBulkForm(f => ({ ...f, entityType: e.type, entityId: e.id, entityName: e.name }))}
+          tenants={tenants} vendors={vendors} onCreateVendor={createVendor} />
       </div>
       <div>
         <label className="text-xs font-medium text-neutral-500 block mb-1">Property / class</label>
@@ -3101,9 +3121,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
               <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
             <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
-              <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => String(t.id) === String(id))?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-                <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
-              </Select></div>
+              <EntityPicker
+                value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""}
+                onChange={(_v, e) => setAddForm(f => ({ ...f, entityType: e.type, entityId: e.id, entityName: e.name }))}
+                tenants={tenants} vendors={vendors} onCreateVendor={createVendor} /></div>
             <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
               <Input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
             <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>

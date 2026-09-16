@@ -186,6 +186,13 @@ const PLAYBOOKS = {
     // Bounced to the public site = signed out. The button names drift with
     // every redesign; the hostname does not.
     signedOutUrl: /^https?:\/\/www\.pepco\.com/,
+    // Pepco is the same Exelon platform as BGE and almost certainly has the
+    // identical entry-redirect problem -- which would explain why the
+    // chooser fix has twice been written off as "the session had expired".
+    // Deliberately NOT guessed at: the BGE path was confirmed against a live
+    // session before being written down, and this one has not been. On the
+    // next Pepco enrol, load the saved session, visit entry, and if it lands
+    // on www.pepco.com add the dashboard URL here the same way.
     provider: "Pepco",
     aliases: ["pepco", "potomac electric", "potomac electric power"],
     // VERIFIED 2026-09-14: signed in end to end and read $513.99 due
@@ -225,6 +232,23 @@ const PLAYBOOKS = {
     mfa: "code-on-signin",
     selectAccountFirst: { role: "heading", name: /select an account/i },
     entry: "https://secure.bge.com/",
+    // `entry` is where you go to SIGN IN. It is not where you go once you
+    // ARE signed in, and BGE makes the difference expensive: with a valid
+    // session, https://secure.bge.com/ redirects to https://www.bge.com/ --
+    // the marketing homepage -- which is precisely what signedOutUrl below
+    // matches. So the first account read fine (the browser was still on the
+    // chooser from sign-in) and every account after it was reported
+    // "session expired" while the session was perfectly good. Measured, not
+    // guessed: loading the saved session and visiting entry landed on
+    // www.bge.com with the heading "Welcome to BGE", while
+    // /accounts/dashboard on the same session gave "My Dashboard".
+    // ChangeAccount.aspx, not /accounts/dashboard. Both load fine with a
+    // valid session, but the dashboard carries only a small switcher widget
+    // and the sweep then reported all fourteen accounts as "not in the
+    // switcher". This is the page sign-in itself lands on for a multi-account
+    // login -- "Select an Account To View", with every account listed -- which
+    // is the shape selectAccountFirst and accounts.js are written against.
+    signedInEntry: "https://secure.bge.com/Pages/ChangeAccount.aspx",
     signedOutSignals: COMMON_SIGNED_OUT,
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,

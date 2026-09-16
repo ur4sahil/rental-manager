@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 // ============================================================
 // Reusable UI Component Library
@@ -631,6 +631,153 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
               })}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- ENTITY PICKER (tenant or vendor, typeahead) ----
+//
+// This replaces a plain <select> holding two <optgroup>s. It reported
+// "can't see any vendors on the bank page" against a company with 84 of
+// them -- because 95 tenants came first, and a native dropdown has no
+// search. The vendors were ninety-five rows below the fold, so the only
+// honest conclusion from the screen was that there were none.
+//
+// Modelled on AccountPicker above rather than written fresh: same
+// typeahead, same keyboard nav, same outside-click close. Two differences
+// that matter here -- each row carries its own kind, so a vendor and a
+// tenant of the same name are distinguishable, and a name that matches
+// nothing offers to create the vendor then and there. There was no way to
+// add one from this page at all.
+//
+// `value` is the encoding the call sites already use: "" or
+// "customer:<id>" / "vendor:<id>".
+export function EntityPicker({
+  value, onChange, tenants = [], vendors = [], onCreateVendor,
+  placeholder = "Search tenants and vendors...", className = "",
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [highlighted, setHighlighted] = useState(-1);
+  const [creating, setCreating] = useState(false);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  const rows = useMemo(() => [
+    ...tenants.map(t => ({ key: `customer:${t.id}`, name: t.name || "", kind: "Tenant", sub: t.property || "" })),
+    ...vendors.map(v => ({ key: `vendor:${v.id}`, name: v.name || "", kind: "Vendor", sub: "" })),
+  ], [tenants, vendors]);
+
+  const selected = rows.find(r => r.key === value);
+  const displayText = selected ? selected.name : "";
+
+  const q = search.trim().toLowerCase();
+  const filtered = q ? rows.filter(r => r.name.toLowerCase().includes(q)) : rows;
+  // An exact name already on file must not be offered for creation -- that
+  // is how you end up with two vendors called the same thing.
+  const exact = q && rows.some(r => r.name.trim().toLowerCase() === q);
+  const canCreate = !!onCreateVendor && !!q && !exact;
+
+  const flat = canCreate ? [{ key: "__new__" }, ...filtered] : filtered;
+
+  useEffect(() => {
+    function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    if (highlighted >= 0 && listRef.current) {
+      const el = listRef.current.querySelector(`[data-idx="${highlighted}"]`);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlighted]);
+
+  const pick = useCallback((row) => {
+    if (!row) return;
+    const [type, id] = row.key.split(":");
+    onChange(row.key, { type, id, name: row.name });
+    setOpen(false); setSearch(""); setHighlighted(-1);
+  }, [onChange]);
+
+  async function createVendor() {
+    const name = search.trim();
+    if (!name || creating) return;
+    setCreating(true);
+    try {
+      const created = await onCreateVendor(name);
+      // Only select it if it actually came back. A failed insert that still
+      // selected the name would leave a reference to a vendor that does not
+      // exist, and the save would fail somewhere further along.
+      if (created && created.id) {
+        onChange(`vendor:${created.id}`, { type: "vendor", id: created.id, name: created.name || name });
+        setOpen(false); setSearch(""); setHighlighted(-1);
+      }
+    } finally { setCreating(false); }
+  }
+
+  function onKeyDown(e) {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) { setOpen(true); e.preventDefault(); return; }
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHighlighted(h => Math.min(h + 1, flat.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter" && highlighted >= 0) {
+      e.preventDefault();
+      const row = flat[highlighted];
+      if (row.key === "__new__") createVendor(); else pick(row);
+    } else if (e.key === "Escape") { setOpen(false); setSearch(""); }
+    else if (e.key === "Tab") { setOpen(false); setSearch(""); }
+  }
+
+  return (
+    <div ref={wrapRef} className={`relative ${className}`}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={open ? search : displayText}
+        placeholder={value ? displayText : placeholder}
+        onChange={e => { setSearch(e.target.value); setHighlighted(-1); if (!open) setOpen(true); }}
+        onFocus={() => { setOpen(true); setSearch(""); }}
+        onKeyDown={onKeyDown}
+        title={displayText || undefined}
+        className={`${inputBase("md", false)} pr-7 text-xs`}
+        autoComplete="off"
+      />
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none text-xs">▾</span>
+      {value && !open && (
+        <button type="button" tabIndex={-1}
+          onClick={(e) => { e.stopPropagation(); onChange("", { type: "", id: "", name: "" }); setSearch(""); inputRef.current?.focus(); }}
+          className="absolute right-6 top-1/2 -translate-y-1/2 text-neutral-300 hover:text-neutral-500 text-xs">✕</button>
+      )}
+      {open && (
+        <div ref={listRef} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-pop max-h-56 overflow-y-auto">
+          {canCreate && (
+            <button type="button" data-idx={0} disabled={creating}
+              onMouseDown={(e) => { e.preventDefault(); createVendor(); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50 ${highlighted === 0 ? "bg-brand-50" : ""}`}>
+              {creating ? "Adding…" : `+ Add "${search.trim()}" as a vendor`}
+            </button>
+          )}
+          {filtered.length === 0 && !canCreate && (
+            <div className="px-3 py-3 text-xs text-neutral-400 text-center">
+              {q ? `Nothing matches "${search}"` : "No tenants or vendors yet"}
+            </div>
+          )}
+          {filtered.map(r => {
+            const idx = flat.indexOf(r);
+            return (
+              <button type="button" key={r.key} data-idx={idx}
+                onMouseDown={(e) => { e.preventDefault(); pick(r); }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-50 flex items-center gap-2 ${highlighted === idx ? "bg-brand-50 text-brand-700" : "text-neutral-700"} ${r.key === value ? "font-semibold" : ""}`}>
+                <span className={`shrink-0 text-2xs px-1.5 py-0.5 rounded-full ${r.kind === "Vendor" ? "bg-notice-100 text-notice-700" : "bg-brand-100 text-brand-700"}`}>{r.kind}</span>
+                <span className="truncate">{r.name}</span>
+                {r.sub && <span className="ml-auto text-2xs text-neutral-400 truncate max-w-[45%]">{r.sub}</span>}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
