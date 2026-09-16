@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -123,7 +123,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // Note: Supabase has a 1000-row hard ceiling on a single response —
   // .limit(5000) does NOT override it. Use paginated `.range()` calls
   // (see paginateTxns below) to actually pull beyond 1000.
-  const [dateRangeMode, setDateRangeMode] = useState("90d");
+  // Remembered, because the default silently hides work. A company with
+  // 956 pending transactions has 427 suggestions, but only 142 fall inside
+  // the default 90-day window -- the other 285 attach to rows the page never
+  // fetched, so the Recognized tab reads as nearly empty and nothing says
+  // why. Someone who widens the range should not have to widen it again on
+  // every visit.
+  const [dateRangeMode, setDateRangeMode] = usePersistedView("bank-date-range", "90d", ["30d", "90d", "6m", "1y", "all"]);
   const TXN_FETCH_CAP = 20000;
   // Paginate around Supabase's 1000-row response ceiling. Returns
   // { rows, totalCount, truncated } so callers can both render and
@@ -459,7 +465,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         // from.
         p_allow_siblings: true,
       });
-      if (error || !data?.length) return rows;
+      // A failure here is indistinguishable from "there are no suggestions"
+      // unless it says so. When this call errored or timed out the page
+      // rendered zero suggestions in silence, and neither the user nor I
+      // could tell which had happened without measuring the RPC directly.
+      // An empty result is legitimate and stays quiet; an ERROR does not.
+      if (error) {
+        pmError("PM-5001", { raw: error, context: "history suggestions (suggest_accounts_for_pending)" });
+        return rows;
+      }
+      if (!data?.length) return rows;
       const byId = new Map(data.map(d => [d.transaction_id, d]));
       return rows.map(t => {
         const s = byId.get(t.id);
