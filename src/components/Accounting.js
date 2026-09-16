@@ -6490,12 +6490,14 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {/* The reconciliation, stated as the sum it actually is. A single
       "Remaining Diff" hid where the number came from, so a difference was
       impossible to argue with. */}
-  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-  <div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Beginning balance</div><div className="text-lg font-bold text-neutral-700 tnum">{formatCurrency(beginningBalance)}</div><div className="text-2xs text-neutral-400">{priorPeriod ? "from " + priorPeriod : "no prior reconciliation"}</div></div>
-  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Cleared ({reconciledCount})</div><div className="text-lg font-bold text-positive-700 tnum">{formatCurrency(reconciledTotal)}</div></div>
-  <div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Cleared balance</div><div className="text-lg font-bold text-neutral-800 tnum">{formatCurrency(clearedBalanceUi)}</div></div>
-  <div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Outstanding ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-warn-700 tnum">{formatCurrency(unreconciledTotal)}</div><div className="text-2xs text-neutral-400">carries forward</div></div>
-  <div className={"rounded-lg p-3 text-center " + (balancedUi ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold tnum " + (balancedUi ? "text-positive-700" : "text-danger-600")}>{formatCurrency(diffUi)}</div><div className="text-2xs text-neutral-400">{balancedUi ? "balanced" : "must be 0.00"}</div></div>
+  <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-brand-50 border border-brand-50 rounded-xl overflow-hidden mb-4">
+  <div className="bg-white p-3 text-center"><div className="text-2xs uppercase tracking-wide text-neutral-400">Beginning balance</div><div className="text-lg font-semibold text-neutral-800 tnum mt-0.5">{acctFmt(beginningBalance)}</div><div className="text-2xs text-neutral-400">{priorPeriod ? "from " + priorPeriod : "no prior reconciliation"}</div></div>
+  <div className="bg-white p-3 text-center"><div className="text-2xs uppercase tracking-wide text-neutral-400">Cleared ({reconciledCount})</div><div className="text-lg font-semibold text-neutral-800 tnum mt-0.5">{acctFmt(reconciledTotal)}</div></div>
+  <div className="bg-white p-3 text-center"><div className="text-2xs uppercase tracking-wide text-neutral-400">Cleared balance</div><div className="text-lg font-semibold text-neutral-800 tnum mt-0.5">{acctFmt(clearedBalanceUi)}</div></div>
+  <div className="bg-white p-3 text-center"><div className="text-2xs uppercase tracking-wide text-neutral-400">Outstanding ({reconItems.length - reconciledCount})</div><div className="text-lg font-semibold text-neutral-800 tnum mt-0.5">{acctFmt(unreconciledTotal)}</div><div className="text-2xs text-neutral-400">carries forward</div></div>
+  {/* The only figure that gets colour, because it is the only one that
+      decides anything. */}
+  <div className="bg-white p-3 text-center"><div className="text-2xs uppercase tracking-wide text-neutral-400">Difference</div><div className={"text-lg font-semibold tnum mt-0.5 " + (balancedUi ? "text-positive-700" : "text-danger-600")}>{acctFmt(diffUi)}</div><div className="text-2xs text-neutral-400">{balancedUi ? "balanced" : "must be 0.00"}</div></div>
   </div>
 
   <div className="mb-3 flex items-center gap-2">
@@ -6504,15 +6506,40 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <span className="text-xs text-neutral-400">{reconItems.length} transactions</span>
   </div>
 
-  <div className="space-y-1 mb-4">
-  {reconItems.map((item, i) => (
-  <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-brand-500 border-positive-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
-  <div className="flex-1 min-w-0">
-  <div className="text-sm text-neutral-800 truncate">{item.description}</div>
-  <div className="text-xs text-neutral-400">{fmtDate(item.date)} · {item.reference} · {item.memo}</div>
+  {/* A statement is read as a LIST, not as 2,412 cards.
+      Every row used to be its own bordered, rounded card that turned green
+      when ticked, with the amount in green or red. At this length that is a
+      wall of colour with no figure standing out of it -- and the one thing
+      you are scanning for, the amount, was the hardest thing to compare
+      because the column did not line up.
+      Rows now: hairline separator, no fill, no per-row border, deposits and
+      payments in their own aligned columns with tabular figures. The tick is
+      the only state, which is all the state there is. */}
+  <div className="border border-brand-50 rounded-xl overflow-hidden mb-4">
+  <div className="grid grid-cols-[34px_86px_minmax(0,1fr)_110px_110px] gap-2 px-3 py-2 bg-neutral-50 border-b border-brand-50
+    text-2xs font-semibold uppercase tracking-wide text-neutral-400">
+    <span></span><span>Date</span><span>Description</span>
+    <span className="text-right">Payment</span><span className="text-right">Deposit</span>
   </div>
-  <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-positive-600" : "text-danger-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
+  {reconItems.map((item, i) => (
+  <div key={i} onClick={() => toggleReconItem(i)}
+    className="grid grid-cols-[34px_86px_minmax(0,1fr)_110px_110px] gap-2 px-3 py-2 items-center cursor-pointer
+      border-b border-brand-50 last:border-b-0 hover:bg-neutral-50 text-sm">
+    <span className={"w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center text-[11px] font-bold "
+      + (item.reconciled ? "bg-brand-600 border-brand-600 text-white" : "border-neutral-300 bg-white text-transparent")}>✓</span>
+    <span className="tnum text-neutral-500 text-xs whitespace-nowrap">{fmtDate(item.date)}</span>
+    <span className="min-w-0">
+      <span className="block truncate text-neutral-800">{item.description}</span>
+      {(item.reference || item.memo) && (
+        <span className="block truncate text-2xs text-neutral-400">
+          {[item.reference, item.memo].filter(Boolean).join(" · ")}
+        </span>
+      )}
+    </span>
+    <span className="text-right tnum text-neutral-700 whitespace-nowrap">
+      {item.amount < 0 ? acctFmt(Math.abs(item.amount)) : ""}</span>
+    <span className="text-right tnum text-neutral-700 whitespace-nowrap">
+      {item.amount > 0 ? acctFmt(item.amount) : ""}</span>
   </div>
   ))}
   </div>
