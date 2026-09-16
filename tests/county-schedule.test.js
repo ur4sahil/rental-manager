@@ -115,5 +115,54 @@ console.log("\n=== Maryland's statutory dates ===");
   assert(`all ${mdKeys.length} Maryland jurisdictions agree`, odd.length === 0, odd.join(", "));
 }
 
+console.log("\n=== the rollforward must not leave a permanent gap ===");
+{
+  // Transcribed from the job's candidate-selection rule.
+  const pick = ({ thisYear, nextYear, today, earliestNextDue }) => {
+    const out = [];
+    out.push(thisYear);                                   // always a candidate
+    const days = Math.round((new Date(earliestNextDue) - new Date(today)) / 86400000);
+    if (days <= 60) out.push(nextYear);
+    return out;
+  };
+  // The old rule, kept so the regression stays visible.
+  const pickOld = ({ nextYear, today, earliestNextDue }) => {
+    const days = Math.round((new Date(earliestNextDue) - new Date(today)) / 86400000);
+    return days <= 60 ? [nextYear] : [];
+  };
+
+  const sep = { thisYear: 2026, nextYear: 2027, today: "2026-09-15", earliestNextDue: "2027-09-30" };
+  assert("OLD rule generated NOTHING in September — the silent gap",
+    pickOld(sep).length === 0,
+    "if this fails the old rule was fine and the change was unnecessary");
+  assert("current year is generated even outside the next-year window",
+    pick(sep).includes(2026), JSON.stringify(pick(sep)));
+
+  const aug = { thisYear: 2026, nextYear: 2027, today: "2027-08-15", earliestNextDue: "2027-09-30" };
+  assert("next year still enters on its 60-day window", pick(aug).includes(2027));
+  assert("catch-up is bounded to ONE year, never walking back through history",
+    Math.min(...pick(sep)) === 2026 && pick(sep).length <= 2,
+    JSON.stringify(pick(sep)));
+}
+
+console.log("\n=== escrowed properties must not be billed ===");
+{
+  const shouldBill = (taxRec) => !(taxRec && taxRec.escrow_paid_by_lender);
+  assert("a lender-escrowed property is skipped",
+    shouldBill({ escrow_paid_by_lender: true }) === false,
+    "the servicer pays these; a reminder is a prompt to pay twice");
+  assert("an owner-paid property is billed", shouldBill({ escrow_paid_by_lender: false }) === true);
+  assert("a property with no tax record is still billed (a date is better than silence)",
+    shouldBill(undefined) === true);
+}
+
+console.log("\n=== an instalment must not claim the whole year ===");
+{
+  const per = (annual, instalments) => Math.round((annual / instalments) * 100) / 100;
+  assert("one annual instalment carries the full amount", per(4000, 1) === 4000);
+  assert("two halves carry half each", per(4000, 2) === 2000,
+    "billing the full annual figure on each half would double the stated liability");
+}
+
 console.log(`\n${failed ? "❌" : "✅"} Passed: ${passed}   Failed: ${failed}\n`);
 process.exit(failed ? 1 : 0);

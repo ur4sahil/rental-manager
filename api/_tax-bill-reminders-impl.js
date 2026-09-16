@@ -136,7 +136,8 @@ async function rollforwardNextYear(supabase, todayIso) {
   // exist. If not AND we're within 60 days of next year's first
   // installment, generate them.
   const today = new Date(todayIso + "T00:00:00Z");
-  const nextYear = today.getUTCFullYear() + 1;
+  const thisYear = today.getUTCFullYear();
+  const nextYear = thisYear + 1;
 
   // company-scope-exempt: this is a CRON job, not a user request. It scans
   // every company's properties to generate tax-bill reminders and carries
@@ -150,7 +151,25 @@ async function rollforwardNextYear(supabase, todayIso) {
     .is("archived_at", null)
     .not("county", "is", null);
 
-  let generated = 0, skipped = 0, noSchedule = 0;
+  // Escrowed properties must not be billed: the mortgage servicer pays
+  // those, so a reminder is a prompt to pay something already paid. 17 of
+  // Sigma Housing LLC's 36 tax records are escrowed. This job built from
+  // `properties` alone and had no idea.
+  //
+  // The same lookup carries annual_tax_amount, so a generated instalment
+  // says what is owed instead of showing a blank.
+  const taxByProperty = new Map();
+  for (let from = 0; ; from += 1000) {
+    const { data: taxRows, error: taxErr } = await supabase
+      .from("property_taxes")
+      .select("property_id, escrow_paid_by_lender, annual_tax_amount, billing_frequency")
+      .range(from, from + 999);
+    if (taxErr) break;
+    (taxRows || []).forEach(t => { if (t.property_id) taxByProperty.set(t.property_id, t); });
+    if (!taxRows || taxRows.length < 1000) break;
+  }
+
+  let generated = 0, skipped = 0, noSchedule = 0, escrowed = 0;
 
   for (const p of props || []) {
     const found = findCountySchedule(p.county, p.state);
@@ -164,14 +183,32 @@ async function rollforwardNextYear(supabase, todayIso) {
       noSchedule++; continue;
     }
 
-    // Resolve real due dates with fiscal-year bumping so Fredericksburg
-    // et al. don't emit their "2nd half" ahead of their "1st half".
-    const resolved = resolveDueDates(schedule, nextYear);
-    const earliestDue = resolved
+    const taxRec = taxByProperty.get(p.id);
+    if (taxRec && taxRec.escrow_paid_by_lender) { escrowed++; continue; }
+
+    // TWO years are considered, not just the next one.
+    //
+    // This job only ever generated `nextYear`, and only inside a 60-day
+    // window before its earliest due date. That leaves no path back: if the
+    // window is missed the year is never generated at all. Which is exactly
+    // what happened -- when the window for 30 September 2026 opened in
+    // August, the county lookup was broken, every property fell through,
+    // and the gap was permanent and silent.
+    //
+    // The current year is therefore always a candidate (bounded to one year
+    // of catch-up, so this cannot walk backwards through history), and next
+    // year still enters on the 60-day window.
+    const candidates = [];
+    for (const inst of resolveDueDates(schedule, thisYear)) candidates.push({ ...inst, year: thisYear });
+    const nextResolved = resolveDueDates(schedule, nextYear);
+    const earliestNext = nextResolved
       .map(inst => new Date(inst.dueDate + "T00:00:00Z"))
       .sort((a, b) => a - b)[0];
-    const daysToEarliest = Math.round((earliestDue - today) / 86_400_000);
-    if (daysToEarliest > 60) { skipped++; continue; }
+    if (Math.round((earliestNext - today) / 86_400_000) <= 60) {
+      for (const inst of nextResolved) candidates.push({ ...inst, year: nextYear });
+    }
+    const resolved = candidates;
+    if (resolved.length === 0) { skipped++; continue; }
 
     // Dedup by the actual due dates we're about to write, not by
     // tax_year alone. A fiscal schedule can legitimately reuse a
@@ -195,9 +232,14 @@ async function rollforwardNextYear(supabase, todayIso) {
       company_id: p.company_id,
       property: p.address,
       property_id: p.id || null,
-      tax_year: nextYear,
+      tax_year: inst.year,
       installment_label: inst.label,
       due_date: inst.dueDate,
+      // Split the annual figure across however many instalments the
+      // jurisdiction has, so a half-year bill does not claim the full year.
+      expected_amount: taxRec && taxRec.annual_tax_amount
+        ? Math.round((Number(taxRec.annual_tax_amount) / schedule.length) * 100) / 100
+        : null,
       status: "pending",
       auto_generated: true,
     }));
@@ -208,7 +250,7 @@ async function rollforwardNextYear(supabase, todayIso) {
     }
     generated += rows.length;
   }
-  return { generated, skipped, noSchedule };
+  return { generated, skipped, noSchedule, escrowed };
 }
 
 const { setCors } = require("./_cors");
