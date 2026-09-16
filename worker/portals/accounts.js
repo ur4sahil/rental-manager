@@ -187,13 +187,44 @@ async function listChooserAccounts(page) {
  * things a person does at the same screen.
  */
 async function revealAccount(page, number) {
+  // The grid renders through Angular after the page settles. Waiting for a
+  // row to exist beats waiting a guessed number of milliseconds: a probe at
+  // 7s saw an empty table where the same probe at 8s saw ten rows, so a fixed
+  // delay turns into "this account is not on the chooser" at random.
+  await page.waitForFunction(
+    () => document.querySelectorAll("table tbody tr").length > 0,
+    { timeout: 30000 },
+  ).catch(() => {});
+
+  // 0. Hidden accounts. Pepco's chooser has a "Show Hidden Accounts"
+  // checkbox, unticked by default, and an account someone once clicked
+  // "Hide" on is absent from the table entirely until it is ticked. Three of
+  // this login's accounts sat behind it, and the sweep reported them as
+  // "not on the chooser page" -- which read as "this account number is
+  // wrong" and sent me looking at the app's data instead of at the portal.
+  //
+  // Found by looking at a screenshot of the page, after three rounds of
+  // DOM probing had concluded the accounts did not exist. The checkbox is
+  // plainly visible in the shot. Tick it first: it costs one click and it
+  // changes what "not on the chooser" means.
+  const showHidden = page.getByRole("checkbox", { name: /show\s+hidden/i })
+    .or(page.locator('input[type="checkbox"][ng-model*="hidden" i], input[type="checkbox"][id*="hidden" i]')).first();
+  if (await showHidden.count().catch(() => 0)) {
+    if (!(await showHidden.isChecked().catch(() => true))) {
+      await showHidden.check({ timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(1800);
+    }
+  }
+
   // 1. A search box filters server- or client-side and is the cheapest.
   const search = page.getByRole("textbox", { name: /account\s*(number|#)?\s*search|search/i })
     .or(page.locator('input[type="search"], input[placeholder*="search" i]')).first();
   if (await search.count().catch(() => 0)) {
+    // fill() is enough: it dispatches an input event and DataTables filters on
+    // it -- verified live, ten rows down to one. Enter is harmless but does
+    // nothing here, so nothing depends on it.
     await search.fill(String(number)).catch(() => {});
-    await search.press("Enter").catch(() => {});
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(1500);
     if (await page.getByRole("row", { name: new RegExp(number) }).first().count().catch(() => 0)) {
       return "search box";
     }
@@ -224,11 +255,38 @@ async function revealAccount(page, number) {
  * simply stayed put. That was reported as "the switch did not take",
  * pointing at the account rather than at the row markup.
  */
+// Handlers that OPEN an account. Matched by handler name, which is the only
+// thing on Pepco's markup that reliably identifies the control.
+const OPEN_HANDLERS = ["viewPHIAccount", "viewAccount", "selectAccount", "switchAccount"];
+
+// Handlers that must never be clicked by a sweep. unlinkAccount REMOVES the
+// account from the login; updateHiddenFlag hides it from the chooser;
+// setDefaultAccount changes which account the portal opens on. All three sit
+// in the same row as View, and the previous version's blind
+// `[ng-click].first()` resolved to unlinkAccount -- it is first in DOM order.
+// It survived only because Pepco renders it ng-hide, so the click timed out
+// and was swallowed. A portal redesign that made it visible would have had
+// the sweep quietly unlinking accounts one per run.
+const DESTRUCTIVE_HANDLERS = ["unlink", "remove", "delete", "updateHiddenFlag", "setDefault"];
+
 function rowTarget(row) {
+  const byHandler = OPEN_HANDLERS.map(h => row.locator(`[ng-click*="${h}"], [data-ng-click*="${h}"]`).first());
+  // Any other ng-click, minus anything destructive. :not() on the attribute
+  // keeps the exclusion in the selector rather than in a filter that a later
+  // edit could drop.
+  const notDestructive = DESTRUCTIVE_HANDLERS
+    .map(h => `:not([ng-click*="${h}"]):not([data-ng-click*="${h}"])`).join("");
   return [
+    // Handler name first. Pepco's "View" is a <button ng-click="viewPHIAccount">
+    // that getByRole("button") cannot see at all -- measured: count 0 for
+    // both /^view$/ and /view/, while the ng-click selector finds it, reports
+    // it visible, and clicking it lands on /accounts/dashboard. Angular's
+    // markup keeps it out of the accessibility tree, so every role-based
+    // attempt below is dead code on this portal.
+    ...byHandler,
     row.getByRole("link").first(),
     row.getByRole("button", { name: /view|select|open|go/i }).first(),
-    row.locator("[ng-click], [data-ng-click], [onclick]").first(),
+    row.locator(`[ng-click]${notDestructive}, [data-ng-click]${notDestructive}, [onclick]`).first(),
     row.getByText(/^\s*view\s*$/i).first(),
     row,
   ];

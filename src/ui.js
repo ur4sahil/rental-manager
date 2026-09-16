@@ -784,101 +784,6 @@ export function EntityPicker({
   );
 }
 
-// ---- OPTION PICKER (a searchable replacement for a long <select>) ----
-//
-// A native <select> has no search. That is fine for five options and
-// useless for a hundred: the Utilities property filter listed 112
-// addresses, so finding one meant scrolling a list with no way in.
-//
-// Deliberately generic, because this is the third typeahead in this file.
-// AccountPicker and EntityPicker above both predate it and each hard-codes
-// its own data shape; they should fold into this one, and anything new
-// should use this rather than becoming a fourth. Left as a note instead of
-// a refactor because both are load-bearing on pages this change does not
-// touch.
-//
-// options: [{ value, label, hint? }]. `value` "" is the all/none row.
-export function OptionPicker({
-  value, onChange, options = [], allLabel = "All", placeholder = "Search…",
-  className = "", ariaLabel,
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [highlighted, setHighlighted] = useState(-1);
-  const wrapRef = useRef(null);
-  const inputRef = useRef(null);
-  const listRef = useRef(null);
-
-  const all = useMemo(() => [{ value: "", label: allLabel }, ...options], [options, allLabel]);
-  const selected = all.find(o => String(o.value) === String(value ?? ""));
-  const displayText = selected ? selected.label : allLabel;
-
-  const q = search.trim().toLowerCase();
-  const filtered = q
-    ? all.filter(o => o.label.toLowerCase().includes(q) || (o.hint || "").toLowerCase().includes(q))
-    : all;
-
-  useEffect(() => {
-    function onDoc(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  useEffect(() => {
-    if (highlighted >= 0 && listRef.current) {
-      const el = listRef.current.querySelector(`[data-idx="${highlighted}"]`);
-      if (el) el.scrollIntoView({ block: "nearest" });
-    }
-  }, [highlighted]);
-
-  const pick = useCallback((o) => {
-    onChange(o.value);
-    setOpen(false); setSearch(""); setHighlighted(-1);
-  }, [onChange]);
-
-  function onKeyDown(e) {
-    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) { setOpen(true); e.preventDefault(); return; }
-    if (!open) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setHighlighted(h => Math.min(h + 1, filtered.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)); }
-    else if (e.key === "Enter" && highlighted >= 0) { e.preventDefault(); pick(filtered[highlighted]); }
-    else if (e.key === "Escape") { setOpen(false); setSearch(""); }
-    else if (e.key === "Tab") { setOpen(false); setSearch(""); }
-  }
-
-  return (
-    <div ref={wrapRef} className={`relative ${className}`}>
-      <input
-        ref={inputRef}
-        type="text"
-        aria-label={ariaLabel}
-        value={open ? search : displayText}
-        placeholder={open ? placeholder : displayText}
-        onChange={e => { setSearch(e.target.value); setHighlighted(-1); if (!open) setOpen(true); }}
-        onFocus={() => { setOpen(true); setSearch(""); }}
-        onKeyDown={onKeyDown}
-        title={displayText}
-        className={`${inputBase("md", false)} pr-7 text-sm truncate`}
-        autoComplete="off"
-      />
-      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none text-xs">▾</span>
-      {open && (
-        <div ref={listRef} className="absolute z-50 left-0 min-w-full max-w-[28rem] top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-pop max-h-64 overflow-y-auto">
-          {filtered.length === 0 && <div className="px-3 py-3 text-xs text-neutral-400 text-center">Nothing matches "{search}"</div>}
-          {filtered.map((o, idx) => (
-            <button type="button" key={String(o.value)} data-idx={idx}
-              onMouseDown={(e) => { e.preventDefault(); pick(o); }}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-50 flex items-center gap-2 ${highlighted === idx ? "bg-brand-50 text-brand-700" : "text-neutral-700"} ${String(o.value) === String(value ?? "") ? "font-semibold" : ""}`}>
-              <span className="truncate">{o.label}</span>
-              {o.hint && <span className="ml-auto text-2xs text-neutral-400 shrink-0">{o.hint}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---- FILTER PILL ----
 // Accent palette follows the module's visual identity: brand (default),
 // positive (Accounting module's green theme), dark (neutral-800 active).
@@ -1093,13 +998,20 @@ export function usePersistedList(key, initial = [], allowed = null) {
 // the selection. Checkboxes in a popover say what is on.
 export function MultiSelect({
   allLabel = "All",
-  options = [],            // [{ value, label }]
+  options = [],            // [{ value, label, hint? }]
   value = [],              // selected values; [] means all
   onChange,
   className = "",
   ariaLabel,
+  // A filter box inside the menu. Multi-select over a long list is no better
+  // than a native <select> over the same list -- the Utilities property
+  // filter has 112 addresses, and scrolling to tick three of them is the
+  // problem, not the fix. On by default past eight options.
+  searchable = null,
+  searchPlaceholder = "Filter…",
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const MENU_W = 248;
@@ -1132,12 +1044,20 @@ export function MultiSelect({
     onChange(next);
   };
 
+  const showSearch = searchable === null ? options.length > 8 : !!searchable;
+  const q = query.trim().toLowerCase();
+  // A ticked option stays listed even when it does not match the query, so
+  // the menu can never hide a selection you are about to lose track of.
+  const shown = q
+    ? options.filter(o => o.label.toLowerCase().includes(q) || sel.has(o.value))
+    : options;
+
   const openMenu = (e) => {
     e.stopPropagation();
     if (open) { setOpen(false); return; }
     const r = btnRef.current?.getBoundingClientRect();
     if (r) {
-      const estH = 52 + options.length * 34;
+      const estH = 52 + Math.min(options.length, 10) * 34;
       const below = window.innerHeight - r.bottom;
       setPos({
         top: below < estH ? Math.max(8, r.top - estH - 4) : r.bottom + 4,
@@ -1184,12 +1104,27 @@ export function MultiSelect({
           >
             {allLabel}{value.length ? " — clear selection" : " (showing everything)"}
           </button>
-          {options.map(o => (
+          {showSearch && (
+            <div className="px-2 py-1.5 border-b border-neutral-100 sticky top-0 bg-white">
+              <input
+                type="text" value={query} autoFocus
+                onChange={e => setQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                className="w-full border border-neutral-200 rounded-lg px-2 py-1 text-xs focus:border-brand-400 focus:outline-none"
+              />
+            </div>
+          )}
+          {shown.length === 0 && (
+            <div className="px-3 py-3 text-xs text-neutral-400 text-center">Nothing matches "{query}"</div>
+          )}
+          {shown.map(o => (
             <label key={o.value}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 hover:bg-brand-50/60 cursor-pointer">
               <input type="checkbox" checked={sel.has(o.value)} onChange={() => toggle(o.value)}
                 className="rounded accent-brand-600" />
               <span className="truncate" title={o.label}>{o.label}</span>
+              {o.hint && <span className="ml-auto text-2xs text-neutral-400 shrink-0">{o.hint}</span>}
             </label>
           ))}
         </div>

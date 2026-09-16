@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, OptionPicker, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
+import { Input, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -31,12 +31,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [utilView, setUtilView] = usePersistedView("utilities", "card", ["card", "table"]);
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
-  const [utilFilterProp, setUtilFilterProp] = useState("all");
+  const [utilFilterProps, setUtilFilterProps] = useState([]);   // [] = all
   // Biller filter. 79 bills across a dozen providers, and the only way to
   // see just BGE's was to type it into the free-text search -- which also
   // matches property names, so it was a filter by accident rather than by
   // design.
-  const [utilFilterProvider, setUtilFilterProvider] = useState("all");
+  const [utilFilterProviders, setUtilFilterProviders] = useState([]);  // [] = all
   // Due date ascending: the next thing to pay is the reason to open this page.
   const [utilSort, setUtilSort] = useState({ key: "due", dir: "asc" });
   
@@ -410,18 +410,15 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <Select filter value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
-  {/* Searchable, because a native select over 112 addresses has no way in.
-      The value "" is the all-row, so it maps to the "all" sentinel here. */}
-  <OptionPicker ariaLabel="Filter by biller" allLabel="All Billers" placeholder="Search billers…"
-    className="w-44"
-    value={utilFilterProvider === "all" ? "" : utilFilterProvider}
-    onChange={v => setUtilFilterProvider(v || "all")}
+  {/* Multi-select, and searchable: "BGE and Pepco" or two named properties
+      is a normal question, and a single-value filter cannot answer it.
+      [] means all, so nothing needs an "all" sentinel value. */}
+  <MultiSelect ariaLabel="Filter by biller" allLabel="All Billers" searchPlaceholder="Filter billers…"
+    value={utilFilterProviders} onChange={setUtilFilterProviders}
     options={[...new Set(utilities.map(u => u.provider).filter(Boolean))].sort((a, b) => a.localeCompare(b))
       .map(p => ({ value: p, label: p, hint: String(utilities.filter(u => u.provider === p).length) }))} />
-  <OptionPicker ariaLabel="Filter by property" allLabel="All Properties" placeholder="Search properties…"
-    className="w-56"
-    value={utilFilterProp === "all" ? "" : utilFilterProp}
-    onChange={v => setUtilFilterProp(v || "all")}
+  <MultiSelect ariaLabel="Filter by property" allLabel="All Properties" searchPlaceholder="Filter properties…"
+    value={utilFilterProps} onChange={setUtilFilterProps}
     options={[...new Set(utilities.map(u => u.property).filter(Boolean))].sort((a, b) => a.localeCompare(b))
       .map(p => ({ value: p, label: p }))} />
   <div className="flex bg-brand-50 rounded-lg p-0.5">
@@ -468,8 +465,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {(() => {
   const filteredUtils = utilities.filter(u =>
   (utilFilterStatus === "all" || u.status === utilFilterStatus) &&
-  (utilFilterProp === "all" || u.property === utilFilterProp) &&
-  (utilFilterProvider === "all" || u.provider === utilFilterProvider) &&
+  (utilFilterProps.length === 0 || utilFilterProps.includes(u.property)) &&
+  (utilFilterProviders.length === 0 || utilFilterProviders.includes(u.provider)) &&
   (!utilSearch || u.provider?.toLowerCase().includes(utilSearch.toLowerCase()) || u.property?.toLowerCase().includes(utilSearch.toLowerCase()))
   );
   // Sorted here rather than in DataTable: the primitive draws the header

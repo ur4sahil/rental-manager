@@ -186,13 +186,22 @@ const PLAYBOOKS = {
     // Bounced to the public site = signed out. The button names drift with
     // every redesign; the hostname does not.
     signedOutUrl: /^https?:\/\/www\.pepco\.com/,
-    // Pepco is the same Exelon platform as BGE and almost certainly has the
-    // identical entry-redirect problem -- which would explain why the
-    // chooser fix has twice been written off as "the session had expired".
-    // Deliberately NOT guessed at: the BGE path was confirmed against a live
-    // session before being written down, and this one has not been. On the
-    // next Pepco enrol, load the saved session, visit entry, and if it lands
-    // on www.pepco.com add the dashboard URL here the same way.
+    // Same entry-redirect as BGE, and it hid behind a condition that made it
+    // look absent: measured on a fresh session, https://secure.pepco.com/
+    // lands on Pages/ChangeAccount.aspx and everything looks fine. Measured
+    // again AFTER an account has been selected, the same URL redirects to
+    // https://www.pepco.com/ -- the marketing homepage, which is what
+    // signedOutUrl above matches.
+    //
+    // That is the whole reason the chooser fix has twice been written off as
+    // "the session had expired". The sweep reads the first account, returns
+    // to entry for the second, gets bounced to www.pepco.com, and reports an
+    // expired session while the session is alive: ChangeAccount.aspx on that
+    // same session still returns ten chooser rows.
+    //
+    // Checking it once was not enough. The first check was done in the wrong
+    // state and cleared a bug that was there.
+    signedInEntry: "https://secure.pepco.com/Pages/ChangeAccount.aspx",
     provider: "Pepco",
     aliases: ["pepco", "potomac electric", "potomac electric power"],
     // VERIFIED 2026-09-14: signed in end to end and read $513.99 due
