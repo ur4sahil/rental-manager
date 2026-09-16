@@ -2474,13 +2474,42 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (_isNewOccupied) setSavingProperty(true);
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
-  // Check by name first, then by property (prevents duplicates when address varies slightly)
+  // Find the tenant this save is about, or decide there is none.
+  //
+  // Two reasons this cannot use .maybeSingle() on the property alone.
+  //
+  // .maybeSingle() returns null when MORE THAN ONE row matches -- it does not
+  // pick one, and it does not error in a way this code was reading. 1 Barberry
+  // Ct has two active tenants (Essence Ford and Pamela Jones), so the
+  // property fallback found "none", the code inserted a fresh row, and
+  // idx_tenants_unique_name_property rejected the whole commit:
+  //   "Save failed: duplicate key value violates unique constraint
+  //    idx_tenants_unique_name_property"
+  // The property could not be edited at all while two tenants shared it.
+  //
+  // And a fallback keyed only on the address is wrong even when it works. The
+  // constraint is on (company_id, name, property), so a lookup that ignores
+  // the name can return a DIFFERENT tenant at the same address and quietly
+  // overwrite their email, rent and lease dates with this form's.
   let existingTenant = null;
-  const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(form.tenant.trim())).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
-  if (byName) { existingTenant = byName; }
-  else {
-    const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
-    if (byProp) existingTenant = byProp;
+  const wantName = form.tenant.trim();
+  const { data: atProperty } = await supabase.from("tenants")
+    .select("id, name, lease_status")
+    .eq("company_id", companyId).eq("property", compositeAddress)
+    .is("archived_at", null)
+    .limit(50);
+  const sameName = (atProperty || []).filter(t =>
+    String(t.name || "").trim().toLowerCase() === wantName.toLowerCase());
+  if (sameName.length > 0) {
+    // Exact name at this address: the row this save is editing.
+    existingTenant = sameName[0];
+  } else {
+    // Nobody here by that name. Adopt an existing active tenant ONLY when
+    // there is exactly one -- that is the rename case, and it is unambiguous.
+    // With two or more, adopting either would rename the wrong person, so
+    // insert instead and let this be a second tenant at the address.
+    const active = (atProperty || []).filter(t => ACTIVE_LEASE.includes(t.lease_status));
+    if (active.length === 1) existingTenant = active[0];
   }
   let tenantId = existingTenant?.id;
   if (!existingTenant) {

@@ -149,6 +149,22 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // surface a "showing N of M" warning when the company exceeds
   // TXN_FETCH_CAP. company_id, date cutoff, ordering applied at the
   // call site.
+  // Read every page of a query. paginateTxns does this for the transaction
+  // list with its own column set and cap; this is the plain version for the
+  // several other places in this file that need all the rows and were
+  // silently getting the first thousand.
+  async function paginateAll(buildQuery) {
+    const rows = [];
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data: page, error } = await buildQuery().range(from, from + 999);
+      if (error) { pmError("PM-5005", { raw: error, context: "paged read" }); return { rows, failed: true }; }
+      if (!page?.length) break;
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    return { rows, failed: false };
+  }
+
   async function paginateTxns(buildQuery) {
     const rows = [];
     let totalCount = 0;
@@ -896,8 +912,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const batchId = batch?.id;
 
     // Check existing fingerprints for dedup
-    const { data: existingFps } = await supabase.from("bank_feed_transaction").select("fingerprint_hash")
-      .eq("company_id", companyId).eq("bank_account_feed_id", wizFeedId);
+    // PAGED. Capped at 1000 this set is incomplete, and an incomplete dedup
+    // set means the import re-adds transactions it already holds -- the
+    // opposite of what a fingerprint check is for. 0822 alone has 744.
+    const { rows: existingFps } = await paginateAll(() => supabase.from("bank_feed_transaction").select("fingerprint_hash")
+      .eq("company_id", companyId).eq("bank_account_feed_id", wizFeedId).order("id"));
     const existingSet = new Set((existingFps || []).map(f => f.fingerprint_hash));
 
     let imported = 0, skipped = 0, duplicates = 0;
@@ -944,8 +963,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // Apply rules to newly imported transactions
     let ruleApplied = 0;
     if (wizOptions.autoApplyRules && rules.length > 0 && imported > 0) {
-      const { data: newTxns } = await supabase.from("bank_feed_transaction").select("id")
-        .eq("company_id", companyId).eq("bank_import_batch_id", batchId).eq("status", "for_review");
+      // PAGED: a CSV import of more than 1000 rows would have had rules
+      // applied to the first 1000 and silently not the rest.
+      const { rows: newTxns } = await paginateAll(() => supabase.from("bank_feed_transaction").select("id")
+        .eq("company_id", companyId).eq("bank_import_batch_id", batchId).eq("status", "for_review").order("id"));
       if (newTxns && newTxns.length > 0) {
         ruleApplied = await applyRulesToTransactions(newTxns.map(t => t.id));
       }
@@ -1467,8 +1488,19 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const sourceRules = rulesOverride || rules;
     const enabledRules = sourceRules.filter(r => r.enabled);
     if (enabledRules.length === 0) return 0;
-    const { data: txns } = await supabase.from("bank_feed_transaction").select("*").in("id", txnIds).eq("status", "for_review");
-    if (!txns || txns.length === 0) return 0;
+    // CHUNKED. Two ceilings here, not one: .in() is a URL parameter so a long
+    // id list becomes a query string the edge rejects, and the answer is
+    // capped at 1000 rows however many ids were asked about. Called with the
+    // 921 for_review ids on 0822, it silently rule-matched the first 1000 and
+    // reported that as the whole job.
+    const txns = [];
+    for (let i = 0; i < txnIds.length; i += 500) {
+      const { data: part, error } = await supabase.from("bank_feed_transaction")
+        .select("*").in("id", txnIds.slice(i, i + 500)).eq("status", "for_review");
+      if (error) { pmError("PM-5005", { raw: error, context: "load transactions for rule matching" }); return 0; }
+      txns.push(...(part || []));
+    }
+    if (txns.length === 0) return 0;
     let applied = 0;
     for (const txn of txns) {
       const result = evaluateRules(txn, enabledRules);
@@ -1631,8 +1663,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     try {
       const { data: freshRules } = await supabase.from("bank_transaction_rule")
         .select("*").eq("company_id", companyId).order("priority");
-      const { data: forReviewIds } = await supabase.from("bank_feed_transaction")
-        .select("id").eq("company_id", companyId).eq("status", "for_review");
+      // PAGED. This company has 921 for_review rows on one feed, so saving a
+      // rule applied it to the first 1000 of them across all feeds and left
+      // the remainder untouched -- while the toast reported success.
+      const { rows: forReviewIds } = await paginateAll(() => supabase.from("bank_feed_transaction")
+        .select("id").eq("company_id", companyId).eq("status", "for_review").order("id"));
       const ids = (forReviewIds || []).map(r => r.id);
       if (ids.length > 0) {
         const matched = await applyRulesToTransactions(ids, freshRules || []);

@@ -101,8 +101,18 @@ for (const file of files) {
     for (const m of src.matchAll(re)) {
       const chain = m[1];
       if (!/\.select\(/.test(chain)) continue;             // insert/update/delete
-      const bounded = /\.limit\(|\.range\(|\.single\(|\.maybeSingle\(|head:\s*true|count:\s*["']exact["']/.test(chain);
-      const paged = /fetchAllPaged|rpcAllPaged/.test(src.slice(Math.max(0, m.index - 400), m.index + 80));
+      const bounded = /\.limit\(|\.range\(|\.single\(|\.maybeSingle\(|head:\s*true|count:\s*["']exact["']/.test(chain)
+        // A chunked .in() is bounded BY the chunk. .slice(i, i + n) in the
+        // filter is the idiom, and it is bounded twice over: .in() is a URL
+        // parameter, so the chunk is what keeps the request legal at all.
+        || /\.in\([^)]*\.slice\(/.test(chain)
+        // A query keyed to ONE parent row cannot return a thousand: a journal
+        // entry has two lines, not two thousand.
+        || /\.eq\("journal_entry_id"|\.eq\("id"/.test(chain);
+      // Inside a paging wrapper. The window reaches BACKWARD only -- a helper
+      // named after the query is on the lines above it, not below.
+      const paged = /fetchAllPaged|rpcAllPaged|paginate[A-Za-z]*\(/.test(
+        src.slice(Math.max(0, m.index - 600), m.index));
       if (!bounded && !paged) {
         const line = src.slice(0, m.index).split("\n").length;
         unbounded.push(`${rel}:${line} — ${table}`);
@@ -121,7 +131,7 @@ for (const file of files) {
 //
 // The list is printed on every run so it cannot be forgotten, and the count
 // is the thing that must not grow.
-const UNBOUNDED_BASELINE = 38;   // measured 2026-09-16; must not grow
+const UNBOUNDED_BASELINE = 23;   // was 38; ratchets DOWN only, never up
 console.log(`\nℹ ${unbounded.length} unbounded selects on >1000-row tables (baseline ${UNBOUNDED_BASELINE}):`);
 unbounded.slice(0, 8).forEach(u => console.log("   " + u));
 if (unbounded.length > 8) console.log(`   …and ${unbounded.length - 8} more`);

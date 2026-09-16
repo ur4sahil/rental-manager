@@ -785,7 +785,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
       scroll={false}
       columns={[
         { key: "date", label: "Date", className: "text-xs text-neutral-500 whitespace-nowrap",
-          render: l => l.date },
+          render: l => fmtDate(l.date) },
         { key: "number", label: "JE #", className: "text-xs text-brand-600 tnum",
           render: l => l.number || "\u2014" },
         { key: "description", label: "Description", className: "text-neutral-700 text-xs max-w-xs truncate",
@@ -3699,7 +3699,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
               { key: "description", label: "Tenant / Charge", className: "text-xs text-neutral-500 pl-6 whitespace-nowrap",
                 render: c => (c.description || "").slice(0, 50) },
               { key: "date", label: "Date", className: "text-xs text-neutral-400 whitespace-nowrap",
-                render: c => c.date },
+                render: c => fmtDate(c.date) },
               { key: "originalAmount", label: "Original", align: "right", className: "text-xs whitespace-nowrap",
                 render: c => acctFmt(c.originalAmount) },
               { key: "amountPaid", label: "Paid", align: "right", className: "text-xs text-neutral-400 whitespace-nowrap",

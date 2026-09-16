@@ -875,7 +875,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       </div>
       ${printTable({
         columns: [
-          { label: "Date", render: r => r.date },
+          { label: "Date", render: r => fmtDate(r.date) },
           { label: "Description", render: r => r.desc },
           { label: "Type", render: r => r.type },
           { label: "Charges", align: "right", render: r => r.charge },
