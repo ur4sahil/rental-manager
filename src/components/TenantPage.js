@@ -218,9 +218,11 @@ export default function TenantPage({
       <div className="grid grid-cols-[minmax(0,1.85fr)_minmax(280px,1fr)] max-[940px]:grid-cols-1 gap-3.5 items-start">
 
         <div className="space-y-3.5">
-          <DetailCard title="Ledger" sub={ledger.length ? `${charged ? formatCurrency(charged) + " charged · " : ""}${paid ? formatCurrency(paid) + " paid" : ""}` || `${ledger.length} entries` : null} flush
-            action={<><Btn variant="secondary" size="sm" onClick={() => onExportPdf?.(tenant, ledger)}>Export PDF</Btn>
-              <Btn variant="secondary" size="sm" onClick={() => onAddEntry?.(tenant)}>Add entry</Btn></>}>
+          <DetailCard title="Ledger" sub={ledger.length ? `${ledger.length} entries` : null} flush
+            action={<div className="flex gap-1.5">
+              <Btn variant="secondary" size="sm" onClick={() => onExportPdf?.(tenant, ledger)}>PDF</Btn>
+              <Btn variant="secondary" size="sm" onClick={() => onAddEntry?.(tenant)}>Add entry</Btn>
+            </div>}>
             {addEntryForm && <div className="px-4 pt-3.5">{addEntryForm}</div>}
             {lateFeeAction && <div className="px-4 pt-3.5">{lateFeeAction}</div>}
             {ledger.length === 0 ? (
@@ -230,10 +232,20 @@ export default function TenantPage({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-[13.5px] min-w-[520px]">
+                <div className="flex gap-4 px-3 py-2 bg-neutral-50/60 border-b border-brand-50 text-[12px] text-neutral-400">
+                  <span>Charged <b className="text-neutral-700 tabular-nums font-semibold">{formatCurrency(charged)}</b></span>
+                  <span>Paid <b className="text-positive-700 tabular-nums font-semibold">{formatCurrency(paid)}</b></span>
+                  <span className="ml-auto">Balance <b className={"tabular-nums font-semibold " + (balance > 0 ? "text-danger-600" : "text-neutral-700")}>{formatCurrency(balance)}</b></span>
+                </div>
+                <table className="w-full table-fixed border-collapse text-[13.5px] min-w-[440px]">
                   <thead>
-                    <tr>{["Date", "Description", "Type", "Charge", "Paid", "Balance"].map((h, i) => (
-                      <th key={h} className={"text-[10.5px] font-semibold tracking-[0.06em] uppercase text-neutral-400 px-4 py-2 bg-neutral-50 border-b border-brand-50 whitespace-nowrap " + (i > 2 ? "text-right" : "text-left")}>{h}</th>
+                    {/* Type used to be a column of its own. It cost ~90px to
+                        repeat what the Charge/Paid split already shows, on a
+                        table that was ~60px too wide for its card -- so it
+                        moved under the description, where "late fee" vs
+                        "charge" is the only part that adds anything. */}
+                    <tr>{["Date", "Description", "Charge", "Paid", "Balance"].map((h, i) => (
+                      <th key={h} className={"text-[10.5px] font-semibold tracking-[0.06em] uppercase text-neutral-400 px-3 py-2 bg-neutral-50 border-b border-brand-50 whitespace-nowrap " + (i > 1 ? "text-right" : "text-left")}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
@@ -248,15 +260,18 @@ export default function TenantPage({
                       const label = (m && m[2]) || e.description || "—";
                       return (
                         <tr key={e.id || i} className="border-b border-brand-50 last:border-b-0">
-                          <td className="px-4 py-2.5 align-top tabular-nums whitespace-nowrap">{fmtDate(e.date)}</td>
-                          <td className="px-4 py-2.5 align-top">
-                            <div className="truncate">{label}</div>
-                            {m && <div className="text-[11.5px] text-neutral-400">JE #{m[1]}</div>}
+                          <td className="px-3 py-2.5 align-top tabular-nums whitespace-nowrap text-neutral-500">{fmtDate(e.date)}</td>
+                          {/* The description is the only column allowed to
+                              flex, so the figures stay in fixed lanes. */}
+                          <td className="px-3 py-2.5 align-top w-full max-w-0">
+                            <div className="truncate" title={e.description || ""}>{label}</div>
+                            <div className="text-[11.5px] text-neutral-400 truncate">
+                              {String(e.type || "").replace(/_/g, " ")}{m ? ` · JE #${m[1]}` : ""}
+                            </div>
                           </td>
-                          <td className="px-4 py-2.5 align-top text-[11px] uppercase tracking-[0.06em] text-neutral-400">{e.type || "—"}</td>
-                          <td className="px-4 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-danger-600">{credit ? "—" : formatCurrency(amount)}</td>
-                          <td className="px-4 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-positive-600">{credit ? formatCurrency(amount) : "—"}</td>
-                          <td className="px-4 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-neutral-400 text-[12.5px]">{e.balance != null ? formatCurrency(e.balance) : "—"}</td>
+                          <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-danger-600">{credit ? "—" : formatCurrency(amount)}</td>
+                          <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-positive-600">{credit ? formatCurrency(amount) : "—"}</td>
+                          <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-neutral-400 text-[12.5px]">{e.balance != null ? formatCurrency(e.balance) : "—"}</td>
                         </tr>
                       );
                     })}
