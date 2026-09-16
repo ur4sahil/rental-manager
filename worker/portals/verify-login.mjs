@@ -194,7 +194,7 @@ try {
     // requested. If there is no code box yet but there is a button offering
     // to send one, press it once. That is what a person would do; it asks
     // the portal for a code through its own front door and evades nothing.
-    const codeBox = () => page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="code" i], input[name*="code" i]').first();
+    const codeBox = () => page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="verificationcode" i], input[maxlength="4"], input[maxlength="6"], input[maxlength="8"]').first();
     if ((await codeBox().count().catch(() => 0)) === 0) {
       const send = page.getByRole("button", { name: /(send|email|text|sms|get)\b.{0,24}code|send.{0,12}(me|it)|request.{0,12}code/i })
         .or(page.getByRole("link", { name: /(send|email|text|sms|get)\b.{0,24}code/i })).first();
@@ -223,7 +223,7 @@ try {
     }
     if (!code) { console.log("no code arrived — stopping without retrying"); await b.close(); process.exit(4); }
     console.log(`code received (${code.length} digits) — entering it`);
-    const cb = page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="code" i], input[type="tel"]:visible, input[type="text"]:visible').first();
+    const cb = page.locator('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="verificationcode" i], input[maxlength="4"]:visible, input[maxlength="6"]:visible, input[maxlength="8"]:visible, input[type="tel"]:visible').first();
     await cb.type(code, { delay: 90 });
     const go = page.getByRole("button", { name: /^(verify|continue|submit|confirm|next)$/i }).first();
     if (await go.count().catch(() => 0)) await go.click(); else await cb.press("Enter");
