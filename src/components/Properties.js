@@ -185,6 +185,45 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // and go missing from the property detail page.
   const [uploadedDocIds, setUploadedDocIds] = useState([]);
 
+
+  // The documents checklist has to read the documents table, not this
+  // session's uploads.
+  //
+  // uploadedDocs starts empty and is only ever appended to by an upload made
+  // in this sitting. Nothing repopulated it, so reopening the wizard on a
+  // property showed Lease / ID / Insurance / RFTA all unticked, and the review
+  // step said "Skipped" -- against 19 documents already on file for 8453
+  // Greenbelt Rd. The same four files were uploaded three times because the
+  // app kept reporting them missing.
+  //
+  // Loaded rows go into uploadedDocs only, NOT into uploadedDocIds: that list
+  // drives the post-commit re-stamp, and re-stamping documents this wizard did
+  // not upload would move records it has no business moving.
+  useEffect(() => {
+    const addr = savedAddress || "";
+    if (!companyId || !addr) return;
+    let cancelled = false;
+    supabase.from("documents")
+      .select("id, name, type")
+      .eq("company_id", companyId)
+      .eq("property", addr)
+      .is("archived_at", null)
+      .order("uploaded_at", { ascending: false })
+      .limit(200)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { pmError("PM-7008", { raw: error, context: "wizard existing document load", silent: true }); return; }
+        const existing = (data || []).map(d => ({ id: d.id, name: d.name, type: d.type }));
+        // Merge rather than replace: an upload may have landed while this was
+        // in flight, and those entries carry no id.
+        setUploadedDocs(prev => {
+          const seen = new Set(existing.map(d => d.id));
+          return [...existing, ...prev.filter(d => !d.id || !seen.has(d.id))];
+        });
+      });
+    return () => { cancelled = true; };
+  }, [companyId, savedAddress]);
+
   // Step-specific form states
   const [utilities, setUtilities] = useState([
     { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }
@@ -364,6 +403,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               if (wd.hoas) setHoas(wd.hoas); else if (wd.hoa?.enabled) setHoas([wd.hoa]);
               if (wd.loan) setLoan(wd.loan);
               if (wd.insurance) setInsurance(wd.insurance);
+              // taxes was missing here while the resume path above restored
+              // it, so reopening a completed wizard to edit showed the tax
+              // step blank. Nothing was lost -- the RPC leaves property_taxes
+              // alone when the step is disabled -- but the screen read as
+              // though no tax information had ever been entered.
+              if (wd.taxes) setTaxes(wd.taxes);
               if (wd.recurring) setRecurring(wd.recurring);
               } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore (edit mode)", silent: true }); }
             }
@@ -1082,7 +1127,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         if (uploadErr) {
           const msg = String(uploadErr.message || "");
           const timedOut = /50[0234]|timeout|timed out/i.test(msg);
-          pmError(timedOut ? "PM-7003" : "PM-7002",
+          pmError(timedOut ? "PM-7007" : "PM-7002",
             { raw: uploadErr, context: "wizard document upload for " + file.name });
           showToast(timedOut
             ? `${file.name} timed out after 3 attempts — the file is fine, try it again.`
@@ -2130,9 +2175,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <Chip onClick={() => setStep(steps.indexOf("hoa") + 1)}>Edit</Chip>
                   </div>
                 </div>
-                {completedSteps.has("hoa") && hoas.length > 0 && hoas[0].enabled ? (
-                  <div className="text-xs text-neutral-500">{hoas[0].hoa_name} — ${Number(hoas[0].amount || 0).toLocaleString()} {hoas[0].frequency}{hoas.length > 1 ? ` (+${hoas.length - 1} more)` : ""}</div>
-                ) : completedSteps.has("hoa") ? <p className="text-xs text-neutral-400">No HOA</p> : null}
+                {/* An HOA exists if it has a name. That is the test saveHoa()
+                    and commitWizard() both use -- filter(h => h.hoa_name.trim())
+                    -- and this summary was the one place asking a different
+                    question. It gated on hoas[0].enabled, which EMPTY_HOA does
+                    not define and addHoa does not add, so every HOA typed into
+                    the form read as undefined and this printed "No HOA" over
+                    the top of a live record. 8453 Greenbelt Rd said "No HOA"
+                    while $649.10/mo to Chelsa Wood Condo sat saved in
+                    hoa_payments, which is why it was entered three times. */}
+                {(() => {
+                  const namedHoas = (hoas || []).filter(h => (h.hoa_name || "").trim());
+                  if (!completedSteps.has("hoa")) return null;
+                  if (namedHoas.length === 0) return <p className="text-xs text-neutral-400">No HOA</p>;
+                  return <div className="text-xs text-neutral-500">{namedHoas[0].hoa_name} — ${Number(namedHoas[0].amount || 0).toLocaleString()} {namedHoas[0].frequency}{namedHoas.length > 1 ? ` (+${namedHoas.length - 1} more)` : ""}</div>;
+                })()}
               </div>
 
               {/* Loan summary */}

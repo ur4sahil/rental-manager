@@ -86,18 +86,29 @@ export const PM_ERRORS = {
   // page, so a Sentry alert tagged work_orders sent the reader to a module
   // with no uploader in it.
   "PM-7002": { message: "Could not upload the file. Check the file size and type.", action: "retry", severity: "error", module: "documents" },
+  // I added the timeout entry above the existing PM-7003 earlier today and
+  // gave it the SAME code. A duplicate key in an object literal is not an
+  // error -- the later one simply wins -- so the timeout message was dead on
+  // arrival, and every PM-7003 in the app reported "File was uploaded but the
+  // record could not be saved" under module work_orders. Six of the eight
+  // call sites do mean that; one is a 504 on the upload, and it needs its own
+  // code rather than a second definition of someone else's.
+  "PM-7003": { message: "File was uploaded but the record could not be saved.", action: "contact", severity: "warning", module: "documents" },
+  "PM-7004": { message: "Could not delete the document.", action: "retry", severity: "error", module: "documents" },
+  "PM-7005": { message: "Could not load work orders.", action: "retry", severity: "error", module: "work_orders" },
+  "PM-7006": { message: "Could not save the inspection.", action: "retry", severity: "error", module: "work_orders" },
   // A 504 on the upload itself. Distinct from PM-7002 because the advice is
   // the opposite: nothing is wrong with the file, and re-picking it or
   // shrinking it will not help. Production logged
   //   "HTTP 504 error" · wizard document upload for
   //   Pamela Jones-HAPGC Rent Change 11-7-2024.pdf
-  // under PM-7002's "Check the file size and type", which sent the user to
+  // under PM-7002's "Check the file size and type", which sent the reader to
   // inspect a file that was perfectly fine.
-  "PM-7003": { message: "The upload timed out before it finished. The file is fine — try again.", action: "retry", severity: "error", module: "documents" },
-  "PM-7003": { message: "File was uploaded but the record could not be saved.", action: "contact", severity: "warning", module: "work_orders" },
-  "PM-7004": { message: "Could not delete the document.", action: "retry", severity: "error", module: "work_orders" },
-  "PM-7005": { message: "Could not load work orders.", action: "retry", severity: "error", module: "work_orders" },
-  "PM-7006": { message: "Could not save the inspection.", action: "retry", severity: "error", module: "work_orders" },
+  "PM-7007": { message: "The upload timed out before it finished. The file is fine — try again.", action: "retry", severity: "error", module: "documents" },
+  // The wizard reading the documents already on file. Silent: a failure here
+  // leaves the checklist unticked, which is the state it was permanently in
+  // before it read the table at all.
+  "PM-7008": { message: "Could not load the documents already on file for this property.", action: "retry", severity: "warning", module: "documents" },
   // PM-8xxx: NETWORK & INFRASTRUCTURE
   "PM-8001": { message: "Unable to reach the server. Check your internet connection and try again.", action: "retry", severity: "error", module: "infrastructure" },
   "PM-8002": { message: "A required database table is missing. Please contact support.", action: "contact", severity: "critical", module: "infrastructure" },
