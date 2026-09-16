@@ -787,7 +787,7 @@ const { data: existing, error: readErr } = await supabase.from("acct_accounts").
 // A failed read looked like "this company has no accounts", so every
 // default was treated as missing and re-inserted. Bail instead: seeding
 // against an unknown starting state is how duplicates get made.
-if (readErr) { pmError("PM-4006", { raw: readErr, context: "ensureDefaultAccounts read existing", silent: true }); return; }
+if (readErr) { pmError("PM-4007", { raw: readErr, context: "ensureDefaultAccounts read existing", silent: true, phase: "read" }); return; }
 // Skip on EITHER code or name. Matching name alone missed accounts
 // whose code existed under a different name (a renamed "Utilities
 // Expense"), and the insert then violated the real constraint,

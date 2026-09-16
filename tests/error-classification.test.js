@@ -63,5 +63,41 @@ assert("an RLS rejection is unaffected",
 assert("an unrelated message falls through to the caller's code",
   detectInfrastructureCode("something else entirely", "PM-2002") === "PM-2002");
 
+// ---------------------------------------------------------------------------
+// A network drop on a READ must not be recorded; on a WRITE it must be.
+//
+// Production raised PM-4006 "Could not save the account. It may conflict with
+// an existing one." from ensureDefaultAccounts, which had not tried to save
+// anything -- its READ of acct_accounts was interrupted on mobile Safari. The
+// suppression that exists for exactly this case was keyed to two hardcoded
+// codes and so never applied. These assertions are about the source text
+// because the branch cannot be imported without a browser.
+const reportSrc = src.slice(src.indexOf("export function pmError"));
+
+assert("pmError takes a phase, defaulting to write",
+  /phase = "write"/.test(reportSrc),
+  "a caller must be able to say it was reading; the error object never says so");
+
+assert("a network abort is judged by phase, not by a list of codes",
+  /const droppableRead = phase === "read"/.test(reportSrc),
+  "keyed to PM-8006/PM-8001 alone, every other read stayed noisy");
+
+assert("navigator.onLine counts as a network abort",
+  /navigator\.onLine === false/.test(reportSrc),
+  "the comment promised this and the code never checked it");
+
+assert("a dropped read still toasts before returning",
+  /_showToastGlobal[\s\S]{0,400}?return null;/.test(
+    reportSrc.slice(reportSrc.indexOf("droppableRead"))),
+  "not recording it is a decision about our logs, not about telling the user");
+
+assert("the read failure has its own code",
+  /"PM-4007"/.test(src) && /Could not load the chart of accounts/.test(src),
+  "PM-4006 says 'could not save ... may conflict', which a read never did");
+
+assert("PM-4006 still means a save",
+  /"PM-4006"[\s\S]{0,120}Could not save the account/.test(src),
+  "four genuine create paths still report PM-4006");
+
 console.log(`\n✅ Passed: ${passed}   ❌ Failed: ${failed}`);
 process.exit(failed ? 1 : 0);

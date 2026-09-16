@@ -43,6 +43,11 @@ export const PM_ERRORS = {
   "PM-4004": { message: "This date falls in a locked accounting period. Unlock it first or use a later date.", action: "none", severity: "warning", module: "accounting" },
   "PM-4005": { message: "Could not void this journal entry.", action: "retry", severity: "error", module: "accounting" },
   "PM-4006": { message: "Could not save the account. It may conflict with an existing one.", action: "retry", severity: "error", module: "accounting" },
+  // A failed READ of the chart of accounts. It used to report as PM-4006,
+  // so a dropped fetch on the dashboard raised "Could not save the account.
+  // It may conflict with an existing one." -- wrong about the operation and
+  // wrong about the cause, in an alert somebody reads at 7am.
+  "PM-4007": { message: "Could not load the chart of accounts.", action: "retry", severity: "error", module: "accounting" },
   "PM-4008": { message: "Could not create the recurring journal entry template.", action: "retry", severity: "error", module: "accounting" },
   "PM-4010": { message: "Could not save the accounting class.", action: "retry", severity: "error", module: "accounting" },
   "PM-4011": { message: "Could not lock/unlock the accounting period.", action: "retry", severity: "error", module: "accounting" },
@@ -199,7 +204,10 @@ export async function logErrorToSupabase(errorRecord) {
 export let _showToastGlobal = null; // Set by AppInner on mount
 export function setShowToastGlobal(fn) { _showToastGlobal = fn; }
 
-export function pmError(code, { raw = null, context = "", silent = false, meta = {} } = {}) {
+// phase: "read" | "write" (default). Callers that know they were READING
+// say so, because only the caller knows -- the error object does not carry
+// it and the code alone cannot, since the same code covers both.
+export function pmError(code, { raw = null, context = "", silent = false, meta = {}, phase = "write" } = {}) {
   const entry = PM_ERRORS[code] || PM_ERRORS["PM-8006"];
   const rawMessage = raw?.message || raw?.error?.message || String(raw || "");
   const rawStack = raw?.stack || raw?.error?.stack || null;
@@ -239,9 +247,26 @@ export function pmError(code, { raw = null, context = "", silent = false, meta =
   //   (b) the message clearly indicates a network abort.
   // Authenticated users still get the toast (silent:false) so they
   // know the action didn't go through; just don't persist the row.
-  const isNetworkAbort = /load failed|failed to fetch|networkerror|the network connection was lost|aborted/i.test(rawMessage);
-  if ((resolvedCode === "PM-8006" || resolvedCode === "PM-8001") && isNetworkAbort) {
-    try { console.warn(`[${resolvedCode}] network abort (suppressed)`, { context, raw: rawMessage.slice(0, 200) }); } catch (_) {}
+  const isNetworkAbort = /load failed|failed to fetch|networkerror|the network connection was lost|aborted/i.test(rawMessage)
+    || (typeof navigator !== "undefined" && navigator.onLine === false);
+  // Which operation was interrupted decides whether the interruption is
+  // worth recording. A READ that the network ate costs nothing -- the page
+  // will ask again -- and ensureDefaultAccounts alone runs on every dashboard
+  // load, so one bad moment on cellular pages somebody at 7am. A WRITE is the
+  // opposite: the user believes something was saved, and whether the cause
+  // was the network or the database, the fact it did not land is worth
+  // keeping. So reads are dropped and writes are always recorded.
+  //
+  // PM-8001 and PM-8006 stay suppressed by code because a network abort is
+  // definitionally what they are.
+  const droppableRead = phase === "read" || resolvedCode === "PM-8006" || resolvedCode === "PM-8001";
+  if (isNetworkAbort && droppableRead) {
+    try { console.warn(`[${resolvedCode}] network abort on a read (not recorded)`, { context, raw: rawMessage.slice(0, 200) }); } catch (_) {}
+    // The toast still fires: not recording it is a decision about our logs,
+    // not about whether the person is told their action did not go through.
+    if (!silent && typeof _showToastGlobal === "function") {
+      _showToastGlobal(null, null, { isError: true, code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity });
+    }
     return null;
   }
   const enrichedMeta = rawStack ? { ...meta, stack: String(rawStack).slice(0, 2000) } : meta;
