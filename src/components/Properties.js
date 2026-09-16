@@ -140,6 +140,28 @@ function LicenseFormModal({ license, propertyId, propertyAddress, companyId, use
   );
 }
 
+// Never persist a typed-in portal password into wizard_data.
+//
+// The real credential goes to its own table encrypted, by way of
+// encryptRow() in commitWizard. wizard_data is only a draft of the form, and
+// a draft does not need the secret -- it needs to remember that a secret was
+// entered, which is what the boolean flags below do, so the UI can still show
+// "credentials on file" without holding them.
+function stripCredentials(wd) {
+  const clean = v => {
+    if (!v || typeof v !== "object") return v;
+    if (Array.isArray(v)) return v.map(clean);
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      if (k === "username" || k === "password") continue;
+      out[k] = clean(val);
+    }
+    if ("username" in v || "password" in v) out.had_credentials = !!(v.username && v.password);
+    return out;
+  };
+  return clean(wd);
+}
+
 function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, userProfile, userRole, onComplete, onDismiss }) {
   // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
   const [step, setStep] = useState(1);
@@ -466,7 +488,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       const { error } = await supabase.from("property_setup_wizard").update({
         current_step: nextStep,
         completed_steps: Array.from(newCompletedSteps),
-        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, taxes, recurring },
+        // Credentials are stripped before this is persisted. wizard_data is a
+        // plain jsonb column with no encryption behind it, and the raw form
+        // state carries whatever was typed into the portal password fields --
+        // 25 of 117 rows in production held a cleartext username and password,
+        // for logins that are stored ENCRYPTED in utilities / hoa_payments /
+        // property_loans / property_insurance. A draft of a form is not a
+        // credential store.
+        //
+        // Safe to drop only because commit_property_wizard now keeps a row's
+        // existing ciphertext when the payload carries none (migration
+        // 20260916220000). Before that, blanking these fields on the restore
+        // path would have made the next save overwrite the real credential
+        // with null.
+        wizard_data: stripCredentials({ propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, taxes, recurring }),
         updated_at: new Date().toISOString()
       }).eq("id", wizardId).eq("company_id", companyId);
       if (error) throw error;

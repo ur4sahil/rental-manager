@@ -1,0 +1,29 @@
+-- Editing a property must not silently destroy its portal credentials, and
+-- wizard_data must stop holding them in cleartext.
+--
+-- utilities, hoa_payments, property_loans and property_insurance store portal
+-- logins ENCRYPTED ONLY -- none has a plaintext username/password column. But
+-- the wizard's restore path reads h.username / h.password, which do not exist,
+-- so those fields came back empty, encryptRow() returned null, and this
+-- function wrote NULL over the ciphertext: utilities and HOA archive-all then
+-- reinsert, loans and insurance assigned the payload value unconditionally.
+--
+-- Nothing had been lost, for an uncomfortable reason: the wizard was
+-- persisting the PLAINTEXT password into property_setup_wizard.wizard_data
+-- and reading it back from there. 25 of 117 rows held a cleartext credential.
+-- Removing that -- the actual fix -- would have un-masked this and started
+-- wiping logins on the next edit, across 110 live credentials.
+--
+-- So this comes first. A payload carrying no ciphertext now means "leave what
+-- is there", not "set it to null". The five credential columns move as ONE
+-- unit, gated on the same condition: a ciphertext from the payload with an IV
+-- or salt from the old row would decrypt to nothing, which is worse than the
+-- wipe because it looks present.
+--
+-- Verified on the test database by running an edit that carries the HOA and no
+-- credential, inside a transaction that was then rolled back: the ciphertext
+-- was byte-identical before and after.
+--
+-- This rewrites the LIVE definition rather than restating 400 lines that would
+-- drift from it, and raises if any anchor fails to match, so a partial
+-- application is impossible.
