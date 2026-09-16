@@ -94,7 +94,7 @@ function csvBuildFingerprint(feedId, date, direction, absAmount, description) {
 }
 
 // --- Main Component ---
-export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE, linesLoaded = true }) {
+export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting, onViewJE, onOpenRegister, linesLoaded = true }) {
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -2562,6 +2562,25 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         </div>
         <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
+        {/* The card already states Bank and Books and how far apart they are.
+            The next question is always "which entries make up Books?", and
+            the answer lived three clicks away under Chart of Accounts. This
+            is that account's register, opened from the figure that prompted
+            the question. Hidden when the feed has no GL account, because
+            there would be no register to open. */}
+        {feed.gl_account_id && onOpenRegister && (
+          <button type="button"
+            onClick={e => {
+              e.stopPropagation();   // the card itself selects the feed
+              const a = accounts.find(x => x.id === feed.gl_account_id);
+              onOpenRegister([feed.gl_account_id],
+                a ? `${a.code ? a.code + " " : ""}${a.name}` : feed.account_name);
+            }}
+            className="mt-1.5 w-full text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-md py-1 flex items-center justify-center gap-1">
+            <span className="material-icons-outlined text-sm">receipt_long</span>
+            Open bank register
+          </button>
+        )}
         {isInactive && <div className="text-xs text-neutral-500 mt-1 font-medium">Disconnected · won't sync</div>}
         {!isInactive && isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
         <div className="flex justify-between items-center mt-2">

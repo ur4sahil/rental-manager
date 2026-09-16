@@ -326,16 +326,17 @@ async function backToChooser(page) {
     await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
     if (await onChooserPage(page)) return true;
   }
-  // Fall back to the address the portal uses for it, derived from where we
-  // already are so this carries no hardcoded hostname.
-  try {
-    const u = new URL(page.url());
-    for (const path of ["/Pages/ChangeAccount.aspx", "/pages/changeaccount.aspx"]) {
-      await page.goto(u.origin + path, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
-      await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-      if (await onChooserPage(page)) return true;
-    }
-  } catch (_e) { /* a URL we cannot parse is not worth failing over */ }
+  // Deliberately NO guessed URL.
+  //
+  // This used to try /Pages/ChangeAccount.aspx when the link was not found.
+  // On Pepco a wrong guess redirects to www.pepco.com -- the public marketing
+  // site -- and the signed-out-by-URL rule then correctly reports "session
+  // expired". So a bad guess did not merely fail: it navigated us off the
+  // application and produced a confident diagnosis of a problem that did not
+  // exist, mid-sweep, abandoning every account after it.
+  //
+  // If the portal offers no way back that we can see, say so. Not finding the
+  // door is a smaller error than walking out of the building.
   return false;
 }
 

@@ -510,6 +510,43 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   // recomputed over exactly the rows that end up on screen. Filtering after
   // the balance was computed would leave a balance column that steps by
   // amounts the reader cannot see.
+  // The balance brought forward.
+  //
+  // The running balance used to start at zero for every filtered view, so an
+  // account ledger for "This Year" opened at 0 and closed at the year's
+  // MOVEMENT -- 610,000 on 1590 -- while the balance sheet said 650,921.73.
+  // The 40,921.73 carried from 2024-25 simply was not on the page. A column
+  // headed Balance that is really "movement since the filter start" is worse
+  // than no column: every figure in it is a number the reader will act on.
+  //
+  // One aggregate per account over everything posted before the window.
+  const [openingByAccount, setOpeningByAccount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId || !ids.length || !start) { setOpeningByAccount({}); return undefined; }
+    (async () => {
+      const { data, error } = await supabase
+        .from("acct_journal_lines")
+        .select("account_id, debit, credit, acct_journal_entries!inner(date, status)")
+        .eq("company_id", companyId)
+        .in("account_id", ids)
+        .eq("acct_journal_entries.status", "posted")
+        .lt("acct_journal_entries.date", start)
+        .limit(20000);
+      if (cancelled) return;
+      if (error) { setOpeningByAccount(null); return; }
+      const idx = {};
+      for (const l of data || []) {
+        if (!idx[l.account_id]) idx[l.account_id] = { debit: 0, credit: 0 };
+        idx[l.account_id].debit += safeNum(l.debit);
+        idx[l.account_id].credit += safeNum(l.credit);
+      }
+      setOpeningByAccount(idx);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, start, ids.join(","), journalEntries]);
+
   const visibleRows = propertyFilter
     ? candidateRows.filter(r => r.property === propertyFilter)
     : candidateRows;
@@ -534,7 +571,13 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const groups = ids.map(accountId => {
     const acct = acctMap[accountId];
     const dir = getNormalBalance(acct?.type || "Asset");
-    let run = 0, totalDr = 0, totalCr = 0;
+    // Open from what was already there, not from zero. A property filter is
+    // deliberately NOT applied to the opening figure: it is the balance of
+    // the ACCOUNT, and pro-rating it by property would invent a number no
+    // report anywhere else agrees with.
+    const op = (openingByAccount || {})[accountId];
+    const opening = op ? (dir === "debit" ? op.debit - op.credit : op.credit - op.debit) : 0;
+    let run = opening, totalDr = 0, totalCr = 0;
     const rows = [];
     for (const r of visibleRows) {
       if (String(r.accountId) !== String(accountId)) continue;
@@ -546,7 +589,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
                   accountName: acct?.name || "", debit: dr, credit: cr, balance: run });
     }
     return { accountId, acct, code: acct?.code || "", name: acct?.name || "Unknown",
-             rows, totalDr, totalCr, closing: run };
+             rows, totalDr, totalCr, opening, closing: run };
   }).filter(g => g.rows.length > 0);
 
   // Flat list retained for the counts, the CSV and the PDF, which read it.
@@ -757,7 +800,16 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
       groups={groups.map(g => ({
         key: g.accountId,
         label: multiAccount ? `${g.code ? g.code + " \u00b7 " : ""}${g.name}` : null,
-        rows: g.rows,
+        // The brought-forward line, shown whenever there is one. Without it
+        // the Balance column silently means "movement since the filter
+        // start", which on 1590 read 610,000 against a balance sheet saying
+        // 650,921.73 -- and nothing on the page explained the 40,921.73.
+        rows: safeNum(g.opening) !== 0
+          ? [{ date: start, number: "", jeId: null, description: "Balance brought forward",
+               reference: "", property: "", memo: `posted before ${fmtDate(start)}`,
+               debit: 0, credit: 0, balance: g.opening, broughtForward: true },
+             ...g.rows]
+          : g.rows,
         footer: multiAccount
           ? { label: `Total for ${g.code ? g.code + " \u00b7 " : ""}${g.name}`,
               cells: [acctFmt(g.totalDr), acctFmt(g.totalCr), acctFmt(g.closing, true)] }
@@ -1089,6 +1141,10 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
+  // A chart of accounts is a list you arrive at knowing what you want. This
+  // one runs to ~870 rows across nine type groups, so without a search the
+  // only way to "1590" was to know which group it lives in and scroll.
+  const [acctSearch, setAcctSearch] = useState("");
   const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" });
 
   const dynamicTypes = getAccountTypes(accounts);
@@ -1131,9 +1187,16 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const withBalances = srvIndex
     ? accounts.map(a => ({ ...a, computedBalance: balanceFromIndex(srvIndex, a.id, a.type) }))
     : calcAllBalances(accounts, journalEntries);
+  // Matched on code, name, subtype and description, because people search by
+  // whichever of those they happen to remember -- "1590", "Sigma ACH", "0822".
+  const q = acctSearch.trim().toLowerCase();
   const filtered = withBalances.filter(a => {
   if (!showInactive && !a.is_active) return false;
   if (filter !== "All" && a.type !== filter) return false;
+  if (q) {
+    const hay = [a.code, a.name, a.subtype, a.description].filter(Boolean).join(" ").toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
   return true;
   });
 
@@ -1181,10 +1244,25 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <Btn variant={showInactive ? "secondary" : "slate"} size="sm" onClick={() => setShowInactive(!showInactive)}>{showInactive ? "Hide Inactive" : "Show Inactive"}</Btn>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Account</Btn>
   </PageHeader>
-  <div className="flex flex-wrap gap-2 mb-4">
+  <div className="flex flex-wrap items-center gap-2 mb-4">
+  <div className="relative">
+    <span className="material-icons-outlined absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400 text-base pointer-events-none">search</span>
+    <Input value={acctSearch} onChange={e => setAcctSearch(e.target.value)}
+      placeholder="Search code, name or description" aria-label="Search accounts"
+      className="pl-8 w-64" />
+    {acctSearch && (
+      <button type="button" onClick={() => setAcctSearch("")} aria-label="Clear search"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
+        <span className="material-icons-outlined text-base">close</span>
+      </button>
+    )}
+  </div>
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
   <FilterPill key={t} tone="positive" active={filter === t} onClick={() => setFilter(t)}>{t}</FilterPill>
   ))}
+  {/* Say how many matched. A search that silently returns nothing looks
+      identical to a page that failed to load. */}
+  {acctSearch && <span className="text-xs text-neutral-400 ml-1">{filtered.length} {filtered.length === 1 ? "account" : "accounts"}</span>}
   </div>
   {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
   const accts = grouped[type];
@@ -5753,7 +5831,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts companyId={companyId} accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} />}
-  {activeTab === "bankimport" && <BankTransactions linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {activeTab === "bankimport" && <BankTransactions onOpenRegister={openLedger} linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}
   {activeTab === "reports" && <AcctReports linesLoaded={linesLoaded} linesFailed={linesFailed} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={openLedger} onRefresh={fetchAll} />}
@@ -5768,6 +5846,26 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 }
 export function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile, userRole }) {
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
+  // A statement period is whatever the statement says it is. Bank statements
+  // routinely run 17th-to-16th, and closing a partial period before a sale or
+  // a handover is ordinary work -- a month picker cannot express either.
+  // reconPeriod stays the LABEL and the key these rows are stored under; the
+  // dates below are what is actually queried.
+  const [reconFrom, setReconFrom] = useState("");
+  const [reconTo, setReconTo] = useState("");
+  const monthBounds = (ym) => {
+    const a = parseLocalDate(ym + "-01");
+    const b = parseLocalDate(ym + "-01"); b.setMonth(b.getMonth() + 1); b.setDate(0);
+    return { from: formatLocalDate(a), to: formatLocalDate(b) };
+  };
+  // Empty from/to means "the whole of reconPeriod", so the common case needs
+  // no extra clicks and nothing below has to special-case a blank.
+  const reconRange = (() => {
+    const m = monthBounds(reconPeriod);
+    const from = reconFrom || m.from;
+    const to = reconTo || m.to;
+    return { from, to, custom: !!(reconFrom || reconTo) };
+  })();
   // Which bank account is being reconciled. This used to be hard-coded to
   // the literal account NAME "Checking Account", so a company whose
   // accounts are named for the real bank -- "Sigma Housing LLC - 6027",
@@ -5904,9 +6002,9 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
 
   async function startReconciliation() {
   if (!bankBalance || isNaN(Number(bankBalance))) { showToast("Please enter the bank ending balance.", "error"); return; }
-  const startDate = reconPeriod + "-01";
-  const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
-  const endDate = formatLocalDate(endObj);
+  const startDate = reconRange.from;
+  const endDate = reconRange.to;
+  if (startDate > endDate) { showToast("The start date is after the end date.", "error"); return; }
 
   const acct = activeReconAccount;
   if (!acct?.id) { showToast("Choose a bank account to reconcile.", "error"); return; }
@@ -6062,16 +6160,15 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   }
 
   // Save reconciliation record
-  const stmtDate = (() => {
-    const d = parseLocalDate(reconPeriod + "-01"); d.setMonth(d.getMonth() + 1); d.setDate(0);
-    return formatLocalDate(d);
-  })();
+  // The statement date is the END of whatever was actually reconciled, which
+  // for a custom range is not the end of the month.
+  const stmtDate = reconRange.to;
   // onConflict on (company_id, account_id, period): re-running a month should
   // correct it, not stack a second row that the next period's beginning-
   // balance lookup might pick instead.
   const { error } = await supabase.from("bank_reconciliations").upsert([{ company_id: companyId,
   account_id: acct.id,
-  period: reconPeriod,
+  period: reconRange.custom ? `${reconRange.from}..${reconRange.to}` : reconPeriod,
   statement_date: stmtDate,
   beginning_balance: safeNum(beginningBalance),
   bank_ending_balance: bankBal,
@@ -6119,10 +6216,12 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   }
   }
 
-  // Lock bank feed transactions that were reconciled in this period
-  const startDate = reconPeriod + "-01";
-  const endObj2 = parseLocalDate(startDate); endObj2.setMonth(endObj2.getMonth() + 1); endObj2.setDate(0);
-  const endDate2 = formatLocalDate(endObj2);
+  // Lock bank feed transactions that were reconciled in this period.
+  // The SAME range the reconciliation used -- deriving the month again here
+  // would lock a whole month after a 17th-to-16th reconciliation, freezing
+  // rows nobody had looked at.
+  const startDate = reconRange.from;
+  const endDate2 = reconRange.to;
   const { error: lockErr } = await supabase.from("bank_feed_transaction")
     .update({ status: "locked" })
     .eq("company_id", companyId)
@@ -6224,7 +6323,29 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   {bankAccounts.length === 0 && <option value="">No bank accounts found</option>}
   {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
   </Select></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
+  {/* Month for the common case, exact dates for the ones a month cannot
+      express: statements that run 17th-to-16th, or a partial period closed
+      before a sale. Leaving the dates blank means the whole month, so the
+      usual path is unchanged. */}
+  <div>
+    <label className="text-xs text-neutral-400 mb-1 block">Statement period</label>
+    <Input type="month" value={reconPeriod}
+      onChange={e => { setReconPeriod(e.target.value); setReconFrom(""); setReconTo(""); }} />
+    <div className="flex items-center gap-1.5 mt-1.5">
+      <Input type="date" aria-label="Period start" value={reconRange.from}
+        onChange={e => setReconFrom(e.target.value)} className="text-xs" />
+      <span className="text-xs text-neutral-400">to</span>
+      <Input type="date" aria-label="Period end" value={reconRange.to}
+        onChange={e => setReconTo(e.target.value)} className="text-xs" />
+    </div>
+    {reconRange.custom && (
+      <div className="text-2xs text-neutral-400 mt-1">
+        Custom range — filed as {reconRange.from} to {reconRange.to}
+        <TextLink tone="brand" size="xs" className="ml-2"
+          onClick={() => { setReconFrom(""); setReconTo(""); }}>reset to the month</TextLink>
+      </div>
+    )}
+  </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><Btn className="w-full whitespace-nowrap" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
   </div>
