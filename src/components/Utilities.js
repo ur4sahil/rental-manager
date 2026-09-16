@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
+import { Input, Textarea, Select, Btn, OptionPicker, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -32,6 +32,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
   const [utilFilterProp, setUtilFilterProp] = useState("all");
+  // Biller filter. 79 bills across a dozen providers, and the only way to
+  // see just BGE's was to type it into the free-text search -- which also
+  // matches property names, so it was a filter by accident rather than by
+  // design.
+  const [utilFilterProvider, setUtilFilterProvider] = useState("all");
+  // Due date ascending: the next thing to pay is the reason to open this page.
+  const [utilSort, setUtilSort] = useState({ key: "due", dir: "asc" });
   
   // === Utility Automation ===
   const [utilTab, setUtilTab] = useState("bills"); // bills / automation / jobs
@@ -403,10 +410,20 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <Select filter value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
-  <Select filter value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
-  <option value="all">All Properties</option>
-  {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
-  </Select>
+  {/* Searchable, because a native select over 112 addresses has no way in.
+      The value "" is the all-row, so it maps to the "all" sentinel here. */}
+  <OptionPicker ariaLabel="Filter by biller" allLabel="All Billers" placeholder="Search billers…"
+    className="w-44"
+    value={utilFilterProvider === "all" ? "" : utilFilterProvider}
+    onChange={v => setUtilFilterProvider(v || "all")}
+    options={[...new Set(utilities.map(u => u.provider).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+      .map(p => ({ value: p, label: p, hint: String(utilities.filter(u => u.provider === p).length) }))} />
+  <OptionPicker ariaLabel="Filter by property" allLabel="All Properties" placeholder="Search properties…"
+    className="w-56"
+    value={utilFilterProp === "all" ? "" : utilFilterProp}
+    onChange={v => setUtilFilterProp(v || "all")}
+    options={[...new Set(utilities.map(u => u.property).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+      .map(p => ({ value: p, label: p }))} />
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
   <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-lg ${utilView === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
@@ -449,11 +466,39 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   {(() => {
-  const fu = utilities.filter(u =>
+  const filteredUtils = utilities.filter(u =>
   (utilFilterStatus === "all" || u.status === utilFilterStatus) &&
   (utilFilterProp === "all" || u.property === utilFilterProp) &&
+  (utilFilterProvider === "all" || u.provider === utilFilterProvider) &&
   (!utilSearch || u.provider?.toLowerCase().includes(utilSearch.toLowerCase()) || u.property?.toLowerCase().includes(utilSearch.toLowerCase()))
   );
+  // Sorted here rather than in DataTable: the primitive draws the header
+  // affordance and reports the click, the caller owns the order. Amount and
+  // due date compare as number and date; everything else as text, so
+  // "BGE" before "Pepco" and $27.40 before $403.02 rather than "$27.40"
+  // before "$403.02" as strings would have it.
+  const fu = (() => {
+    const { key, dir } = utilSort;
+    if (!key) return filteredUtils;
+    const mul = dir === "desc" ? -1 : 1;
+    const val = (u) => {
+      if (key === "amount") return safeNum(u.amount);
+      if (key === "due") return u.due || "";           // ISO date sorts as text
+      if (key === "login") return (u.website || "").toLowerCase();
+      return String(u[key] ?? "").toLowerCase();
+    };
+    // Slice first: sort mutates, and mutating the filtered array in a render
+    // is how a list starts reordering itself on unrelated state changes.
+    return filteredUtils.slice().sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (x === y) return 0;
+      // Blanks last in both directions -- a bill with no amount read yet is
+      // not "the cheapest".
+      if (x === "" || x === null) return 1;
+      if (y === "" || y === null) return -1;
+      return (x > y ? 1 : -1) * mul;
+    });
+  })();
   return <>
   {utilView === "card" && (
   <div className="space-y-3">
@@ -479,26 +524,55 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {utilView === "table" && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
+    // Every column carries a width because resizing needs fixed layout: without
+    // a starting width per column the browser divides the table equally and the
+    // first render looks wrong. Widths a user drags are remembered per viewer
+    // under storageKey.
     columns={[
-      { key: "provider", label: "Provider", className: "font-medium text-neutral-800" },
-      { key: "property", label: "Property", className: "text-neutral-500" },
-      { key: "amount", label: "Amount", align: "right", className: "font-semibold",
-        render: u => `$${u.amount}` },
-      { key: "due", label: "Due", className: "text-neutral-400" },
-      { key: "status", label: "Status", render: u => <Badge status={u.status} /> },
-      { key: "responsibility", label: "Resp.", className: "text-neutral-500 capitalize" },
-      { key: "login", label: "Portal", className: "text-xs", render: u => (<>
-        {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">\u2014</span>}
-        {u.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}}>{showCreds.has(u.id) ? "Hide" : "Show"} login</TextLink>}
-        {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "\u2014"} / {u._decPass || "\u2014"}</div>}
-      </>) },
-      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: u => (<>
+      { key: "provider", label: "Provider", sort: true, width: 120, className: "font-medium text-neutral-800 truncate" },
+      { key: "property", label: "Property", sort: true, width: 260, className: "text-neutral-500 truncate" },
+      { key: "amount", label: "Amount", sort: true, width: 100, align: "right", className: "font-semibold",
+        render: u => formatCurrency(safeNum(u.amount)) },
+      { key: "due", label: "Due", sort: true, width: 100, className: "text-neutral-400 whitespace-nowrap",
+        render: u => <>{fmtDate(u.due)}</> },
+      { key: "status", label: "Status", sort: true, width: 96, render: u => <Badge status={u.status} /> },
+      { key: "responsibility", label: "Resp.", sort: true, width: 80, className: "text-neutral-500 capitalize truncate" },
+      // One line. This cell used to stack three things -- the portal link, a
+      // "Show login" toggle, and the revealed credentials underneath -- which
+      // set the height of every row in the table whether or not anything was
+      // revealed. The link and the toggle now sit side by side, and revealing
+      // replaces the link rather than growing the row.
+      { key: "login", label: "Portal", sort: true, width: 190, className: "text-xs",
+        render: u => (
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          {showCreds.has(u.id)
+            ? <span className="text-neutral-600 truncate" title={`${u._decUser || "—"} / ${u._decPass || "—"}`}>{u._decUser || "\u2014"} / {u._decPass || "\u2014"}</span>
+            : (u.website
+                ? <a href={u.website} target="_blank" rel="noopener noreferrer" title={u.website}
+                    className="text-brand-600 hover:underline truncate">{u.website.replace(/^https?:\/\//, "")}</a>
+                : <span className="text-neutral-300">\u2014</span>)}
+          {u.username_encrypted && (
+            <TextLink tone="brand" size="xs" className="shrink-0" onClick={async () => {
+              const s = new Set(showCreds);
+              if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); return; }
+              u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt);
+              u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt);
+              s.add(u.id); setShowCreds(new Set(s));
+            }}>{showCreds.has(u.id) ? "Hide" : "Login"}</TextLink>
+          )}
+        </div>
+      ) },
+      { key: "actions", label: "Actions", width: 92, align: "right", className: "whitespace-nowrap", render: u => (<>
         {u.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => approvePay(u)} className="mr-2">Pay</TextLink>}
         <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
       </>) },
     ]}
     rows={fu}
     rowKey={u => u.id}
+    density="compact"
+    resizable storageKey="utilities-bills"
+    sort={utilSort}
+    onSort={key => setUtilSort(s2 => s2.key === key ? { key, dir: s2.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" })}
     empty="No utility bills found"
     scroll={false}
     ariaLabel="Utility bills"
