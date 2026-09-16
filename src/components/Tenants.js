@@ -2008,14 +2008,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     const t = tenants.find(x => x.id === tid);
     return safeNum(t?.balance) <= 0;
   });
+  // One .in() update used to do this, and it set archived_at and stopped:
+  // leases stayed 'active', the property kept the tenant's name in its slot,
+  // their AR sub-accounts stayed open, and autopay stayed ENABLED -- so a
+  // bulk-archived tenant could still be charged rent. The dialog said only
+  // "this will archive the selected tenants" while the single-tenant dialog
+  // promised the lease was terminated, and the difference was invisible.
+  //
+  // So bulk runs the same procedure as one, N times. Sequential on purpose:
+  // each archive posts accounting and recomputes a balance, and this app's
+  // ceiling is 3-5 parallel Supabase queries before statement timeouts start.
   let count = 0;
-  if (eligibleIds.length > 0) {
-    const { error: archErr, count: archCount } = await supabase.from("tenants")
-      .update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "past" }, { count: "exact" })
-      .eq("company_id", companyId)
-      .in("id", eligibleIds);
-    if (archErr) pmError("PM-3003", { raw: archErr, context: "bulk tenant archive" });
-    count = archCount || 0;
+  const bulkFailed = [];
+  for (const tid of eligibleIds) {
+    const t = tenants.find(x => x.id === tid);
+    const { ok } = await archiveTenant({
+      companyId, tenantId: tid, name: t?.name || "",
+      archivedBy: userProfile?.email, userRole, onToast: showToast,
+    });
+    if (ok) count++; else bulkFailed.push(t?.name || String(tid));
+  }
+  if (bulkFailed.length > 0) {
+    showToast(`${count} archived, ${bulkFailed.length} failed: ${bulkFailed.slice(0, 3).join(", ")}${bulkFailed.length > 3 ? "…" : ""}`, "error");
   }
   addNotification("\u{1F4E6}", `${count} tenant(s) archived`);
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);

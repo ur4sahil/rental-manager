@@ -105,19 +105,17 @@ assert("both the direct action and the approval call it",
 //     receivable to write off, so running the full procedure would post
 //     accounting for a party that was never a tenant.
 //
-//   * the bulk Archive modal -- NOT exempt, and a real gap. It sets
-//     archived_at on N tenants and stops: leases stay 'active', the property
-//     slot keeps their name, their AR sub-accounts stay open, and autopay
-//     stays ENABLED, so an archived tenant can still be charged. Its own
-//     dialog says only "this will archive the selected tenants", while the
-//     single-tenant dialog promises the lease is terminated. Routing it
-//     through the shared module changes what bulk archive DOES, so it is
-//     Sahil's call, not a silent fix.
+//   * the bulk Archive modal -- FIXED. It used to set archived_at on N
+//     tenants and stop: leases stayed 'active', the property slot kept their
+//     name, AR sub-accounts stayed open and autopay stayed ENABLED, so a
+//     bulk-archived tenant could still be charged. It now runs the shared
+//     procedure once per tenant, sequentially. It still matches this pattern
+//     only through resolveReview, below.
 //
 // Named, with the reason, so neither is mistaken for the other -- and the
 // count cannot grow past these two without the suite going red.
 const ARCHIVE_EXCEPTIONS = [
-  ["components/Tenants.js", "resolveReview + bulk archive modal"],
+  ["components/Tenants.js", "resolveReview (misclassified import rows)"],
 ];
 const copies = Object.entries(all).filter(([f, src]) =>
   f !== path.join("utils", "tenantArchive.js")
@@ -126,9 +124,17 @@ const unexpected = copies.filter(([f]) => !ARCHIVE_EXCEPTIONS.some(([e]) => e ==
 assert("no NEW place archives a tenant inline",
   unexpected.length === 0,
   unexpected.map(c => c[0]).join(", ") + " archives a tenant without the shared module");
-console.log("\n⚠ bulk Archive (Tenants.js) archives without terminating leases or");
-console.log("  disabling autopay — an archived tenant there can still be charged.");
-console.log("  Pending a decision; single-tenant archive and approval both do it right.\n");
+// Bulk archive must go through the module, not around it. It is the path
+// most likely to regress back to a single fast .in() update, because that
+// version looks obviously better right up until you ask what happened to
+// the leases.
+const bulkBlock = read("components/Tenants.js");
+assert("bulk archive runs the shared procedure per tenant",
+  /for \(const tid of eligibleIds\)[\s\S]{0,400}archiveTenant\(/.test(bulkBlock),
+  "a bulk .in() update on archived_at leaves leases active and autopay enabled");
+assert("bulk archive reports the tenants it could not archive",
+  /bulkFailed/.test(bulkBlock),
+  "a partial bulk failure that reports only the success count hides the rest");
 
 // ---- 3. the request has to name WHICH tenant ----------------------------
 // It used to carry only the name, in the `address` column. Production holds
