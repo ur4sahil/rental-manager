@@ -154,6 +154,25 @@ assert("the period's lines are read by date, not by an id list",
     && !/in\("journal_entry_id", entryIds\)/.test(start),
   "the id-list form hit PostgREST's 1000-row cap and the .in() limit, both silently");
 
+// ---- as at a date, not for a window --------------------------------------
+// A statement closes on a date and you tick what had cleared by then --
+// including a cheque written in October that cleared in December. Filtering
+// to the statement's own month hid exactly those: reconciling 31 Dec 2025
+// showed ten December entries and nothing before, so every older uncleared
+// item was invisible and the difference could never close.
+assert("items are everything up to the statement date",
+  /lte\("acct_journal_entries\.date", asAt\)/.test(start)
+    && !/gte\("acct_journal_entries\.date"/.test(start),
+  "a lower bound turns a reconciliation into a period report and hides older uncleared items");
+
+assert("already-reconciled lines are excluded",
+  /or\("reconciled\.is\.null,reconciled\.eq\.false"\)/.test(start),
+  "they sit inside the beginning balance; showing them again invites double-counting");
+
+assert("the statement date is the as-at date",
+  /const stmtDate = reconRange\.asAt/.test(save),
+  "storing a month end after reconciling to the 16th records a date nobody reconciled to");
+
 // ---- the balance snapshot ------------------------------------------------
 const plaidSrc = fs.readFileSync(path.join(__dirname, "..", "api", "plaid-sync-transactions.js"), "utf8");
 assert("every sync records what the bank said, and when",
@@ -183,6 +202,30 @@ assert("the snapshot table is row-level secured and service-write only",
   /alter table public\.bank_balance_snapshot enable row level security/.test(mig)
     && /for all to service_role/.test(mig),
   "balances are company data; only the sync worker writes them");
+
+// ---- the 1000-row ceiling, which returns plausible data instead of an error
+// PostgREST caps an unpaged select at 1000 rows server-side. .limit(n) is a
+// client hint and does not raise it. The ledger's opening balance shipped with
+// .limit(20000) and got exactly 1000 of 1590's 1516 pre-2026 lines -- in date
+// order, stopping at 2025-10-07 -- so it opened at 45,291.34 instead of
+// 40,921.73 and the ledger closed 4,369.61 above the balance sheet.
+//
+// The same ceiling had been removed from the reconciler hours earlier. A cap
+// that fails by returning a believable number is reintroduced this easily, so
+// it is asserted rather than remembered.
+const lineQueries = [...acctSrc.matchAll(/from\("acct_journal_lines"\)[\s\S]{0,700}?(?=\n\s*(?:if|const|\}|await|return))/g)]
+  .map(m => m[0]);
+const unpagedWithLimit = lineQueries.filter(q => /\.limit\(\s*\d{4,}\s*\)/.test(q));
+assert("no acct_journal_lines query relies on .limit() to beat the row cap",
+  unpagedWithLimit.length === 0,
+  unpagedWithLimit.length
+    ? "found " + unpagedWithLimit.length + ": " + unpagedWithLimit[0].slice(0, 150)
+    : "");
+
+assert("the ledger's opening balance is read in pages",
+  /fetchAllPaged\([\s\S]{0,400}?lt\("acct_journal_entries\.date", start\)/.test(acctSrc),
+  "an opening balance short by a thousand rows still looks like a balance");
+
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -525,16 +525,29 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
     let cancelled = false;
     if (!companyId || !ids.length || !start) { setOpeningByAccount({}); return undefined; }
     (async () => {
-      const { data, error } = await supabase
-        .from("acct_journal_lines")
-        .select("account_id, debit, credit, acct_journal_entries!inner(date, status)")
-        .eq("company_id", companyId)
-        .in("account_id", ids)
-        .eq("acct_journal_entries.status", "posted")
-        .lt("acct_journal_entries.date", start)
-        .limit(20000);
+      // PAGED. .limit(20000) is a client-side hint and does NOT raise
+      // PostgREST's server max-rows, which is 1000. This query first shipped
+      // with .limit() alone and returned exactly 1000 of 1590's 1516 pre-2026
+      // lines -- silently, in date order, stopping at 2025-10-07. The opening
+      // balance came out 45,291.34 against a true 40,921.73, so the ledger
+      // closed at 655,291.34 while the balance sheet said 650,921.73.
+      //
+      // The identical ceiling was removed from the reconciler earlier the
+      // same day. A cap that returns plausible data instead of an error gets
+      // reintroduced exactly this easily, which is why the paging helper
+      // exists and why nothing here should query lines without it.
+      const { rows: data, failed } = await fetchAllPaged(
+        () => supabase
+          .from("acct_journal_lines")
+          .select("account_id, debit, credit, acct_journal_entries!inner(date, status)")
+          .eq("company_id", companyId)
+          .in("account_id", ids)
+          .eq("acct_journal_entries.status", "posted")
+          .lt("acct_journal_entries.date", start)
+          .order("id", { ascending: true }),
+        "opening balances before " + start);
       if (cancelled) return;
-      if (error) { setOpeningByAccount(null); return; }
+      if (failed) { setOpeningByAccount(null); return; }
       const idx = {};
       for (const l of data || []) {
         if (!idx[l.account_id]) idx[l.account_id] = { debit: 0, credit: 0 };
@@ -1909,6 +1922,22 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 
 // --- Reports Center (QuickBooks-style) ---
 export function AcctReports({ linesLoaded = true, linesFailed = false, accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
+
+  // Accounts you have actually mapped to a bank feed. The one honest
+  // override on the subtype: if you linked it to Plaid, it is a bank
+  // account regardless of how it was classified on import.
+  const [bankFeedAccountIds, setBankFeedAccountIds] = useState(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) return undefined;
+    (async () => {
+      const { data } = await supabase.from("bank_account_feed")
+        .select("gl_account_id").eq("company_id", companyId);
+      if (cancelled) return;
+      setBankFeedAccountIds(new Set((data || []).map(f => f.gl_account_id).filter(Boolean)));
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
   const [activeView, setActiveView] = useState("catalog"); // catalog | viewer
   const [currentReport, setCurrentReport] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2335,8 +2364,8 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     const bsStart = getBalanceSheetData(accounts, journalEntries, startDate);
     const bsEnd = getBalanceSheetData(accounts, journalEntries, endDate);
     const arChange = bsEnd.totalAR - bsStart.totalAR || (bsEnd.assets.find(a=>a.name?.includes("Receivable"))?.amount||0) - (bsStart.assets.find(a=>a.name?.includes("Receivable"))?.amount||0);
-    const bankStart = bsStart.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings")).reduce((s,a)=>s+a.amount,0);
-    const bankEnd = bsEnd.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings")).reduce((s,a)=>s+a.amount,0);
+    const bankStart = bsStart.assets.filter(a => isBankAccount(a, bankFeedAccountIds)).reduce((s,a)=>s+a.amount,0);
+    const bankEnd = bsEnd.assets.filter(a => isBankAccount(a, bankFeedAccountIds)).reduce((s,a)=>s+a.amount,0);
     const operating = [{ name: "Net Income", amount: plData.netIncome }, { name: "Change in Accounts Receivable", amount: -arChange }];
     const opTotal = operating.reduce((s,i) => s + i.amount, 0);
     return { netIncome: plData.netIncome, operating: { items: operating, total: opTotal }, investing: { items: [], total: 0 }, financing: { items: [], total: 0 }, netChange: bankEnd - bankStart, beginningCash: bankStart, endingCash: bankEnd };
@@ -3521,7 +3550,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
     {/* Balance Sheet — reuse existing QB-style */}
     {reportId === "bs" && (() => {
-    const bankAccounts = bsData.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings"));
+    const bankAccounts = bsData.assets.filter(a => isBankAccount(a, bankFeedAccountIds));
     const arParentAccounts = bsData.assets.filter(a => (a.name === "Accounts Receivable" || (a.code || "") === "1100") && !(a.code || "").includes("-"));
     const arSubAccounts = bsData.assets.filter(a => (a.code || "").startsWith("1100-"));
     const arAllIds = new Set([...arParentAccounts, ...arSubAccounts].map(a => a.id));
@@ -5845,26 +5874,49 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   );
 }
 export function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile, userRole }) {
+
+  // Accounts you have actually mapped to a bank feed. The one honest
+  // override on the subtype: if you linked it to Plaid, it is a bank
+  // account regardless of how it was classified on import.
+  const [bankFeedAccountIds, setBankFeedAccountIds] = useState(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) return undefined;
+    (async () => {
+      const { data } = await supabase.from("bank_account_feed")
+        .select("gl_account_id").eq("company_id", companyId);
+      if (cancelled) return;
+      setBankFeedAccountIds(new Set((data || []).map(f => f.gl_account_id).filter(Boolean)));
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
   // A statement period is whatever the statement says it is. Bank statements
   // routinely run 17th-to-16th, and closing a partial period before a sale or
   // a handover is ordinary work -- a month picker cannot express either.
   // reconPeriod stays the LABEL and the key these rows are stored under; the
   // dates below are what is actually queried.
-  const [reconFrom, setReconFrom] = useState("");
-  const [reconTo, setReconTo] = useState("");
+  const [reconAsAt, setReconAsAt] = useState("");
   const monthBounds = (ym) => {
     const a = parseLocalDate(ym + "-01");
     const b = parseLocalDate(ym + "-01"); b.setMonth(b.getMonth() + 1); b.setDate(0);
     return { from: formatLocalDate(a), to: formatLocalDate(b) };
   };
-  // Empty from/to means "the whole of reconPeriod", so the common case needs
-  // no extra clicks and nothing below has to special-case a blank.
+  // A reconciliation is AS AT A DATE, not for a window.
+  //
+  // A statement closes on a date and you tick everything that had cleared by
+  // then -- including a cheque written in October that only cleared in
+  // December. Filtering to the statement's own month hides exactly those:
+  // reconciling 31 Dec 2025 showed ten December entries and nothing before,
+  // so every older uncleared item was invisible and the difference could
+  // never close.
+  //
+  // So: one date. Everything posted on or before it that has not already been
+  // reconciled. The month picker stays as a shortcut that sets the date to
+  // month end, because that is what most statements do.
   const reconRange = (() => {
-    const m = monthBounds(reconPeriod);
-    const from = reconFrom || m.from;
-    const to = reconTo || m.to;
-    return { from, to, custom: !!(reconFrom || reconTo) };
+    const asAt = reconAsAt || monthBounds(reconPeriod).to;
+    return { asAt, custom: !!reconAsAt };
   })();
   // Which bank account is being reconciled. This used to be hard-coded to
   // the literal account NAME "Checking Account", so a company whose
@@ -5872,8 +5924,13 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   // "Sigma ACH - 0822", "Sigma Cap Imp - 1402" -- reconciled a month of
   // genuine activity to "no transactions found", with no way to pick the
   // account it should have been looking at.
+  // Was: type === "Asset" && /^1[0-6]/.test(code) -- a code range, not a
+  // classification. On one real company that matched ~170 accounts: 87 tenant
+  // receivables, 39 properties, 16 escrows, suspense and settlement. You could
+  // select "AR - Jasmine Morgan" and reconcile a tenant against a bank
+  // statement. It now asks the same question the rest of the app asks.
   const bankAccounts = (accounts || [])
-    .filter(a => a.type === "Asset" && /^1[0-6]/.test(String(a.code || "")) && a.is_active !== false)
+    .filter(a => a.is_active !== false && isBankAccount(a, bankFeedAccountIds))
     .sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const [reconAccountId, setReconAccountId] = useState("");
   const activeReconAccount = bankAccounts.find(a => String(a.id) === String(reconAccountId)) || bankAccounts[0] || null;
@@ -6002,9 +6059,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
 
   async function startReconciliation() {
   if (!bankBalance || isNaN(Number(bankBalance))) { showToast("Please enter the bank ending balance.", "error"); return; }
-  const startDate = reconRange.from;
-  const endDate = reconRange.to;
-  if (startDate > endDate) { showToast("The start date is after the end date.", "error"); return; }
+  const asAt = reconRange.asAt;
 
   const acct = activeReconAccount;
   if (!acct?.id) { showToast("Choose a bank account to reconcile.", "error"); return; }
@@ -6049,17 +6104,20 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       .select("id, journal_entry_id, debit, credit, memo, reconciled, acct_journal_entries!inner(id, date, description, reference, status)")
       .eq("account_id", acct.id)
       .eq("acct_journal_entries.status", "posted")
-      .gte("acct_journal_entries.date", startDate)
-      .lte("acct_journal_entries.date", endDate)
+      .lte("acct_journal_entries.date", asAt)
+      // Already reconciled in an earlier period? Then it is inside the
+      // beginning balance, and showing it again would invite it to be
+      // counted twice.
+      .or("reconciled.is.null,reconciled.eq.false")
       .order("id", { ascending: true }),
     "reconciliation lines for " + acctLabel);
-  if (failed) { showToast("Could not load transactions for " + reconPeriod + ". Nothing was started.", "error"); return; }
+  if (failed) { showToast("Could not load transactions as at " + fmtDate(asAt) + ". Nothing was started.", "error"); return; }
 
   // Name the account. This said "No checking account transactions found"
   // whichever account you picked, so on 1600 it reported on an account you
   // had not selected and sent you looking in the wrong place.
   if (!lines.length) {
-    showToast(`No posted transactions on ${acctLabel} for ${reconPeriod}. If its bank activity is still in For Review, categorise and post it first — reconciling is the last step.`, "error");
+    showToast(`No unreconciled transactions on ${acctLabel} as at ${fmtDate(asAt)}. If its bank activity is still in For Review, categorise and post it first — reconciling is the last step.`, "error");
     return;
   }
 
@@ -6162,13 +6220,13 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   // Save reconciliation record
   // The statement date is the END of whatever was actually reconciled, which
   // for a custom range is not the end of the month.
-  const stmtDate = reconRange.to;
+  const stmtDate = reconRange.asAt;
   // onConflict on (company_id, account_id, period): re-running a month should
   // correct it, not stack a second row that the next period's beginning-
   // balance lookup might pick instead.
   const { error } = await supabase.from("bank_reconciliations").upsert([{ company_id: companyId,
   account_id: acct.id,
-  period: reconRange.custom ? `${reconRange.from}..${reconRange.to}` : reconPeriod,
+  period: reconRange.custom ? reconRange.asAt : reconPeriod,
   statement_date: stmtDate,
   beginning_balance: safeNum(beginningBalance),
   bank_ending_balance: bankBal,
@@ -6220,8 +6278,11 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   // The SAME range the reconciliation used -- deriving the month again here
   // would lock a whole month after a 17th-to-16th reconciliation, freezing
   // rows nobody had looked at.
-  const startDate = reconRange.from;
-  const endDate2 = reconRange.to;
+  // Lock only what was actually ticked -- an as-at reconciliation reaches
+  // back indefinitely, and locking everything before the date would freeze
+  // rows nobody looked at.
+  const endDate2 = reconRange.asAt;
+  const startDate = "1900-01-01";
   const { error: lockErr } = await supabase.from("bank_feed_transaction")
     .update({ status: "locked" })
     .eq("company_id", companyId)
@@ -6328,23 +6389,21 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       before a sale. Leaving the dates blank means the whole month, so the
       usual path is unchanged. */}
   <div>
-    <label className="text-xs text-neutral-400 mb-1 block">Statement period</label>
+    <label className="text-xs text-neutral-400 mb-1 block">Statement date</label>
     <Input type="month" value={reconPeriod}
-      onChange={e => { setReconPeriod(e.target.value); setReconFrom(""); setReconTo(""); }} />
+      onChange={e => { setReconPeriod(e.target.value); setReconAsAt(""); }} />
     <div className="flex items-center gap-1.5 mt-1.5">
-      <Input type="date" aria-label="Period start" value={reconRange.from}
-        onChange={e => setReconFrom(e.target.value)} className="text-xs" />
-      <span className="text-xs text-neutral-400">to</span>
-      <Input type="date" aria-label="Period end" value={reconRange.to}
-        onChange={e => setReconTo(e.target.value)} className="text-xs" />
+      <span className="text-xs text-neutral-400 whitespace-nowrap">as at</span>
+      <Input type="date" aria-label="Statement date" value={reconRange.asAt}
+        onChange={e => setReconAsAt(e.target.value)} className="text-xs" />
     </div>
-    {reconRange.custom && (
-      <div className="text-2xs text-neutral-400 mt-1">
-        Custom range — filed as {reconRange.from} to {reconRange.to}
+    <div className="text-2xs text-neutral-400 mt-1">
+      Everything not yet reconciled up to {fmtDate(reconRange.asAt)}
+      {reconRange.custom && (
         <TextLink tone="brand" size="xs" className="ml-2"
-          onClick={() => { setReconFrom(""); setReconTo(""); }}>reset to the month</TextLink>
-      </div>
-    )}
+          onClick={() => setReconAsAt("")}>use month end</TextLink>
+      )}
+    </div>
   </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><Btn className="w-full whitespace-nowrap" onClick={startReconciliation}>Begin Reconciliation</Btn></div>

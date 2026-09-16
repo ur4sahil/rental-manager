@@ -257,6 +257,35 @@ export function formatPhoneInput(value) {
 // flipped tenants to "complete" on false positives: video.pdf satisfied
 // "Government-Issued ID" because "video" contains "id", and
 // life_insurance_beneficiaries.pdf satisfied "Renters Insurance".
+// Is this GL account a bank account?
+//
+// ONE definition, because the app had three and they disagreed:
+//   * the balance sheet and cash flow asked subtype === "Bank" OR the name
+//     contained "Checking"/"Savings"
+//   * the reconciler ignored the subtype entirely and took any Asset whose
+//     code started 1[0-6] -- which for one real company is ~170 accounts,
+//     including 87 tenant receivables and 39 properties. You could select
+//     "AR - Jasmine Morgan" and reconcile her against a bank statement.
+//
+// The name rule is the subtler bug and it has a live example: "Utopia
+// Atlantic Checking" is a CURRENT ASSET, not a bank account. Reading the
+// word "Checking" as "bank" reported it as cash on the balance sheet and
+// inside the cash-flow statement's beginning and ending cash. It is at zero
+// today, so nothing is visibly wrong -- which is exactly how a rule like
+// this survives until the day the account carries a balance.
+//
+// Classification lives in the subtype. The name is what a person called it;
+// the subtype is what it IS.
+//
+// feedAccountIds is the one honest override: an account you have actually
+// linked to a bank feed is a bank account whatever its subtype says, because
+// you told us so by mapping it.
+export function isBankAccount(account, feedAccountIds) {
+  if (!account) return false;
+  if (String(account.subtype || "") === "Bank") return true;
+  return !!(feedAccountIds && feedAccountIds.has && feedAccountIds.has(account.id));
+}
+
 export const REQUIRED_TENANT_DOCS = [
   { label: "Signed Lease Agreement", types: ["Lease"], nameRe: /\blease\b/i },
   { label: "Government-Issued ID", types: ["ID"], nameRe: /\b(id|license|passport|government[-_\s]?issued)\b/i },
