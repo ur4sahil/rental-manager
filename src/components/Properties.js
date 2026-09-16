@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
+import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -545,8 +545,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // nothing in properties/tenants/leases; a Setup Drafts tab lets the
   // user resume and finish, and only then does anything land.
 
+  // Delegates to the shared port of the database's own function. It used to
+  // compose the address a third way -- see composePropertyAddress for what
+  // that got wrong -- and the value is used to pre-check for duplicates and
+  // to stamp documents uploaded before commit, so a near-miss here files a
+  // document under an address the property page never queries.
   function computeCompositeAddress() {
-    return [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
+    return composePropertyAddress(propForm);
   }
 
   async function saveUtilities() {
@@ -2544,7 +2549,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   try {
   // Check for duplicate address (new properties only — requires DB query, so after guard)
   if (!editingProperty) {
-  const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
+  // This joined all five parts with ", ", so it built "… , MD, 20770" while
+  // properties.address holds "… , MD 20770" -- state and zip separated by a
+  // space, not a comma. The equality below therefore never matched: measured
+  // against production, the comma form matches only 92 of 292 live addresses
+  // (the ones with no state or zip, where both forms coincide), so for the
+  // other 200 this check has never once caught a duplicate.
+  const compositeCheck = composePropertyAddress(form);
   const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
   if (dup) { showToast("A property with this address already exists.", "error"); guardRelease("saveProperty"); return; }
   }
@@ -2568,8 +2579,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!form.lease_end) { showToast("Lease end date is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
   if (form.lease_start >= form.lease_end) { showToast("Lease end date must be after lease start date.", "error"); guardRelease("saveProperty"); return; }
   }
-  // Build composite address for backward compatibility
-  const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
+  // Build composite address for backward compatibility. Through the shared
+  // port of the database function, because properties.address is derived and
+  // this value is used to scope the post-save document prompt -- a near-miss
+  // files those documents where the property page will not look.
+  const compositeAddress = composePropertyAddress(form);
   // Track tenant info for post-save doc prompt (declared outside if/else so accessible in post-save UI code)
   const _isNewOccupied = form.status === "occupied" && form.tenant.trim();
   const _savedTenantName = form.tenant.trim();

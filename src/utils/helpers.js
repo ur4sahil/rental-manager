@@ -983,3 +983,35 @@ export function propertyLabel(address) {
   if (new RegExp(`(^|[\\s#])${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i").test(line1)) return line1;
   return `${line1} ${line2}`;
 }
+
+// Compose a property address from its parts -- a faithful port of the
+// database's compute_property_address(), which the sync_addr_ins/upd triggers
+// call and which therefore OWNS properties.address.
+//
+// This exists because the client needs the value before a row is written: to
+// pre-check for a duplicate address, and to stamp a document uploaded
+// mid-wizard. It must agree with the database to the character, because a
+// document stamped with a near-miss address is invisible on the property page.
+//
+// The SQL it mirrors:
+//   TRIM(CONCAT_WS(', ',
+//     NULLIF(TRIM(line1),''), NULLIF(TRIM(line2),''), NULLIF(TRIM(city),''),
+//     NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(state),''), NULLIF(TRIM(zip),''))),'')))
+//
+// The version this replaces was [line1, line2, city, state + " " + zip]
+// .filter(Boolean).join(", ") -- which trimmed nothing, so a trailing space in
+// city survived into the address, and whose state+zip segment was the string
+// " " when both were blank. " " passes filter(Boolean), so a property with no
+// state or zip gained a stray ", " on the end.
+//
+// tests/address-formula.test.js asserts this against the cases the database
+// function was run on directly.
+export function composePropertyAddress({ address_line_1, address_line_2, city, state, zip } = {}) {
+  const trimmed = (v) => String(v ?? "").trim();
+  const nz = (v) => trimmed(v) || null;               // NULLIF(TRIM(x),'')
+  const stateZip = nz([nz(state), nz(zip)].filter(Boolean).join(" "));
+  return [nz(address_line_1), nz(address_line_2), nz(city), stateZip]
+    .filter(Boolean)                                   // CONCAT_WS skips nulls
+    .join(", ")
+    .trim();
+}

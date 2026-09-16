@@ -14,7 +14,7 @@
 // class, and strand the whole ledger on the old one.
 
 import JSZip from "jszip";
-import { excelDate, EXCEL_DATE_FMT } from "./helpers";
+import { composePropertyAddress, excelDate, EXCEL_DATE_FMT } from "./helpers";
 import {
   EXTRA_SHEETS, SHEET_RECURRING, UTILITY_RESPONSIBILITY, HOA_FREQUENCY,
   LOAN_TYPES, PREMIUM_FREQUENCY, TAX_FREQUENCY, RECURRING_FREQUENCY,
@@ -202,11 +202,12 @@ export function cellDate(v) {
 // needs to predict the address the trigger WILL derive, so the preview can
 // tell you which properties are about to be renamed before anything is
 // written.
-export function computeAddress({ address_line_1, address_line_2, city, state, zip }) {
-  const t = (s) => (s === null || s === undefined ? "" : String(s).trim());
-  const stateZip = [t(state), t(zip)].filter(Boolean).join(" ");
-  return [t(address_line_1), t(address_line_2), t(city), stateZip].filter(Boolean).join(", ").trim();
-}
+// Kept as an export because the importer and its tests call it by this name.
+// The implementation is gone: it was a correct mirror, which is exactly how a
+// duplicate survives -- being right today says nothing about staying in step.
+// One definition, in helpers, guarded by tests/address-formula.test.js against
+// the database's own output.
+export const computeAddress = composePropertyAddress;
 
 export default { PROPERTY_COLUMNS, TENANT_COLUMNS, inferTenantStatus, computeAddress };
 
