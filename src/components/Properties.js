@@ -863,6 +863,89 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       notes: ins.notes || "", website: ins.website || "", username: "", password: "",
     }));
 
+    // TENANT, LEASE AND RECURRING RENT.
+    //
+    // These were left out of the first pass because the deposit and first
+    // month's rent are keyed on the lease start date, so reading a corrected
+    // date would have re-posted them. That hazard is closed above --
+    // those posts now only happen on a first commit -- so the live record can
+    // be read here like everything else.
+    //
+    // Without this, renaming a tenant or fixing a lease date on the Tenants
+    // page and then saving the wizard for any reason wrote the OLD values
+    // back over them.
+    const [tenRes, leaseRes, recRes] = await Promise.all([
+      supabase.from("tenants")
+        .select("id, name, first_name, middle_initial, last_name, email, phone, rent, security_deposit, lease_start, lease_end_date, late_fee_amount, late_fee_type, is_voucher, voucher_number, reexam_date, case_manager_name, case_manager_email, case_manager_phone, voucher_portion, tenant_portion")
+        .eq("company_id", companyId).eq("property", address).is("archived_at", null)
+        .in("lease_status", ACTIVE_LEASE).order("id").limit(5),
+      supabase.from("leases")
+        .select("start_date, end_date, rent_amount, security_deposit")
+        .eq("company_id", companyId).eq("property", address).eq("status", "active")
+        .order("start_date", { ascending: false }).limit(1),
+      supabase.from("recurring_journal_entries")
+        .select("amount, day_of_month, frequency, next_post_date")
+        .eq("company_id", companyId).eq("property", address).eq("status", "active")
+        .is("archived_at", null).like("description", "Monthly rent%").limit(1),
+    ]);
+
+    const tenants = tenRes.data || [];
+    const lease = (leaseRes.data || [])[0];
+    const rec = (recRes.data || [])[0];
+    const primary = tenants[0];
+
+    if (primary) {
+      // The co-tenant slots live on the PROPERTY row, which is where the
+      // wizard writes them, so they are read from there rather than inferred
+      // from the order tenants happen to come back in.
+      const { data: propRow } = await supabase.from("properties")
+        .select("tenant_2, tenant_2_email, tenant_2_phone, tenant_3, tenant_3_email, tenant_3_phone, tenant_4, tenant_4_email, tenant_4_phone, tenant_5, tenant_5_email, tenant_5_phone")
+        .eq("company_id", companyId).eq("address", address).maybeSingle();
+      const pr = propRow || {};
+      const filled = [2, 3, 4, 5].filter(n => (pr["tenant_" + n] || "").trim()).length;
+
+      setTenantForm(prev => ({
+        ...prev,
+        tenant: primary.name || "",
+        tenant_first: primary.first_name || "",
+        tenant_mi: primary.middle_initial || "",
+        tenant_last: primary.last_name || "",
+        tenant_email: primary.email || "",
+        tenant_phone: primary.phone || "",
+        tenant_2: pr.tenant_2 || "", tenant_2_email: pr.tenant_2_email || "", tenant_2_phone: pr.tenant_2_phone || "",
+        tenant_3: pr.tenant_3 || "", tenant_3_email: pr.tenant_3_email || "", tenant_3_phone: pr.tenant_3_phone || "",
+        tenant_4: pr.tenant_4 || "", tenant_4_email: pr.tenant_4_email || "", tenant_4_phone: pr.tenant_4_phone || "",
+        tenant_5: pr.tenant_5 || "", tenant_5_email: pr.tenant_5_email || "", tenant_5_phone: pr.tenant_5_phone || "",
+        tenantCount: 1 + filled,
+        // The LEASE is the authority on its own dates and rent; the tenant row
+        // carries a denormalised copy that can lag behind it.
+        rent: (lease?.rent_amount ?? primary.rent) ?? "",
+        security_deposit: (lease?.security_deposit ?? primary.security_deposit) ?? "",
+        lease_start: lease?.start_date || primary.lease_start || "",
+        lease_end: lease?.end_date || primary.lease_end_date || "",
+        is_voucher: !!primary.is_voucher,
+        voucher_number: primary.voucher_number || "",
+        reexam_date: primary.reexam_date || "",
+        case_manager_name: primary.case_manager_name || "",
+        case_manager_email: primary.case_manager_email || "",
+        case_manager_phone: primary.case_manager_phone || "",
+        voucher_portion: primary.voucher_portion ?? "",
+        tenant_portion: primary.tenant_portion ?? "",
+      }));
+    }
+
+    if (rec) {
+      setRecurring(prev => ({
+        ...prev,
+        amount: rec.amount ?? prev.amount,
+        frequency: rec.frequency || prev.frequency,
+        day_of_month: rec.day_of_month || prev.day_of_month,
+        // Deliberately NOT overwriting start_date from next_post_date: the
+        // form's start_date is the PM's chosen floor and setting it from a
+        // rolling next-post date would drag it forward every save.
+      }));
+    }
+
     const tx = (taxRes.data || [])[0];
     if (tx) setTaxes(prev => ({
       ...prev, enabled: true,
@@ -1182,6 +1265,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       }
     } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit tax bills', silent: true }); phaseCFailures.push('property tax bills'); }
 
+    // The deposit and first month's rent are posted at most ONCE per tenant,
+    // and the check that enforces that must not depend on the lease start date.
+    //
+    // The references are built from the tenant id AND the lease start --
+    // DEP-T123-20260101. Matching them exactly meant that correcting a lease
+    // start produced DEP-T123-20260201, which was not in the posted set, and
+    // the deposit posted a SECOND time. Until now the stale wizard_data
+    // snapshot hid that: a re-save wrote the old date back, so the reference
+    // matched. Reading the live tenant above removes that accident.
+    //
+    // So the lookup below matches the reference PREFIX -- everything up to and
+    // including the tenant id -- which is stable no matter how the date moves.
+    //
+    // This is deliberately NOT gated on being a first commit. "Add Tenant" on
+    // an existing vacant property opens the wizard with a property id already
+    // set, so a first-commit gate would skip a genuine first deposit -- the
+    // same silent non-posting that a missing atomicPostJEAndLedger import
+    // caused before. autoPostRecurringEntries lives in here too and must run
+    // on every commit to catch up missed periods.
     if (propForm.status === 'occupied' && tenantForm.tenant.trim() && resTenantId && compositeAddress) {
       // Migration mode: when the PM explicitly sets recurring.start_date
       // to a date after lease_start, they're onboarding an already-
@@ -1197,12 +1299,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const depRef = 'DEP-T' + resTenantId + '-' + leaseStartKey;
         const rentRef = 'RENT1-T' + resTenantId + '-' + leaseStartKey;
         const prorentRef = 'PRORENT-T' + resTenantId + '-' + leaseStartKey;
-        const { data: existingJEs } = await supabase.from('acct_journal_entries').select('reference')
-          .eq('company_id', companyId).in('reference', [depRef, rentRef, prorentRef]).neq('status', 'voided');
-        const postedRefs = new Set((existingJEs || []).map(j => j.reference));
+        // Match on the PREFIX, not the whole reference. The prefix ends with
+        // the hyphen after the tenant id, so DEP-T12- cannot match
+        // DEP-T123-20260101 -- the ids stay distinct.
+        const tPrefix = escapeFilterValue('T' + resTenantId + '-');
+        const [depHit, rentHit, prorentHit] = await Promise.all(
+          ['DEP-', 'RENT1-', 'PRORENT-'].map(fam =>
+            supabase.from('acct_journal_entries').select('id')
+              .eq('company_id', companyId).neq('status', 'voided')
+              .like('reference', fam + tPrefix + '%').limit(1))
+        );
+        // A FAILED lookup must not read as "nothing posted" -- that is how a
+        // duplicate deposit would get through. Treat an error as posted.
+        const posted = r => !!(r.error || (r.data || []).length);
+        const depPosted = posted(depHit);
+        const rentPosted = posted(rentHit) || posted(prorentHit);
         const classId = await getPropertyClassId(compositeAddress, companyId);
         const dep = Number(tenantForm.security_deposit) || 0;
-        if (!isLeaseMigration && dep > 0 && !postedRefs.has(depRef)) {
+        if (!isLeaseMigration && dep > 0 && !depPosted) {
           const tenantArId = await getOrCreateTenantAR(companyId, tName, resTenantId);
           await atomicPostJEAndLedger({
             companyId, date: tenantForm.lease_start,
@@ -1216,8 +1330,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           });
         }
         const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
-        const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
-        if (!isLeaseMigration && monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
+        if (!isLeaseMigration && monthlyRent > 0 && tenantForm.lease_start && !rentPosted) {
           const leaseStart = parseLocalDate(tenantForm.lease_start);
           const startDay = leaseStart.getDate();
           const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
