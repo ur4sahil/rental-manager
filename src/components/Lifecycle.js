@@ -8,7 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged} from "../utils/accounting";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
 function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
@@ -81,10 +81,19 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     arAcctId = byName?.id || null;
   }
   if (!arAcctId) { setOutstandingBalance(safeNum(t.balance)); return; }
-  const { data: lines } = await supabase.from("acct_journal_lines")
-    .select("debit, credit, acct_journal_entries!inner(status)")
-    .eq("company_id", companyId).eq("account_id", arAcctId)
-    .neq("acct_journal_entries.status", "voided");
+  // Paged. This sums every line on the tenant's AR account to produce the
+  // balance shown on their lifecycle panel, and an unpaged select stops at
+  // 1000 rows without saying so -- a long-running tenant would simply have
+  // been shown a smaller debt than they owe, with nothing to indicate it.
+  const { rows: lines, failed: linesFailed } = await fetchAllPaged(
+    () => supabase.from("acct_journal_lines")
+      .select("debit, credit, acct_journal_entries!inner(status)")
+      .eq("company_id", companyId).eq("account_id", arAcctId)
+      .neq("acct_journal_entries.status", "voided")
+      .order("id"),
+    "tenant AR lines",
+  );
+  if (linesFailed) { setOutstandingBalance(safeNum(t.balance)); return; }
   const bal = (lines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
   setOutstandingBalance(Math.round(bal * 100) / 100);
   } catch (e) {

@@ -1140,14 +1140,36 @@ function ErrorLogDashboard({ companyId, showToast }) {
     // Fetch 24h stats
     const since24h = new Date(); since24h.setDate(since24h.getDate() - 1);
     const since7d = new Date(); since7d.setDate(since7d.getDate() - 7);
-    const { data: recentAll } = await supabase.from("error_log").select("severity, reported_by_user, resolved").eq("company_id", companyId).gte("created_at", since7d.toISOString());
-    const recent24h = (recentAll || []).filter(e => new Date(e.created_at) >= since24h);
-    setStats({
-      critical: (recentAll || []).filter(e => e.severity === "critical" && !e.resolved).length,
-      error: (recentAll || []).filter(e => e.severity === "error" && !e.resolved).length,
-      reported: (recentAll || []).filter(e => e.reported_by_user).length,
-      resolved: (recentAll || []).filter(e => e.resolved).length,
-    });
+    // COUNTED, not fetched. Two things were wrong here.
+    //
+    // The select was unpaged over a table holding 1,431 error_log rows in the
+    // last seven days alone, so it stopped at Supabase's 1000-row cap and
+    // every one of these four figures was quietly short -- on the page whose
+    // whole job is to tell you how bad things are.
+    //
+    // And `recent24h` filtered on created_at, which the select did not ask
+    // for, so every comparison was against an Invalid Date and the array was
+    // always empty. It was then never used. Removed rather than repaired:
+    // a 24-hour figure nothing displays is not a feature.
+    //
+    // Counts are the right shape anyway. Four head:true queries move no rows
+    // at all, and cannot be truncated by definition.
+    const since7dISO = since7d.toISOString();
+    const countOf = async (apply) => {
+      let q = supabase.from("error_log").select("id", { count: "exact", head: true })
+        .eq("company_id", companyId).gte("created_at", since7dISO);
+      q = apply(q);
+      const { count, error } = await q;
+      if (error) { pmError("PM-8006", { raw: error, context: "error log stats", phase: "read", silent: true }); return 0; }
+      return count || 0;
+    };
+    const [critical, error, reported, resolved] = await Promise.all([
+      countOf(q => q.eq("severity", "critical").eq("resolved", false)),
+      countOf(q => q.eq("severity", "error").eq("resolved", false)),
+      countOf(q => q.eq("reported_by_user", true)),
+      countOf(q => q.eq("resolved", true)),
+    ]);
+    setStats({ critical, error, reported, resolved });
     setLoading(false);
   }
 

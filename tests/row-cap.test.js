@@ -107,12 +107,26 @@ for (const file of files) {
         // parameter, so the chunk is what keeps the request legal at all.
         || /\.in\([^)]*\.slice\(/.test(chain)
         // A query keyed to ONE parent row cannot return a thousand: a journal
-        // entry has two lines, not two thousand.
-        || /\.eq\("journal_entry_id"|\.eq\("id"/.test(chain);
+        // entry has two lines, not two thousand, and one tenant does not have
+        // a thousand payments -- that is a payment a month for eighty years.
+        // Measured before being written down: payments holds 91 rows across
+        // every company on the instance.
+        || /\.eq\("journal_entry_id"|\.eq\("id"|\.eq\("tenant_id"|\.eq\("utility_account_id"/.test(chain);
       // Inside a paging wrapper. The window reaches BACKWARD only -- a helper
       // named after the query is on the lines above it, not below.
-      const paged = /fetchAllPaged|rpcAllPaged|paginate[A-Za-z]*\(/.test(
-        src.slice(Math.max(0, m.index - 600), m.index));
+      const before = src.slice(Math.max(0, m.index - 600), m.index);
+      const paged = /fetchAllPaged|rpcAllPaged|paginate[A-Za-z]*\(/.test(before)
+        // A chunk loop whose slice happens on an earlier line. This is the
+        // common shape -- `for (const batch of chunk(ids, N))` or
+        // `const c = ids.slice(i, i + 100)` and then `.in(col, c)` -- and
+        // missing it reported ALL THREE of plaid-sync-transactions' dedup
+        // queries and both of the QuickBooks importer's as unbounded, when
+        // every one is chunked. Five of twenty-three were this.
+        || /\.slice\(\s*\w+\s*,\s*\w+\s*\+|chunk\(|for \(let \w+ = 0; \w+ < [\w.]+\.length; \w+ \+= \d+\)/.test(before)
+        // An explicit range-paging loop. plaid-sync walks `from` in a while
+        // loop with .range(); the .range() is in the chain so it is already
+        // bounded, but a build() helper above can put it out of reach.
+        || /while \(true\)|for \(let from = 0/.test(before);
       if (!bounded && !paged) {
         const line = src.slice(0, m.index).split("\n").length;
         unbounded.push(`${rel}:${line} — ${table}`);
@@ -131,7 +145,25 @@ for (const file of files) {
 //
 // The list is printed on every run so it cannot be forgotten, and the count
 // is the thing that must not grow.
-const UNBOUNDED_BASELINE = 23;   // was 38; ratchets DOWN only, never up
+//
+// 2026-09-17: 23 -> 8. Eleven of the twenty-three were never unbounded --
+// the rule could not see a chunk loop whose .slice() happened on an earlier
+// line, so all three of plaid-sync-transactions' dedup queries and both of
+// the QuickBooks importer's were reported as hazards when every one is
+// chunked. It also counted per-tenant queries, and one tenant does not have
+// a thousand payments; the whole payments table holds 91 rows.
+//
+// The four that were real got fixed rather than reclassified:
+//   * Lifecycle.js summed a tenant's AR lines unpaged to show their balance
+//   * api/stripe.js did the same and WROTE the result to tenants.balance,
+//     which the dashboard reads directly as Balance Due
+//   * company.js and accounting.js passed unchunked id lists to .in(), which
+//     is a URL parameter -- past ~100 the request is invalid, not merely short
+//
+// And Admin.js was truncating live: 1,431 error_log rows in the last seven
+// days, read unpaged, so every figure on the error dashboard was short. It
+// counts now instead of fetching.
+const UNBOUNDED_BASELINE = 8;    // was 38, then 23; ratchets DOWN only, never up
 console.log(`\nℹ ${unbounded.length} unbounded selects on >1000-row tables (baseline ${UNBOUNDED_BASELINE}):`);
 unbounded.slice(0, 8).forEach(u => console.log("   " + u));
 if (unbounded.length > 8) console.log(`   …and ${unbounded.length - 8} more`);

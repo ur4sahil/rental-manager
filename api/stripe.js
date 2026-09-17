@@ -783,10 +783,23 @@ async function handleWebhook(req, res) {
     // tenant sees a stale balance after a Stripe payment until the
     // next manual edit on the staff side.
     try {
-      const { data: arLines } = await sb.from("acct_journal_lines")
-        .select("debit, credit, acct_journal_entries(status)")
-        .eq("company_id", companyId).eq("account_id", tenantAR.id);
-      const newBalance = (arLines || [])
+      // PAGED. This writes tenants.balance, which the dashboard reads
+      // directly as its Balance Due tile, and an unpaged select stops at
+      // Supabase's 1000-row cap without any error. A long-running tenant
+      // would have had a balance computed from the first thousand lines and
+      // cached -- silently understating what they owe, on the one figure a
+      // tenant is most likely to check.
+      const arLines = [];
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error: pageErr } = await sb.from("acct_journal_lines")
+          .select("debit, credit, acct_journal_entries(status)")
+          .eq("company_id", companyId).eq("account_id", tenantAR.id)
+          .order("id").range(from, from + 999);
+        if (pageErr) throw pageErr;
+        arLines.push(...(page || []));
+        if (!page || page.length < 1000) break;
+      }
+      const newBalance = arLines
         .filter(l => l.acct_journal_entries?.status === "posted")
         .reduce((acc, l) => acc + (Number(l.debit) || 0) - (Number(l.credit) || 0), 0);
       await sb.from("tenants").update({ balance: newBalance }).eq("id", tenantId);

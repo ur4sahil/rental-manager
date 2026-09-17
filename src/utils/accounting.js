@@ -260,10 +260,17 @@ export async function checkAccrualExists(companyId, month, tenantName) {
   .neq("status", "voided");
   if (!rentJEs || rentJEs.length === 0) return false;
   const jeIds = rentJEs.map(je => je.id);
-  const { data: lines } = await supabase.from("acct_journal_lines")
-  .select("journal_entry_id, memo").in("journal_entry_id", jeIds);
-  if (!lines) return false;
-  return lines.some(l => l.memo && l.memo.toLowerCase().includes(tenantName.toLowerCase()));
+  // Chunked at 100: .in() is a URL parameter, and a company with more than a
+  // hundred rent accruals in one month would have produced an invalid request
+  // rather than a short answer. A false "no accrual exists" here sends a rent
+  // payment to revenue instead of settling the receivable.
+  const needle = tenantName.toLowerCase();
+  for (let i = 0; i < jeIds.length; i += 100) {
+    const { data: lines } = await supabase.from("acct_journal_lines")
+      .select("journal_entry_id, memo").in("journal_entry_id", jeIds.slice(i, i + 100));
+    if ((lines || []).some(l => l.memo && l.memo.toLowerCase().includes(needle))) return true;
+  }
+  return false;
 }
 
 // ============ OWNER DISTRIBUTION AUTOMATION ============

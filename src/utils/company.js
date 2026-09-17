@@ -175,8 +175,17 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
         }
         // Filter to posted JEs.
         const jeIds = [...new Set(lines.map(l => l.journal_entry_id))];
-        const { data: jes } = await supabase.from("acct_journal_entries").select("id, status").eq("company_id", companyId).in("id", jeIds);
-        const postedSet = new Set((jes || []).filter(j => j.status === "posted").map(j => j.id));
+        // Chunked. .in() is a URL parameter, so a long list does not merely
+        // truncate the RESULT -- it makes the request itself invalid, and an
+        // integrity check that silently saw no entries would report every
+        // line as unposted.
+        const postedSet = new Set();
+        for (let i = 0; i < jeIds.length; i += 100) {
+          const { data: jes } = await supabase.from("acct_journal_entries")
+            .select("id, status").eq("company_id", companyId)
+            .in("id", jeIds.slice(i, i + 100));
+          (jes || []).filter(j => j.status === "posted").forEach(j => postedSet.add(j.id));
+        }
         let glTotal = 0;
         for (const l of lines) {
           if (!postedSet.has(l.journal_entry_id)) continue;
