@@ -153,10 +153,16 @@ function stripCredentials(wd) {
     if (Array.isArray(v)) return v.map(clean);
     const out = {};
     for (const [k, val] of Object.entries(v)) {
-      if (k === "username" || k === "password") continue;
+      // Every credential key, not just the bare pair. The HOA step now
+      // carries mgmt_password and pay_password too, and a stripper that only
+      // knew "password" would have written those to wizard_data in clear --
+      // the exact thing this function exists to stop.
+      if (/^(username|password)$/.test(k) || /_(username|password)$/.test(k)) continue;
       out[k] = clean(val);
     }
     if ("username" in v || "password" in v) out.had_credentials = !!(v.username && v.password);
+    if ("mgmt_username" in v) out.had_mgmt_credentials = !!(v.mgmt_username && v.mgmt_password);
+    if ("pay_username" in v) out.had_pay_credentials = !!(v.pay_username && v.pay_password);
     return out;
   };
   return clean(wd);
@@ -250,7 +256,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const [utilities, setUtilities] = useState([
     { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }
   ]);
-  const EMPTY_HOA = { hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "", website: "", username: "", password: "" };
+  // An HOA involves three separate places you sign in -- the association's
+  // own site, the management company that runs it, and whatever portal
+  // actually takes the fee -- plus a person to ring when a charge is queried.
+  const EMPTY_HOA = {
+    hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "",
+    website: "", username: "", password: "",
+    management_company: "", mgmt_website: "", mgmt_username: "", mgmt_password: "",
+    pay_portal_website: "", pay_username: "", pay_password: "",
+    contact_name: "", contact_email: "", contact_phone: "",
+  };
   const [hoas, setHoas] = useState([]);
   const addHoa = () => { if (hoas.length < 5) setHoas([...hoas, { ...EMPTY_HOA }]); };
   const updateHoa = (idx, field, val) => setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
@@ -455,7 +470,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               supabase.from("property_taxes").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
             ]);
             if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: u.responsibility || "owner_pays", website: u.website || "", username: u.username || "", password: u.password || "" })));
-            if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({ enabled: true, hoa_name: h.hoa_name || h.name || "", amount: h.amount || "", due_date: h.due_date || "", frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "", username: h.username || "", password: h.password || "" })));
+            // Credentials are NOT read back: hoa_payments stores only
+            // ciphertext, so h.username has always been undefined here and
+            // the blank boxes are honest. commit_property_wizard carries the
+            // stored ciphertext forward when the form sends none, so leaving
+            // them empty no longer wipes the saved login.
+            if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({
+              enabled: true,
+              hoa_name: h.hoa_name || h.name || "", amount: h.amount || "",
+              due_date: h.due_date || "", frequency: h.frequency || "Monthly",
+              notes: h.notes || "", website: h.website || "",
+              username: "", password: "",
+              management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
+              mgmt_username: "", mgmt_password: "",
+              pay_portal_website: h.pay_portal_website || "",
+              pay_username: "", pay_password: "",
+              contact_name: h.contact_name || "", contact_email: h.contact_email || "",
+              contact_phone: h.contact_phone || "",
+            })));
             if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
             if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
             if (taxRes.data?.[0]) { const tx = taxRes.data[0]; setTaxes({ enabled: true, assessed_value: tx.assessed_value || "", tax_year: tx.tax_year || new Date().getFullYear(), annual_tax_amount: tx.annual_tax_amount || "", billing_frequency: tx.billing_frequency || "semi_annual", next_due_date: tx.next_due_date || "", parcel_id: tx.parcel_id || "", exemptions: tx.exemptions || "", escrow_paid_by_lender: tx.escrow_paid_by_lender || false, records_url: tx.records_url || "", notes: tx.notes || "", setup_recurring: false }); }
@@ -732,9 +764,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       throw err;
     }
 
-    async function encryptRow(hasCreds, username, password) {
+    // reuseSalt lets several credential sets on ONE row share that row's
+    // salt. hoa_payments stores a single encryption_salt column, and an HOA
+    // now carries three logins -- association, management company, payment
+    // portal. Minting a fresh salt per set would write three salts into one
+    // column and two of the three would decrypt to nothing.
+    //
+    // The salt is per ROW either way, so this changes nothing about the
+    // guarantee: one compromised plaintext still does not unlock another row.
+    async function encryptRow(hasCreds, username, password, reuseSalt = null) {
       if (!hasCreds) return null;
-      const u = await encryptCredential(username || '', companyId);
+      const u = await encryptCredential(username || '', companyId, reuseSalt || null);
       const p = await encryptCredential(password || '', companyId, u.salt);
       // NULL, never '': an empty ciphertext is indistinguishable from a
       // real one in every IS NOT NULL and COUNT() check, which is how this
@@ -766,7 +806,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       }
       for (const h of hoas.filter(x => x.hoa_name.trim())) {
         if (!h.amount || Number(h.amount) <= 0) throw new Error('HOA amount required: ' + h.hoa_name);
-        const creds = await encryptRow(!!(h.username && h.password), h.username, h.password);
+
+        // THREE credential sets on one row, sharing ONE salt.
+        //
+        // encryptRow mints a fresh salt per call, and hoa_payments stores a
+        // single encryption_salt column -- so three independent calls would
+        // write three salts into one column, and two of the three sets would
+        // decrypt to nothing. The first set that exists establishes the salt
+        // and the others reuse it, exactly as username and password already
+        // do within one set. Each set still gets its own IV.
+        const hoaCreds  = await encryptRow(!!(h.username && h.password), h.username, h.password);
+        const rowSalt   = hoaCreds?.encryption_salt || null;
+
+        const mgmtRaw   = await encryptRow(!!(h.mgmt_username && h.mgmt_password), h.mgmt_username, h.mgmt_password, rowSalt);
+        const mgmtSalt  = rowSalt || mgmtRaw?.encryption_salt || null;
+
+        const payRaw    = await encryptRow(!!(h.pay_username && h.pay_password), h.pay_username, h.pay_password, mgmtSalt);
+        const salt      = mgmtSalt || payRaw?.encryption_salt || null;
+
         pre.hoas.push({
           hoa_name: h.hoa_name.trim(),
           amount: Number(h.amount),
@@ -774,7 +831,30 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           frequency: h.frequency || 'Monthly',
           notes: (h.notes || '').trim(),
           website: h.website || '',
-          ...(creds || {}),
+          ...(hoaCreds || {}),
+          // One salt for the row, whichever set produced it.
+          ...(salt ? { encryption_salt: salt } : {}),
+
+          management_company: (h.management_company || '').trim(),
+          mgmt_website: h.mgmt_website || '',
+          ...(mgmtRaw ? {
+            mgmt_username_encrypted: mgmtRaw.username_encrypted,
+            mgmt_password_encrypted: mgmtRaw.password_encrypted,
+            mgmt_encryption_iv: mgmtRaw.encryption_iv,
+            mgmt_encryption_iv_username: mgmtRaw.encryption_iv_username,
+          } : {}),
+
+          pay_portal_website: h.pay_portal_website || '',
+          ...(payRaw ? {
+            pay_username_encrypted: payRaw.username_encrypted,
+            pay_password_encrypted: payRaw.password_encrypted,
+            pay_encryption_iv: payRaw.encryption_iv,
+            pay_encryption_iv_username: payRaw.encryption_iv_username,
+          } : {}),
+
+          contact_name: (h.contact_name || '').trim(),
+          contact_email: (h.contact_email || '').trim().toLowerCase(),
+          contact_phone: (h.contact_phone || '').trim(),
         });
       }
       if (loan.enabled) {
@@ -1557,8 +1637,49 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 </Select></div>
                 <div><label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
                 <Textarea value={h.notes||""} onChange={e => updateHoa(idx, "notes", e.target.value)} rows={2} placeholder="Optional..." /></div>
+                {/* Who runs it, and who to ring. */}
                 <div className="border-t border-neutral-100 pt-2 mt-1">
-                  <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
+                  <p className="text-xs text-neutral-400 mb-2">Management company</p>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Company</label>
+                    <Input type="text" value={h.management_company || ""} onChange={e => updateHoa(idx, "management_company", e.target.value)} placeholder="e.g. Acme Management" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label>
+                    <Input type="url" value={h.mgmt_website || ""} onChange={e => updateHoa(idx, "mgmt_website", e.target.value)} placeholder="https://" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label>
+                    <Input type="text" autoComplete="off" value={h.mgmt_username || ""} onChange={e => updateHoa(idx, "mgmt_username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label>
+                    <Input type="password" autoComplete="new-password" value={h.mgmt_password || ""} onChange={e => updateHoa(idx, "mgmt_password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-100 pt-2 mt-1">
+                  <p className="text-xs text-neutral-400 mb-2">Fee payment portal <span className="text-neutral-300">— often a different site again</span></p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label>
+                    <Input type="url" value={h.pay_portal_website || ""} onChange={e => updateHoa(idx, "pay_portal_website", e.target.value)} placeholder="https://" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label>
+                    <Input type="text" autoComplete="off" value={h.pay_username || ""} onChange={e => updateHoa(idx, "pay_username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label>
+                    <Input type="password" autoComplete="new-password" value={h.pay_password || ""} onChange={e => updateHoa(idx, "pay_password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-100 pt-2 mt-1">
+                  <p className="text-xs text-neutral-400 mb-2">HOA contact</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Name</label>
+                    <Input type="text" value={h.contact_name || ""} onChange={e => updateHoa(idx, "contact_name", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
+                    <Input type="email" value={h.contact_email || ""} onChange={e => updateHoa(idx, "contact_email", e.target.value)} placeholder="name@example.com" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Phone</label>
+                    <Input type="tel" value={h.contact_phone || ""} onChange={e => updateHoa(idx, "contact_phone", formatPhoneInput(e.target.value))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-100 pt-2 mt-1">
+                  <p className="text-xs text-neutral-400 mb-2">HOA's own portal login (encrypted)</p>
                   <div className="grid grid-cols-3 gap-2">
                     <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" value={h.website||""} onChange={e => updateHoa(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" value={h.username||""} onChange={e => updateHoa(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
@@ -3928,7 +4049,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}
-  )}
 
 
   {incompleteWizards.length > 0 && !showPropertyWizard && (
