@@ -448,6 +448,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               if (wd.taxes) setTaxes(wd.taxes);
               if (wd.recurring) setRecurring(wd.recurring);
               } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore (edit mode)", silent: true }); }
+
+            // THE TABLES WIN, not the snapshot.
+            //
+            // wizard_data is a picture of the form as it was when the wizard
+            // was last completed. Reopening a COMPLETED wizard and restoring
+            // HOA and utilities from that picture is how an edit made on the
+            // HOA Payments or Utilities page gets thrown away: the wizard
+            // loads the stale copy, and commit_property_wizard then archives
+            // every live row for the property and re-inserts what the form
+            // held. The newer edit is archived and replaced by the older one,
+            // silently.
+            //
+            // For an IN-PROGRESS wizard the snapshot is right -- that work has
+            // never been committed and lives nowhere else. For a COMPLETED
+            // one the tables are the record and the snapshot is a memory of
+            // it, so the tables are read here and override what was just set.
+            await loadLiveWizardData(addr);
             }
             return;
           }
@@ -744,6 +761,109 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // SESSION_EXPIRED is a special throw class: handleComplete catches
   // it separately and opens the sign-in modal so the user doesn't
   // lose any field state.
+  // Read HOA and utilities as they stand RIGHT NOW, for a property whose
+  // wizard is already complete. Also records what was seen, so the commit can
+  // tell "the user removed this" from "this appeared while the wizard was
+  // open" -- without that distinction a merge either cannot delete or
+  // silently deletes someone else's addition.
+  const seenHoaNames = useRef([]);
+  const seenUtilProviders = useRef([]);
+
+  async function loadLiveWizardData(address) {
+    if (!address || !companyId) return;
+    const [hoaRes, utilRes] = await Promise.all([
+      supabase.from("hoa_payments").select("*")
+        .eq("company_id", companyId).eq("property", address).is("archived_at", null).limit(50),
+      supabase.from("utilities").select("*")
+        .eq("company_id", companyId).eq("property", address).is("archived_at", null).limit(50),
+    ]);
+    if (hoaRes.error) { pmError("PM-2007", { raw: hoaRes.error, context: "wizard live HOA read", phase: "read", silent: true }); return; }
+    if (utilRes.error) { pmError("PM-2007", { raw: utilRes.error, context: "wizard live utilities read", phase: "read", silent: true }); return; }
+
+    const hoaRows = hoaRes.data || [];
+    const utilRows = utilRes.data || [];
+    seenHoaNames.current = hoaRows.map(h => h.hoa_name).filter(Boolean);
+    seenUtilProviders.current = utilRows.map(u => u.provider).filter(Boolean);
+
+    // Credential boxes stay blank on purpose: only ciphertext comes back, and
+    // the RPC carries the stored ciphertext forward when the form sends none.
+    if (hoaRows.length) setHoas(hoaRows.map(h => ({
+      hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: h.due_date || 1,
+      frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "",
+      username: "", password: "",
+      management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
+      mgmt_username: "", mgmt_password: "",
+      pay_portal_website: h.pay_portal_website || "", pay_username: "", pay_password: "",
+      contact_name: h.contact_name || "", contact_email: h.contact_email || "",
+      contact_phone: h.contact_phone || "",
+    })));
+
+    if (utilRows.length) setUtilities(utilRows.map(u => ({
+      provider: u.provider || "", type: u.type || "Electric",
+      account_number: u.account_number || "", due_date: u.due || u.due_date || 1,
+      responsibility: u.responsibility === "owner" ? "owner_pays" : u.responsibility || "tenant_pays",
+      website: u.website || "", username: "", password: "",
+    })));
+
+    // The same staleness applies to every other step that has a live table
+    // behind it. commit_property_wizard writes EIGHT of them, and each one
+    // has a page in this app where the same record can be edited:
+    //
+    //   utilities, hoa_payments        archive-all then re-insert (destructive)
+    //   property_loans                 UPDATE the existing row
+    //   property_insurance             UPDATE the existing row
+    //   property_taxes                 UPDATE the existing row
+    //   tenants, leases                UPDATE the existing row
+    //   recurring_journal_entries      UPDATE the existing rows
+    //
+    // The three property-attached ones are read back here for the same
+    // reason. Tenant, lease and recurring rent are deliberately NOT: the
+    // tenant step drives lease creation, deposit posting and the first
+    // month's rent, so quietly replacing what the form holds would change
+    // what those side effects do. That one needs its own look.
+    const [loanRes, insRes, taxRes] = await Promise.all([
+      supabase.from("property_loans").select("*").eq("company_id", companyId)
+        .eq("property", address).is("archived_at", null).limit(5),
+      supabase.from("property_insurance").select("*").eq("company_id", companyId)
+        .eq("property", address).is("archived_at", null).limit(5),
+      supabase.from("property_taxes").select("*").eq("company_id", companyId)
+        .eq("property", address).is("archived_at", null).limit(5),
+    ]);
+
+    const l = (loanRes.data || [])[0];
+    if (l) setLoan(prev => ({
+      ...prev, enabled: true,
+      lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional",
+      original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "",
+      interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "",
+      escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "",
+      loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "",
+      account_number: l.account_number || "", notes: l.notes || "",
+      website: l.website || "", username: "", password: "",
+    }));
+
+    const ins = (insRes.data || [])[0];
+    if (ins) setInsurance(prev => ({
+      ...prev, enabled: true,
+      provider: ins.provider || "", policy_number: ins.policy_number || "",
+      premium_amount: ins.premium_amount ?? "", premium_frequency: ins.premium_frequency || "annual",
+      coverage_amount: ins.coverage_amount ?? "", expiration_date: ins.expiration_date || "",
+      notes: ins.notes || "", website: ins.website || "", username: "", password: "",
+    }));
+
+    const tx = (taxRes.data || [])[0];
+    if (tx) setTaxes(prev => ({
+      ...prev, enabled: true,
+      parcel_id: tx.parcel_id || "", assessed_value: tx.assessed_value ?? "",
+      tax_year: tx.tax_year || new Date().getFullYear(),
+      annual_tax_amount: tx.annual_tax_amount ?? "",
+      billing_frequency: tx.billing_frequency || "semi_annual",
+      next_due_date: tx.next_due_date || "", exemptions: tx.exemptions || "",
+      escrow_paid_by_lender: !!tx.escrow_paid_by_lender,
+      records_url: tx.records_url || "", notes: tx.notes || "",
+    }));
+  }
+
   async function commitWizard() {
     if (!companyId) throw new Error('No company selected');
     // Phase A: pre-flight session refresh + encrypt every credential
@@ -997,6 +1117,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       } : null,
       utilities: pre.utilities,
       hoas: pre.hoas,
+      // What the form was holding when it opened. The RPC archives a row only
+      // if its name was in this list and is not in the payload -- i.e. the
+      // user actually removed it. A row that appeared while the wizard was
+      // open is in neither list and is left alone, instead of being archived
+      // as collateral.
+      hoas_seen: seenHoaNames.current || [],
+      utilities_seen: seenUtilProviders.current || [],
       loan: pre.loan,
       insurance: pre.insurance,
       taxes: taxes.enabled ? {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, formatPhoneInput} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -14,7 +14,17 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingHoa, setEditingHoa] = useState(null);
-  const [form, setForm] = useState({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" });
+  // Same shape as the property wizard's HOA step. An HOA added here and one
+  // added there have to be the same record, or the page you used decides
+  // which half of the information you are allowed to keep.
+  const EMPTY_HOA_FORM = {
+    property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly",
+    status: "pending", notes: "", website: "", username: "", password: "",
+    management_company: "", mgmt_website: "", mgmt_username: "", mgmt_password: "",
+    pay_portal_website: "", pay_username: "", pay_password: "",
+    contact_name: "", contact_email: "", contact_phone: "",
+  };
+  const [form, setForm] = useState({ ...EMPTY_HOA_FORM });
   const [hoaFilter, setHoaFilter] = useState("all");
   const [showCreds, setShowCreds] = useState(new Set());
 
@@ -44,7 +54,10 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     return;
   }
   const payload = { ...form, amount: Number(form.amount) };
+  // Plaintext never reaches the payload. Three pairs now, not one.
   delete payload.username; delete payload.password;
+  delete payload.mgmt_username; delete payload.mgmt_password;
+  delete payload.pay_username; delete payload.pay_password;
   payload.website = form.website || "";
   if (form.username || form.password) {
     // Pair of creds shares one per-row salt (encryption_salt). Each value
@@ -66,8 +79,62 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       payload.encryption_salt = resU.salt || resP.salt;
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
+
+  // The management company's portal and the fee payment portal, each with its
+  // own IV and all three sharing the row's single encryption_salt column.
+  // Minting a salt per pair would write three salts into one column and two
+  // of the three sets would decrypt to nothing.
+  try {
+    const rowSalt = payload.encryption_salt || (editingHoa && editingHoa.encryption_salt) || null;
+    if (form.mgmt_username || form.mgmt_password) {
+      const u = await encryptCredential(form.mgmt_username || "", companyId, rowSalt);
+      const p2 = await encryptCredential(form.mgmt_password || "", companyId, u.salt);
+      payload.mgmt_username_encrypted = u.encrypted || null;
+      payload.mgmt_password_encrypted = p2.encrypted || null;
+      payload.mgmt_encryption_iv_username = u.iv || null;
+      payload.mgmt_encryption_iv = p2.iv || u.iv || null;
+      payload.encryption_salt = payload.encryption_salt || u.salt || null;
+      payload.credential_key_fp = payload.credential_key_fp || u.keyFp || null;
+    }
+    if (form.pay_username || form.pay_password) {
+      const salt = payload.encryption_salt || rowSalt;
+      const u = await encryptCredential(form.pay_username || "", companyId, salt);
+      const p2 = await encryptCredential(form.pay_password || "", companyId, u.salt);
+      payload.pay_username_encrypted = u.encrypted || null;
+      payload.pay_password_encrypted = p2.encrypted || null;
+      payload.pay_encryption_iv_username = u.iv || null;
+      payload.pay_encryption_iv = p2.iv || u.iv || null;
+      payload.encryption_salt = payload.encryption_salt || u.salt || null;
+      payload.credential_key_fp = payload.credential_key_fp || u.keyFp || null;
+    }
+  } catch (e) { showToast("Could not encrypt the portal logins — please try again: " + (e.message || e), "error"); return; }
+
+  payload.contact_email = (form.contact_email || "").trim().toLowerCase() || null;
+  payload.contact_name = (form.contact_name || "").trim() || null;
+  payload.contact_phone = (form.contact_phone || "").trim() || null;
+  payload.management_company = (form.management_company || "").trim() || null;
   if (editingHoa) {
-  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || null, password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || null, encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || null, encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null, credential_key_fp: payload.credential_key_fp || editingHoa.credential_key_fp || null }).eq("id", editingHoa.id).eq("company_id", companyId);
+  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || null, password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || null, encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || null, encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null, credential_key_fp: payload.credential_key_fp || editingHoa.credential_key_fp || null,
+    // The new fields. This UPDATE names its columns, so anything not listed
+    // here is silently dropped on edit -- the field saves once on create and
+    // then quietly reverts the first time someone changes the amount.
+    management_company: payload.management_company ?? editingHoa.management_company ?? null,
+    mgmt_website: payload.mgmt_website || editingHoa.mgmt_website || null,
+    pay_portal_website: payload.pay_portal_website || editingHoa.pay_portal_website || null,
+    contact_name: payload.contact_name ?? editingHoa.contact_name ?? null,
+    contact_email: payload.contact_email ?? editingHoa.contact_email ?? null,
+    contact_phone: payload.contact_phone ?? editingHoa.contact_phone ?? null,
+    // Credentials keep what is stored when the form sends none: the boxes are
+    // deliberately blank on edit because only ciphertext comes back.
+    mgmt_username_encrypted: payload.mgmt_username_encrypted || editingHoa.mgmt_username_encrypted || null,
+    mgmt_password_encrypted: payload.mgmt_password_encrypted || editingHoa.mgmt_password_encrypted || null,
+    mgmt_encryption_iv: payload.mgmt_encryption_iv || editingHoa.mgmt_encryption_iv || null,
+    mgmt_encryption_iv_username: payload.mgmt_encryption_iv_username || editingHoa.mgmt_encryption_iv_username || null,
+    pay_username_encrypted: payload.pay_username_encrypted || editingHoa.pay_username_encrypted || null,
+    pay_password_encrypted: payload.pay_password_encrypted || editingHoa.pay_password_encrypted || null,
+    pay_encryption_iv: payload.pay_encryption_iv || editingHoa.pay_encryption_iv || null,
+    pay_encryption_iv_username: payload.pay_encryption_iv_username || editingHoa.pay_encryption_iv_username || null,
+  }).eq("id", editingHoa.id).eq("company_id", companyId);
   if (hoaErr) { showToast("Error updating HOA: " + hoaErr.message, "error"); return; }
   addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
   logAudit("update", "hoa", `HOA updated: ${form.hoa_name} ${formatCurrency(form.amount)}`, editingHoa.id, userProfile?.email, userRole, companyId);
@@ -79,7 +146,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   }
   setShowForm(false);
   setEditingHoa(null);
-  setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" });
+  setForm({ ...EMPTY_HOA_FORM });
   fetchHOA();
   } finally { guardRelease("saveHOA"); }
   }
@@ -149,7 +216,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <Select filter value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
-  <Btn onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }}>+ Add HOA</Btn>
+  <Btn onClick={() => { setEditingHoa(null); setForm({ ...EMPTY_HOA_FORM }); setShowForm(!showForm); }}>+ Add HOA</Btn>
   </div>
 
   {/* Stats */}
@@ -171,7 +238,34 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
-  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Management company</p>
+  <div className="grid grid-cols-2 gap-3 mb-2">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Company</label><Input value={form.management_company||""} onChange={e => setForm({...form, management_company: e.target.value})} placeholder="e.g. Acme Management" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.mgmt_website||""} onChange={e => setForm({...form, mgmt_website: e.target.value})} placeholder="https://..." /></div>
+  </div>
+  <div className="grid grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input autoComplete="off" value={form.mgmt_username||""} onChange={e => setForm({...form, mgmt_username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" autoComplete="new-password" value={form.mgmt_password||""} onChange={e => setForm({...form, mgmt_password: e.target.value})} /></div>
+  </div>
+  </div>
+
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Fee payment portal <span className="text-neutral-300">— often a different site again</span></p>
+  <div className="grid grid-cols-3 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.pay_portal_website||""} onChange={e => setForm({...form, pay_portal_website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input autoComplete="off" value={form.pay_username||""} onChange={e => setForm({...form, pay_username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" autoComplete="new-password" value={form.pay_password||""} onChange={e => setForm({...form, pay_password: e.target.value})} /></div>
+  </div>
+  </div>
+
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">HOA contact</p>
+  <div className="grid grid-cols-3 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Name</label><Input value={form.contact_name||""} onChange={e => setForm({...form, contact_name: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Email</label><Input type="email" value={form.contact_email||""} onChange={e => setForm({...form, contact_email: e.target.value})} placeholder="name@example.com" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Phone</label><Input type="tel" value={form.contact_phone||""} onChange={e => setForm({...form, contact_phone: formatPhoneInput(e.target.value)})} /></div>
+  </div>
+  </div>
+
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">HOA's own portal login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
@@ -209,7 +303,10 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
         render: h => (<>
           {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
-            <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ ...EMPTY_HOA_FORM, property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "",
+              management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
+              pay_portal_website: h.pay_portal_website || "",
+              contact_name: h.contact_name || "", contact_email: h.contact_email || "", contact_phone: h.contact_phone || "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
         </>) },
     ]}
