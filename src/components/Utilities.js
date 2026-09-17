@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -272,6 +272,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       status: b?.status || "no_bill",
       paid_at: b?.paid_at || null,
       payment_confirmation: b?.payment_confirmation || "",
+      pdf_storage_path: b?.pdf_storage_path || null,
       last_check_status: a.last_check_status,
       last_check_error: a.last_check_error,
       last_checked_at: a.last_checked_at,
@@ -821,6 +822,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             loadBankAccounts();
           }}>Pay</TextLink>
         )}
+        {u.pdf_storage_path && (
+          <TextLink tone="neutral" size="xs" className="mr-2" onClick={async () => {
+            // Signed on demand and short-lived: a statement carries an
+            // account number and a service address, so a permanent public
+            // link is not the right shape for it.
+            const url = await getSignedUrl("documents", u.pdf_storage_path, 300);
+            if (url) window.open(url, "_blank", "noopener");
+            else showToast("Could not open that statement.", "error");
+          }}>Statement</TextLink>
+        )}
         <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setHistoryFor(u.id)}>History</TextLink>
         <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
       </>) },
@@ -938,6 +949,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             return <span className={`text-2xs px-1.5 py-0.5 rounded-full ${STATUS_CLASS[m.tone]}`}>{m.label}</span>;
           } },
           { key: "payment_confirmation", label: "Confirmation", render: b => <span className="text-2xs text-neutral-500">{b.payment_confirmation || "—"}</span> },
+          { key: "pdf_storage_path", label: "Statement", width: 80, render: b => b.pdf_storage_path
+            ? <TextLink tone="brand" size="xs" onClick={async () => {
+                const url = await getSignedUrl("documents", b.pdf_storage_path, 300);
+                if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error");
+              }}>Open</TextLink>
+            : <span className="text-neutral-300 text-2xs">—</span> },
         ]}
         rows={rows} rowKey={b => b.id} empty="No bills" scroll={false} />)}
   <p className="text-2xs text-neutral-400">

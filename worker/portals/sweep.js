@@ -157,6 +157,23 @@ function runFetch(portal, account) {
         amount: r.amount_due ?? null, due: r.due_date ?? null, error: r.error ?? null,
       }).catch(e => ({ reason: e.message }));
 
+      // File the statement against the bill the reading landed on. Best
+      // effort: the reading is already recorded and a bill without its PDF
+      // is still a bill, so nothing here can turn a good read into a failure.
+      if (r.outcome === "ok" && rec?.billId && r.statement_pdf) {
+        try {
+          const fsx = require("fs");
+          if (fsx.existsSync(r.statement_pdf)) {
+            await api("attach-bill-document", {
+              companyId: COMPANY, billId: rec.billId,
+              pdfBase64: fsx.readFileSync(r.statement_pdf).toString("base64"),
+              filename: `${provider}-${account || r.property || "statement"}`,
+            });
+            fsx.unlinkSync(r.statement_pdf);
+          }
+        } catch (e) { /* the figure is the job; the document is evidence */ }
+      }
+
       const who = r.property || account || "?";
       if (r.outcome === "ok") {
         read++;

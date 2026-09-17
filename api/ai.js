@@ -33,7 +33,7 @@ const { extractLicense } = require("./_ai-extract");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
-const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets"]);
+const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets", "attach-bill-document"]);
 // Actions a SCHEDULER calls. A cron is nobody's session and has no current
 // company -- the sweep's whole job is to walk every company that has pending
 // work -- so requiring a companyId of it is requiring something that cannot
@@ -652,7 +652,72 @@ module.exports = async function handler(req, res) {
       });
       if (error) return res.status(500).json({ error: error.message });
       const r = Array.isArray(data) ? data[0] : data;
-      return res.status(200).json({ ok: true, ...r });
+
+      // Hand back the bill this reading landed on, so the caller can attach
+      // the statement to it. Done here rather than by widening the RPC's
+      // return type, which would mean dropping and recreating a function the
+      // sweep depends on.
+      let billId = null;
+      if (r && r.updated && r.utility_id) {
+        const { data: acct } = await sb.from("utility_accounts")
+          .select("id").eq("legacy_utility_id", r.utility_id).maybeSingle();
+        if (acct?.id) {
+          const { data: b } = await sb.from("utility_bills")
+            .select("id").eq("utility_account_id", acct.id).is("archived_at", null)
+            .order("read_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+          billId = b?.id || null;
+        }
+      }
+      return res.status(200).json({ ok: true, ...r, billId });
+    }
+
+    // ---- keep the statement ---------------------------------------------
+    // The scraper reads a number off a screen and throws the page away, so a
+    // disputed charge has nothing behind it. utility_bills.pdf_storage_path
+    // was designed for this and never used.
+    //
+    // The worker cannot reach storage or the database directly -- that is the
+    // point of the box being an appliance -- so it posts the rendered page
+    // here and this route files it.
+    if (action === "attach-bill-document") {
+      const { companyId: cid, billId, pdfBase64, filename } = body;
+      if (!cid || !billId || !pdfBase64) {
+        return res.status(400).json({ error: "companyId, billId and pdfBase64 are required" });
+      }
+      const buf = Buffer.from(String(pdfBase64), "base64");
+      // A statement is a page, not a payload. 12 MB is generous for one and
+      // small enough that a runaway capture cannot fill the bucket.
+      if (!buf.length || buf.length > 12 * 1024 * 1024) {
+        return res.status(400).json({ error: "document must be between 1 byte and 12 MB" });
+      }
+      // PDF magic bytes. Trusting the extension is how something that is not
+      // a document ends up in the documents bucket.
+      if (buf.slice(0, 5).toString("latin1") !== "%PDF-") {
+        return res.status(400).json({ error: "not a PDF" });
+      }
+
+      // The bill must exist and belong to the company being claimed, so a
+      // worker token cannot file a document against somebody else's books.
+      const { data: bill, error: billErr } = await sb
+        .from("utility_bills").select("id, company_id, property, provider, statement_period")
+        .eq("id", billId).eq("company_id", cid).maybeSingle();
+      if (billErr) return res.status(500).json({ error: billErr.message });
+      if (!bill) return res.status(404).json({ error: "no such bill for this company" });
+
+      const safe = String(filename || `${bill.provider}-${bill.statement_period || "statement"}`)
+        .replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+      const path = `${cid}/utility-bills/${billId}-${Date.now()}-${safe}.pdf`;
+
+      const { error: upErr } = await sb.storage.from("documents")
+        .upload(path, buf, { contentType: "application/pdf", upsert: false });
+      if (upErr) return res.status(500).json({ error: upErr.message });
+
+      const { error: setErr } = await sb.from("utility_bills")
+        .update({ pdf_storage_path: path, updated_at: new Date().toISOString() })
+        .eq("id", billId).eq("company_id", cid);
+      if (setErr) return res.status(500).json({ error: setErr.message });
+
+      return res.status(200).json({ ok: true, path });
     }
 
     // ---- what should the sweep read? -------------------------------------

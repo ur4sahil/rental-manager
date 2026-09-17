@@ -370,13 +370,30 @@ const isoDate = (s) => {
     // credit_balance is reported separately as a positive figure, because
     // "you are owed $4.15" is what a person needs to read when deciding
     // whether to ask for a refund cheque -- and "-4.15" is not that.
+    // Keep the statement. The number is read off a screen that is then
+    // thrown away, so a disputed charge has nothing behind it and
+    // utility_bills.pdf_storage_path has sat unused since it was designed.
+    //
+    // Best effort on purpose: a bill that was read correctly must not be
+    // reported as a failure because the page would not render to PDF. The
+    // figure is the job; the document is evidence for later.
+    let pdfPath = null;
+    try {
+      pdfPath = shot.replace(/\.png$/, "") + ".pdf";
+      await page.pdf({ path: pdfPath, format: "Letter", printBackground: true });
+      record("statement", pdfPath);
+    } catch (e) {
+      pdfPath = null;
+      record("statement", "could not render: " + String(e.message).split("\n")[0].slice(0, 60));
+    }
+
     finish("ok", {
       account: wantAccount, property: readProperty,
       amount_due: amount, due_date: due,
       credit_balance: credit,
       nothing_due: amount === 0 || credit != null,
       read_by: readByVision ? "vision" : "selectors",
-      screenshot: shot, url: page.url(),
+      screenshot: shot, statement_pdf: pdfPath, url: page.url(),
     });
   } catch (e) {
     record("error", String(e.message).split("\n")[0]);
