@@ -2588,25 +2588,6 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         </div>
         <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
-        {/* The card already states Bank and Books and how far apart they are.
-            The next question is always "which entries make up Books?", and
-            the answer lived three clicks away under Chart of Accounts. This
-            is that account's register, opened from the figure that prompted
-            the question. Hidden when the feed has no GL account, because
-            there would be no register to open. */}
-        {feed.gl_account_id && onOpenRegister && (
-          <button type="button"
-            onClick={e => {
-              e.stopPropagation();   // the card itself selects the feed
-              const a = accounts.find(x => x.id === feed.gl_account_id);
-              onOpenRegister([feed.gl_account_id],
-                a ? `${a.code ? a.code + " " : ""}${a.name}` : feed.account_name);
-            }}
-            className="mt-1.5 w-full text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-md py-1 flex items-center justify-center gap-1">
-            <span className="material-icons-outlined text-sm">receipt_long</span>
-            Open bank register
-          </button>
-        )}
         {isInactive && <div className="text-xs text-neutral-500 mt-1 font-medium">Disconnected · won't sync</div>}
         {!isInactive && isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
         <div className="flex justify-between items-center mt-2">
@@ -2889,6 +2870,30 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex items-center justify-between flex-wrap gap-2">
     <div className="text-xs text-neutral-500">{filtered.length} of {feedTxns.length} transactions{filtered.length !== feedTxns.length ? " (filtered)" : ""}</div>
     <div className="flex items-center gap-3">
+      {/* The register, above the entries rather than on the account card.
+          The question "which entries make up Books?" is asked while looking
+          at the list, not at the tile -- and on the card it sat inside a
+          button, so every click needed stopPropagation to avoid also
+          selecting the feed.
+
+          Only when ONE feed is in view: "open the register" has no answer
+          when the list spans several accounts, and picking one of them
+          silently would be worse than not offering it. */}
+      {(() => {
+        if (!onOpenRegister || selectedFeed === "all") return null;
+        const feed = feeds.find(f => f.id === selectedFeed);
+        if (!feed?.gl_account_id) return null;
+        const a = accounts.find(x => x.id === feed.gl_account_id);
+        return (
+          <button type="button"
+            onClick={() => onOpenRegister([feed.gl_account_id],
+              a ? `${a.code ? a.code + " " : ""}${a.name}` : feed.account_name)}
+            className="text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-md px-2.5 py-1 flex items-center gap-1 whitespace-nowrap">
+            <span className="material-icons-outlined text-sm">receipt_long</span>
+            Open bank register
+          </button>
+        );
+      })()}
       <label className="text-xs text-neutral-500 flex items-center gap-1.5">
         Per page
         <Select value={txnPageSize} onChange={e => setTxnPageSize(Number(e.target.value))} size="sm" className="w-20">

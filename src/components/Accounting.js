@@ -1542,7 +1542,15 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
         </>) },
       { key: "tenant_vendor", label: "Tenant/Vendor", width: 190,
         render: (line, i) => (<>
-          <Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select>
+          <Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); // String-compared. The select's value is text and tenants.id is an
+            // integer, so === was 1364 === "1364" -- false, always -- and every
+            // tenant picked on a journal entry line was stored with an empty
+            // entity_name. Vendors were unaffected only because their id is a
+            // uuid, which is already text: the bug looked like "tenants are
+            // broken" rather than "the comparison is wrong".
+            const name = type === "customer"
+              ? tenants.find(t => String(t.id) === String(id))?.name
+              : vendors.find(v => String(v.id) === String(id))?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select>
         </>) },
       { key: "memo", label: "Memo", width: 220,
         render: (line, i) => (<>
