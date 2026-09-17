@@ -37,18 +37,17 @@ const AI = process.env.AI_BASE_URL || "https://housy.housify365.com";
 const AI_TOKEN = process.env.AI_TOKEN || "";
 const VIS_MODEL = process.env.HOUSY_VISION_MODEL || "qwen2.5vl:7b";
 
-const PORTALS = {
-  washington_gas: {
-    entry: "https://my.washingtongas.com/portal/",
-    payNav: /^Make Payment$/i,
-    amountRadio: /^Amount Due/i,
-    // Anything that increases what leaves the account.
-    extras: [/Washington Area Fuel Fund/i, /round up/i],
-    // Multi-step: NEXT leads to a review page before the real commit.
-    advance: /^(Next|Continue)$/i,
-    commit: /^(Submit|Confirm|Make Payment|Pay Now)$/i,
-  },
-};
+// The pay recipes live in playbooks.js beside the read recipes, so "can this
+// provider be paid" has one answer. This file used to carry its own copy of
+// the Washington Gas recipe; a second list is a list that drifts, and the way
+// it drifts here is the app offering a Pay button for a portal that cannot
+// carry the payment out.
+const { PLAYBOOKS } = require("./playbooks");
+const PORTALS = Object.fromEntries(
+  Object.entries(PLAYBOOKS)
+    .filter(([, b]) => b && b.pay)
+    .map(([portal, b]) => [portal, { entry: b.entry, ...b.pay }])
+);
 
 function log(...a) { console.log(" ", ...a); }
 function done(outcome, extra = {}) {
@@ -304,15 +303,31 @@ async function visionCheck(pngPath) {
     const after = path.join(shots, `${key}-paid-${wantAccount}-${Date.now()}.png`);
     await page.screenshot({ path: after, fullPage: true });
 
+    // THE RECEIPT. The confirmation page as a PDF, which is what gets filed
+    // against the property. A screenshot is evidence for us; a PDF is the
+    // document a person can open from the property's file months later, and
+    // it is the only proof of payment that exists outside the provider's own
+    // site. Captured before anything is parsed, because a parse failure must
+    // not cost the receipt.
+    let receipt = null;
+    try {
+      receipt = after.replace(/\.png$/, "") + ".pdf";
+      await page.pdf({ path: receipt, format: "Letter", printBackground: true });
+      log(`receipt captured: ${path.basename(receipt)}`);
+    } catch (e) {
+      receipt = null;
+      log("receipt PDF could not be captured — the payment still stands");
+    }
+
     const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
     const conf = body.match(/confirmation\s*(?:number|#|code)?\s*:?\s*([A-Z0-9-]{5,})/i);
     const looksPaid = /thank you|payment (has been )?(received|submitted|scheduled|posted)|successfully/i.test(body);
 
     if (conf || looksPaid) {
-      done("ok", { account: wantAccount, amount: wantAmount, confirmation: conf ? conf[1] : null, screenshot: after });
+      done("ok", { account: wantAccount, amount: wantAmount, confirmation: conf ? conf[1] : null, screenshot: after, receipt });
     }
     done("unknown", {
-      account: wantAccount, amount: wantAmount, screenshot: after,
+      account: wantAccount, amount: wantAmount, screenshot: after, receipt,
       error: "submitted but no confirmation could be read — CHECK THE PORTAL before any retry",
     });
   } catch (e) {

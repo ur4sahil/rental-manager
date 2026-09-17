@@ -300,11 +300,44 @@ export const REQUIRED_TENANT_DOCS = [
 // requirement above can be satisfied by SAYING what a file is, rather than
 // depending on whoever named it -- a scan called "Epson_11082024113258.pdf"
 // is a renter's insurance certificate and no regex will ever know that.
+// Providers the app can actually PAY, not merely read.
+//
+// The authority is worker/portals/playbooks.js -- a portal is payable when it
+// has a `pay` recipe. That file cannot be imported here: it lives outside
+// src/ and the browser bundle must not reach into the worker tree. So this is
+// a deliberate copy, and tests/utility-payments.test.js fails if it stops
+// matching, which turns drift into a red test instead of a Pay button that
+// promises a payment nothing can carry out.
+//
+// Aliases exist because the data is messy: production says "Washington Gas",
+// "Wash Gas" and "WGL" for the same company.
+export const PAYABLE_PORTALS = [
+  { portal: "washington_gas", provider: "Washington Gas",
+    aliases: ["washington gas", "wash gas", "washington gas light", "wgl", "wgl gas"] },
+];
+
+// The portal key for a provider name, or null when it cannot be paid.
+// Case- and whitespace-insensitive, because the stored names are neither.
+export function payablePortalFor(providerName) {
+  const n = String(providerName || "").trim().toLowerCase();
+  if (!n) return null;
+  for (const p of PAYABLE_PORTALS) {
+    if (p.aliases.some(a => n === a || n.includes(a))) return p.portal;
+  }
+  return null;
+}
+
 export const DOC_TYPES = [
   { value: "Lease", label: "Lease" },
   { value: "ID", label: "Government-Issued ID" },
   { value: "Insurance", label: "Renters Insurance" },
   { value: "Utility Transfer", label: "Proof of Utility Transfer" },
+  // Filed automatically by the portal sweep and the payment worker. They are
+  // in this list because DOC_TYPES is what the Documents filter and the
+  // per-property grouping are built from -- a type that is not here is a
+  // folder nobody can open.
+  { value: "Utility Bill", label: "Utility Bill" },
+  { value: "Utility Receipt", label: "Utility Payment Receipt" },
   { value: "Inspection", label: "Inspection" },
   { value: "Maintenance", label: "Maintenance" },
   { value: "Financial", label: "Financial" },

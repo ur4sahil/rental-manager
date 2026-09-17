@@ -180,6 +180,21 @@ const PLAYBOOKS = {
     // Washington Gas numbers its accounts and switches between them, so a
     // reading identifies itself by account rather than by address.
     identifyBy: "account",
+    // PAYING. The only portal with a pay recipe, and therefore the only one
+    // the app offers a Pay button for. Kept here rather than in pay-bill.js
+    // so there is ONE answer to "can this provider be paid": a second list
+    // would drift, and the way it would drift is a button that promises a
+    // payment nothing can carry out.
+    pay: {
+      payNav: /^Make Payment$/i,
+      amountRadio: /^Amount Due/i,
+      // Anything that increases what leaves the account. Both are offered by
+      // this portal and both are explicitly cleared, never assumed off.
+      extras: [/Washington Area Fuel Fund/i, /round up/i],
+      // Multi-step: NEXT leads to a review page before the real commit.
+      advance: /^(Next|Continue)$/i,
+      commit: /^(Submit|Confirm|Make Payment|Pay Now)$/i,
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════
@@ -387,4 +402,12 @@ function knownProviderAliases() {
   return Object.values(PLAYBOOKS).flatMap(b => b.aliases || []);
 }
 
-module.exports = { PLAYBOOKS, playbookFor, knownProviderAliases, NOTHING_DUE, CREDIT_BALANCE };
+// Which portals can actually be paid. The app asks this before showing a Pay
+// button, so a provider we can only READ never offers one.
+function payablePortals() {
+  return Object.entries(PLAYBOOKS)
+    .filter(([, b]) => b && b.pay)
+    .map(([portal, b]) => ({ portal, provider: b.provider, aliases: b.aliases || [] }));
+}
+
+module.exports = { PLAYBOOKS, playbookFor, knownProviderAliases, payablePortals, NOTHING_DUE, CREDIT_BALANCE };

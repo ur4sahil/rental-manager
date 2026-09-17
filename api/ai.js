@@ -33,7 +33,7 @@ const { extractLicense } = require("./_ai-extract");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
-const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets", "attach-bill-document"]);
+const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets", "attach-bill-document", "record-utility-payment"]);
 // Actions a SCHEDULER calls. A cron is nobody's session and has no current
 // company -- the sweep's whole job is to walk every company that has pending
 // work -- so requiring a companyId of it is requiring something that cannot
@@ -60,6 +60,49 @@ function admin() {
 
 // Constant-time compare. A length-dependent early return leaks the token
 // one character at a time to anyone willing to measure response times.
+// File a utility statement or receipt in the documents table.
+//
+// Uploading to the bucket is not filing. Until a documents row exists the
+// file is invisible to the Documents module and to the property it belongs
+// to -- which is exactly how the bill statements came to look as though they
+// were never stored. property_id is resolved from the address so the
+// document hangs off the property, not just a matching string.
+//
+// Never throws. The file is already saved by the time this runs, and losing
+// the upload over its index row would be the worse outcome; the caller
+// reports the error instead.
+async function fileUtilityDocument(sb, { companyId, property, path, safeName, type, label }) {
+  try {
+    let propertyId = null;
+    if (property) {
+      const { data: prop } = await sb.from("properties")
+        .select("id").eq("company_id", companyId).eq("address", property).maybeSingle();
+      propertyId = prop?.id ?? null;
+    }
+    const { data, error } = await sb.from("documents").insert([{
+      company_id: companyId,
+      name: label || safeName,
+      // BOTH hold the storage path, matching DocUploadModal. getSignedUrl is
+      // called as getSignedUrl("documents", d.file_name || d.url), so a
+      // file_name holding a bare filename signs a path that does not exist
+      // and every View link breaks.
+      file_name: path,
+      url: path,
+      property: property || null,
+      property_id: propertyId,
+      type: type,
+      uploaded_at: new Date().toISOString(),
+      // A utility statement carries the owner's account number and usage
+      // history. It is not the tenant's to read unless somebody says so.
+      tenant_visible: false,
+    }]).select("id").single();
+    if (error) return { id: null, error: error.message };
+    return { id: data.id, error: null };
+  } catch (e) {
+    return { id: null, error: String(e?.message || e) };
+  }
+}
+
 function safeEqual(a, b) {
   const A = Buffer.from(String(a || ""));
   const B = Buffer.from(String(b || ""));
@@ -724,7 +767,125 @@ module.exports = async function handler(req, res) {
         .eq("id", billId).eq("company_id", cid);
       if (setErr) return res.status(500).json({ error: setErr.message });
 
-      return res.status(200).json({ ok: true, path });
+      // FILE IT AS A DOCUMENT TOO.
+      //
+      // Setting pdf_storage_path put the statement in the bucket and made it
+      // reachable from one column on the Utilities page -- and nowhere else.
+      // It did not appear in the Documents module and was not filed against
+      // the property, so from the outside the bills looked like they were
+      // never stored at all.
+      //
+      // A failure here does not fail the call: the statement IS saved, and
+      // losing the whole upload over its index row would be worse than an
+      // unindexed statement. It is reported so the sweep can log it.
+      const docRow = await fileUtilityDocument(sb, {
+        companyId: cid, property: bill.property, path, safeName: safe,
+        type: "Utility Bill",
+        label: `${bill.provider}${bill.statement_period ? " " + bill.statement_period : ""} statement`,
+      });
+
+      return res.status(200).json({ ok: true, path, document_id: docRow.id || null, document_error: docRow.error || null });
+    }
+
+    // ---- record a confirmed portal payment ------------------------------
+    //
+    // Called by the payment worker AFTER the portal returned a confirmation.
+    // It marks the bill paid and files the receipt as a document.
+    //
+    // It deliberately posts NO journal entry. The money leaving the bank
+    // arrives on its own through the bank feed, and booking it here as well
+    // would show the same payment twice -- once from this action and once
+    // from the feed. The bill's own status, amount and confirmation number
+    // are the record that it was paid; the ledger entry is the bank's.
+    if (action === "record-utility-payment") {
+      const { companyId: cid, paymentId, billId, amount, confirmation, paidOn,
+              receiptBase64, receiptFilename } = body;
+      if (!cid || !paymentId || !billId) {
+        return res.status(400).json({ error: "companyId, paymentId and billId are required" });
+      }
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+
+      // The payment row is the authority on what was approved. Trusting the
+      // worker's reported amount would let a bug settle a bill for a figure
+      // nobody approved.
+      const { data: pay, error: payErr } = await sb.from("utility_payments")
+        .select("id, company_id, bill_id, approved_amount, status")
+        .eq("id", paymentId).eq("company_id", cid).maybeSingle();
+      if (payErr) return res.status(500).json({ error: payErr.message });
+      if (!pay) return res.status(404).json({ error: "no such payment for this company" });
+      if (String(pay.bill_id) !== String(billId)) {
+        return res.status(400).json({ error: "payment does not belong to that bill" });
+      }
+      if (Math.abs(Number(pay.approved_amount) - amt) > 0.005) {
+        return res.status(400).json({
+          error: `amount ${amt} does not match the approved ${pay.approved_amount}` });
+      }
+
+      const { data: bill, error: billErr } = await sb.from("utility_bills")
+        .select("id, company_id, property, provider, statement_period, status")
+        .eq("id", billId).eq("company_id", cid).maybeSingle();
+      if (billErr) return res.status(500).json({ error: billErr.message });
+      if (!bill) return res.status(404).json({ error: "no such bill for this company" });
+
+      // Already settled: say so and change nothing. A worker retrying after
+      // a dropped response must not re-stamp a bill or file a second receipt.
+      if (["paid", "settled"].includes(bill.status)) {
+        return res.status(200).json({ ok: true, already: true, status: bill.status });
+      }
+
+      // The receipt, if the worker captured one.
+      let receiptPath = null, receiptDocId = null, receiptError = null;
+      if (receiptBase64) {
+        const rbuf = Buffer.from(String(receiptBase64), "base64");
+        if (!rbuf.length || rbuf.length > 12 * 1024 * 1024) {
+          receiptError = "receipt must be between 1 byte and 12 MB";
+        } else if (rbuf.slice(0, 5).toString("latin1") !== "%PDF-") {
+          receiptError = "receipt is not a PDF";
+        } else {
+          const rsafe = String(receiptFilename || `${bill.provider}-receipt`)
+            .replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+          receiptPath = `${cid}/utility-receipts/${billId}-${Date.now()}-${rsafe}.pdf`;
+          const { error: rUp } = await sb.storage.from("documents")
+            .upload(receiptPath, rbuf, { contentType: "application/pdf", upsert: false });
+          if (rUp) { receiptError = rUp.message; receiptPath = null; }
+          else {
+            const d = await fileUtilityDocument(sb, {
+              companyId: cid, property: bill.property, path: receiptPath, safeName: rsafe,
+              type: "Utility Receipt",
+              label: `${bill.provider}${bill.statement_period ? " " + bill.statement_period : ""} payment receipt`,
+            });
+            receiptDocId = d.id || null;
+            if (d.error) receiptError = d.error;
+          }
+        }
+      }
+
+      const paidAt = paidOn ? new Date(String(paidOn) + "T12:00:00").toISOString()
+                            : new Date().toISOString();
+      const { error: bUp } = await sb.from("utility_bills").update({
+        status: "paid",
+        amount_paid: amt,
+        paid_at: paidAt,
+        payment_confirmation: confirmation ? String(confirmation).slice(0, 200) : null,
+        payment_method_selected: "portal_automation",
+        updated_at: new Date().toISOString(),
+      }).eq("id", billId).eq("company_id", cid);
+      if (bUp) return res.status(500).json({ error: bUp.message });
+
+      if (receiptPath) {
+        await sb.from("utility_payments")
+          .update({ receipt_storage_path: receiptPath })
+          .eq("id", paymentId).eq("company_id", cid);
+      }
+
+      return res.status(200).json({
+        ok: true, bill_status: "paid",
+        receipt_path: receiptPath, receipt_document_id: receiptDocId,
+        receipt_error: receiptError,
+      });
     }
 
     // ---- what should the sweep read? -------------------------------------

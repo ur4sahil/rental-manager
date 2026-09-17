@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -176,44 +176,81 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   fetchAutomationData();
   }
 
-  async function authorizeBillPayment(bill, paymentMethod) {
-  if (!guardSubmit("authorizeBill", bill?.id)) return;
+  // A person pressing Pay is the whole authorisation. It writes an APPROVED
+  // payment; the worker on the box picks it up, pays the portal, captures the
+  // receipt and marks the bill paid.
+  //
+  // What it does NOT do is post a journal entry. The old version did -- DR
+  // 5400, CR 1000 Checking, dated today, for the full billed amount -- while
+  // queueing a job into automation_jobs that nothing has ever read. So the
+  // books recorded a payment out of an account nobody chose, for money that
+  // never moved. The money leaving the bank arrives through the bank feed,
+  // which is the one record that cannot claim a payment that did not happen.
+  async function payBillViaPortal(bill) {
+  if (!guardSubmit("payViaPortal", bill?.id)) return;
   try {
-  const { error } = await supabase.from("utility_bills").update({
-  status: "authorized",
-  payment_method_selected: paymentMethod,
-  authorized_by: userProfile?.email,
-  authorized_at: new Date().toISOString(),
-  }).eq("id", bill.id).eq("company_id", companyId);
-  if (error) { pmError("PM-6001", { raw: error, context: "authorizing bill payment" }); return; }
-  // Queue payment job
-  const { error: jobErr } = await supabase.from("automation_jobs").insert([{
-  company_id: companyId,
-  utility_account_id: bill.utility_account_id,
-  bill_id: bill.id,
-  job_type: "pay_bill",
-  status: "queued",
-  triggered_by: userProfile?.email || "manual",
+  const portal = payablePortalFor(bill.provider_display || bill.provider);
+  if (!portal) {
+    showToast(`There is no payment recipe for ${bill.provider_display || bill.provider} yet — record the payment manually instead.`, "error");
+    return;
+  }
+  const amount = safeNum(bill.amount);
+  if (!(amount > 0)) { showToast("This bill has no amount to pay.", "error"); return; }
+
+  if (!await showConfirm({
+    message: `Pay ${bill.provider_display || bill.provider} ${formatCurrency(amount)} for ${bill.property}?\n\n`
+      + `This releases a real payment on the provider's site. It cannot be undone from here.\n\n`
+      + `The amount on the page is checked against this figure before anything is submitted, and the payment is refused if they differ.`,
+    variant: "danger", confirmText: `Pay ${formatCurrency(amount)}`,
+  })) return;
+
+  // The statement, so next month's identical amount is a DIFFERENT payment
+  // while a retry of this one is the same payment and gets refused.
+  const statement = (bill.statement_period || formatLocalDate(new Date()).slice(0, 7));
+  const idemKey = `${portal}:${bill.account_number || bill.utility_account_id}:${statement}:${amount.toFixed(2)}`;
+
+  const { error } = await supabase.from("utility_payments").insert([{
+    company_id: companyId,
+    provider: portal,
+    bill_id: bill.bill_id || bill.id,
+    property: bill.property,
+    statement_ref: statement,
+    idem_key: idemKey,
+    approved_amount: amount,
+    observed_amount: amount,
+    due_date: bill.due || null,
+    // Approved on the spot: the button IS the approval, and the person who
+    // pressed it is named here because claim_utility_payment refuses a
+    // payment with nobody against it.
+    status: "approved",
+    approved_at: new Date().toISOString(),
+    approved_by: userProfile?.email || null,
+    requested_by: userProfile?.email || null,
   }]);
-  if (jobErr) pmError("PM-8006", { raw: jobErr, context: "queue bill payment job", silent: true });
-  // Auto-post journal entry for utility payment (DR Utilities Expense, CR Checking)
-  const classId = await getPropertyClassId(bill.property, companyId);
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: formatLocalDate(new Date()),
-  description: "Utility payment — " + (bill.provider_display || bill.provider) + " — " + bill.property,
-  reference: "UTIL-" + bill.id,
-  property: bill.property,
-  lines: [
-  { account_id: "5400", account_name: "Utilities Expense", debit: safeNum(bill.amount), credit: 0, class_id: classId, memo: (bill.provider_display || bill.provider) + " bill" },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(bill.amount), class_id: classId, memo: "Utility payment" },
-  ]
-  });
-  if (!_jeOk) { pmError("PM-4004", { raw: new Error("JE post failed"), context: "posting bill payment accounting entry" }); }
-  addNotification("✅", "Payment authorized: " + (bill.provider_display || bill.provider) + " $" + bill.amount);
+  if (error) {
+    // The unique indexes are the double-payment guard, so this is a normal
+    // answer rather than a fault: it means this bill or this statement
+    // already has a payment against it.
+    const dup = /duplicate key|unique/i.test(error.message || "");
+    if (dup) showToast("This bill already has a payment against it. Check the Payments column before trying again.", "error");
+    else pmError("PM-6001", { raw: error, context: "queueing portal payment" });
+    return;
+  }
+
+  await supabase.from("utility_bills").update({
+    status: "authorized",
+    authorized_by: userProfile?.email || null,
+    authorized_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", bill.bill_id || bill.id).eq("company_id", companyId);
+
+  logAudit("update", "utilities", `Released portal payment: ${bill.provider_display || bill.provider} ${formatCurrency(amount)} — ${bill.property}`,
+    String(bill.bill_id || bill.id), userProfile?.email, userRole, companyId);
+  addNotification("💸", `Payment released: ${bill.provider_display || bill.provider} ${formatCurrency(amount)}`);
+  showToast("Payment released. The receipt will be filed against the property once the provider confirms it.", "success");
   setPaymentMethodModal(null);
   fetchAutomationData();
-  } finally { guardRelease("authorizeBill", bill?.id); }
+  } finally { guardRelease("payViaPortal", bill?.id); }
   }
 
   async function fetchUtilities() {
@@ -573,7 +610,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {bill.status === "pending_review" && <Btn variant="positive" size="sm" onClick={() => authorizeBillPayment(bill, "default_on_file")}>Authorize Pay</Btn>}
+  {bill.status === "pending_review" && payablePortalFor(bill.provider_display || bill.provider) && <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>}
   </div>
   ))}
   </div>
