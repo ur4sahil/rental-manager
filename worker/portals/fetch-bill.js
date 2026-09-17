@@ -214,7 +214,7 @@ const isoDate = (s) => {
       // Gas has an inline switcher; BGE has a chooser PAGE and no bill at
       // all until one is picked.
       const { selectAccountAny: selectAccount, currentAccount } = require("./accounts");
-      const sel = await selectAccount(page, wantAccount);
+      const sel = await selectAccount(page, wantAccount, { inline: !!book.inlineChooser });
       if (!sel.ok) finish("wrong_account", { error: sel.reason, wanted: wantAccount });
       const on = await currentAccount(page);
       if (on && on !== wantAccount) finish("wrong_account", { error: `page shows ${on}`, wanted: wantAccount });
@@ -224,10 +224,19 @@ const isoDate = (s) => {
     // The accessibility tree is what a playbook reasons over, and what
     // gets handed to the model when a locator stops matching. Small
     // enough to read: these pages were 1.7-5KB when probed.
-    const tree = await page.locator("body").ariaSnapshot({ timeout: 15000 }).catch(() => "");
+    // On an inline chooser the account's own row IS the container. Reading
+    // the whole page there means reading every expanded account's balance and
+    // taking the first, which is another property's money under this one's
+    // name -- the exact failure the comment below was written about.
+    const scope = (book.inlineChooser && wantAccount)
+      ? require("./accounts").accountRow(page, wantAccount)
+      : page.locator("body");
+    if (book.inlineChooser && wantAccount) record("scope", `row for ${wantAccount}`);
+
+    const tree = await scope.ariaSnapshot({ timeout: 15000 }).catch(() => "");
     record("page tree", `${tree.length} chars`);
 
-    const bodyText = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    const bodyText = (await scope.innerText().catch(() => "")).replace(/\s+/g, " ");
 
     // THE AMOUNT MUST COME FROM THE BALANCE'S OWN CONTAINER.
     //

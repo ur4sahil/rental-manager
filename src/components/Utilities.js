@@ -6,8 +6,37 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
+import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect } from "./shared";
+
+// The lifecycle a bill actually has. "Paid or Ignore" was not a design
+// choice -- it was everything one status column on an account could say.
+const BILL_STATUS = {
+  no_bill:        { label: "No bill yet", tone: "neutral" },
+  pending_review: { label: "To review",   tone: "warn" },
+  authorized:     { label: "Approved",    tone: "info" },
+  paid:           { label: "Paid",        tone: "good" },
+  settled:        { label: "Recharged",   tone: "good" },
+  error:          { label: "Read failed", tone: "bad" },
+  excluded:       { label: "Ignored",     tone: "neutral" },
+};
+const STATUS_CLASS = {
+  neutral: "bg-neutral-100 text-neutral-500",
+  warn:    "bg-warn-100 text-warn-700",
+  info:    "bg-info-100 text-info-700",
+  good:    "bg-positive-100 text-positive-700",
+  bad:     "bg-danger-100 text-danger-700",
+};
+
+// Overdue is a real question now that bills carry their own due date, and it
+// is only askable of a bill that is still owed.
+function billAge(row, today) {
+  if (!row.due || row.status === "paid" || row.status === "settled" || row.status === "excluded") return null;
+  const due = new Date(row.due + "T00:00:00");
+  if (isNaN(due)) return null;
+  const days = Math.round((due - today) / 86400000);
+  return days;
+}
 
 function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   function exportUtilities() {
@@ -21,6 +50,18 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ], "utilities_" + fmtDate(new Date()), showToast);
   }
   const [utilities, setUtilities] = useState([]);
+  const [allBills, setAllBills] = useState([]);
+  // One "today" for the whole render: computing it per row means a render
+  // that straddles midnight can call one bill late and the next one not.
+  const todayRef = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+  // The bill being paid, and the form for it.
+  const [payBill, setPayBill] = useState(null);
+  const [payForm, setPayForm] = useState(null);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  // utilAccounts is declared below, for the Accounts tab. fetchUtilities now
+  // fills the same state from utility_accounts, so both tabs read one list.
+  // Which account's bill history is open.
+  const [historyFor_, setHistoryFor] = useState(null);
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
@@ -176,9 +217,205 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function fetchUtilities() {
-  const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).is("archived_at", null).order("due", { ascending: true }).limit(500);
-  setUtilities(data || []);
+  // PHASE 2: the page reads BILLS now, not accounts.
+  //
+  // `utilities` held one amount per account and the reader overwrote it every
+  // sweep, so this page could only ever show "the current balance" and the
+  // word "Paid" meant a flag on the account that next month's read reset.
+  // utility_bills holds one row per statement, which is what makes a history,
+  // a real paid record and an overdue figure possible at all.
+  //
+  // The accounts are still read, because a bill needs its account's login and
+  // because an account with no bill yet should still be visible -- otherwise
+  // a newly added account vanishes until the first successful sweep.
+  const [billsRes, acctRes] = await Promise.all([
+    supabase.from("utility_bills")
+      .select("*").eq("company_id", companyId).is("archived_at", null)
+      .order("due_date", { ascending: true, nullsFirst: false }).limit(1000),
+    supabase.from("utility_accounts")
+      .select("*").eq("company_id", companyId).is("archived_at", null)
+      .order("provider").limit(1000),
+  ]);
+  if (billsRes.error) pmError("PM-4003", { raw: billsRes.error, context: "loading utility bills", phase: "read" });
+  if (acctRes.error) pmError("PM-4003", { raw: acctRes.error, context: "loading utility accounts", phase: "read" });
+
+  const accounts = acctRes.data || [];
+  setUtilAccounts(accounts);
+
+  // The newest bill per account is what the list shows; the rest are its
+  // history. Sorted by statement period rather than by read time, because a
+  // late re-read of an old statement must not make it look like this month's.
+  const latest = new Map();
+  for (const b of (billsRes.data || [])) {
+    const k = b.utility_account_id;
+    if (k == null) continue;
+    const cur = latest.get(k);
+    if (!cur || String(b.statement_period || "") > String(cur.statement_period || "")) latest.set(k, b);
+  }
+
+  const rows = accounts.map(a => {
+    const b = latest.get(a.id) || null;
+    return {
+      // Keyed by ACCOUNT so a row is stable while its bill changes month to
+      // month. The bill id travels alongside for anything that acts on it.
+      id: a.id,
+      bill_id: b?.id || null,
+      account: a,
+      provider: a.provider,
+      property: a.property,
+      account_number: a.account_number,
+      website: a.website || a.login_url || "",
+      responsibility: b?.responsibility || a.responsibility || "owner",
+      amount: b ? b.amount : null,
+      due: b?.due_date || null,
+      statement_period: b?.statement_period || null,
+      status: b?.status || "no_bill",
+      paid_at: b?.paid_at || null,
+      payment_confirmation: b?.payment_confirmation || "",
+      last_check_status: a.last_check_status,
+      last_check_error: a.last_check_error,
+      last_checked_at: a.last_checked_at,
+      username_encrypted: a.username_encrypted,
+      password_encrypted: a.password_encrypted,
+      encryption_iv: a.encryption_iv,
+      encryption_iv_username: a.encryption_iv_username,
+      encryption_salt: a.encryption_salt,
+    };
+  });
+
+  setAllBills(billsRes.data || []);
+  setUtilities(rows);
   setLoading(false);
+  }
+
+  // Every bill ever recorded for one account, newest statement first.
+  function historyFor(accountId) {
+    return (allBills || [])
+      .filter(b => b.utility_account_id === accountId)
+      .sort((a, b) => String(b.statement_period || "").localeCompare(String(a.statement_period || "")));
+  }
+
+  // Record a payment against ONE BILL.
+  //
+  // What this replaces set utilities.status = 'paid' on the ACCOUNT, wrote a
+  // utility_audit row, and posted a journal entry referenced UTIL-<account
+  // id>. Since there is a unique index on (company_id, reference), the second
+  // payment on any account was rejected -- production holds zero journal
+  // entries beginning UTIL-, against an account marked paid. The accounting
+  // leg has never once worked.
+  //
+  // The reference is per BILL now, so next month's payment is a different
+  // entry. The bank account is chosen rather than assumed to be Checking. And
+  // a tenant-responsible bill becomes that tenant's debt instead of the
+  // owner's expense, which is what `responsibility` was always for.
+  async function recordBillPayment() {
+    if (!payBill || !payForm) return;
+    if (!guardSubmit("recordBillPayment", payBill.bill_id)) return;
+    try {
+      const amt = safeNum(payForm.amount);
+      if (!(amt > 0)) { showToast("Enter the amount that was actually paid.", "error"); return; }
+      if (!payForm.paid_on) { showToast("When was it paid?", "error"); return; }
+      if (!payForm.bank_account_id) { showToast("Which account did it come out of?", "error"); return; }
+
+      const bill = payBill;
+      const recharge = payForm.recharge && bill.responsibility === "tenant";
+
+      // The tenant to charge it on to, scoped to this property. Refuses to
+      // guess: two tenants at one address and the wrong one gets the debt.
+      let tenant = null;
+      if (recharge) {
+        const { data: ts } = await supabase.from("tenants")
+          .select("id, name").eq("company_id", companyId).eq("property", bill.property)
+          .is("archived_at", null).in("lease_status", ["active", "current"]).limit(3);
+        if (!ts || ts.length === 0) {
+          showToast(`No active tenant at ${bill.property} to recharge this to.`, "error"); return;
+        }
+        if (ts.length > 1) {
+          showToast(`${ts.length} active tenants at ${bill.property} — recharge it from the tenant's ledger instead so the right one is charged.`, "error"); return;
+        }
+        tenant = ts[0];
+      }
+
+      const classId = await getPropertyClassId(bill.property, companyId);
+      const bankName = (bankAccounts.find(a => a.id === payForm.bank_account_id) || {}).name || "Bank";
+
+      // Owner's bill: an expense. Tenant's bill we are recharging: a
+      // receivable from them, not our cost.
+      let debitLine;
+      if (recharge) {
+        const arId = await getOrCreateTenantAR(companyId, tenant.name, tenant.id);
+        if (!arId) { showToast("Could not open a receivable for " + tenant.name + ".", "error"); return; }
+        debitLine = { account_id: arId, account_name: "AR - " + tenant.name, debit: amt, credit: 0,
+                      class_id: classId, memo: bill.provider + " recharged to " + tenant.name };
+      } else {
+        debitLine = { account_id: "5400", account_name: "Utilities", debit: amt, credit: 0,
+                      class_id: classId, memo: bill.provider + " — " + bill.property };
+      }
+
+      const jeId = await autoPostJournalEntry({
+        companyId,
+        date: payForm.paid_on,
+        description: `Utility: ${bill.provider} — ${bill.property}${bill.statement_period ? " — " + bill.statement_period : ""}`,
+        // PER BILL. This is the fix for the reference collision.
+        reference: `UTIL-${bill.bill_id}`,
+        property: bill.property,
+        lines: [
+          debitLine,
+          { account_id: payForm.bank_account_id, account_name: bankName, debit: 0, credit: amt,
+            class_id: classId, memo: "Paid " + bill.provider },
+        ],
+      });
+      if (!jeId) { pmError("PM-4006", { raw: new Error("JE post failed"), context: "utility bill payment" });
+        showToast("The payment was not recorded — the journal entry could not post.", "error"); return; }
+
+      const { error } = await supabase.from("utility_bills").update({
+        status: recharge ? "settled" : "paid",
+        amount_paid: amt,
+        paid_at: new Date(payForm.paid_on + "T12:00:00").toISOString(),
+        payment_confirmation: (payForm.confirmation || "").trim() || null,
+        payment_method_selected: payForm.method || null,
+        authorized_by: userProfile?.email || null,
+        authorized_at: new Date().toISOString(),
+        je_id: String(jeId),
+        settled_tenant_id: recharge ? tenant.id : null,
+        settled_at: recharge ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", bill.bill_id).eq("company_id", companyId);
+      if (error) {
+        // The money and the journal entry are real; only the bill's own row
+        // failed. Say so rather than letting it look unpaid.
+        pmError("PM-6002", { raw: error, context: "marking utility bill paid" });
+        showToast("The journal entry posted but the bill could not be marked paid — check the Utilities list.", "error");
+        return;
+      }
+
+      await supabase.from("utility_audit").insert([{
+        company_id: companyId, utility_id: bill.account?.legacy_utility_id || null,
+        property: bill.property, provider: bill.provider, amount: amt,
+        action: recharge ? "Paid & recharged to tenant" : "Paid", paid_at: new Date().toISOString(),
+      }]);
+
+      logAudit("update", "utilities",
+        `Utility paid: ${bill.provider} ${formatCurrency(amt)} for ${bill.property}` +
+        (recharge ? ` — recharged to ${tenant.name}` : ""),
+        bill.bill_id, userProfile?.email, userRole, companyId);
+      addNotification("✅", `${bill.provider} ${formatCurrency(amt)} recorded${recharge ? " and recharged to " + tenant.name : ""}`);
+      showToast("Payment recorded.", "success");
+      setPayBill(null); setPayForm(null);
+      fetchUtilities();
+    } finally { guardRelease("recordBillPayment", payBill?.bill_id); }
+  }
+
+  // The accounts money can come out of. Chosen, never assumed: the old code
+  // hardcoded 1000 Checking for every payment regardless of which card or
+  // account actually paid it.
+  async function loadBankAccounts() {
+    const { data } = await supabase.from("acct_accounts")
+      .select("id, code, name, subtype, type").eq("company_id", companyId)
+      .eq("is_active", true).in("type", ["Asset", "Liability"]).order("code").limit(200);
+    setBankAccounts((data || []).filter(a =>
+      String(a.subtype || "") === "Bank" || String(a.subtype || "") === "Credit Card" ||
+      /^1\d{3}$/.test(String(a.code || "")) || /^2\d{3}$/.test(String(a.code || ""))));
   }
 
   async function addUtility() {
@@ -212,54 +449,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   } finally { guardRelease("addUtility"); }
   }
 
-  async function approvePay(u) {
-  if (!guardSubmit("approvePay")) return;
-  try {
-  if (u.status === "paid") { showToast("This utility is already marked as paid.", "error"); return; }
-  const now = new Date().toISOString();
-  // `utilities` has no paid_at column (checked against both the test and
-  // production schemas). Writing one made PostgREST reject the whole
-  // update with PGRST204, so `status` never flipped to paid, the
-  // utility_audit row was never written and the journal entry never
-  // posted — the "✓ Pay" button did nothing but raise PM-6002. The paid
-  // timestamp lives on utility_audit.paid_at, which does exist.
-  const { error } = await supabase.from("utilities").update({ status: "paid" }).eq("company_id", companyId).eq("id", u.id);
-  if (error) { pmError("PM-6002", { raw: error, context: "approving utility payment" }); return; }
-  await supabase.from("utility_audit").insert([{ company_id: companyId,
-  utility_id: u.id,
-  property: u.property,
-  provider: u.provider,
-  amount: u.amount,
-  action: "Approved & Paid",
-  paid_at: now,
-  }]);
-  addNotification("✅", `Utility paid: ${u.provider} ${formatCurrency(u.amount)} for ${u.property}`);
-  // AUTO-POST TO ACCOUNTING: DR Utilities Expense, CR Bank
-  const classId = await getPropertyClassId(u.property, companyId);
-  const amt = safeNum(u.amount);
-  if (amt > 0) {
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: formatLocalDate(new Date()),
-  description: `Utility: ${u.provider} — ${u.property}`,
-  reference: `UTIL-${u.id}`,
-  property: u.property,
-  lines: [
-  { account_id: "5400", account_name: "Utilities", debit: amt, credit: 0, class_id: classId, memo: `${u.provider} — ${u.property}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
-  ]
-  });
-  if (!_jeOk) { pmError("PM-4006", { raw: new Error("JE post failed"), context: "posting utility payment accounting entry" }); }
-  // Utility payments are an expense, not tenant AR — they don't
-  // belong in the tenant ledger view. Removed the safeLedgerInsert
-  // that mistakenly stored them as type="expense" with empty
-  // tenant. The JE above is the canonical record.
-  }
-  // #14: Add audit trail logging for utility payment
-  logAudit("update", "utilities", `Utility paid: ${u.provider} ${formatCurrency(u.amount)} for ${u.property}`, u.id, userProfile?.email, userRole, companyId);
-  fetchUtilities();
-  } finally { guardRelease("approvePay"); }
-  }
+  // approvePay is gone. It marked the ACCOUNT paid, which next month's read
+  // reset, and posted a journal entry referenced UTIL-<account id> against a
+  // unique index on (company_id, reference) -- so the second payment on any
+  // account was silently rejected and production holds zero UTIL- entries.
+  // recordBillPayment above replaces it: per bill, per statement, with the
+  // paying account chosen and a tenant's bill charged to the tenant.
+
 
   async function openAuditLog(u) {
   const { data } = await supabase.from("utility_audit").select("*").eq("utility_id", u.id).eq("company_id", companyId).order("paid_at", { ascending: false });
@@ -296,7 +492,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <PageHeader title="Utilities" />
   <Btn variant="secondary" onClick={exportUtilities}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1 overflow-x-auto pb-1">
-  {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
+  {/* "Manual Bills" and "Automation" were two implementations of one module
+      pointed at two different schemas, and the split on screen was the
+      visible symptom. One list of bills; the accounts behind them are a
+      separate, quieter thing. */}
+  {[["bills", "Bills"], ["automation", "Accounts"], ["jobs", "Job History"]].map(([id, label]) => (
   <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
   ))}
   </div>
@@ -408,7 +608,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="mr-auto"></div>
   <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-64" />
   <Select filter value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
-  <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
+  <option value="all">All Status</option>
+  <option value="pending_review">To review</option>
+  <option value="authorized">Approved</option>
+  <option value="paid">Paid</option>
+  <option value="settled">Recharged</option>
+  <option value="no_bill">No bill yet</option>
+  <option value="error">Read failed</option>
   </Select>
   {/* Multi-select, and searchable: "BGE and Pepco" or two named properties
       is a normal question, and a single-value filter cannot answer it.
@@ -429,13 +635,32 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
   </div>
 
-  {/* Stats */}
-  <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-display font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
-  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
-  <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-danger-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
-  </div>
+  {/* Stats — asked of BILLS, which is the first time they can mean anything.
+      "Pending" counted accounts with a status flag; overdue was unanswerable
+      because no bill carried its own due date. */}
+  {(() => {
+    const open = utilities.filter(u => !["paid", "settled", "excluded", "no_bill"].includes(u.status));
+    const overdue = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d < 0; });
+    const soon = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d >= 0 && d <= 7; });
+    const owed = open.reduce((t, u) => t + safeNum(u.amount), 0);
+    const tenantOwed = open.filter(u => u.responsibility === "tenant").reduce((t, u) => t + safeNum(u.amount), 0);
+    const card = (value, label, tone) => (
+      <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1">
+        <div className={"text-lg font-bold " + tone}>{value}</div>
+        <div className="text-xs text-neutral-400">{label}</div>
+      </div>
+    );
+    return (
+      <div className="flex gap-3 mb-4 flex-wrap">
+        {card(utilities.length, "Accounts", "font-display text-neutral-800")}
+        {card(open.length, "To pay", "text-warn-600")}
+        {card(overdue.length, "Overdue", overdue.length ? "text-danger-600" : "text-neutral-400")}
+        {card(soon.length, "Due in 7 days", "text-notice-600")}
+        {card(formatCurrency(owed), "Outstanding", "text-danger-500")}
+        {tenantOwed > 0 ? card(formatCurrency(tenantOwed), "Tenants' share", "text-brand-600") : null}
+      </div>
+    );
+  })()}
 
   {showForm && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
@@ -511,7 +736,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {u.status === "pending" && <TextLink tone="positive" size="xs" underline={false} onClick={() => approvePay(u)} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Pay</TextLink>}
+  {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openAuditLog(u)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</TextLink>
   </div>
   </div>
@@ -529,11 +754,30 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       { key: "provider", label: "Provider", sort: true, width: 120, className: "font-medium text-neutral-800 truncate" },
       { key: "property", label: "Property", sort: true, width: 260, className: "text-neutral-500 truncate" },
       { key: "amount", label: "Amount", sort: true, width: 100, align: "right", className: "font-semibold",
-        render: u => formatCurrency(safeNum(u.amount)) },
+        render: u => u.amount === null
+          ? <span className="text-neutral-300">—</span>
+          : formatCurrency(safeNum(u.amount)) },
       { key: "due", label: "Due", sort: true, width: 100, className: "text-neutral-400 whitespace-nowrap",
         render: u => <>{fmtDate(u.due)}</> },
-      { key: "status", label: "Status", sort: true, width: 96, render: u => <Badge status={u.status} /> },
-      { key: "responsibility", label: "Resp.", sort: true, width: 80, className: "text-neutral-500 capitalize truncate" },
+      { key: "status", label: "Status", sort: true, width: 120, render: u => {
+        const meta = BILL_STATUS[u.status] || BILL_STATUS.pending_review;
+        const days = billAge(u, todayRef);
+        return (
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className={`text-2xs px-1.5 py-0.5 rounded-full ${STATUS_CLASS[meta.tone]}`}>{meta.label}</span>
+            {days !== null && days < 0 && <span className="text-2xs text-danger-600 font-semibold">{-days}d late</span>}
+            {days !== null && days >= 0 && days <= 7 && <span className="text-2xs text-warn-600">in {days}d</span>}
+          </div>
+        );
+      } },
+      // Who owes it. utilities.responsibility has always held this and
+      // nothing ever acted on it; a tenant-responsible bill you paid should
+      // become that tenant's debt, not an owner expense.
+      { key: "responsibility", label: "Owed by", sort: true, width: 96, render: u => (
+        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>
+          {u.responsibility === "tenant" ? "Tenant" : "Owner"}
+        </span>
+      ) },
       // One line. This cell used to stack three things -- the portal link, a
       // "Show login" toggle, and the revealed credentials underneath -- which
       // set the height of every row in the table whether or not anything was
@@ -559,8 +803,25 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
           )}
         </div>
       ) },
-      { key: "actions", label: "Actions", width: 92, align: "right", className: "whitespace-nowrap", render: u => (<>
-        {u.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => approvePay(u)} className="mr-2">Pay</TextLink>}
+      { key: "actions", label: "Actions", width: 150, align: "right", className: "whitespace-nowrap", render: u => (<>
+        {u.bill_id && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && (
+          <TextLink tone="positive" size="xs" className="mr-2" onClick={() => {
+            setPayBill(u);
+            setPayForm({
+              amount: String(safeNum(u.amount) || ""),
+              paid_on: formatLocalDate(new Date()),
+              bank_account_id: "",
+              confirmation: "",
+              method: "",
+              // Default ON for a tenant-responsible bill: that is what
+              // `responsibility` means, and defaulting it off quietly turns
+              // every tenant's bill into an owner expense.
+              recharge: u.responsibility === "tenant",
+            });
+            loadBankAccounts();
+          }}>Pay</TextLink>
+        )}
+        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setHistoryFor(u.id)}>History</TextLink>
         <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
       </>) },
     ]}
@@ -580,6 +841,114 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </>;
   })()}
   </>)}
+
+  {/* ---- Record a payment ------------------------------------------- */}
+  {payBill && payForm && (
+  <Modal title={`Record payment — ${payBill.provider}`} onClose={() => { setPayBill(null); setPayForm(null); }}>
+  <div className="space-y-3">
+  <div className="bg-subtle-50 rounded-lg p-3 text-xs">
+  <div className="font-semibold text-neutral-800">{payBill.property}</div>
+  <div className="text-neutral-500 mt-0.5">
+    {payBill.statement_period ? `Statement ${payBill.statement_period}` : "No statement period"}
+    {payBill.due ? ` · due ${fmtDate(payBill.due)}` : ""}
+    {payBill.account_number ? ` · account ${payBill.account_number}` : ""}
+  </div>
+  <div className="text-neutral-700 mt-1">Billed <span className="font-semibold">{formatCurrency(safeNum(payBill.amount))}</span></div>
+  </div>
+
+  <div className="grid grid-cols-2 gap-3">
+  <div>
+    <label className="text-xs font-medium text-neutral-500 block mb-1">Amount paid</label>
+    {/* Editable: a part payment is a real thing, and recording the billed
+        figure when a different one left the bank is how the books and the
+        statement quietly diverge. */}
+    <Input type="number" step="0.01" value={payForm.amount}
+      onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} />
+  </div>
+  <div>
+    <label className="text-xs font-medium text-neutral-500 block mb-1">Date paid</label>
+    <Input type="date" value={payForm.paid_on}
+      onChange={e => setPayForm(f => ({ ...f, paid_on: e.target.value }))} />
+  </div>
+  </div>
+
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Paid from</label>
+  <Select value={payForm.bank_account_id} onChange={e => setPayForm(f => ({ ...f, bank_account_id: e.target.value }))}>
+    <option value="">Choose an account…</option>
+    {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.code ? a.code + " " : ""}{a.name}</option>)}
+  </Select>
+  </div>
+
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Confirmation number <span className="text-neutral-400">(optional)</span></label>
+  <Input value={payForm.confirmation}
+    onChange={e => setPayForm(f => ({ ...f, confirmation: e.target.value }))}
+    placeholder="From the provider's receipt" />
+  </div>
+
+  {payBill.responsibility === "tenant" && (
+  <label className="flex items-start gap-2 bg-brand-50 border border-brand-100 rounded-lg p-3 cursor-pointer">
+    <input type="checkbox" className="mt-0.5 rounded accent-brand-600" checked={!!payForm.recharge}
+      onChange={e => setPayForm(f => ({ ...f, recharge: e.target.checked }))} />
+    <span className="text-xs text-neutral-700">
+      <span className="font-semibold">Charge this back to the tenant.</span>
+      <span className="block text-neutral-500 mt-0.5">
+        This bill is the tenant's responsibility. Ticked, it is posted as money they owe you
+        rather than as your expense.
+      </span>
+    </span>
+  </label>
+  )}
+
+  {payBill.website && (
+  <a href={payBill.website} target="_blank" rel="noopener noreferrer"
+     className="block text-xs text-brand-600 hover:underline">Open {payBill.provider}'s site to pay →</a>
+  )}
+
+  <div className="flex gap-2 pt-1">
+  <Btn onClick={recordBillPayment}>Record payment</Btn>
+  <Btn variant="slate" onClick={() => { setPayBill(null); setPayForm(null); }}>Cancel</Btn>
+  </div>
+  </div>
+  </Modal>
+  )}
+
+  {/* ---- Bill history ------------------------------------------------ */}
+  {historyFor_ != null && (() => {
+  const acct = utilAccounts.find(a => a.id === historyFor_);
+  const rows = historyFor(historyFor_);
+  return (
+  <Modal title={`${acct?.provider || "Utility"} — bill history`} onClose={() => setHistoryFor(null)}>
+  <div className="space-y-3">
+  <div className="text-xs text-neutral-500">{acct?.property}{acct?.account_number ? ` · account ${acct.account_number}` : ""}</div>
+  {rows.length === 0
+    ? <EmptyState size="compact" title="No bills recorded yet"
+        hint="A bill appears here the first time this account is read, or when you add one by hand." />
+    : (<DataTable
+        density="compact"
+        columns={[
+          { key: "statement_period", label: "Statement", width: 90, render: b => <>{b.statement_period || "—"}</> },
+          { key: "amount", label: "Billed", align: "right", width: 90, render: b => <>{formatCurrency(safeNum(b.amount))}</> },
+          { key: "amount_paid", label: "Paid", align: "right", width: 90,
+            render: b => b.amount_paid == null ? <span className="text-neutral-300">—</span> : <>{formatCurrency(safeNum(b.amount_paid))}</> },
+          { key: "due_date", label: "Due", width: 96, render: b => <>{b.due_date ? fmtDate(b.due_date) : "—"}</> },
+          { key: "status", label: "Status", width: 96, render: b => {
+            const m = BILL_STATUS[b.status] || BILL_STATUS.pending_review;
+            return <span className={`text-2xs px-1.5 py-0.5 rounded-full ${STATUS_CLASS[m.tone]}`}>{m.label}</span>;
+          } },
+          { key: "payment_confirmation", label: "Confirmation", render: b => <span className="text-2xs text-neutral-500">{b.payment_confirmation || "—"}</span> },
+        ]}
+        rows={rows} rowKey={b => b.id} empty="No bills" scroll={false} />)}
+  <p className="text-2xs text-neutral-400">
+    Rows marked <em>migrated</em> in the data were the single balance this account
+    carried before bills were kept separately — there is no history before that point.
+  </p>
+  </div>
+  </Modal>
+  );
+  })()}
+
   </div>
   );
 }

@@ -1,0 +1,17 @@
+-- PHASE 1 of the Utilities teardown (2026-09-17): one bill is one row.
+--
+-- `utilities` held ONE amount and ONE due date per account, and
+-- record_utility_reading() overwrote them on every sweep, so no bill history
+-- has ever existed -- you could not ask what a property's water cost last
+-- month. utility_accounts and utility_bills were designed for exactly this
+-- and left empty; this adopts them rather than inventing a third schema.
+--
+-- Applied to test and production on 2026-09-17. See the migrations
+-- utilities_phase1_one_bill_one_row, utilities_phase1_backfill,
+-- record_utility_reading_writes_bills and utility_bills_amount_paid.
+--
+-- Verified end to end before the UI moved: three readings for one account --
+-- August, September, then a corrected re-read of August -- produced two
+-- bills, not three, with August updated in place. A failed read changed
+-- nothing. Then a live WSSC sweep recorded seven bills across three
+-- statement periods in production.

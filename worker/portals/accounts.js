@@ -123,11 +123,41 @@ async function currentAccount(page) {
 
 /** Are we sitting on a chooser page that must be answered first? */
 async function onChooserPage(page) {
-  const heading = page.getByRole("heading", { name: /select an account|choose an account|change account/i }).first();
+  // "My Accounts" belongs here. WSSC lists every account on one page under
+  // that heading -- no switcher, no chooser link, just a table with a View
+  // button per row -- so this returned false, selectAccountAny fell through
+  // to the switcher path, and all fourteen accounts were reported as "not in
+  // the switcher" while four of them were plainly visible on screen.
+  //
+  // Found by looking at a screenshot of the page. The heading is the first
+  // thing on it.
+  const CHOOSER_LABEL = /^\s*(select an account|choose an account|change account|my accounts|all accounts|account list)\s*$/i;
+
+  const heading = page.getByRole("heading", { name: CHOOSER_LABEL }).first();
   if (await heading.count().catch(() => 0)) return true;
-  // The heading is the reliable signal; the URL is a useful second one
-  // because BGE names the page outright.
-  return /changeaccount|selectaccount|accountlist/i.test(page.url());
+
+  // The label is not always a heading. WSSC renders "My Accounts" as
+  // <span class="wsection-title">, so a role-based lookup finds nothing --
+  // which is why every one of its fourteen accounts came back "not in the
+  // switcher" while four of them were visible in a screenshot of the page.
+  //
+  // Requiring the label AND a table of account-shaped rows keeps this from
+  // matching a navigation item that happens to say "My Accounts": a chooser
+  // is a label over a list, and one without the other is a different page.
+  const labelled = await page.evaluate((src) => {
+    const re = new RegExp(src.source, src.flags);
+    const hasLabel = [...document.querySelectorAll("span,div,p,legend,caption,strong,b,a")]
+      .some(el => el.childElementCount === 0 && re.test(el.textContent || ""));
+    if (!hasLabel) return false;
+    const rows = [...document.querySelectorAll("tr,li")]
+      .filter(r => /\b\d{6,}\b/.test(r.textContent || "")).length;
+    return rows >= 2;
+  }, { source: CHOOSER_LABEL.source, flags: CHOOSER_LABEL.flags }).catch(() => false);
+  if (labelled) return true;
+
+  // The URL is a useful third signal because BGE names the page outright
+  // and WSSC's is wsscaccountmain.faces.
+  return /changeaccount|selectaccount|accountlist|accountmain/i.test(page.url());
 }
 
 /**
@@ -312,7 +342,7 @@ function rowTarget(row) {
   ];
 }
 
-async function selectChooserAccount(page, number) {
+async function selectChooserAccount(page, number, opts = {}) {
   const find = () => ({
     link: page.getByRole("link", { name: acctPattern(number) }).first(),
     button: page.getByRole("button", { name: acctPattern(number) }).first(),
@@ -348,6 +378,23 @@ async function selectChooserAccount(page, number) {
   if (!clicked) return { ok: false, reason: `account ${number} is on the chooser page but nothing in its row responded to a click` };
 
   await page.waitForLoadState("networkidle", { timeout: 25000 }).catch(() => {});
+
+  // An INLINE chooser is supposed to still be showing. WSSC expands the
+  // account inside its own row rather than navigating, so "are we still on
+  // the chooser" is the wrong question there -- it is always yes, and asking
+  // it reported a successful click as "the switch did not take".
+  //
+  // The right question is whether THIS account's row now carries a figure.
+  if (opts.inline) {
+    const row = accountRow(page, number);
+    for (let i = 0; i < 12; i++) {
+      const t = await row.innerText().catch(() => "");
+      if (/\$\s?-?[\d,]+\.\d{2}/.test(t)) return { ok: true, via: "inline chooser row" };
+      await page.waitForTimeout(700);
+    }
+    return { ok: false, reason: `expanded ${number} but its row never showed a balance` };
+  }
+
   if (await onChooserPage(page)) {
     return { ok: false, reason: `clicked ${number} but the chooser is still showing — the switch did not take` };
   }
@@ -379,14 +426,14 @@ async function listAccountsAny(page) {
  * chooser and ask again. Portals that have only one mechanism are unaffected
  * -- there is no chooser to walk back to, and the first answer stands.
  */
-async function selectAccountAny(page, number) {
-  if (await onChooserPage(page)) return selectChooserAccount(page, number);
+async function selectAccountAny(page, number, opts = {}) {
+  if (await onChooserPage(page)) return selectChooserAccount(page, number, opts);
 
   const first = await selectAccount(page, number);
   if (first.ok) return first;
 
   if (!(await backToChooser(page))) return first;
-  const second = await selectChooserAccount(page, number);
+  const second = await selectChooserAccount(page, number, opts);
   // Keep the reason from the place that actually looked, so a failure still
   // names the room it searched.
   return second.ok ? { ...second, via: (second.via || "chooser page") + " (after the switcher did not have it)" } : second;
@@ -418,7 +465,22 @@ async function backToChooser(page) {
   return false;
 }
 
+/**
+ * The chooser row for one account, so a caller can scope extraction to it.
+ *
+ * WSSC needs this. Its chooser does not navigate: clicking "View" expands
+ * the account IN PLACE, so after selecting there are two balances on the
+ * page -- the previously expanded account's and this one's. A page-wide
+ * scan takes the first, which is a different property's money recorded
+ * against this one. fetch-bill already refuses to read a figure that is not
+ * in the balance's own container; on this portal that container is the row.
+ */
+function accountRow(page, number) {
+  return page.getByRole("row", { name: acctPattern(number) }).first();
+}
+
 module.exports = {
+  accountRow,
   listAccounts, selectAccount, currentAccount,
   onChooserPage, listChooserAccounts, selectChooserAccount,
   listAccountsAny, selectAccountAny, backToChooser,

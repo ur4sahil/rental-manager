@@ -125,6 +125,19 @@ const PLAYBOOKS = {
     // The stored URL in the app (my.wsscwater.com/selfcare/views/public)
     // 404s. This is the entry that actually resolves.
     entry: "https://my.wsscwater.com/",
+    // WSSC is a chooser portal, not a switcher one: "My Accounts" lists every
+    // account on one page with a View button per row, and the selected
+    // account's Balance and Due Date render inline in its own row. Without
+    // this the code looked for a switcher that does not exist and reported
+    // all fourteen accounts as "not in the switcher" -- four of which were
+    // plainly visible in a screenshot of the page.
+    selectAccountFirst: { role: "heading", name: /my wssc water/i },
+    // Clicking View EXPANDS the account inside its own row instead of
+    // navigating, and the Balance and Due Date render there. So selection
+    // succeeds while still "on the chooser", and extraction has to be scoped
+    // to the row -- with several accounts expanded the page carries several
+    // balances, and the first one belongs to somebody else's property.
+    inlineChooser: true,
     signedOutSignals: [
       { role: "textbox", name: /User ID/i },
       { role: "button", name: /^Log In$/i },

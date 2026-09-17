@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths && npm run test:parity && npm run test:scope && npm run test:approvals && npm run test:address",
+    "test:unit": "npm run test:code && npm run test:db && npm run test:addr && npm run test:chunks && npm run test:refs && npm run test:bulk && npm run test:datatable && npm run test:tables && npm run test:proplabel && npm run test:type && npm run test:surfaces && npm run test:sw && npm run test:rewrite && npm run test:county && npm run test:lead && npm run test:roundtrip && npm run test:ai && npm run test:paths && npm run test:parity && npm run test:scope && npm run test:approvals && npm run test:address && npm run test:utilities",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
@@ -89,7 +89,8 @@
     "test:portal": "node portal-worker.test.js",
     "test:recon": "node reconciliation.test.js",
     "test:rowcap": "node row-cap.test.js",
-    "test:address": "node address-formula.test.js"
+    "test:address": "node address-formula.test.js",
+    "test:utilities": "node utilities-bills.test.js"
   },
   "keywords": [],
   "author": "Sigma Housing LLC",
