@@ -189,6 +189,14 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   async function payBillViaPortal(bill) {
   if (!guardSubmit("payViaPortal", bill?.id)) return;
   try {
+  // The tenant's bill is not ours to pay. claim_utility_payment refuses it
+  // too -- that is the layer that actually holds -- but refusing here means
+  // no cancelled payment row is created for something that was never
+  // legitimate to ask for.
+  if (bill.responsibility === "tenant") {
+    showToast("The tenant is responsible for this utility — it is not ours to pay. Recharge it from their ledger if you have already covered it.", "error");
+    return;
+  }
   const portal = payablePortalFor(bill.provider_display || bill.provider);
   if (!portal) {
     showToast(`There is no payment recipe for ${bill.provider_display || bill.provider} yet — record the payment manually instead.`, "error");
@@ -610,7 +618,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {bill.status === "pending_review" && payablePortalFor(bill.provider_display || bill.provider) && <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>}
+  {bill.status === "pending_review" && bill.responsibility !== "tenant" && payablePortalFor(bill.provider_display || bill.provider) && <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>}
   </div>
   ))}
   </div>

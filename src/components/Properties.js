@@ -9,6 +9,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
+import PropertyDocuments from "./PropertyDocuments";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
@@ -2858,8 +2859,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setSelectedProperty(p);
   setPropertyDetailTab("documents");
   setHistoricalTenantDetail(null);
-  const [docsRes, wosRes, archivedTenantsRes, liveTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes, licRes] = await Promise.all([
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
+  const [wosRes, archivedTenantsRes, liveTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes, licRes] = await Promise.all([
+
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("lease_start", { ascending: false }),
@@ -2870,7 +2871,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", p.id).is("archived_at", null).order("expiry_date", { ascending: true }),
   ]);
-  setPropertyDocs(docsRes.data || []);
   // Orphans: company docs with no property address. Usually
   // wizard-era uploads that never got re-stamped.
   const { data: orphans } = await supabase.from("documents")
@@ -3599,7 +3599,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty?.id]);
   const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
-  const [propertyDocs, setPropertyDocs] = useState([]);
+  // Bumped to make PropertyDocuments refetch -- after attaching an orphan, or
+  // after an upload. Changing the key remounts it, which is simpler and more
+  // reliable than reaching into a child's loader.
+  const [docsRefreshKey, setDocsRefreshKey] = useState(0);
   // Documents whose `property` field is empty/null — almost always
   // orphans from wizard-uploads before the commit fix landed. Surfaced
   // in a small tray on the Documents tab so the user can one-click
@@ -3759,10 +3762,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Details Tab — comprehensive property info */}
   {propertyDetailTab === "documents" && (
   <div className="px-6 py-4 flex-1">
-  <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-neutral-700">Documents</div>
-  <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
-  </div>
   {orphanDocs.length > 0 && (
   <div className="mb-4 bg-warning-50 border border-warning-200 rounded-lg p-3">
   <div className="flex items-center gap-2 mb-2">
@@ -3790,7 +3789,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
         .eq("id", d.id).eq("company_id", companyId);
       if (error) { pmError("PM-7003", { raw: error, context: "attach orphan doc" }); return; }
       setOrphanDocs(prev => prev.filter(x => x.id !== d.id));
-      setPropertyDocs(prev => [{ ...d, property: selectedProperty.address }, ...prev]);
+      setDocsRefreshKey(k => k + 1);
       showToast("Attached: " + d.name, "success");
       logAudit("update", "documents", "Attached orphan doc: " + d.name, d.id, userProfile?.email, userRole, companyId);
     } finally { guardRelease("attachDoc", d.id); }
@@ -3801,42 +3800,17 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
-  {propertyDocs.length === 0 ? (
-  <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
-  <div className="text-sm text-neutral-400">No documents uploaded yet</div>
-  <TextLink tone="brand" size="xs" className="mt-3" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}>Upload your first document</TextLink>
-  </div>
-  ) : (
-  <div className="space-y-2">
-  {propertyDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
-  <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
-  <div>
-  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
-  <div className="text-xs text-neutral-400">{d.type} · {fmtDate(d.uploaded_at)}{d.tenant ? " · " + d.tenant : ""}{d.archived_by ? " · deleted by " + d.archived_by : ""}</div>
-  </div>
-  </div>
-  <div className="flex items-center gap-2">
-  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
-  if (!guardSubmit("delPropDoc", d.id)) return;
-  try {
-  if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
-  const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
-  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
-  showToast("Document deleted: " + d.name, "success");
-  logAudit("delete", "documents", "Deleted document: " + d.name, d.id, userProfile?.email, userRole, companyId);
-  const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
-  setPropertyDocs(refreshed || []);
-  } finally { guardRelease("delPropDoc", d.id); }
-  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></TextLink>
-  </div>
-  </div>
-  ))}
-  </div>
-  )}
+  <PropertyDocuments
+    key={selectedProperty.address + ":" + docsRefreshKey}
+    property={selectedProperty}
+    companyId={companyId}
+    userProfile={userProfile}
+    userRole={userRole}
+    showToast={showToast}
+    showConfirm={showConfirm}
+    isReadOnly={isReadOnly(selectedProperty)}
+    onUpload={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}
+  />
   </div>
   )}
 
@@ -4527,7 +4501,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
 
   </>)}
-  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { setDocsRefreshKey(k => k + 1); setPropertyDetailTab("documents"); } }} />}
   {savingProperty && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
   <div className="bg-white rounded-xl shadow-pop px-8 py-6 flex flex-col items-center gap-3">

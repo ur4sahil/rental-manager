@@ -100,6 +100,31 @@ assert("re-recording an already-paid bill changes nothing",
   /\["paid", "settled"\]\.includes\(bill\.status\)/.test(rec),
   "a worker retrying after a dropped response must not file a second receipt");
 
+// ---- 3b. THE TENANT'S BILL IS NOT OURS TO PAY ------------------------
+// Three layers, because the app is one of four ways a row could reach
+// utility_payments and the only unbypassable place is the database.
+assert("the Pay button is hidden on a tenant-responsibility bill",
+  /bill\.responsibility !== "tenant"[\s\S]{0,120}payablePortalFor/.test(utilities),
+  "layer 1: it should not be offered");
+
+assert("the handler refuses a tenant bill even if reached another way",
+  /if \(bill\.responsibility === "tenant"\) \{/.test(utilities)
+  && /not ours to pay/.test(utilities),
+  "layer 2: no cancelled row for something never legitimate to ask for");
+
+assert("the worker refuses before the browser opens",
+  /if \(responsibility === "tenant"\) \{/.test(runner)
+  && /status: "cancelled"/.test(runner),
+  "layer 3");
+
+assert("the worker falls back to the ACCOUNT when the bill does not say",
+  /if \(!responsibility && bill\?\.utility_account_id\)/.test(runner),
+  "responsibility can be set on either row");
+
+assert("the sweep does not even read a tenant's utility",
+  /responsibility\.is\.null,responsibility\.neq\.tenant/.test(ai),
+  "logging into a portal for a statement we cannot act on is work with no outcome");
+
 // ---- 4. the statement and the receipt are FILED, not just uploaded ---
 assert("attach-bill-document files the statement as a document",
   /fileUtilityDocument\(sb, \{[\s\S]{0,200}type: "Utility Bill"/.test(ai),

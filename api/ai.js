@@ -894,7 +894,15 @@ module.exports = async function handler(req, res) {
     if (action === "sweep-targets") {
       const { companyId: cid, providers = [] } = body;
       if (!cid) return res.status(400).json({ error: "companyId is required" });
-      let q = sb.from("utilities").select("id, provider, property, account_number").eq("company_id", cid);
+      let q = sb.from("utilities")
+        .select("id, provider, property, account_number, responsibility")
+        .eq("company_id", cid)
+        // A utility the TENANT is responsible for is not swept. It is not our
+        // bill to read, pay or chase, and logging into a portal to fetch a
+        // statement we have no business acting on is work with no outcome.
+        // NULL responsibility falls through as the owner's, which is the
+        // default everywhere else in the app.
+        .or("responsibility.is.null,responsibility.neq.tenant");
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });

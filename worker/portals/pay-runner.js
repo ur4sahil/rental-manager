@@ -95,8 +95,25 @@ async function runOne(pay, live) {
   // The account number comes from the BILL, not the payment: the portal is
   // asserted against it before anything is filled.
   const { data: bill } = await sb.from("utility_bills")
-    .select("id, account_number, utility_account_id, property")
+    .select("id, account_number, utility_account_id, property, responsibility")
     .eq("id", pay.bill_id).eq("company_id", COMPANY).maybeSingle();
+
+  // THE TENANT'S BILL IS NOT OURS TO PAY. The claim RPC refuses it as well,
+  // which is the layer that cannot be bypassed; this one keeps the browser
+  // from ever opening for it.
+  let responsibility = bill?.responsibility || null;
+  if (!responsibility && bill?.utility_account_id) {
+    const { data: ra } = await sb.from("utility_accounts")
+      .select("responsibility").eq("id", bill.utility_account_id).eq("company_id", COMPANY).maybeSingle();
+    responsibility = ra?.responsibility || null;
+  }
+  if (responsibility === "tenant") {
+    await sb.from("utility_payments").update({ status: "cancelled",
+      error: "the tenant is responsible for this utility — it is not ours to pay",
+    }).eq("id", pay.id).eq("company_id", COMPANY);
+    console.error("  refused: the tenant is responsible for this utility");
+    return "refused";
+  }
   let account = bill?.account_number || null;
   if (!account && bill?.utility_account_id) {
     const { data: acct } = await sb.from("utility_accounts")
