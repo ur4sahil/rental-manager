@@ -7,7 +7,7 @@ import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges, depositReference, depositAlreadyPosted } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -114,10 +114,14 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "current", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
   if (tenantErr) pmError("PM-3002", { raw: tenantErr, context: "tenant status update", silent: true });
   }
-  if (!error && Number(form.security_deposit) > 0) {
+  // Skip when this tenant's deposit is already on the books from another path
+  // (wizard, property form, Tenants page). The unique index is the backstop;
+  // this keeps the "Accounting entry failed" toast for real failures.
+  const _depAlready = await depositAlreadyPosted(companyId, tenant?.id);
+  if (!error && Number(form.security_deposit) > 0 && !_depAlready) {
   const classId = await getPropertyClassId(form.property, companyId);
   const dep = Number(form.security_deposit);
-  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: depositReference(tenant?.id) || ("DEP-" + shortId()), property: form.property,
   lines: [
   { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },

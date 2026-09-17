@@ -24,7 +24,7 @@ import {
   balanceFromIndex, buildBalanceIndex, calcAccountBalance, calcAllBalances,
   getAccountSubtypes, getAccountTypes, getBalanceSheetData, getClassReport,
   getGeneralLedger, getNormalBalance, getPLData, getPeriodDates,
-  getTrialBalance, nextAccountCode, nextAccountId, validateJE,
+  getTrialBalance, nextAccountCode, nextAccountId, validateJE, sortAccountsForReport,
 } from "../utils/acctReports";
 
 // ============ REFERENCE LABELS ============
@@ -1224,10 +1224,10 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const ordered = [];
   parentAccts.forEach(parent => {
   ordered.push(parent);
-  subAccts.filter(s => s.parent_id === parent.id || (s.code || "").startsWith((parent.code || "") + "-")).forEach(sub => ordered.push({ ...sub, _isSubAccount: true }));
+  sortAccountsForReport(subAccts.filter(s => s.parent_id === parent.id || (s.code || "").startsWith((parent.code || "") + "-"))).forEach(sub => ordered.push({ ...sub, _isSubAccount: true }));
   });
   // Add any orphan sub-accounts not matched to a parent
-  subAccts.filter(s => !ordered.find(o => o.id === s.id)).forEach(s => ordered.push({ ...s, _isSubAccount: true }));
+  sortAccountsForReport(subAccts.filter(s => !ordered.find(o => o.id === s.id))).forEach(s => ordered.push({ ...s, _isSubAccount: true }));
   grouped[type] = ordered;
   });
 
@@ -3636,7 +3636,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   // only, active accounts, date <= asOf, half-cent tolerance -- and were
   // verified to reproduce these same figures to the penny before being
   // wired in (11,796,148.81 both sides; P&L net 754,003.14).
-  const tbData = rpcTb || getTrialBalance(accounts, journalEntries, asOfDate);
+  // getTrialBalance sorts its own output, but the RPC returns database order,
+  // so the sub-ledger ordering has to be applied to whichever one we end up
+  // using -- otherwise the report silently changes order depending on whether
+  // the RPC succeeded.
+  const tbData = sortAccountsForReport(rpcTb || getTrialBalance(accounts, journalEntries, asOfDate));
   const allGlLines = rpcGl || getGeneralLedger(selectedAccountId, accounts, journalEntries);
   const glLines = allGlLines.filter(l => l.date >= start && l.date <= end);
   const glAccount = accounts.find(a => a.id === selectedAccountId);

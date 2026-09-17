@@ -457,6 +457,72 @@ export const _tenantArCache = {};
 //      duplicate.
 //   3. Create a new "AR - <name> (<short property>)" sub-account
 //      with tenant_id populated.
+// ---------------------------------------------------------------------------
+// SECURITY DEPOSIT IDEMPOTENCY
+//
+// Four separate places post "Security deposit received": the property setup
+// wizard, the property form, the Tenants page and the Leases page. Three of
+// them used `"DEP-" + shortId()` -- a RANDOM reference -- so no path could see
+// another path's posting and none could see its own on a re-save. Onboard a
+// tenant on the Tenants page and then save the wizard, and the deposit was on
+// the books twice. The sandbox company has one property carrying five of them,
+// same date, five different random references.
+//
+// The fix is a single deterministic reference for all four. That turns
+// idempotency from something each caller has to remember into something the
+// DATABASE enforces: idx_je_company_reference_unique is UNIQUE on
+// (company_id, reference) WHERE status <> 'voided' AND reference <> '', so a
+// second insert is refused no matter which code path attempts it -- including
+// paths written later that never read this comment.
+//
+// Keying on the tenant and nothing else is deliberate. An earlier scheme put
+// the lease start date in the reference, which broke the moment a PM corrected
+// that date: the key changed, the duplicate check missed, and the deposit
+// posted again. Only one security deposit per tenant is ever auto-posted; an
+// additional or increased deposit is an adjustment and belongs in a manual
+// journal entry with its own reference.
+//
+// Because the unique index excludes voided entries, voiding a deposit JE
+// correctly frees the reference and allows a genuine re-post.
+//
+// Returns null when there is no tenant id. That matters: 'DEP-T' + undefined
+// is 'DEP-Tundefined', a single string the unique index would then allow only
+// ONE of per company -- silently blocking every later tenant-less deposit.
+// Callers fall back to a random reference in that case, which is exactly the
+// old behaviour: no cross-path dedup is possible without an id to key on.
+export const depositReference = (tenantId) =>
+  (tenantId === null || tenantId === undefined || tenantId === '') ? null : 'DEP-T' + tenantId;
+
+// True if this tenant already has a security deposit on the books.
+//
+// Checks the canonical reference and also the wizard's older
+// DEP-T<id>-<leaseStart> form, which real data still carries. Deposits written
+// by the three random-reference paths BEFORE this change cannot be recognised
+// from the reference at all -- nothing in the string ties them to a tenant --
+// so they are invisible here and the unique index is what stops the next one.
+//
+// Fails CLOSED: a lookup that errors reports "already posted" rather than
+// letting a duplicate through on the back of a network blip.
+export async function depositAlreadyPosted(companyId, tenantId) {
+  if (!companyId || !tenantId) return false;
+  try {
+    const canonical = depositReference(tenantId);
+    const [exact, legacy] = await Promise.all([
+      supabase.from('acct_journal_entries').select('id')
+        .eq('company_id', companyId).eq('reference', canonical)
+        .neq('status', 'voided').limit(1),
+      // The trailing hyphen keeps T12 from matching T123.
+      supabase.from('acct_journal_entries').select('id')
+        .eq('company_id', companyId).neq('status', 'voided')
+        .like('reference', escapeFilterValue(canonical + '-') + '%').limit(1),
+    ]);
+    if (exact.error || legacy.error) return true;
+    return (exact.data || []).length > 0 || (legacy.data || []).length > 0;
+  } catch (_e) {
+    return true;
+  }
+}
+
 export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   try {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);

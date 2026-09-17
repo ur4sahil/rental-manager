@@ -23,6 +23,49 @@ export const DEFAULT_ACCOUNT_SUBTYPES = {
   "Other Expense": ["Depreciation","Other Miscellaneous Expense"],
 };
 
+// ---------------------------------------------------------------------------
+// SUB-LEDGER ORDERING
+//
+// Accounts are fetched .order("code"), and a sub-account's code is assigned
+// sequentially when it is created -- getOrCreateTenantAR takes the highest
+// 1100-* and adds one. So the sub-ledger under a parent came out in the order
+// the tenants happened to be created, which is not alphabetical and reads as
+// unsorted. It LOOKED sorted at the top of Sigma's balance sheet only because
+// that first run of tenants arrived in one alphabetical import; every tenant
+// added since is appended wherever creation order put them.
+//
+// Parents stay in CODE order -- 1000 Checking before 1100 AR before 2100
+// Deposits is the accounting convention, and the reports build their sections
+// around it. Only the sub-accounts beneath each parent are alphabetised.
+//
+// A sub-account is identified the same way the rest of the app identifies one:
+// a parent_id, or a dash in the code ("1100-017"). The part before the dash is
+// the parent's code, which is what keeps each sub-ledger with its own parent
+// instead of merging them all into one alphabetical run.
+const baseCode = a => {
+  const code = String(a?.code || "");
+  const dash = code.indexOf("-");
+  const base = dash > 0 ? code.slice(0, dash) : code;
+  // No code at all sorts LAST, matching Postgres's NULLS LAST under
+  // .order("code") -- so this does not hoist unnumbered accounts up the report.
+  return base || "\uffff";
+};
+const isSubAccount = a => !!a?.parent_id || String(a?.code || "").includes("-");
+
+// Case-insensitive and digit-aware, so "amanda mathews" files with "Amanda
+// Mathews" and "(2508 ...)" comes before "(11455 ...)" rather than after it.
+const byName = (a, b) =>
+  String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base", numeric: true });
+
+export const sortAccountsForReport = (list) => [...(list || [])].sort((a, b) => {
+  const c = baseCode(a).localeCompare(baseCode(b), undefined, { numeric: true });
+  if (c !== 0) return c;
+  // Parent above its own sub-ledger.
+  const sa = isSubAccount(a) ? 1 : 0, sb = isSubAccount(b) ? 1 : 0;
+  if (sa !== sb) return sa - sb;
+  return byName(a, b);
+});
+
 // Build dynamic types/subtypes from existing accounts + defaults
 export const getAccountTypes = (accounts) => {
   const types = new Set(DEFAULT_ACCOUNT_TYPES);
@@ -115,16 +158,16 @@ export const getPLData = (accounts, journalEntries, startDate, endDate, classId 
   }
   }
   const getBalance = (aid, atype) => balanceFromIndex(preIndex || filteredIndex, aid, atype);
-  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
-  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
+  const revenue = sortAccountsForReport(accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0));
+  const expenses = sortAccountsForReport(accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0));
   const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
   const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
   return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
   }
   const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
   const getBalance = (aid, atype) => balanceFromIndex(index, aid, atype);
-  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
-  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0);
+  const revenue = sortAccountsForReport(accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0));
+  const expenses = sortAccountsForReport(accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => includeZeros || a.amount !== 0));
   const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
   const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
   return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
@@ -136,9 +179,9 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate, preIndex
   const filtered = preIndex ? [] : journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
   const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(filtered);
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
-  const assets = accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
-  const liabilities = accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
-  const equity = accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
+  const assets = sortAccountsForReport(accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
+  const liabilities = sortAccountsForReport(accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
+  const equity = sortAccountsForReport(accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
   let netIncome = 0;
   for (const [aid, entry] of Object.entries(index)) {
   const acct = acctMap[aid]; if (!acct) continue;
@@ -233,7 +276,7 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate, preIndex
 // preIndex: same contract as getPLData, for everything up to endDate.
 export const getTrialBalance = (accounts, journalEntries, endDate, preIndex = null) => {
   const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(journalEntries, je => je.date <= endDate);
-  return accounts.filter(a => a.is_active).map(a => {
+  return sortAccountsForReport(accounts.filter(a => a.is_active)).map(a => {
   const entry = index[a.id];
   const net = entry ? entry.debit - entry.credit : 0;
   return { ...a, debitBalance: net > 0 ? net : 0, creditBalance: net < 0 ? Math.abs(net) : 0 };

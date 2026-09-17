@@ -9,7 +9,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -1296,23 +1296,27 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const tName = tenantForm.tenant.trim();
         await getOrCreateTenantAR(companyId, tName, resTenantId);
         const leaseStartKey = (tenantForm.lease_start || '').replace(/-/g, '') || 'START';
-        const depRef = 'DEP-T' + resTenantId + '-' + leaseStartKey;
+        const depRef = depositReference(resTenantId) || ('DEP-' + shortId());
         const rentRef = 'RENT1-T' + resTenantId + '-' + leaseStartKey;
         const prorentRef = 'PRORENT-T' + resTenantId + '-' + leaseStartKey;
-        // Match on the PREFIX, not the whole reference. The prefix ends with
-        // the hyphen after the tenant id, so DEP-T12- cannot match
-        // DEP-T123-20260101 -- the ids stay distinct.
+        // The deposit check is SHARED with the property form, the Tenants page
+        // and the Leases page, so all four see each other's postings.
+        const depPosted = await depositAlreadyPosted(companyId, resTenantId);
+        // First-month and prorated rent are posted only here, so they keep the
+        // date-keyed reference -- but still matched by PREFIX, because a
+        // corrected lease start changes the date and an exact match would miss
+        // it and charge the first month twice. The prefix ends with the hyphen
+        // after the tenant id, so T12 cannot match T123.
         const tPrefix = escapeFilterValue('T' + resTenantId + '-');
-        const [depHit, rentHit, prorentHit] = await Promise.all(
-          ['DEP-', 'RENT1-', 'PRORENT-'].map(fam =>
+        const [rentHit, prorentHit] = await Promise.all(
+          ['RENT1-', 'PRORENT-'].map(fam =>
             supabase.from('acct_journal_entries').select('id')
               .eq('company_id', companyId).neq('status', 'voided')
               .like('reference', fam + tPrefix + '%').limit(1))
         );
         // A FAILED lookup must not read as "nothing posted" -- that is how a
-        // duplicate deposit would get through. Treat an error as posted.
+        // duplicate charge would get through. Treat an error as posted.
         const posted = r => !!(r.error || (r.data || []).length);
-        const depPosted = posted(depHit);
         const rentPosted = posted(rentHit) || posted(prorentHit);
         const classId = await getPropertyClassId(compositeAddress, companyId);
         const dep = Number(tenantForm.security_deposit) || 0;
@@ -3040,10 +3044,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   // Post security deposit JE if deposit amount provided
   const dep = Number(form.security_deposit) || 0;
-  if (dep > 0) {
+  // Same cross-path guard as the wizard, the Tenants page and the Leases page.
+  const _depAlready = await depositAlreadyPosted(companyId, tenantId);
+  if (dep > 0 && !_depAlready) {
   const classId = await getPropertyClassId(compositeAddress, companyId);
   const tenantArId = await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
-  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: "DEP-" + shortId(), property: compositeAddress,
+  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: compositeAddress,
   lines: [
   { account_id: tenantArId, account_name: "AR - " + form.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },

@@ -49,10 +49,14 @@ for (const [what, needle] of [
 // The references are DEP-T<id>-<leaseStart>. Matching them EXACTLY meant a
 // corrected lease start produced a reference that was not in the posted set,
 // and the deposit posted again. The prefix is stable; the date is not.
-assert("the posted-already check matches the reference PREFIX, not the date",
+assert("the deposit check is the SHARED cross-path one",
+  /const depPosted = await depositAlreadyPosted\(companyId, resTenantId\)/.test(props),
+  "four places post this deposit; each having its own check is how it double-posted");
+
+assert("first-month and prorated rent match by reference PREFIX, not the date",
   /\.like\('reference', fam \+ tPrefix \+ '%'\)/.test(props)
   && /const tPrefix = escapeFilterValue\('T' \+ resTenantId \+ '-'\)/.test(props),
-  "an exact-reference check re-posts the deposit when the lease start moves");
+  "an exact-reference check charges the first month again when the lease start moves");
 
 assert("a FAILED posted-already lookup counts as posted",
   /r\.error \|\| \(r\.data \|\| \[\]\)\.length/.test(props),

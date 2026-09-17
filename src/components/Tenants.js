@@ -8,7 +8,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -438,12 +438,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // post if either is unresolvable rather than writing a null
   // account_id. (The AR leg is already the per-tenant sub-account and
   // deliberately passes no balanceUpdate — the balance trigger owns it.)
-  const _depResolved = await resolveJELineAccounts([
+  // Another path may already have posted this tenant's deposit -- the wizard,
+  // the property form or the Leases page. The unique index would refuse the
+  // duplicate anyway; checking first means the user gets no spurious "entry
+  // failed" toast for what is actually correct de-duplication.
+  const _depDone = await depositAlreadyPosted(companyId, tenantId);
+  const _depResolved = _depDone ? { lines: null, skipped: true } : await resolveJELineAccounts([
   { account_id: tenantArId, account_name: "AR - " + _name, debit: _secDep, credit: 0, class_id: classId, memo: "Security deposit from " + _name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
   ], companyId);
-  if (!_depResolved.lines) { showToast("Security deposit accounting entry failed — could not resolve account " + _depResolved.missing + ".", "error"); }
-  const _depResult = _depResolved.lines ? await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
+  if (!_depResolved.lines && !_depResolved.skipped) { showToast("Security deposit accounting entry failed — could not resolve account " + _depResolved.missing + ".", "error"); }
+  const _depResult = _depResolved.lines ? await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: _property,
   lines: _depResolved.lines,
   ledgerEntry: { tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit" }
   }) : null;
