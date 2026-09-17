@@ -122,7 +122,7 @@ for (const file of files) {
         // missing it reported ALL THREE of plaid-sync-transactions' dedup
         // queries and both of the QuickBooks importer's as unbounded, when
         // every one is chunked. Five of twenty-three were this.
-        || /\.slice\(\s*\w+\s*,\s*\w+\s*\+|chunk\(|for \(let \w+ = 0; \w+ < [\w.]+\.length; \w+ \+= \d+\)/.test(before)
+        || /\.slice\(\s*\w+\s*,\s*\w+\s*\+|chunk\w*\(|for \(let \w+ = 0; \w+ < [\w.]+\.length; \w+ \+= \d+\)/.test(before)
         // An explicit range-paging loop. plaid-sync walks `from` in a while
         // loop with .range(); the .range() is in the chain so it is already
         // bounded, but a build() helper above can put it out of reach.
@@ -163,7 +163,24 @@ for (const file of files) {
 // And Admin.js was truncating live: 1,431 error_log rows in the last seven
 // days, read unpaged, so every figure on the error dashboard was short. It
 // counts now instead of fetching.
-const UNBOUNDED_BASELINE = 8;    // was 38, then 23; ratchets DOWN only, never up
+//
+// Second pass, 8 -> 5. Banking and the QuickBooks importer chunk through a
+// helper called chunked(), which the rule did not know about. Fixing that
+// took two goes: `chunked?\(` reads as "chunke" plus an optional "d" and
+// stopped matching plain chunk(, so the importer's three came straight back.
+// The rule catching its own regression is the only reason that was noticed.
+//
+// One more real one came out of this pass, and it was the worst of the lot.
+// Properties.js voids every journal entry for a property when the property is
+// deleted, and read them unpaged. The busiest property in production carries
+// 1,304 entries -- measured -- so deleting it would have voided a thousand
+// and left 304 live on a property the app reports as gone, silently.
+//
+// The five that remain were each measured against production rather than
+// assumed: the whole payments table holds 91 rows, there are zero STRIPE-
+// journal entries, no RENT-AUTO accruals, and the busiest property has 44
+// documents. None of them is near the cap.
+const UNBOUNDED_BASELINE = 5;    // was 38, then 23, then 8; ratchets DOWN only
 console.log(`\nℹ ${unbounded.length} unbounded selects on >1000-row tables (baseline ${UNBOUNDED_BASELINE}):`);
 unbounded.slice(0, 8).forEach(u => console.log("   " + u));
 if (unbounded.length > 8) console.log(`   …and ${unbounded.length - 8} more`);

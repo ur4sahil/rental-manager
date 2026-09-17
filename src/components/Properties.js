@@ -9,7 +9,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -2861,7 +2861,21 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // Everything removed from active views but data preserved in DB.
 
   // 1. Void all journal entries for this property (preserved but inactive)
-  const { data: propJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("property", address);
+  // PAGED. This is the delete path: every journal entry for the property is
+  // voided here. Unpaged it stopped at Supabase's 1000-row cap without an
+  // error, and the busiest property in production carries 1,304 entries --
+  // so deleting it would have voided a thousand and left 304 live on a
+  // property the app reports as gone, with nothing said. Measured, not
+  // hypothetical.
+  const { rows: propJEs, failed: jeFailed } = await fetchAllPaged(
+    () => supabase.from("acct_journal_entries").select("id")
+      .eq("company_id", companyId).eq("property", address).order("id"),
+    "property journal entries",
+  );
+  if (jeFailed) {
+    showToast("Could not read this property's journal entries — nothing was deleted. Try again.", "error");
+    return;
+  }
   const jeIds = (propJEs || []).map(je => je.id);
   if (jeIds.length > 0) {
   await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("property", address);
