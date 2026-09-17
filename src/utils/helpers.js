@@ -366,7 +366,10 @@ export async function recomputeTenantDocStatus(companyId, tenantOrOpts) {
   // documents.tenant_id is authoritative where present. Without it, a
   // name-only match counted a NAMESAKE's uploads toward this tenant's
   // document checklist, marking them "complete" on someone else's files.
-  let docsQ = supabase.from("documents").select("name, type").eq("company_id", companyId).is("archived_at", null);
+  // Bounded. This drives a tenant's document checklist; 500 is far past any
+  // real tenant's file count and makes the limit a decision rather than
+  // Supabase's silent 1000.
+  let docsQ = supabase.from("documents").select("name, type").eq("company_id", companyId).is("archived_at", null).limit(500);
   if (tenantId) docsQ = docsQ.eq("tenant_id", tenantId);
   else if (tenantName) docsQ = docsQ.eq("tenant", tenantName);
   if (property) docsQ = docsQ.eq("property", property);

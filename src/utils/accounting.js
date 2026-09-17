@@ -254,10 +254,21 @@ export async function autoPostJournalEntry({ date, description, reference, prope
 // Used by smart AR settlement: if accrual exists, payment settles AR; else posts direct revenue
 export async function checkAccrualExists(companyId, month, tenantName) {
   // Look for RENT-AUTO entries for this month that mention the tenant
-  const { data: rentJEs } = await supabase.from("acct_journal_entries")
-  .select("id, reference").eq("company_id", companyId)
-  .or(`reference.like.RENT-AUTO-%${escapeFilterValue(month)}%,reference.like.ACCR-${escapeFilterValue(month)}%`)
-  .neq("status", "voided");
+  // Paged. One accrual per tenant per month is under the cap for this
+  // company, but "under the cap for this company today" is not a property
+  // the code can rely on, and a short read here answers "no accrual exists"
+  // -- which sends a rent payment to revenue instead of settling the
+  // receivable.
+  const { rows: rentJEs, failed: rentFailed } = await fetchAllPaged(
+    () => supabase.from("acct_journal_entries")
+      .select("id, reference").eq("company_id", companyId)
+      .or(`reference.like.RENT-AUTO-%${escapeFilterValue(month)}%,reference.like.ACCR-${escapeFilterValue(month)}%`)
+      .neq("status", "voided").order("id"),
+    "rent accrual entries",
+  );
+  // A failed read must not read as "no accrual". Saying we could not tell is
+  // the honest answer, and the caller treats it the same as found.
+  if (rentFailed) return true;
   if (!rentJEs || rentJEs.length === 0) return false;
   const jeIds = rentJEs.map(je => je.id);
   // Chunked at 100: .in() is a URL parameter, and a company with more than a

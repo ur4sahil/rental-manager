@@ -345,16 +345,23 @@ module.exports = async function handler(req, res) {
       // The question was always "which companies have pending work", not
       // "give me a thousand rows and let me work it out": a grouped aggregate
       // answers it exactly, in one request, at any size.
+      // A GROUPED AGGREGATE, at last. The comment above described this fix
+      // and the code underneath it kept doing the row scan: select company_id
+      // off for_review rows, order by company_id, limit 1000, de-duplicate in
+      // JS. That is a row limit, not a company limit. One company holds 3,514
+      // pending rows, so all thousand belonged to it and every company
+      // sorting after it was invisible -- companies_scanned came back as 1,
+      // every night. Sigma Housing sorts ninth, has 911 transactions waiting,
+      // and had never once been swept: one AI job existed in the whole table.
+      //
+      // The RPC returns one row per company, busiest first, so a run that
+      // hits its cap spends it where the backlog is rather than on whoever
+      // sorts first alphabetically.
       const { data: companies, error: cErr } = await sb
-        .from("bank_feed_transaction")
-        .select("company_id")
-        .eq("status", "for_review")
-        .in("suggestion_status", ["none"])
-        .order("company_id")
-        .limit(1000);
+        .rpc("companies_with_pending_ai_work", { p_min: 1 });
       if (cErr) return res.status(500).json({ error: cErr.message });
-  
-      const companyIds = [...new Set((companies || []).map(c => c.company_id))];
+
+      const companyIds = (companies || []).map(c => c.company_id);
       let queued = 0, skippedHistory = 0, alreadyQueued = 0;
       const perCompany = {};
   

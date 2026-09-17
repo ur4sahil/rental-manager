@@ -1,3 +1,4 @@
+import { fetchAllPaged } from "../utils/accounting";
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { PageHeader, TextLink, EmptyState} from "../ui";
@@ -42,7 +43,13 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   supabase.from("properties").select(PROP_COLS).eq("company_id", companyId).is("archived_at", null),
   supabase.from("tenants").select(TENANT_COLS).eq("company_id", companyId).is("archived_at", null),
   supabase.from("work_orders").select(WO_COLS).eq("company_id", companyId).is("archived_at", null),
-  supabase.from("payments").select(PAY_COLS).eq("company_id", companyId).is("archived_at", null),
+  // Paged. The dashboard tiles total these, so a short read is a wrong
+  // headline figure rather than a short list. 91 rows today across every
+  // company on the instance -- which is exactly the reasoning that left a
+  // 1,304-row property-delete unpaged until it was measured.
+  fetchAllPaged(() => supabase.from("payments").select(PAY_COLS)
+    .eq("company_id", companyId).is("archived_at", null).order("id"), "dashboard payments")
+    .then(r => ({ data: r.rows, error: r.failed ? new Error("payments read was short") : null })),
   supabase.from("utilities").select(UTIL_COLS).eq("company_id", companyId).is("archived_at", null),
   ]);
   if (p.error) pmError("PM-2002", { raw: p.error, context: "dashboard properties fetch", silent: true });

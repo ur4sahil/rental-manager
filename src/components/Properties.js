@@ -3070,7 +3070,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [pay, wo, docs] = await Promise.all([
   supabase.from("payments").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).limit(200),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  // Deliberately capped, like the payments query two lines up. This is a
+  // property detail panel, not an archive: 200 is far past the 44 the
+  // busiest property actually has, and an explicit bound says the number was
+  // chosen rather than left to Supabase's invisible one.
+  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(200),
   ]);
   const all = [
   ...(pay.data || []).map(x => ({ ...x, _type: "payment", _date: x.date })),

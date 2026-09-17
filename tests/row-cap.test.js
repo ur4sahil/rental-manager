@@ -101,7 +101,19 @@ for (const file of files) {
     for (const m of src.matchAll(re)) {
       const chain = m[1];
       if (!/\.select\(/.test(chain)) continue;             // insert/update/delete
-      const bounded = /\.limit\(|\.range\(|\.single\(|\.maybeSingle\(|head:\s*true|count:\s*["']exact["']/.test(chain)
+      // The chain stops at the first line starting with if/const/let/await,
+      // which is exactly where a BUILDER-pattern query goes: `let q = from(...)`,
+      // then conditional filters, then `await q.limit(200)` several lines
+      // later. Payments.js was reported for nine days over a .limit(200) the
+      // window could not reach. So when the query is assigned to a variable,
+      // follow that variable forward too.
+      const lookback = src.slice(Math.max(0, m.index - 160), m.index);
+      const assignments = [...lookback.matchAll(/(?:const|let)\s+(\w+)\s*=/g)];
+      const assigned = assignments.length ? assignments[assignments.length - 1][1] : null;
+      const after = assigned
+        ? src.slice(m.index, m.index + 1800).split(new RegExp(`\\b${assigned}\\b`)).slice(1).join(" ")
+        : "";
+      const bounded = /\.limit\(|\.range\(|\.single\(|\.maybeSingle\(|head:\s*true|count:\s*["']exact["']/.test(chain + " " + after)
         // A chunked .in() is bounded BY the chunk. .slice(i, i + n) in the
         // filter is the idiom, and it is bounded twice over: .in() is a URL
         // parameter, so the chunk is what keeps the request legal at all.
@@ -134,7 +146,7 @@ for (const file of files) {
     }
   }
 }
-// REPORTED, not failed -- for now.
+// ENFORCED, as of 2026-09-17. It is zero, and a new one fails the build.
 //
 // This rule finds 29 genuine unbounded selects across Banking, Accounting and
 // the reports. Every one is a real hazard, and none is urgent: the runtime
@@ -176,11 +188,25 @@ for (const file of files) {
 // 1,304 entries -- measured -- so deleting it would have voided a thousand
 // and left 304 live on a property the app reports as gone, silently.
 //
-// The five that remain were each measured against production rather than
-// assumed: the whole payments table holds 91 rows, there are zero STRIPE-
-// journal entries, no RENT-AUTO accruals, and the busiest property has 44
-// documents. None of them is near the cap.
-const UNBOUNDED_BASELINE = 5;    // was 38, then 23, then 8; ratchets DOWN only
+// Third pass, 5 -> 0. I argued for leaving the last five because they sit
+// on small tables today -- 91 payments, zero STRIPE- entries, 44 documents
+// on the busiest property. Sahil asked why. The honest answer is that it is
+// the SAME argument that left the property-delete path unpaged, and that one
+// turned out to be reading 1,304 rows through a 1,000-row hole. "Small
+// today" is not a property of the code, it is a property of this month's
+// data.
+//
+// So: Dashboard's payments and the rent-accrual check are paged; the
+// property document panel and the tenant document checklist carry explicit
+// limits, which makes the bound a decision rather than Supabase's invisible
+// one. And the rule learned the builder pattern -- a query assigned to a
+// variable, filtered over several lines, then awaited with .limit() well
+// outside the window it was reading. Payments.js had a .limit(200) the whole
+// time and was reported anyway.
+//
+// The baseline is 0 and the check now FAILS rather than reports. A list of
+// known-acceptable hazards is a list people learn to skim.
+const UNBOUNDED_BASELINE = 0;    // 38 -> 23 -> 8 -> 5 -> 0. It stays there.
 console.log(`\nℹ ${unbounded.length} unbounded selects on >1000-row tables (baseline ${UNBOUNDED_BASELINE}):`);
 unbounded.slice(0, 8).forEach(u => console.log("   " + u));
 if (unbounded.length > 8) console.log(`   …and ${unbounded.length - 8} more`);
