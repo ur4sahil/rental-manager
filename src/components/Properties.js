@@ -619,7 +619,19 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     const validHoas = hoas.filter(h => h.hoa_name.trim());
     for (const h of validHoas) {
       if (!h.amount || Number(h.amount) <= 0) throw new Error("HOA amount is required for " + h.hoa_name);
-      if ((h.username || h.password) && !(h.username && h.password)) throw new Error("HOA portal needs both username and password: " + h.hoa_name);
+      // All THREE pairs, not just the HOA's own. encryptRow only stores a
+      // credential when both halves are present, so a half-filled management
+      // or payment-portal pair would pass validation, encrypt nothing, and
+      // save silently -- the user would believe the login was kept.
+      for (const [label, u, pw] of [
+        ["HOA portal", h.username, h.password],
+        ["management company portal", h.mgmt_username, h.mgmt_password],
+        ["fee payment portal", h.pay_username, h.pay_password],
+      ]) {
+        if ((u || pw) && !(u && pw)) {
+          throw new Error(`The ${label} needs both a username and a password (or neither): ${h.hoa_name}`);
+        }
+      }
     }
     return true;
   }

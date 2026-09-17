@@ -84,7 +84,21 @@ export function Btn({ variant = "primary", size = "md", className = "", icon, ty
   // site has to opt in; an async handler is the opt-in.
   const [selfBusy, setSelfBusy] = React.useState(false);
   const alive = React.useRef(true);
-  React.useEffect(() => () => { alive.current = false; }, []);
+  // Set true in the BODY, not just false in the cleanup.
+  //
+  // React 18 StrictMode double-invokes effects in development: mount,
+  // cleanup, mount. With only the cleanup writing this ref, the first cycle
+  // left it false forever and setSelfBusy(false) never ran again -- so the
+  // first async click disabled the button permanently. The property wizard's
+  // Next stopped working after one press, which is how this was found: by
+  // driving the real wizard in a browser, not by reading the code.
+  //
+  // Production never double-invokes, so the live site was unaffected. That is
+  // luck, not design: any remount would have done the same thing.
+  React.useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
 
   const handle = onClick && ((e) => {
     const r = onClick(e);
@@ -128,7 +142,12 @@ export function IconBtn({ icon, className = "", title, onClick, disabled, ...pro
   // label to re-read and nothing else on it that could change.
   const [busy, setBusy] = React.useState(false);
   const alive = React.useRef(true);
-  React.useEffect(() => () => { alive.current = false; }, []);
+  // Same as Btn above: the ref must be set true in the body. StrictMode's
+  // mount/cleanup/mount left it false and the icon spun forever.
+  React.useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const handle = onClick && ((e) => {
     const r = onClick(e);
     if (!r || typeof r.then !== "function") return r;
