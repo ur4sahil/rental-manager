@@ -30,6 +30,23 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     try { captchaRef.current?.resetCaptcha(); } catch (_) {}
   };
 
+  // What to say when the auth call THROWS rather than returning { error }.
+  //
+  // supabase-js returns { error } for anything the server answered, but a
+  // request that never reached the server -- offline, DNS, a blocked or
+  // aborted fetch -- rejects instead. None of these handlers caught that, so
+  // the throw escaped, setLoading(false) never ran, and the button sat on
+  // "Please wait..." for ever with nothing on screen. From the outside that
+  // is indistinguishable from a broken site: no error, no spinner ending, and
+  // a page that still says Sign In.
+  const describeThrow = (e) => {
+    const msg = String(e?.message || e || "");
+    if (/failed to fetch|networkerror|load failed|aborted/i.test(msg)) {
+      return "Could not reach the server. Check your connection and try again.";
+    }
+    return msg || "Something went wrong. Please try again.";
+  };
+
   const requireCaptcha = () => {
     if (HCAPTCHA_SITE_KEY && !captchaToken) {
       setError("Please complete the captcha.");
@@ -42,6 +59,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   if (!requireCaptcha()) return;
   setLoading(true);
   setError("");
+  try {
   const options = captchaToken ? { captchaToken } : undefined;
   const { error } = await supabase.auth.signInWithPassword({ email, password, options });
   if (error) {
@@ -50,7 +68,14 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   } else {
   onLogin();
   }
+  } catch (e) {
+  setError(describeThrow(e));
+  resetCaptcha();
+  } finally {
+  // ALWAYS. This is the line whose absence turned a failed request into a
+  // permanently stuck button.
   setLoading(false);
+  }
   };
 
   // Reset banner stores the exact email we sent to — NOT the live `email`
@@ -71,12 +96,18 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   setLoading(true);
   setError("");
   setResetSentEmail("");
+  try {
   const opts = { redirectTo: window.location.origin };
   if (captchaToken) opts.captchaToken = captchaToken;
   const { error } = await supabase.auth.resetPasswordForEmail(target, opts);
   if (error) { setError(error.message); resetCaptcha(); }
   else { setResetSentEmail(target); resetCaptcha(); }
+  } catch (e) {
+  setError(describeThrow(e));
+  resetCaptcha();
+  } finally {
   setLoading(false);
+  }
   };
 
   const handleSignup = async (userType) => {
@@ -87,6 +118,10 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   setLoading(true);
   setError("");
 
+  // Same guard as handleLogin: any of the calls below can THROW rather than
+  // return { error } -- signUp, two RPCs, a fetch and an insert. Without this
+  // the throw escaped and the button stayed on "Please wait..." for ever.
+  try {
   // For tenant signup: validate AND redeem invite code BEFORE creating auth account
   // This prevents orphaned auth accounts if redemption fails
   let tenantRedemption = null;
@@ -168,7 +203,12 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   resetCaptcha();
   setSignupSuccess(true);
+  } catch (e) {
+  setError(describeThrow(e));
+  resetCaptcha();
+  } finally {
   setLoading(false);
+  }
   };
 
   const userTypeLabels = {

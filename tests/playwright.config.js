@@ -16,15 +16,20 @@ module.exports = defineConfig({
     baseURL: process.env.APP_URL || 'http://localhost:3000',
     // BLOCK SERVICE WORKERS.
     //
-    // This app is a PWA. A service worker left over from an earlier build on
-    // the same origin intercepts the login request and aborts it --
-    // net::ERR_ABORTED on /auth/v1/token, with the form stuck on
-    // "Please wait..." and nothing in the console that names the cause.
-    // Proven by experiment: the only variable changed between a hung login
-    // and a rendered dashboard was this flag.
-    //
     // Tests want the deployment that was just built, not whatever a previous
-    // one cached, so blocking is the correct default here regardless.
+    // one cached. This app is a PWA, and its worker serves /static/ cache-first
+    // by design, so a run against a fresh deploy can otherwise be reading an
+    // older bundle from a previous one.
+    //
+    // Correcting an earlier note here: this was first written up as the cause
+    // of a hung login on the test site -- net::ERR_ABORTED on /auth/v1/token
+    // with the form stuck on "Please wait...". That was wrong. The deployed
+    // worker returns early for non-GET AND for cross-origin requests, so it
+    // never touches a Supabase auth POST. The real fault was in LoginPage.js:
+    // the auth call can REJECT rather than return { error }, nothing caught
+    // it, and setLoading(false) never ran. Fixed there, with
+    // e2e/37-login-resilience.spec.js holding it. Blocking workers here is
+    // still right, for the reason above and not that one.
     serviceWorkers: 'block',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
