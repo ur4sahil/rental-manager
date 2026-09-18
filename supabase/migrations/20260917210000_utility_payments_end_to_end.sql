@@ -69,7 +69,10 @@ SELECT
   false
 FROM utility_bills b
 LEFT JOIN properties p ON p.company_id = b.company_id AND p.address = b.property
-WHERE b.pdf_storage_path IS NOT NULL
+-- COALESCE, not IS NOT NULL. 64 of 86 production bills hold '' rather than
+-- null, and IS NOT NULL accepts an empty string -- so the first version of
+-- this backfill filed 64 documents whose View link pointed at nothing.
+WHERE COALESCE(b.pdf_storage_path, '') <> ''
   AND NOT EXISTS (
     SELECT 1 FROM documents d
     WHERE d.company_id = b.company_id AND d.url = b.pdf_storage_path

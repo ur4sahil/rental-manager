@@ -17,6 +17,31 @@ const { expect } = require('@playwright/test');
  *       (tenant/owner roles auto-route to tenant_portal/owner_portal,
  *       not Dashboard).
  */
+// Is this locator visible WITHIN ms? Actually waiting, unlike isVisible().
+//
+// locator.isVisible() is a point-in-time check. Passing it { timeout: 20000 }
+// does NOT make it wait -- it answers immediately and the option is ignored.
+// Every such call in this file was therefore racing the app's first paint.
+//
+// It only looked fine because it was always run against production, which is
+// warm. Against a cold or local build the check answered false before the
+// shell had painted, login() fell through to the landing-page branch, and
+// then waited for an email field that was never going to appear -- surfacing
+// as a timeout at the waitForSelector below, pointing at the wrong line.
+// That is what made 7 of 8 property-document specs fail while the feature
+// itself worked.
+//
+// The comment previously here described losing this exact race at 3s and
+// raising the number. Raising an ignored option changes nothing; waiting does.
+async function visibleWithin(locator, ms) {
+  try {
+    await locator.waitFor({ state: 'visible', timeout: ms });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function login(page, arg = 'sandbox-llc') {
   const opts = typeof arg === 'string' ? { companySlug: arg } : (arg || {});
   const companySlug = opts.companySlug || 'sandbox-llc';
@@ -46,11 +71,11 @@ async function login(page, arg = 'sandbox-llc') {
   // dataset. At 3s the check lost the race, login() went looking for an
   // email field that was never going to appear, and every spec failed
   // with a timeout that pointed at the wrong thing.
-  if (await successMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
+  if (await visibleWithin(successMarker, 20000)) return;
 
   // Landing page: click Sign In to reveal the login form.
   const signInBtn = page.locator('button:has-text("Sign In"), a:has-text("Sign In")').first();
-  if (await signInBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (await visibleWithin(signInBtn, 3000)) {
     await signInBtn.click();
   }
   await page.waitForSelector('input[type="email"]', { timeout: 10000 });
@@ -66,9 +91,9 @@ async function login(page, arg = 'sandbox-llc') {
   // Detect, back off, and retry up to 3 times so the suite can recover
   // without rerunning the whole batch from scratch.
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (await successMarker.isVisible({ timeout: 8000 }).catch(() => false)) return;
+    if (await visibleWithin(successMarker, 8000)) return;
     const rateLimit = page.locator('text=/rate limit reached/i').first();
-    if (await rateLimit.isVisible({ timeout: 1000 }).catch(() => false)) {
+    if (await visibleWithin(rateLimit, 1000)) {
       const wait = 8000 + attempt * 7000;
       // eslint-disable-next-line no-console
       console.log(`[login] rate-limited, waiting ${wait}ms before retry ${attempt + 1}/3`);
@@ -84,19 +109,19 @@ async function login(page, arg = 'sandbox-llc') {
   // Auto-select via ?company= kicks in once auth resolves. If that
   // path silently doesn't match (e.g. stale membership cache), fall
   // back to clicking the company row in the selector.
-  if (await successMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
+  if (await visibleWithin(successMarker, 20000)) return;
 
   // Fallback: Company Selector is up. Try the name span, then a
   // broader cursor-pointer row as last resort.
   for (let attempt = 0; attempt < 2; attempt++) {
     const nameEl = page.locator('.font-semibold.truncate:has-text("Sandbox")').first();
-    if (await nameEl.isVisible({ timeout: 2500 }).catch(() => false)) {
+    if (await visibleWithin(nameEl, 2500)) {
       await nameEl.click({ force: true }).catch(() => {});
     } else {
       const firstRow = page.locator('div.cursor-pointer:has(.font-semibold)').first();
-      if (await firstRow.isVisible({ timeout: 2000 }).catch(() => false)) await firstRow.click({ force: true }).catch(() => {});
+      if (await visibleWithin(firstRow, 2000)) await firstRow.click({ force: true }).catch(() => {});
     }
-    if (await successMarker.isVisible({ timeout: 15000 }).catch(() => false)) return;
+    if (await visibleWithin(successMarker, 15000)) return;
   }
   await successMarker.waitFor({ state: 'visible', timeout: 10000 });
 }
@@ -127,7 +152,7 @@ const NESTED_UNDER_ACCOUNTING = new Set([
 async function navigateTo(page, label) {
   // On mobile: open hamburger first
   const hamburger = page.locator('button:has-text("menu")').first();
-  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
+  if (await visibleWithin(hamburger, 1000)) {
     await hamburger.click();
     await page.waitForTimeout(300);
   }
@@ -147,14 +172,14 @@ async function navigateTo(page, label) {
   // Accounting's, since both use the same expand_more icon and the
   // `.first()` selector would otherwise hit whichever DOM-renders first.
   const isNested = NESTED_UNDER_PROPERTIES.has(label) || NESTED_UNDER_ACCOUNTING.has(label);
-  if (isNested && !await target.isVisible({ timeout: 1000 }).catch(() => false)) {
+  if (isNested && !await visibleWithin(target, 1000)) {
     const parentLabel = NESTED_UNDER_PROPERTIES.has(label) ? 'Properties' : 'Accounting';
     // Find the parent's expand chevron — scoped to the parent's row
     // so we don't accidentally toggle the wrong section.
     const parentRow = page.locator(`button:has-text("${parentLabel}")`).first();
-    if (await parentRow.isVisible({ timeout: 1000 }).catch(() => false)) {
+    if (await visibleWithin(parentRow, 1000)) {
       const chevron = parentRow.locator('xpath=following-sibling::button').first();
-      if (await chevron.isVisible({ timeout: 1000 }).catch(() => false)) {
+      if (await visibleWithin(chevron, 1000)) {
         await chevron.click();
         await page.waitForTimeout(400);
       } else {
@@ -289,7 +314,7 @@ async function goToPage(page, pageId) {
   if (nestedSidebarMap[pageId]) {
     // Click the expand chevron on Properties
     const chevron = page.locator('button:has(span:has-text("expand_more"))').first();
-    if (await chevron.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await visibleWithin(chevron, 2000)) {
       await chevron.click();
       await page.waitForTimeout(500);
     }
@@ -310,7 +335,7 @@ async function goToPage(page, pageId) {
     await page.waitForTimeout(1500);
     if (pageId === 'roles') {
       const teamTab = page.locator('button:has-text("Team & Roles")').first();
-      if (await teamTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await visibleWithin(teamTab, 2000)) {
         await teamTab.click();
         await page.waitForTimeout(1000);
       }
@@ -341,7 +366,7 @@ async function goToPage(page, pageId) {
 
   // Last resort: try clicking any button with the page name
   const btn = page.locator(`button:has-text("${pageId}")`).first();
-  if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await visibleWithin(btn, 2000)) {
     await btn.click();
     await page.waitForTimeout(1500);
     return true;
@@ -391,7 +416,7 @@ async function waitForConfirmModal(page, timeout = 3000) {
  */
 async function respondToConfirmModal(page, confirm = true) {
   const modal = page.locator('[class*="z-\\[90\\]"]').first();
-  if (await modal.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await visibleWithin(modal, 2000)) {
     if (confirm) {
       await modal.locator('button:has-text("Confirm"), button:has-text("Delete"), button:has-text("OK")').first().click();
     } else {
@@ -517,7 +542,7 @@ async function gotoRoute(page, routeId, opts = {}) {
   if (!page.url().includes('localhost') && !page.url().includes('http')) {
     await page.goto(`/?company=${encodeURIComponent(company)}`, { timeout: 90000 });
   }
-  if (!(await page.locator('nav, aside').first().isVisible({ timeout: 5000 }).catch(() => false))) {
+  if (!(await visibleWithin(page.locator('nav, aside').first(), 5000))) {
     await page.goto(`/?company=${encodeURIComponent(company)}`, { timeout: 90000 });
   }
   await page.locator('button:visible:has-text("Dashboard")').first()
@@ -601,6 +626,7 @@ function watchForFailures(page) {
 }
 
 module.exports = {
+  visibleWithin,
   ROUTES,
   NAV,
   TEST_COMPANY,

@@ -172,5 +172,23 @@ assert("the address never reaches a filter that parses it",
   && !/\.i?like\([^)]*address/.test(mod),
   ".or()/.ilike() would need escapeFilterValue; .eq() does not");
 
+// ---- 8. never file a document with no storage path -------------------
+// A row with an empty path appears in the property's folder and does nothing
+// when clicked -- worse than not being there. The backfill that filed the
+// existing statements used `IS NOT NULL`, which accepts '', and 64 of 86
+// production bills hold '' rather than null. 64 dead entries were filed
+// before an E2E assertion on the signing request caught it.
+const ai = fs.readFileSync(path.join(__dirname, "..", "api", "ai.js"), "utf8");
+assert("fileUtilityDocument refuses an empty storage path",
+  /if \(!path \|\| !String\(path\)\.trim\(\)\) \{/.test(ai),
+  "IS NOT NULL is not the same as 'has a value'");
+
+const mig = fs.readFileSync(path.join(__dirname, "..", "supabase", "migrations",
+  "20260917210000_utility_payments_end_to_end.sql"), "utf8");
+assert("the backfill excludes empty paths, not just nulls",
+  /COALESCE\(b\.pdf_storage_path, ''\) <> ''/.test(mig)
+  && !/pdf_storage_path IS NOT NULL/.test(mig),
+  "'' is not null, and 64 of 86 bills hold ''");
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

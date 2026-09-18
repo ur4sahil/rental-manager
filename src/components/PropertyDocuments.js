@@ -351,7 +351,11 @@ export default function PropertyDocuments({
   );
 
   return (
-    <div className="space-y-3">
+    // data-testid so a test can scope to THIS module. The property panel has
+    // its own Insurance and Utilities cards, so an unscoped query for a
+    // folder named "Insurance" matches the panel's card as well and reports a
+    // duplicate folder that does not exist.
+    <div className="space-y-3" data-testid="property-documents">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-sm font-semibold text-neutral-700">
           Documents

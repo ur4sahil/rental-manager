@@ -73,6 +73,17 @@ function admin() {
 // reports the error instead.
 async function fileUtilityDocument(sb, { companyId, property, path, safeName, type, label }) {
   try {
+    // A document row with no path is worse than no row: it appears in the
+    // property's folder and does nothing when clicked. Refuse to file one.
+    //
+    // This is not hypothetical. The backfill that filed the existing
+    // statements used `WHERE pdf_storage_path IS NOT NULL`, which accepts the
+    // EMPTY STRING -- and 64 of 86 production bills hold '' rather than null.
+    // So 64 dead entries were filed before an E2E assertion on the signing
+    // request caught it.
+    if (!path || !String(path).trim()) {
+      return { id: null, error: "refused to file a document with no storage path" };
+    }
     let propertyId = null;
     if (property) {
       const { data: prop } = await sb.from("properties")
