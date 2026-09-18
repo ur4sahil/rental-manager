@@ -211,29 +211,111 @@ async function visionCheck(pngPath) {
     }
 
     // ---- 4. the amount, SET then READ BACK ----------------------------
+    //
+    // Two cases, and the page itself tells us which: select "Amount Due",
+    // read what it pre-fills, and compare with what a person approved.
+    //
+    //   approved == pre-fill   a FULL payment. Nothing is typed; the figure
+    //                          the portal chose is the figure approved.
+    //   approved <  pre-fill   a PARTIAL payment. Select the other-amount
+    //                          option, type the approved figure, and read it
+    //                          back.
+    //   approved >  pre-fill   ABORT. Paying more than the portal says is
+    //                          owed is never what anybody meant, and it is
+    //                          not this program's job to decide otherwise.
     const amountRadio = page.getByRole("radio", { name: book.amountRadio }).first();
     if (await amountRadio.count().catch(() => 0)) {
       await amountRadio.check({ timeout: 8000 }).catch(() => {});
       log(`selected "${book.amountRadio}"`);
     }
-    const boxes = page.locator('input[type="text"], input[type="number"]');
-    let filled = null;
-    const boxCount = await boxes.count().catch(() => 0);
-    for (let i = 0; i < boxCount; i++) {
-      const v = (await boxes.nth(i).inputValue().catch(() => "")) || "";
-      if (/^\$?\s?[\d,]+\.\d{2}$/.test(v.trim())) { filled = { idx: i, value: v.trim() }; break; }
-    }
+
+    // The money-shaped field on the form.
+    const findAmountBox = async () => {
+      const boxes = page.locator('input[type="text"], input[type="number"]');
+      const n = await boxes.count().catch(() => 0);
+      for (let i = 0; i < n; i++) {
+        const v = (await boxes.nth(i).inputValue().catch(() => "")) || "";
+        if (/^\$?\s?[\d,]+\.\d{2}$/.test(v.trim())) return { idx: i, value: v.trim() };
+      }
+      return null;
+    };
+
+    let filled = await findAmountBox();
     if (!filled) done("changed", { error: "no amount field found on the payment form" });
 
-    const shown = Number(filled.value.replace(/[^0-9.]/g, ""));
-    log(`form pre-filled with $${shown.toFixed(2)}`);
-    if (Math.abs(shown - wantAmount) > 0.005) {
+    const due = Number(filled.value.replace(/[^0-9.]/g, ""));
+    log(`portal says $${due.toFixed(2)} is due`);
+
+    if (wantAmount > due + 0.005) {
       done("amount_mismatch", {
-        error: `the form shows $${shown.toFixed(2)} but $${wantAmount.toFixed(2)} was approved`,
-        formAmount: shown, approvedAmount: wantAmount,
+        error: `approved $${wantAmount.toFixed(2)} is MORE than the $${due.toFixed(2)} the portal says is due`,
+        formAmount: due, approvedAmount: wantAmount,
       });
     }
-    log(`amount matches the approved $${wantAmount.toFixed(2)}`);
+
+    const isPartial = wantAmount < due - 0.005;
+    if (isPartial) {
+      log(`PARTIAL payment: $${wantAmount.toFixed(2)} of $${due.toFixed(2)}`);
+
+      // NEVER FALL BACK TO "AMOUNT DUE".
+      //
+      // If the other-amount control cannot be found, stop. A fallback here
+      // would pay the WHOLE bill when a partial was approved -- the worst
+      // outcome available, and the one that would happen quietly.
+      const otherNames = book.pay?.otherAmountRadio || [];
+      let picked = null;
+      for (const name of otherNames) {
+        const r = page.getByRole("radio", { name }).first();
+        if (await r.count().catch(() => 0)) {
+          await r.check({ timeout: 8000 }).catch(() => {});
+          picked = String(name);
+          break;
+        }
+      }
+      if (!picked) {
+        done("blocked", {
+          error: "a partial payment was approved but no other-amount option could be found — "
+               + "refusing to submit, because the form is still set to the full amount due",
+          approvedAmount: wantAmount, formAmount: due,
+          tried: otherNames.map(String),
+        });
+      }
+      log(`selected "${picked}"`);
+
+      // Re-find the box: choosing the other-amount option usually swaps in a
+      // different, empty input.
+      const box = page.locator('input[type="text"], input[type="number"]').nth(filled.idx);
+      const target = (await box.count().catch(() => 0)) ? box
+        : page.locator('input[type="text"], input[type="number"]').first();
+      await target.fill("").catch(() => {});
+      await target.fill(wantAmount.toFixed(2)).catch(() => {});
+      await page.waitForTimeout(400);
+
+      // READ IT BACK. Typing is not the same as having typed: a masked or
+      // formatted field can hold something other than what was sent to it.
+      const after = (await target.inputValue().catch(() => "")) || "";
+      const typed = Number(after.replace(/[^0-9.]/g, ""));
+      if (!Number.isFinite(typed) || Math.abs(typed - wantAmount) > 0.005) {
+        done("amount_mismatch", {
+          error: `typed $${wantAmount.toFixed(2)} but the field reads "${after}"`,
+          formAmount: typed, approvedAmount: wantAmount,
+        });
+      }
+      log(`field reads back $${typed.toFixed(2)} — matches the approved amount`);
+      filled = { idx: filled.idx, value: after.trim() };
+    } else {
+      log(`amount matches the approved $${wantAmount.toFixed(2)} in full`);
+    }
+
+    // What the form holds, whichever path got us here. One place, so every
+    // check below compares against the same number.
+    const submitting = Number(String(filled.value).replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(submitting) || Math.abs(submitting - wantAmount) > 0.005) {
+      done("amount_mismatch", {
+        error: `the form holds $${submitting} but $${wantAmount.toFixed(2)} was approved`,
+        formAmount: submitting, approvedAmount: wantAmount,
+      });
+    }
 
     // ---- 5. the second pair of eyes -----------------------------------
     const shot = path.join(shots, `${key}-pay-${wantAccount}-${Date.now()}.png`);
@@ -252,8 +334,15 @@ async function visionCheck(pngPath) {
       const visAmt = vis.amount_filled ? Number(String(vis.amount_filled).replace(/[^0-9.]/g, "")) : null;
       if (visAmt != null && Number.isFinite(visAmt) && Math.abs(visAmt - wantAmount) > 0.005) {
         done("amount_mismatch", {
-          error: `the field says $${shown.toFixed(2)} but the page VISIBLY shows $${visAmt.toFixed(2)}`,
-          formAmount: shown, visibleAmount: visAmt, approvedAmount: wantAmount,
+          // `submitting` is what the field holds NOW: the portal's own figure
+          // for a full payment, the typed figure for a partial. This read
+          // `shown`, a variable the partial-amount rework removed -- so this
+          // guard would have thrown a ReferenceError instead of reporting a
+          // mismatch. It sits inside a try, so the throw would have been
+          // swallowed and reported as a generic error. A guard that crashes
+          // is a guard that does not run.
+          error: `the field says $${submitting.toFixed(2)} but the page VISIBLY shows $${visAmt.toFixed(2)}`,
+          formAmount: submitting, visibleAmount: visAmt, approvedAmount: wantAmount,
           screenshot: shot, vision: vis,
         });
       }
@@ -273,7 +362,7 @@ async function visionCheck(pngPath) {
       const advance = page.getByRole("button", { name: book.advance }).first();
       const commit = page.getByRole("button", { name: book.commit }).first();
       done("dry_run", {
-        account: on, amount: wantAmount, formAmount: shown,
+        account: on, amount: wantAmount, formAmount: submitting,
         extrasCleared: ticked, screenshot: shot, vision: vis,
         nextButton: (await advance.count().catch(() => 0)) ? String(book.advance) : null,
         commitButton: (await commit.count().catch(() => 0)) ? String(book.commit) : null,

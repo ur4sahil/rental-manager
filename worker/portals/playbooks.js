@@ -188,6 +188,25 @@ const PLAYBOOKS = {
     pay: {
       payNav: /^Make Payment$/i,
       amountRadio: /^Amount Due/i,
+      // PARTIAL PAYMENTS -- candidates, NOT verified against the live form.
+      //
+      // Every other locator in this file was confirmed against a signed-in
+      // page. These were not: the payment form has only ever been reached in
+      // dry runs that stopped at the full amount due, so the label Washington
+      // Gas puts on its custom-amount option is unknown. These are the
+      // plausible wordings, tried in order.
+      //
+      // Guessing is safe ONLY because pay-bill.js aborts when none matches.
+      // It must never fall back to "Amount Due": that would pay the whole
+      // bill when a partial was approved. Confirm these on the first dry run
+      // and delete the ones that do not exist.
+      otherAmountRadio: [
+        /^Other Amount$/i,
+        /^Other amount/i,
+        /^Another Amount$/i,
+        /^Pay Other Amount$/i,
+        /other\s+amount/i,
+      ],
       // Anything that increases what leaves the account. Both are offered by
       // this portal and both are explicitly cleared, never assumed off.
       extras: [/Washington Area Fuel Fund/i, /round up/i],

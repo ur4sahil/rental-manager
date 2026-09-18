@@ -836,13 +836,15 @@ module.exports = async function handler(req, res) {
       }
 
       const { data: bill, error: billErr } = await sb.from("utility_bills")
-        .select("id, company_id, property, provider, statement_period, status")
+        .select("id, company_id, property, provider, statement_period, status, amount, amount_paid")
         .eq("id", billId).eq("company_id", cid).maybeSingle();
       if (billErr) return res.status(500).json({ error: billErr.message });
       if (!bill) return res.status(404).json({ error: "no such bill for this company" });
 
       // Already settled: say so and change nothing. A worker retrying after
       // a dropped response must not re-stamp a bill or file a second receipt.
+      // 'partial' is deliberately NOT here: a part-paid bill must still
+      // accept its next instalment. Only a fully settled one is a no-op.
       if (["paid", "settled"].includes(bill.status)) {
         return res.status(200).json({ ok: true, already: true, status: bill.status });
       }
@@ -876,9 +878,21 @@ module.exports = async function handler(req, res) {
 
       const paidAt = paidOn ? new Date(String(paidOn) + "T12:00:00").toISOString()
                             : new Date().toISOString();
+
+      // A PART PAYMENT MUST NOT MARK THE BILL PAID.
+      //
+      // amount_paid accumulates, and the status only becomes 'paid' once the
+      // total actually covers the bill. Otherwise a $10 payment on a $27.66
+      // bill reads as settled, the remaining $17.66 is invisible, and the
+      // provider's late notice is the thing that tells you.
+      const already = Number(bill.amount_paid) || 0;
+      const totalPaid = Math.round((already + amt) * 100) / 100;
+      const billTotal = Number(bill.amount) || 0;
+      const covered = billTotal > 0 ? totalPaid >= billTotal - 0.005 : true;
+
       const { error: bUp } = await sb.from("utility_bills").update({
-        status: "paid",
-        amount_paid: amt,
+        status: covered ? "paid" : "partial",
+        amount_paid: totalPaid,
         paid_at: paidAt,
         payment_confirmation: confirmation ? String(confirmation).slice(0, 200) : null,
         payment_method_selected: "portal_automation",
@@ -893,7 +907,9 @@ module.exports = async function handler(req, res) {
       }
 
       return res.status(200).json({
-        ok: true, bill_status: "paid",
+        ok: true, bill_status: covered ? "paid" : "partial",
+        amount_paid: totalPaid, bill_amount: billTotal,
+        remaining: billTotal > 0 ? Math.round((billTotal - totalPaid) * 100) / 100 : 0,
         receipt_path: receiptPath, receipt_document_id: receiptDocId,
         receipt_error: receiptError,
       });

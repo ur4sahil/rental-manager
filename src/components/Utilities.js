@@ -16,6 +16,7 @@ const BILL_STATUS = {
   pending_review: { label: "To review",   tone: "warn" },
   authorized:     { label: "Approved",    tone: "info" },
   paid:           { label: "Paid",        tone: "good" },
+  partial:        { label: "Part paid",   tone: "warn" },
   settled:        { label: "Recharged",   tone: "good" },
   error:          { label: "Read failed", tone: "bad" },
   excluded:       { label: "Ignored",     tone: "neutral" },
@@ -186,7 +187,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // books recorded a payment out of an account nobody chose, for money that
   // never moved. The money leaving the bank arrives through the bank feed,
   // which is the one record that cannot claim a payment that did not happen.
-  async function payBillViaPortal(bill) {
+  // `requested` is what a person chose to pay, which may be LESS than the
+  // bill. Omitted means the whole bill.
+  async function payBillViaPortal(bill, requested) {
   if (!guardSubmit("payViaPortal", bill?.id)) return;
   try {
   // The tenant's bill is not ours to pay. claim_utility_payment refuses it
@@ -202,20 +205,56 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     showToast(`There is no payment recipe for ${bill.provider_display || bill.provider} yet — record the payment manually instead.`, "error");
     return;
   }
-  const amount = safeNum(bill.amount);
-  if (!(amount > 0)) { showToast("This bill has no amount to pay.", "error"); return; }
+  const due = safeNum(bill.amount);
+  if (!(due > 0)) { showToast("This bill has no amount to pay.", "error"); return; }
+
+  const amount = requested == null ? due : safeNum(requested);
+  if (!(amount > 0)) { showToast("Enter an amount to pay.", "error"); return; }
+
+  // Never more than the bill. Overpaying is a different mistake from
+  // underpaying and nothing downstream is designed to absorb it; the RPC
+  // refuses it too, on the sum of everything already paid against this bill.
+  if (amount > due + 0.005) {
+    showToast(`That is more than the ${formatCurrency(due)} owed on this bill.`, "error");
+    return;
+  }
+  const isPartial = amount < due - 0.005;
+
+  // What is already committed against this bill, so the confirmation can say
+  // what the remainder will be rather than leaving it to be worked out.
+  const { data: priorRows } = await supabase.from("utility_payments")
+    .select("approved_amount, status")
+    .eq("company_id", companyId).eq("bill_id", bill.bill_id || bill.id)
+    .in("status", ["submitting", "paid", "unknown", "partial"]);
+  const prior = (priorRows || []).reduce((t, r) => t + safeNum(r.approved_amount), 0);
+  if (prior + amount > due + 0.005) {
+    showToast(`${formatCurrency(prior)} is already committed against this ${formatCurrency(due)} bill, so ${formatCurrency(amount)} would overpay it.`, "error");
+    return;
+  }
 
   if (!await showConfirm({
     message: `Pay ${bill.provider_display || bill.provider} ${formatCurrency(amount)} for ${bill.property}?\n\n`
-      + `This releases a real payment on the provider's site. It cannot be undone from here.\n\n`
-      + `The amount on the page is checked against this figure before anything is submitted, and the payment is refused if they differ.`,
+      + (isPartial
+          ? `This is a PART payment of the ${formatCurrency(due)} owed. ${formatCurrency(due - prior - amount)} will still be outstanding afterwards, and the bill stays open.\n\n`
+          : `This pays the bill in full.\n\n`)
+      + `It releases a real payment on the provider's site and cannot be undone from here.\n\n`
+      + (isPartial
+          ? `The amount is typed into the provider's form and read back before anything is submitted. If the form cannot be set to this figure, the payment is refused rather than sent at the full amount.`
+          : `The amount on the page is checked against this figure first, and the payment is refused if they differ.`),
     variant: "danger", confirmText: `Pay ${formatCurrency(amount)}`,
   })) return;
 
   // The statement, so next month's identical amount is a DIFFERENT payment
   // while a retry of this one is the same payment and gets refused.
   const statement = (bill.statement_period || formatLocalDate(new Date()).slice(0, 7));
-  const idemKey = `${portal}:${bill.account_number || bill.utility_account_id}:${statement}:${amount.toFixed(2)}`;
+  // The key includes what was ALREADY committed against this bill, not just
+  // the amount. That distinguishes a legitimate second $10 on a $27.66 bill
+  // (prior 0, then prior 10) from a double-click submitting the same intent
+  // twice (prior identical, so the same key, so refused by the unique index).
+  // Keying on the amount alone made the first case impossible and the second
+  // one indistinguishable from it.
+  const idemKey = `${portal}:${bill.account_number || bill.utility_account_id}:${statement}`
+    + `:${amount.toFixed(2)}:after${prior.toFixed(2)}`;
 
   const { error } = await supabase.from("utility_payments").insert([{
     company_id: companyId,
@@ -618,7 +657,20 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {bill.status === "pending_review" && bill.responsibility !== "tenant" && payablePortalFor(bill.provider_display || bill.provider) && <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>}
+  {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && payablePortalFor(bill.provider_display || bill.provider) && (<>
+  <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
+  {/* Paying less than the full amount is a real thing -- a payment plan, or
+      holding back a disputed portion. Asking for the figure here keeps it a
+      deliberate choice rather than something typed into the provider's form
+      and hoped for. */}
+  <TextLink tone="neutral" size="xs" onClick={async () => {
+    const raw = window.prompt(`How much of the ${formatCurrency(safeNum(bill.amount))} do you want to pay?`, "");
+    if (raw == null) return;
+    const v = Number(String(raw).replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(v) || v <= 0) { showToast("That is not an amount.", "error"); return; }
+    await payBillViaPortal(bill, v);
+  }}>Pay part</TextLink>
+</>)}
   </div>
   ))}
   </div>

@@ -72,8 +72,20 @@ assert("a portal with a read recipe but no pay recipe is NOT payable",
   Object.keys(PLAYBOOKS).length > payablePortals().length,
   "BGE, Pepco and WSSC can be read but not paid — they must not offer a Pay button");
 
-assert("the Pay button only appears for a payable provider",
-  /payablePortalFor\(bill\.provider_display \|\| bill\.provider\)\s*&&\s*<Btn/.test(utilities));
+// Assert the GUARD CHAIN, not whatever element happens to follow it. This
+// previously required `... && <Btn`, so wrapping both the full and part-pay
+// controls in a fragment broke the test while the behaviour was unchanged.
+const payControls = utilities.slice(
+  utilities.indexOf('["pending_review", "partial"].includes(bill.status)'),
+  utilities.indexOf('Pay part') + 200);
+assert("the pay controls sit behind status, responsibility AND payability",
+  /\["pending_review", "partial"\]\.includes\(bill\.status\)/.test(payControls)
+  && /bill\.responsibility !== "tenant"/.test(payControls)
+  && /payablePortalFor\(bill\.provider_display \|\| bill\.provider\)/.test(payControls),
+  "any one of the three missing offers a payment that cannot or should not happen");
+assert("BOTH the full and part-pay controls are behind that same guard",
+  /Pay this bill<\/Btn>/.test(payControls) && /Pay part<\/TextLink>/.test(payControls),
+  "a part-pay link outside the guard is a way to pay a tenant's bill");
 
 // ---- 3. money only reaches the books once it is CONFIRMED ------------
 assert("only a confirmed payment touches the bill",
