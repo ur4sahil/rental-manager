@@ -31,6 +31,23 @@ module.exports = defineConfig({
     // e2e/37-login-resilience.spec.js holding it. Blocking workers here is
     // still right, for the reason above and not that one.
     serviceWorkers: 'block',
+    // Let automation through Vercel's Security Checkpoint.
+    //
+    // Making preview deployments public traded one gate for another: the SSO
+    // login wall became a bot challenge, and headless Chromium fails it --
+    // "Failed to verify your browser, Code 11". A real browser passes, so
+    // people are unaffected; only automation is stopped.
+    //
+    // The project already has an automation-bypass secret, surfaced to
+    // deployments as VERCEL_AUTOMATION_BYPASS_SECRET. Read from the
+    // environment and never committed: a bypass token in the repo is a
+    // public key to every preview.
+    ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+      ? { extraHTTPHeaders: {
+            'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+            'x-vercel-set-bypass-cookie': 'true',
+          } }
+      : {}),
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
