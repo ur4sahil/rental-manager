@@ -14,6 +14,18 @@ module.exports = defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.APP_URL || 'http://localhost:3000',
+    // BLOCK SERVICE WORKERS.
+    //
+    // This app is a PWA. A service worker left over from an earlier build on
+    // the same origin intercepts the login request and aborts it --
+    // net::ERR_ABORTED on /auth/v1/token, with the form stuck on
+    // "Please wait..." and nothing in the console that names the cause.
+    // Proven by experiment: the only variable changed between a hung login
+    // and a rendered dashboard was this flag.
+    //
+    // Tests want the deployment that was just built, not whatever a previous
+    // one cached, so blocking is the correct default here regardless.
+    serviceWorkers: 'block',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
