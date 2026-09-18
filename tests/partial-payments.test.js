@@ -111,5 +111,61 @@ assert("the idempotency key includes what was already committed",
 assert("a part-paid bill shows as part paid, not settled",
   /partial:\s*\{ label: "Part paid"/.test(util));
 
+// ---- the button is the trigger, not a schedule -----------------------
+const watch = read("worker/portals/pay-watch.js");
+const ensure = read("worker/portals/ensure-session.js");
+
+assert("the watcher submits nothing unless --live is passed",
+  /const live = process\.argv\.includes\("--live"\);/.test(watch)
+  && /if \(live\) args\.push\("--live"\);/.test(watch));
+
+assert("the watcher only ever acts on rows a person approved",
+  /\.eq\("status", "approved"\)/.test(watch)
+  && /Nothing here decides to pay anything/.test(watch),
+  "it must carry out a decision, never make one");
+
+assert("a tick with nothing approved opens no browser",
+  /if \(!portals\.length\) return;/.test(watch),
+  "signing into a gas company for no reason is still signing into a gas company");
+
+assert("ticks cannot overlap",
+  /if \(working\) return;/.test(watch),
+  "two ticks driving one browser session lose track of which account is selected");
+
+assert("a session failure leaves the payment approved and untouched",
+  /leaving its payments approved and untouched/.test(watch),
+  "better to do nothing than to start a payment that cannot be verified");
+
+// ---- auto-login, and the lines it will not cross ---------------------
+assert("auto-login refuses BGE by name, rather than half-trying",
+  /NEEDS_A_PERSON = \{[\s\S]{0,200}bge:/.test(ensure),
+  "BGE mails a code; a browser parked on a code screen is worse than a clear refusal");
+
+assert("a code-entry screen anywhere stops the run",
+  /needs_a_person/.test(ensure)
+  && /verification code\|enter the code/.test(ensure));
+
+assert("no key means stop, not a weaker fallback",
+  /ENCRYPTION_KEY is not set, so the stored credentials cannot be opened/.test(ensure));
+
+assert("a key mismatch names both fingerprints",
+  /these credentials were encrypted under key \$\{match\.credential_key_fp\}/.test(ensure),
+  '"decryption failed" sends someone looking for corruption that is not there');
+
+assert("signed-in is decided by the playbook's signals, not a URL guess",
+  /book\.signedOutSignals \|\| \[\]/.test(ensure)
+  && !/page\.url\(\)\.includes/.test(ensure));
+
+assert("the session file is written 0600",
+  /mode: 0o600/.test(ensure));
+
+// Check for the THING, not the word: the file says "no stealth plugin, no
+// fingerprint spoofing, no IP rotation" in prose, which a naive negative
+// match reads as evidence of the opposite.
+assert("no stealth, spoofing or challenge bypass is actually imported",
+  /No stealth plugin, no fingerprint spoofing, no IP rotation/.test(ensure)
+  && !/require\(['"](puppeteer-extra|playwright-extra)|addExtra|StealthPlugin|solveRecaptcha|2captcha|anticaptcha/i.test(ensure),
+  "the standard playbooks.js sets: the account holder's own credentials, the site's own form, once");
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);
