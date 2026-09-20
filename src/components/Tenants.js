@@ -114,7 +114,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [msgAttachment, setMsgAttachment] = useState(null);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = usePersistedView("tenants", "card", ["card", "table", "compact"]);
   const [tenantSearch, setTenantSearch] = useState("");
   // Multi-select, and remembered. These were single-select, so "current
@@ -122,7 +122,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // lost on navigation. An empty list means everything, which is what the
   // old "all" sentinel meant.
   const [tenantFilter, setTenantFilter] = usePersistedList("tenants-status", [],
-    ["active", "current", "notice", "past", "expired", "inactive"]);
+    ["active", "notice", "past", "expired", "inactive"]);
   // Name ascending is how the list was ordered before sorting existed, so
   // the default view does not change for anyone.
   const [tenantSort, setTenantSort] = useState({ key: "name", dir: "asc" });
@@ -293,7 +293,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       // Occupancy follows from the answer, so the Properties page stops
       // disagreeing with the Tenants page.
       if (t.property) {
-        if (answer === "current") {
+        // The property now derives its own status from the tenant record
+        // (trigger tenants_sync_property), so this write is redundant -- and
+        // if it disagreed, the trigger would win. Kept only as a no-op guard.
+        if (answer === "active") {
           await supabase.from("properties").update({ status: "occupied" })
             .eq("company_id", companyId).eq("address", t.property).neq("status", "occupied");
         } else {
@@ -327,7 +330,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   try {
   if (form.email && !isValidEmail(form.email)) { showToast("Please enter a valid email address.", "error"); return; }
   if (!form.name.trim()) { showToast("Tenant name is required.", "error"); return; }
-  if (!form.email.trim() || !form.email.includes("@") || !form.email.includes(".")) { showToast("Please enter a valid email address.", "error"); return; }
+  // (form.email || "") -- a tenant loaded for edit can have a null email
+  // (startEdit copies t.email straight in), and null.trim() throws
+  // "Cannot read properties of null (reading 'trim')". That crash fired
+  // BEFORE the update, so the save silently did nothing: an email-less
+  // tenant could not be saved from the edit form at all. This was the
+  // Stanley Ibe symptom -- the record would not flip to active.
+  const _email = (form.email || "").trim();
+  if (!_email || !_email.includes("@") || !_email.includes(".")) { showToast("Please enter a valid email address.", "error"); return; }
   if (!form.property) { showToast("Please select a property.", "error"); return; }
   if (form.rent && (isNaN(Number(form.rent)) || Number(form.rent) < 0)) { showToast("Rent must be a valid positive number.", "error"); return; }
   // #27: Stale data check — verify record hasn't been modified by another user
@@ -401,7 +411,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   setShowForm(false);
   setEditingTenant(null);
-  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "current", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
   // Hand back to the side panel this edit came from, showing the saved
   // values rather than the stale ones the panel was opened with.
   if (editReturnTo) {
@@ -1050,7 +1060,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   try {
   if (!newMoveOut) return;
   if (!selectedTenant?.id) return;
-  const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "current" }).eq("company_id", companyId).eq("id", selectedTenant.id);
+  const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
   if (error) { pmError("PM-3004", { raw: error, context: "renew lease" }); return; }
   // #4: Update active lease end_date if one exists, or create one
   // Scoped to this tenant, not to their name. Matching on tenant_name
@@ -1090,7 +1100,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("update", "tenants", `Lease renewed for ${selectedTenant.name} until ${newMoveOut}`, selectedTenant.id, userProfile?.email, userRole, companyId);
   setLeaseModal(null);
   fetchTenants();
-  setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "current" });
+  setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "active" });
   } finally { guardRelease("renewLease"); }
   }
 
@@ -1519,7 +1529,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         </div>
         <div className="flex flex-wrap gap-2">
           <Btn size="sm" variant="success" disabled={reviewBusy === t.id}
-               onClick={() => resolveReview(t, "current")}>Current tenant</Btn>
+               onClick={() => resolveReview(t, "active")}>Current tenant</Btn>
           <Btn size="sm" variant="secondary" disabled={reviewBusy === t.id}
                onClick={() => resolveReview(t, "past")}>Past tenant</Btn>
           <Btn size="sm" variant="danger" disabled={reviewBusy === t.id}
@@ -1574,7 +1584,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
   <div className="text-xs text-subtle-400">{t.property} · Archived {fmtDate(t.archived_at)}{t.archived_by ? " by " + t.archived_by : ""}</div>
   </div>
-  <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
+  <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
   </div>
   ))}
   </div>
@@ -1594,7 +1604,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-neutral-400">{archivedDetail.tenant.email || ""}{archivedDetail.tenant.phone ? " · " + archivedDetail.tenant.phone : ""}</div>
   <div className="text-xs text-neutral-400">{archivedDetail.tenant.property}</div>
   </div>
-  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", archivedDetail.tenant.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("id", archivedDetail.tenant.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + archivedDetail.tenant.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); setArchivedDetail(null); fetchTenants(); } finally { guardRelease("restoreTenant", archivedDetail.tenant.id); } }}>♻️ Restore</Btn>
+  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", archivedDetail.tenant.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", archivedDetail.tenant.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + archivedDetail.tenant.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); setArchivedDetail(null); fetchTenants(); } finally { guardRelease("restoreTenant", archivedDetail.tenant.id); } }}>♻️ Restore</Btn>
   </div>
   <div className="flex border-b border-neutral-200 mb-4 overflow-x-auto">
   {[
@@ -2093,7 +2103,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1 items-center"><Input type="number" min="0" step="0.01" placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm flex-1 min-w-0 focus:border-brand-300 focus:outline-none" /><Select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="border border-brand-100 rounded-lg px-2 py-2 text-sm w-12 shrink-0 focus:outline-none"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
-  {["active", "current", "notice", "past", "expired", "inactive"].map(s => <option key={s}>{s}</option>)}
+  {/* Explicit values, and no "current": it was the same thing as "active"
+      written by a different screen, and the database now stores only
+      "active". Options without a value attribute work in a browser by
+      falling back to their text, but nothing else can locate them. */}
+  {["active", "notice", "past", "expired", "inactive"].map(s => <option key={s} value={s}>{s}</option>)}
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>

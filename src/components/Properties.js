@@ -4331,7 +4331,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} {...keyboardActivate} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }}>Edit</TextLink>}
-  {!isReadOnly(p) && p.status === "vacant" && <TextLink tone="positive" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }}>Add Tenant</TextLink>}
+  {/* isOccupied: TRUE. Adding a tenant IS occupying the property. It used to
+      pass false -- the property's current state -- and the wizard hides its
+      tenant step for a vacant property, so "Add Tenant" opened a wizard with
+      no tenant step in it. With occupancy now derived from the tenant record,
+      the property flips to occupied on its own the moment the tenant is
+      saved; this flag only tells the wizard which steps to show. */}
+  {!isReadOnly(p) && p.status === "vacant" && <TextLink tone="positive" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: true, addingTenant: true, tenant: "", rent: 0, isNew: false, startAtStep: "tenant_lease" }); }}>Add Tenant</TextLink>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)}>Deactivate</TextLink>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)}>Reactivate</TextLink>}
   {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
