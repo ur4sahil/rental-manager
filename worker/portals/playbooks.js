@@ -159,6 +159,24 @@ const PLAYBOOKS = {
     // account holding ten properties means nothing.
     identifyBy: "address",
     addressNear: /([\dA-Z][A-Za-z0-9 .'-]{6,44}?(?:ST|AVE|DR|CT|RD|LN|PL|TER|WAY|BLVD|CIR|PKWY))[^$]{0,60}?Balance:\s*\$/i,
+    // PAYING -- UNVERIFIED against the live pay form.
+    //
+    // WSSC is its own platform, not Exelon, so these selectors are guessed
+    // from the common shape of a water-utility bill-pay page rather than a
+    // shared recipe. No captcha challenge blocked the read sign-in. As
+    // everywhere, pay-bill.js aborts if no selector matches -- it never falls
+    // back to the full amount -- so a dry run confirms or corrects each one.
+    pay: {
+      payNav: /^(Make a Payment|Make Payment|Pay Bill|Pay My Bill|Pay Now)$/i,
+      amountRadio: /^(Amount Due|Total Amount Due|Current Balance|Full Balance)/i,
+      otherAmountRadio: [
+        /^Other Amount$/i, /^Other amount/i, /^Pay Other Amount$/i,
+        /^Enter Amount/i, /^Custom Amount$/i, /other\s+amount/i,
+      ],
+      extras: [/round\s*up/i, /donat/i],
+      advance: /^(Next|Continue|Review)$/i,
+      commit: /^(Submit|Confirm|Make Payment|Pay Now|Submit Payment)$/i,
+    },
   },
 
   washington_gas: {
@@ -265,7 +283,29 @@ const PLAYBOOKS = {
     // Exelon portals commonly put the balance on a dashboard card and the
     // due date only on the billing page behind this link.
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
+    // PAYING -- UNVERIFIED against the live pay form.
+    //
+    // Pepco and BGE are Exelon portals on the Opower billing UI, so this is
+    // the same recipe shape as the read flow already confirmed. But the
+    // payment PAGE has only been reached in read runs; these selectors are
+    // candidates. Guessing is safe only because pay-bill.js aborts when none
+    // matches -- it must never fall back to "Amount Due", which would pay the
+    // whole bill when a partial was approved. A dry run confirms or corrects
+    // each label, exactly as Washington Gas's did.
+    pay: {
+      payNav: /^(Make a Payment|Make Payment|Pay Bill|Pay Now)$/i,
+      amountRadio: /^(Amount Due|Total Amount Due|Current Balance|Pay Full Amount)/i,
+      otherAmountRadio: [
+        /^Other Amount$/i, /^Other amount/i, /^Pay Other Amount$/i,
+        /^Enter an amount/i, /^Custom Amount$/i, /other\s+amount/i,
+      ],
+      // Exelon offers round-up / charity donations at checkout.
+      extras: [/round\s*up/i, /donat/i, /neighbor/i, /fuel\s*fund/i],
+      advance: /^(Next|Continue|Review)$/i,
+      commit: /^(Submit|Confirm|Make Payment|Pay Now|Submit Payment)$/i,
+    },
   },
+
 
   bge: {
     // Bounced to the public site = signed out. The button names drift with
@@ -310,7 +350,29 @@ const PLAYBOOKS = {
     dueDate: DUE_DATE_CANDIDATES,
     identifyBy: "address",
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
+    // PAYING -- UNVERIFIED, and a session needs a PERSON.
+    //
+    // Same Exelon/Opower pay shape as Pepco. BGE mails a verification code at
+    // sign-in (mfa: "code-on-signin"), so ensure-session.js cannot create a
+    // session for it unattended and refuses it by name. A payment is still
+    // possible: a person runs `enroll.js bge` once, signs in with the code,
+    // and ensure-session then REUSES that live session -- it only refuses
+    // when it would have to sign in itself. So the Pay button is offered; the
+    // requirement is a manual enroll first, not that BGE can never be paid.
+    pay: {
+      payNav: /^(Make a Payment|Make Payment|Pay Bill|Pay Now)$/i,
+      amountRadio: /^(Amount Due|Total Amount Due|Current Balance|Pay Full Amount)/i,
+      otherAmountRadio: [
+        /^Other Amount$/i, /^Other amount/i, /^Pay Other Amount$/i,
+        /^Enter an amount/i, /^Custom Amount$/i, /other\s+amount/i,
+      ],
+      extras: [/round\s*up/i, /donat/i, /neighbor/i, /fuel\s*fund/i],
+      advance: /^(Next|Continue|Review)$/i,
+      commit: /^(Submit|Confirm|Make Payment|Pay Now|Submit Payment)$/i,
+      needsManualSession: true,
+    },
   },
+
 
   smeco: {
     provider: "SMECO",

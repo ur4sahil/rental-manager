@@ -148,6 +148,34 @@ assert("a code-entry screen anywhere stops the run",
 assert("no key means stop, not a weaker fallback",
   /ENCRYPTION_KEY is not set, so the stored credentials cannot be opened/.test(ensure));
 
+// ---- the three new pay recipes ---------------------------------------
+const { PLAYBOOKS: PB, payablePortals: PP } = require("../worker/portals/playbooks.js");
+for (const portal of ["pepco", "bge", "wssc"]) {
+  const rec = PB[portal].pay;
+  assert(`${portal} has a pay recipe`, !!rec && !!rec.commit && !!rec.payNav,
+    "the app offers a Pay button only for a portal with a pay recipe");
+  assert(`${portal} has other-amount candidates for partials`,
+    Array.isArray(rec.otherAmountRadio) && rec.otherAmountRadio.length > 0
+    && rec.otherAmountRadio.every(r => r instanceof RegExp));
+  assert(`${portal} is marked unverified against the live form`,
+    /UNVERIFIED/.test(io_read(portal)),
+    "every other locator was confirmed on a signed-in page; these were not");
+}
+function io_read(portal) {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "worker", "portals", "playbooks.js"), "utf8");
+  const i = src.indexOf(portal + ": {");
+  return src.slice(i, src.indexOf("\n  },", i));
+}
+assert("all four portals are payable now",
+  ["wssc","washington_gas","pepco","bge"].every(k => PP().some(p => p.portal === k)));
+assert("BGE's pay recipe records that a manual session is needed",
+  PB.bge.pay.needsManualSession === true,
+  "BGE mails a code, so a person enrolls once and the worker reuses that session");
+const ensureSrc = read("worker/portals/ensure-session.js");
+assert("ensure-session reuses a session BEFORE refusing a code-portal",
+  ensureSrc.indexOf("fs.existsSync(sessionFile)") < ensure.indexOf("if (NEEDS_A_PERSON[portal]) die"),
+  "refusing BGE at the top would throw away a good manual session");
+
 assert("a key mismatch names both fingerprints",
   /these credentials were encrypted under key \$\{match\.credential_key_fp\}/.test(ensure),
   '"decryption failed" sends someone looking for corruption that is not there');

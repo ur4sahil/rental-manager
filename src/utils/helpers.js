@@ -312,8 +312,17 @@ export const REQUIRED_TENANT_DOCS = [
 // Aliases exist because the data is messy: production says "Washington Gas",
 // "Wash Gas" and "WGL" for the same company.
 export const PAYABLE_PORTALS = [
+  { portal: "wssc", provider: "WSSC",
+    aliases: ["wssc", "wssc water", "washington suburban sanitary commission"] },
   { portal: "washington_gas", provider: "Washington Gas",
     aliases: ["washington gas", "wash gas", "washington gas light", "wgl", "wgl gas"] },
+  { portal: "pepco", provider: "Pepco",
+    aliases: ["pepco", "potomac electric", "potomac electric power"] },
+  // BGE is payable, but a payment needs a person to sign in once (it mails a
+  // code). The button is offered; the worker refuses to sign into BGE on its
+  // own and reuses a session the person created with enroll.js.
+  { portal: "bge", provider: "BGE",
+    aliases: ["bge", "baltimore gas and electric", "baltimore gas & electric"] },
 ];
 
 // The portal key for a provider name, or null when it cannot be paid.

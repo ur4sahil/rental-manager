@@ -25,8 +25,9 @@
 // No stealth plugin, no fingerprint spoofing, no IP rotation, no attempt to
 // solve, replay or bypass a challenge. If a portal puts a real challenge in
 // the way, or wants a code sent to a phone, this stops and says so. BGE is
-// exactly that case: it mails a verification code, so it is refused here by
-// name rather than half-attempted.
+// exactly that case: it mails a verification code, so it will not sign IN on
+// its own -- but it will still REUSE a session a person created with
+// enroll.js, so a BGE payment works once that manual sign-in exists.
 //
 // THE KEY
 //
@@ -163,7 +164,10 @@ async function signedIn(page, book) {
   const book = PLAYBOOKS[portal];
   if (!book) die(`usage: ensure-session.js <${Object.keys(PLAYBOOKS).join("|")}> [--headed]`);
 
-  if (NEEDS_A_PERSON[portal]) die(NEEDS_A_PERSON[portal]);
+  // NEEDS_A_PERSON is enforced at the sign-in step below, NOT here: a
+  // portal like BGE can still reuse a session a person already created; it
+  // just cannot sign in unattended. Refusing at the top would throw away a
+  // perfectly good manual session.
 
   const chromium = loadPlaywright();
   fs.mkdirSync(SESSION_DIR, { recursive: true, mode: 0o700 });
@@ -191,6 +195,11 @@ async function signedIn(page, book) {
   }
 
   // ---- 2. sign in, honestly ------------------------------------------
+  //
+  // Reached only when there was no live session to reuse. A portal that mails
+  // a code cannot be signed into here, so it stops with a clear instruction
+  // rather than parking a browser on a code screen.
+  if (NEEDS_A_PERSON[portal]) die(NEEDS_A_PERSON[portal]);
   const { username, password } = await credentialsFor(portal, book);
 
   // slowMo, because this is a real form being filled by what should look
