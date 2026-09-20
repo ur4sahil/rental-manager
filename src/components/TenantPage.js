@@ -22,14 +22,20 @@ const MONTH_MS = 1000 * 60 * 60 * 24 * 30.44;
 // "Expired 19 months ago" / "Ends in 3 months". Returns null when there is no
 // end date, because "—" in a status row reads as "fine" and it is not.
 function leaseStanding(tenant) {
+  // Leases here go month-to-month when they are not renewed, so a lease-end
+  // date in the PAST is a normal ongoing tenancy, not an expiry. It is called
+  // out gently ("Month-to-month since ...") rather than flagged as a problem,
+  // and never drives the tenant to past or the property to vacant -- only an
+  // actual move-out does that. Only a FUTURE end date is a countdown.
   const end = tenant?.lease_end_date || tenant?.move_out;
   if (!end) return null;
   const d = parseLocalDate(String(end).slice(0, 10));
   if (isNaN(d.getTime())) return null;
   const months = Math.round((Date.now() - d.getTime()) / MONTH_MS);
-  if (months > 0) return { expired: true, text: `Expired ${months === 1 ? "1 month" : months + " months"} ago` };
-  if (months === 0) return { expired: false, text: "Ends this month" };
-  return { expired: false, text: `Ends in ${-months === 1 ? "1 month" : -months + " months"}` };
+  if (months > 0) return { expired: false, monthToMonth: true,
+    text: `Month-to-month since ${months === 1 ? "1 month" : months + " months"} ago` };
+  if (months === 0) return { expired: false, text: "Term ends this month" };
+  return { expired: false, text: `Term ends in ${-months === 1 ? "1 month" : -months + " months"}` };
 }
 
 
@@ -115,7 +121,7 @@ export default function TenantPage({
             </div>
             <div className="flex gap-1.5 flex-wrap mt-2">
               <span className={"text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full "
-                + (String(tenant.lease_status).toLowerCase() === "current" ? "bg-positive-50 text-positive-700" : "bg-neutral-100 text-neutral-500")}>
+                + (["active","current"].includes(String(tenant.lease_status).toLowerCase()) ? "bg-positive-50 text-positive-700" : "bg-neutral-100 text-neutral-500")}>
                 {tenant.lease_status ? String(tenant.lease_status)[0].toUpperCase() + String(tenant.lease_status).slice(1) : "No status"} tenant
               </span>
               {parties.length > 1 && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{parties.length} on the lease</span>}
@@ -204,11 +210,9 @@ export default function TenantPage({
           <b className="text-neutral-800">Rent is not set on this tenant</b>, yet {formatCurrency(balance)} is outstanding. Nothing will bill automatically and arrears will stop accruing.
         </DetailAlert>
       )}
-      {standing?.expired && String(tenant.lease_status).toLowerCase() === "current" && (
-        <DetailAlert fix="Renew or move out" onFix={() => onRenew?.(tenant)}>
-          <b className="text-neutral-800">The lease ended {fmtDate(tenant.lease_end_date || tenant.move_out)}</b> and the tenancy still reads Current.
-        </DetailAlert>
-      )}
+      {/* No "lease expired" warning: leases go month-to-month when not
+          renewed, so a passed end date is a normal ongoing tenancy. The
+          Renew action is offered from the actions panel, not as an alert. */}
       {parties.length > 1 && parties.every(p => !p.email) && (
         <DetailAlert fix="Split contacts" onFix={() => onEdit?.(tenant)}>
           <b className="text-neutral-800">Both tenants share one contact record</b> and neither has an email, so a notice reaches whoever answers the phone first.

@@ -383,7 +383,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           let openAt = savedStep;
           const jumpId = wizardData?.startAtStep;
           if (jumpId) {
-            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (existing.wizard_data?.propForm?.status || propForm.status), userRole }), "review"];
+            // When ADDING A TENANT to a vacant property, compute the step list
+            // as if occupied -- otherwise "tenant_lease" is not in the list
+            // (the saved status is still vacant), indexOf returns -1, and the
+            // jump is silently dropped onto step 1. That is the loop the user
+            // was stuck in: the wizard opened on Property Details with no way
+            // to reach the tenant step.
+            const statusForSteps = wizardData?.addingTenant
+              ? "occupied"
+              : (existing.wizard_data?.propForm?.status || propForm.status);
+            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: statusForSteps, userRole }), "review"];
             const idx = stepsForProp.indexOf(jumpId);
             if (idx >= 0) openAt = idx + 1;
           }
@@ -393,7 +402,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           if (existing.wizard_data) {
             try {
             const wd = typeof existing.wizard_data === "string" ? JSON.parse(existing.wizard_data) : existing.wizard_data;
-            if (wd.propForm) setPropForm(wd.propForm);
+            if (wd.propForm) setPropForm(wizardData?.addingTenant ? { ...wd.propForm, status: "occupied" } : wd.propForm);
             if (wd.tenantForm) setTenantForm(wd.tenantForm);
             if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
             if (wd.savedAddress) setSavedAddress(wd.savedAddress);
@@ -433,7 +442,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             if (completed.wizard_data) {
               try {
               const wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : completed.wizard_data;
-              if (wd.propForm) setPropForm(wd.propForm);
+              if (wd.propForm) setPropForm(wizardData?.addingTenant ? { ...wd.propForm, status: "occupied" } : wd.propForm);
               if (wd.tenantForm) setTenantForm(wd.tenantForm);
               if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
               if (wd.savedAddress) setSavedAddress(wd.savedAddress);
@@ -475,8 +484,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         if (wizardData.propertyId) {
           const { data: existProp } = await supabase.from("properties").select("*").eq("id", wizardData.propertyId).eq("company_id", companyId).maybeSingle();
           if (existProp) {
-            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: existProp.status || "vacant", notes: existProp.notes || "" };
+            // Adding a tenant means occupying the property, so the form
+            // opens as occupied -- otherwise getWizardApplicableSteps drops
+            // the tenant step and the jump below has nowhere to land. This is
+            // the fall-through path for a property that has never been through
+            // the wizard, which is exactly what "Add Tenant" on a fresh
+            // vacant property hits, and where the earlier fix did not reach.
+            const _statusForForm = wizardData?.addingTenant ? "occupied" : (existProp.status || "vacant");
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "" };
             setPropForm(filledProp);
+            // Jump to the requested step (e.g. tenant_lease for Add Tenant).
+            if (wizardData?.startAtStep) {
+              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: _statusForForm, userRole }), "review"];
+              const jIdx = stepsForProp.indexOf(wizardData.startAtStep);
+              if (jIdx >= 0) setStep(jIdx + 1);
+            }
             setSavedPropertyId(wizardData.propertyId);
             setSavedAddress(existProp.address);
             // Load related data
@@ -2812,7 +2834,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const shouldRestore = await showConfirm({ message: `This property has ${archivedTenants.length} archived tenant(s): ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them and their leases?` });
   if (shouldRestore) {
   const tenantIds = archivedTenants.map(t => t.id);
-  await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "current" }).eq("company_id", companyId).in("id", tenantIds);
+  await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("company_id", companyId).in("id", tenantIds);
   await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("property", prop.address).eq("status", "terminated");
   }
   }

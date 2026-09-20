@@ -2008,7 +2008,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-400 block mb-1">New Status</label>
   <Select id="bulk-status-val"  >
-  <option value="active">Active</option><option value="current">Current</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
+  <option value="active">Active</option><option value="notice">Notice</option><option value="past">Past</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
   </div>
   <Btn variant="purple" className="w-full" onClick={async () => {

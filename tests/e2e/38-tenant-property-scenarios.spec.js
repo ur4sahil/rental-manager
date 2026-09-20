@@ -167,11 +167,14 @@ test.describe('Tenant ↔ Property scenarios', () => {
     await page.waitForTimeout(2000);
     await shot(page, 'S2 wizard opened');
 
-    // The wizard must contain a tenant step now. It used to hide it because
-    // the property was vacant -- which is the whole reason you were adding a
-    // tenant.
-    const body = await page.locator('body').innerText();
-    expect(/Tenant/i.test(body) && /Lease/i.test(body), 'a Tenant & Lease step is present').toBeTruthy();
+    // Land ON the tenant step, not merely have it exist. "Add Tenant" used to
+    // open on Step 1 (Property Details) with no way to reach the tenant step
+    // -- the loop the user was stuck in -- because the saved status was still
+    // vacant when the step list was computed. The heading names the step;
+    // asserting on page text alone was too weak (Property Details also
+    // contains the words "tenant" and "lease").
+    await expect(page.locator('h2, h3').filter({ hasText: /Tenant.*Lease|Lease.*Tenant/i }).first(),
+      'the wizard opened on the Tenant & Lease step').toBeVisible({ timeout: 12000 });
     await page.keyboard.press('Escape').catch(() => {});
   });
 
