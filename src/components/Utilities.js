@@ -925,7 +925,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
           }}>Pay</TextLink>
         )}
         {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && (
-          <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
+          u.responsibility === "tenant"
+            // The tenant owes this — it is not the owner's to pay on a card.
+            // Greyed, not hidden, so it reads as "blocked" rather than missing;
+            // it opens only after an admin approves paying it on the tenant's behalf.
+            ? <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+            : <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
         )}
         {u.pdf_storage_path && (
           <TextLink tone="neutral" size="xs" className="mr-2" onClick={async () => {
