@@ -489,7 +489,13 @@ export function TabBar({ tabs, active, onChange, size = "md", variant = "underli
         return (
           <button key={t.id} type="button" role="tab" aria-selected={on}
             onClick={() => onChange(t.id)}
-            className={`${pad} font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1.5 ${look} ${FOCUS_RING}`}>
+            // shrink-0: without it a flex child compresses BELOW its content
+            // width, so whitespace-nowrap text overflows the button and
+            // overlaps the next tab. On a phone that read as
+            // "For Review (296)cognized (254)ategorized" -- the labels crammed
+            // into each other instead of the strip scrolling. shrink-0 keeps
+            // each tab its natural width and lets overflow-x-auto scroll.
+            className={`${pad} font-medium whitespace-nowrap shrink-0 transition-colors inline-flex items-center gap-1.5 ${look} ${FOCUS_RING}`}>
             {t.icon && <span className="material-icons-outlined text-base">{t.icon}</span>}
             {t.label}
             {t.count != null && <span className="text-2xs text-neutral-400">({t.count})</span>}

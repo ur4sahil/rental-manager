@@ -18,7 +18,7 @@ function HousyMark() {
   return (
     <span className="inline-flex items-center gap-0.5 mr-1 align-middle" title="Suggested by Housy AI">
       <span className="material-icons-outlined leading-none" style={{ fontSize: "11px" }}>auto_awesome</span>
-      <span className="text-2xs font-semibold tracking-tight">Housy</span>
+      <span className="text-2xs font-semibold tracking-tight">Housy&nbsp;AI</span>
     </span>
   );
 }
@@ -2959,7 +2959,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           // reviewer deserves to know how sure it claimed to be, never
           // used to decide anything.
           return <span className="ml-1.5 text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full"
-            title={c == null ? "Proposed by Housy" : `Housy proposed this, self-rated ${Math.round(c * 100)}% — review it`}>Housy</span>;
+            title={c == null ? "Proposed by Housy AI" : `Housy AI proposed this, self-rated ${Math.round(c * 100)}% — review it`}>Housy&nbsp;AI</span>;
         })()}
         </>) },
       { key: "payee", label: "PAYEE", className: "text-neutral-500 truncate max-w-32",
