@@ -685,6 +685,17 @@ export async function autoPostRecurringEntries(companyId) {
   } else {
     cursor = new Date(today.getFullYear(), today.getMonth(), 1);
   }
+  // Recurring rent posts FORWARD only. A schedule may never reach back and
+  // bill a period from before it was created — that backfill is precisely how
+  // a re-created (duplicate) schedule re-billed a tenant's entire history in
+  // one run (Feb–Sep at once). Catch-up since the schedule's OWN creation is
+  // still allowed (e.g. the cron missed a month); anything earlier is not
+  // this schedule's to bill and belongs to first-month rent / a manual charge.
+  if (entry.created_at) {
+    const c = new Date(entry.created_at);
+    const createdFloor = new Date(c.getFullYear(), c.getMonth(), 1);
+    if (cursor < createdFloor) cursor = createdFloor;
+  }
   const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
   while (cursor <= today && posted < MAX) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
