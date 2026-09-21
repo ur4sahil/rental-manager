@@ -44,9 +44,26 @@ const { WebSocketServer } = require("ws");
 if (!chromium) { console.error("playwright not found (looked in tests/)"); process.exit(1); }
 
 const PORT = Number(process.env.PORT) || 3010;
-// A shared secret the app appends as ?token=… . Absent means dev-only: refuse
-// to run wide open so a misconfigured deploy can't expose a driveable browser.
+// Per-session tokens. The app mints a short-lived HMAC token (api/stream-session)
+// carrying the provider/account/amount and an expiry; we verify the signature
+// and expiry here with the shared STREAM_JWT_SECRET. No DB round-trip. A static
+// STREAM_TOKEN is honoured too, but only for local dev when no secret is set.
+const JWT_SECRET = process.env.STREAM_JWT_SECRET || "";
 const TOKEN = process.env.STREAM_TOKEN || "";
+function verifyToken(tok) {
+  if (JWT_SECRET) {
+    const [body, sig] = String(tok || "").split(".");
+    if (!body || !sig) return null;
+    const expect = crypto.createHmac("sha256", JWT_SECRET).update(body).digest("base64url");
+    const a = Buffer.from(sig), b = Buffer.from(expect);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    let p; try { p = JSON.parse(Buffer.from(body, "base64url").toString()); } catch { return null; }
+    if (p.exp && Date.now() > p.exp) return null;
+    return p; // { provider, account, amount, companyId, uid, exp, jti }
+  }
+  // Dev fallback: static shared token, no claims.
+  return TOKEN && tok === TOKEN ? {} : null;
+}
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR
   || path.join(require("os").homedir(), ".housy-sessions");
 const SHOTS = "/tmp/housy-shots";
@@ -67,10 +84,13 @@ const wss = new WebSocketServer({ server, maxPayload: 8 * 1024 * 1024 });
 
 wss.on("connection", async (ws, req) => {
   const url = new URL(req.url, "http://x");
-  if (TOKEN && url.searchParams.get("token") !== TOKEN) {
-    ws.close(4001, "unauthorized"); return;
-  }
-  const provider = (url.searchParams.get("provider") || "").toLowerCase();
+  // Auth: a valid per-session token is REQUIRED whenever a secret is set.
+  // Wide-open running is possible only in bare local dev (no secret, no token).
+  const claims = verifyToken(url.searchParams.get("token"));
+  if ((JWT_SECRET || TOKEN) && !claims) { ws.close(4001, "unauthorized"); return; }
+  // Provider/amount come from the SIGNED token when present, so the client
+  // can't widen its own grant by editing a query string.
+  const provider = (claims?.provider || url.searchParams.get("provider") || "").toLowerCase();
   const startUrl = url.searchParams.get("url") || null;
   const sessionId = crypto.randomBytes(4).toString("hex");
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };

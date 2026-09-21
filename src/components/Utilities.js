@@ -8,6 +8,7 @@ import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect } from "./shared";
+import PayBillModal from "./PayBillModal";
 
 // The lifecycle a bill actually has. "Paid or Ignore" was not a design
 // choice -- it was everything one status column on an account could say.
@@ -64,6 +65,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // Which account's bill history is open.
   const [historyFor_, setHistoryFor] = useState(null);
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
+  const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -659,6 +661,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
   {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && payablePortalFor(bill.provider_display || bill.provider) && (<>
   <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
+  {/* Pay by card in the streamed secure browser: the person enters the card on
+      the provider's own page; PropManager never holds it. */}
+  <Btn variant="slate" size="sm" onClick={() => setPayingBill({ ...bill, due: bill.due || bill.due_date })}>Pay by card</Btn>
   {/* Paying less than the full amount is a real thing -- a payment plan, or
       holding back a disputed portion. Asking for the figure here keeps it a
       deliberate choice rather than something typed into the provider's form
@@ -949,6 +954,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </>;
   })()}
   </>)}
+
+  {/* ---- Pay by card in the streamed secure browser ----------------- */}
+  {payingBill && (
+    <PayBillModal
+      bill={payingBill} companyId={companyId} userProfile={userProfile}
+      showToast={showToast}
+      onClose={() => setPayingBill(null)}
+      onPaid={() => { setPayingBill(null); fetchAutomationData(); }}
+    />
+  )}
 
   {/* ---- Record a payment ------------------------------------------- */}
   {payBill && payForm && (
