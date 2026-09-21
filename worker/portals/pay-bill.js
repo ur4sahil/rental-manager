@@ -137,6 +137,11 @@ async function visionCheck(pngPath) {
   console.log(`\n${live ? "LIVE PAYMENT" : "DRY RUN (nothing will be submitted)"}`);
   console.log(`account ${wantAccount} · $${wantAmount.toFixed(2)}\n`);
 
+  // Assisted portals (WSSC) take a fresh card every time and show no saved
+  // method, so a PERSON enters the card on the card page. That needs a VISIBLE
+  // browser — force headed here (and allow --headed anywhere for debugging).
+  const assisted = !!book.assisted;
+  const headed = assisted || process.argv.includes("--headed");
   const browser = await (async () => {
   // A REAL browser, not headless chromium.
   //
