@@ -159,7 +159,19 @@ wss.on("connection", async (ws, req) => {
       log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"}`);
       send({ type: "paid", confirmation: conf ? conf[1] : null, receipt: path.basename(pdf), screenshot: path.basename(png) });
     };
-    page.on("framenavigated", (fr) => { if (fr === page.mainFrame()) tryCapture("nav").catch(() => {}); });
+    // A screenshot on each PAGE LOAD — for us to watch the flow and debug.
+    // Deliberately on navigation only, never on a timer: a page has just
+    // loaded and the card fields are blank, so this can't capture a typed card
+    // number. (The card-entry page is caught here empty; nothing polls it.)
+    let navSeq = 0;
+    page.on("framenavigated", async (fr) => {
+      if (fr !== page.mainFrame()) return;
+      navSeq++;
+      const shot = path.join(SHOTS, `${provider || "s"}-${sessionId}-nav${String(navSeq).padStart(2, "0")}.png`);
+      await page.screenshot({ path: shot }).catch(() => {});
+      log(`[${sessionId}] nav#${navSeq} ${page.url()} -> ${path.basename(shot)}`);
+      tryCapture("nav").catch(() => {});
+    });
 
     const landing = startUrl || ENTRY[provider] || "about:blank";
     await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});

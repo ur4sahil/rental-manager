@@ -91,33 +91,68 @@ function decryptValue(master, b64, ivHex, saltHex) {
 
 // ---------------------------------------------------------------------------
 async function credentialsFor(portal, book) {
-  const master = process.env.ENCRYPTION_KEY;
+  // The master key can carry a trailing newline (it does in this deployment:
+  // the ciphertext was written under KEY + "\n"). A shell `$(...)` strips
+  // trailing newlines and would silently change the fingerprint, so prefer
+  // ENCRYPTION_KEY_FILE, whose bytes are read verbatim.
+  let master = process.env.ENCRYPTION_KEY;
+  if (!master && process.env.ENCRYPTION_KEY_FILE) {
+    try { master = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf8"); } catch {}
+  }
   if (!master) {
     die(`ENCRYPTION_KEY is not set, so the stored credentials cannot be opened.\n`
-      + `Either export it for this run, or sign in once by hand:\n`
+      + `Either export it (or ENCRYPTION_KEY_FILE) for this run, or sign in once by hand:\n`
       + `  node worker/portals/enroll.js ${portal}`);
   }
 
   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
   const COMPANY = process.env.HOUSY_COMPANY_ID;
-  if (!SUPABASE_URL || !SUPABASE_KEY) die("SUPABASE_URL and a service key are required");
   if (!COMPANY) die("HOUSY_COMPANY_ID is required");
 
-  const { createClient } = createRequire(path.join(__dirname, "..", "..", "package.json"))("@supabase/supabase-js");
-  const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
-
+  // TWO WAYS TO GET THE CIPHERTEXT, ONE WAY TO OPEN IT.
+  //
+  // Where a Supabase service key is present (a dev box), read the encrypted
+  // credentials straight from the table. On the browser appliance, which
+  // deliberately holds NO service key, ask the app for the ciphertext over a
+  // worker-token call instead -- the app returns the encrypted blobs, never
+  // plaintext, and only ENCRYPTION_KEY here can open them. Either path yields
+  // the same rows; decryption below is identical.
+  //
   // Any row for this provider will do: one portal login covers every account
-  // on it, which is the whole reason these portals have account choosers.
-  // Matched through the playbook's aliases because the stored provider names
-  // are inconsistent -- "Washington Gas", "Wash Gas" and "WGL" are all the
-  // same company.
-  const { data: rows, error } = await sb.from("utilities")
-    .select("id, provider, username_encrypted, password_encrypted, encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
-    .eq("company_id", COMPANY)
-    .not("username_encrypted", "is", null)
-    .not("password_encrypted", "is", null);
-  if (error) die(`could not read credentials: ${error.message}`);
+  // on it. Matched through the playbook's aliases because the stored provider
+  // names are inconsistent -- "Washington Gas", "Wash Gas" and "WGL" are all
+  // the same company.
+  let rows;
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    const { createClient } = createRequire(path.join(__dirname, "..", "..", "package.json"))("@supabase/supabase-js");
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await sb.from("utilities")
+      .select("id, provider, username_encrypted, password_encrypted, encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
+      .eq("company_id", COMPANY)
+      .not("username_encrypted", "is", null)
+      .not("password_encrypted", "is", null);
+    if (error) die(`could not read credentials: ${error.message}`);
+    rows = data;
+  } else {
+    const API = (process.env.HOUSY_API_BASE || "").replace(/\/$/, "");
+    const TOKEN = process.env.AI_WORKER_TOKEN || "";
+    if (!API || !TOKEN) {
+      die("no way to read the stored credentials: set a Supabase service key, "
+        + "or HOUSY_API_BASE + AI_WORKER_TOKEN so they can be fetched over the worker API");
+    }
+    const headers = { "Content-Type": "application/json", "x-worker-token": TOKEN };
+    if (process.env.VERCEL_BYPASS_TOKEN) headers["x-vercel-protection-bypass"] = process.env.VERCEL_BYPASS_TOKEN;
+    let resp;
+    try {
+      resp = await fetch(`${API}/api/ai?action=portal-credentials`, {
+        method: "POST", headers, body: JSON.stringify({ companyId: COMPANY, provider: book.provider }),
+      });
+    } catch (e) { die(`could not reach the credentials API: ${String(e.message || e)}`); }
+    if (!resp.ok) die(`could not read credentials via API: HTTP ${resp.status} ${(await resp.text().catch(() => "")).slice(0, 150)}`);
+    const j = await resp.json().catch(() => ({}));
+    rows = j.credentials || [];
+  }
 
   const aliases = (book.aliases || []).map(a => a.toLowerCase());
   const match = (rows || []).find(r => {

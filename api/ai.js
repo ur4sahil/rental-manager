@@ -33,7 +33,7 @@ const { extractLicense } = require("./_ai-extract");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
-const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets", "attach-bill-document", "record-utility-payment"]);
+const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-targets", "attach-bill-document", "record-utility-payment", "portal-credentials"]);
 // Actions a SCHEDULER calls. A cron is nobody's session and has no current
 // company -- the sweep's whole job is to walk every company that has pending
 // work -- so requiring a companyId of it is requiring something that cannot
@@ -1016,6 +1016,31 @@ module.exports = async function handler(req, res) {
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true, targets: data || [] });
+    }
+
+    // ---- worker reads ENCRYPTED portal credentials ---------------------
+    //
+    // So a browser box can sign itself back in without holding a Supabase
+    // service key. The box has only ENCRYPTION_KEY; this returns the
+    // ciphertext (never plaintext), which is useless without that key. The
+    // key never leaves the box and the service key never reaches it -- the
+    // most a compromise of this appliance yields is the encrypted blobs.
+    if (action === "portal-credentials") {
+      const { companyId: cid, provider = null } = body;
+      if (!cid) return res.status(400).json({ error: "companyId is required" });
+      let q = sb.from("utilities")
+        .select("id, provider, account_number, username_encrypted, password_encrypted, "
+              + "encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
+        .eq("company_id", cid)
+        .not("username_encrypted", "is", null)
+        .not("password_encrypted", "is", null);
+      // One portal login covers every account on it, so a provider filter is
+      // optional -- the worker matches by its own aliases. Kept for callers
+      // that want to narrow the payload.
+      if (provider) q = q.ilike("provider", `%${String(provider)}%`);
+      const { data, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true, credentials: data || [] });
     }
 
     // ---- worker claims one job -----------------------------------------
