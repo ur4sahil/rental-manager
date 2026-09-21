@@ -62,7 +62,16 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const t = tenants.find(x => String(x.id) === String(tenantId));
   setSelectedTenant(t || null);
   if (!t) { setSelectedLease(null); setOutstandingBalance(0); return; }
-  const lease = leases.find(l => l.tenant_name === t.name || l.property === t.property);
+  let lease = leases.find(l => l.tenant_name === t.name || l.property === t.property);
+  if (!lease && t.property) {
+    // Imported and legacy tenants often have no active `leases` row. Without
+    // one the wizard showed a BLANK property and the Execute button silently
+    // did nothing (it returns early when selectedLease is null). Synthesise the
+    // minimum the move-out needs from the tenant record so the flow proceeds;
+    // move_out_commit_state keys on tenant_id + property and accepts a null
+    // lease id.
+    lease = { id: null, property: t.property, tenant_name: t.name, rent_amount: safeNum(t.rent), security_deposit: 0 };
+  }
   setSelectedLease(lease || null);
   // Read balance live from the GL. `tenants.balance` drifts whenever
   // `recurring_journal_entries.tenant_id` is NULL —
@@ -384,7 +393,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Tenant</label>
   <Select value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
   <option value="">Select tenant...</option>
-  {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
+  {[...tenants].sort((a, b) =>
+    String(a.property || "~").localeCompare(String(b.property || "~")) ||
+    String(a.name || "").localeCompare(String(b.name || ""))
+  ).map(t => <option key={t.id} value={t.id}>{t.property || "(no property)"} — {t.name}</option>)}
   </Select>
   </div>
   {selectedTenant && (

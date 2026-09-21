@@ -924,6 +924,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             loadBankAccounts();
           }}>Pay</TextLink>
         )}
+        {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && (
+          <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
+        )}
         {u.pdf_storage_path && (
           <TextLink tone="neutral" size="xs" className="mr-2" onClick={async () => {
             // Signed on demand and short-lived: a statement carries an

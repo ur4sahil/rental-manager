@@ -15,8 +15,11 @@ export default function PayBillModal({ bill, companyId, userProfile, onClose, on
   const [minting, setMinting] = useState(false);
 
   const pay = safeNum(amount);
-  const partial = pay > 0 && pay < due - 0.005;
-  const invalid = !(pay > 0) || pay > due + 0.005;
+  const partial = due > 0 && pay > 0 && pay < due - 0.005;
+  // When the app doesn't yet know the bill amount (due = 0 / not fetched), let
+  // the user enter what the portal actually shows — capping at 0 would block
+  // every unfetched bill. When a due IS known, never let them exceed it.
+  const invalid = !(pay > 0) || (due > 0 && pay > due + 0.005);
 
   async function viewBill() {
     if (!bill?.pdf_storage_path) { showToast("No PDF statement is filed for this bill.", "error"); return; }
@@ -95,15 +98,18 @@ export default function PayBillModal({ bill, companyId, userProfile, onClose, on
         <label className="text-xs font-medium text-neutral-500 block mb-1">How much do you want to pay?</label>
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">$</span>
-          <input type="number" step="0.01" min="0" max={due} value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+          <input type="number" step="0.01" min="0" max={due > 0 ? due : undefined} value={amount}
+            onChange={(e) => setAmount(e.target.value)} placeholder={due > 0 ? "" : "Enter the amount shown on the portal"}
             className="w-full border border-neutral-200 rounded-lg pl-7 pr-3 py-2 text-sm" />
         </div>
-        <div className="flex gap-2 mt-2 text-xs">
-          <button onClick={() => setAmount(due.toFixed(2))} className="text-brand-600 hover:underline">Pay full {formatCurrency(due)}</button>
-        </div>
+        {due > 0 && (
+          <div className="flex gap-2 mt-2 text-xs">
+            <button onClick={() => setAmount(due.toFixed(2))} className="text-brand-600 hover:underline">Pay full {formatCurrency(due)}</button>
+          </div>
+        )}
+        {due <= 0 && <p className="text-xs text-neutral-400 mt-2">No amount is on file for this bill — enter what the WSSC portal shows.</p>}
         {partial && <p className="text-xs text-warn-700 mt-2">Part payment — {formatCurrency(due - pay)} will remain owed.</p>}
-        {pay > due + 0.005 && <p className="text-xs text-danger-600 mt-2">That's more than the {formatCurrency(due)} owed.</p>}
+        {due > 0 && pay > due + 0.005 && <p className="text-xs text-danger-600 mt-2">That's more than the {formatCurrency(due)} owed.</p>}
 
         <div className="flex gap-3 mt-5">
           <button onClick={startPayment} disabled={invalid || minting}
