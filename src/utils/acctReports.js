@@ -179,9 +179,16 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate, preIndex
   const filtered = preIndex ? [] : journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
   const { index } = preIndex ? { index: preIndex } : buildBalanceIndex(filtered);
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
-  const assets = sortAccountsForReport(accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
-  const liabilities = sortAccountsForReport(accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
-  const equity = sortAccountsForReport(accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
+  // Include an inactive account when it still carries a balance. Its offsetting
+  // activity is always counted in Net Income (below), so dropping it from the
+  // Asset/Liability/Equity totals is what made the report read "Out of Balance"
+  // even though the books balanced. A deactivated account should be at $0 (a DB
+  // trigger now enforces that on write), but showing any stray balance here
+  // keeps the statement self-consistent instead of silently unbalanced.
+  const bsFilter = (type) => (a) => a.type === type && (a.is_active || Math.abs(balanceFromIndex(index, a.id, a.type)) > 0.005);
+  const assets = sortAccountsForReport(accounts.filter(bsFilter("Asset")).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
+  const liabilities = sortAccountsForReport(accounts.filter(bsFilter("Liability")).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
+  const equity = sortAccountsForReport(accounts.filter(bsFilter("Equity")).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) })));
   let netIncome = 0;
   for (const [aid, entry] of Object.entries(index)) {
   const acct = acctMap[aid]; if (!acct) continue;
