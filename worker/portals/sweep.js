@@ -65,17 +65,27 @@ async function api(action, body) {
   return JSON.parse(text);
 }
 
+// A single account must never hang the whole sweep. A portal page can wedge on
+// a modal or an endless spinner; if fetch-bill does not finish in time, kill
+// its whole process group (so its Chrome dies too, not orphaned) and move on --
+// the reading is simply retried next run.
+const FETCH_TIMEOUT_MS = Number(process.env.HOUSY_FETCH_TIMEOUT_MS || 150000);
 function runFetch(portal, account) {
   return new Promise(resolve => {
     const args = [path.join(__dirname, "fetch-bill.js"), portal];
     if (account) args.push("--account", account);
-    const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-    let out = "";
+    const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env, detached: true });
+    let out = "", done = false;
+    const finish = (val) => { if (done) return; done = true; clearTimeout(t); resolve(val); };
+    const t = setTimeout(() => {
+      try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
+      finish({ outcome: "error", error: `timed out — killed after ${FETCH_TIMEOUT_MS / 1000}s` });
+    }, FETCH_TIMEOUT_MS);
     child.stdout.on("data", d => { out += d; });
     child.stderr.on("data", () => {});
     child.on("close", () => {
-      try { resolve(JSON.parse(out.slice(out.lastIndexOf("{"), out.lastIndexOf("}") + 1))); }
-      catch { resolve({ outcome: "error", error: "could not parse the fetch result" }); }
+      try { finish(JSON.parse(out.slice(out.lastIndexOf("{"), out.lastIndexOf("}") + 1))); }
+      catch { finish({ outcome: "error", error: "could not parse the fetch result" }); }
     });
   });
 }

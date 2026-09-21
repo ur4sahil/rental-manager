@@ -307,10 +307,15 @@ const isoDate = (s) => {
     // due on September 23, 2026" sits right beside the amount, where a
     // page-wide search would instead find a statement date from a history
     // table.
-    if (amountVia) {
+    // Only when the amount was found via a ROLE element is there an element to
+    // look beside. A `labelled` match (WSSC's "Balance: $…") is a regex over
+    // the body text, not an element -- getByRole(undefined) there matches
+    // nothing and each innerText() below burns its 30s default timeout (~60s a
+    // bill) before the page-wide search below finds the date anyway.
+    if (amountVia && book.amount[0].role) {
       const el = page.getByRole(book.amount[0].role, { name: book.amount[0].name }).first();
       for (const scope of [el.locator("xpath=.."), el.locator("xpath=../..")]) {
-        const t = (await scope.innerText().catch(() => "")).replace(/\s+/g, " ");
+        const t = (await scope.innerText({ timeout: 4000 }).catch(() => "")).replace(/\s+/g, " ");
         for (const cand of book.dueDate) {
           const m = t.match(cand.text);
           if (m) { due = isoDate(m[0]); if (due) { record("due date", `${due} (beside the balance)`); break; } }
