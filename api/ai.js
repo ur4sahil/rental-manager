@@ -178,22 +178,33 @@ async function applySuggestion(sb, job, output) {
   // guessing at what it meant.
   if (!account) return { written: false, reason: `no account with code "${code}"` };
 
-  // The property comes from what this company has DONE BEFORE, ranked by
-  // measured reliability -- tenant 99%, vendor+memo+amount 85%,
-  // vendor+memo 81%. Anything below 80% is not offered at all, because a
-  // wrong property that looks like an answer is worse than a blank one:
-  // a reviewer accepts it and every charge after it inherits the mistake.
+  // Which property a transaction belongs to, decided by three paths in
+  // descending authority. Each fires only when the one before it is silent,
+  // and any of them may come up blank -- a wrong property is worse than none,
+  // because a reviewer accepts it and every charge after it inherits the
+  // mistake. When all three are silent the category is still suggested; the
+  // property is simply left for a person to fill.
   //
-  // Falls back to a literal name match in the text, which is exact when it
-  // fires and silent when it does not.
-  //
-  // Asked, the model answered "Bank Charges" and "Rental Income" -- account
-  // names, not properties -- for every transaction, having ignored the
-  // property list entirely. A bank description either contains a property's
-  // name or it does not, and a string search answers that exactly. This is
-  // the same rule as not asking it to parse a date: if something is
-  // decidable, decide it.
+  // The bank text is where the answer lives. Rent arrives tagged with a
+  // person ("Zelle payment from ANA J PRECIADO for Rent") or an address
+  // ("...for 6958 Hawthorne Street"), never a class id, so every path reads
+  // that text rather than asking the model, which when asked answered with
+  // account names ("Rental Income") and ignored the property list entirely.
   let classId = null;
+  const haystack = ` ${`${job.input?.description || ""} ${job.input?.payee || ""}`.toLowerCase()} `;
+  const wholeWord = (w) => {
+    const t = String(w).toLowerCase().trim();
+    if (t.length < 2) return false;
+    return new RegExp(`[^a-z0-9]${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^a-z0-9]`).test(haystack);
+  };
+
+  // (B) HISTORY. What this company has DONE BEFORE, ranked by measured
+  // reliability -- tenant 99%, vendor+memo+amount 85%, vendor+memo 81%.
+  // Threshold lowered 0.80 -> 0.70: still a clear majority, but it no longer
+  // needs near-certainty to offer a property a reviewer can accept or reject.
+  // This is also where a RELATIVE's name is learned: once a payment they sent
+  // is accepted and posted, their name sits on a journal line against the
+  // property, and the next payment from them resolves here by name.
   const { data: classHits } = await sb.rpc("suggest_class_from_history", {
     p_company_id: job.company_id,
     p_text: job.input?.description || "",
@@ -202,19 +213,65 @@ async function applySuggestion(sb, job, output) {
     p_min_support: 2,
   });
   const topClass = (classHits || [])[0];
-  if (topClass && Number(topClass.reliability) >= 0.8) classId = topClass.class_id;
+  if (topClass && Number(topClass.reliability) >= 0.7) classId = topClass.class_id;
 
-  const haystack = `${job.input?.description || ""} ${job.input?.payee || ""}`.toLowerCase();
+  // (A) TENANT NAME -> their property. The active roster, so it resolves a
+  // tenant with no posted history yet. A tenant matches when both their first
+  // and last name appear as whole words -- tolerant of a middle initial
+  // ("Ana J Preciado"), strict enough that a bare common first name does not
+  // fire on its own. Two tenants matching two DIFFERENT properties is
+  // ambiguous and refused; two rows for the same person at one property
+  // (a duplicate record) collapse to one class and resolve cleanly.
+  if (!classId && haystack.trim()) {
+    const { data: tenants } = await sb.from("tenants")
+      .select("name, properties:property_id(class_id)")
+      .eq("company_id", job.company_id)
+      .eq("lease_status", "active")
+      .is("archived_at", null);
+    const matched = new Set();
+    let last = null;
+    for (const t of tenants || []) {
+      const cls = t.properties?.class_id;
+      if (!cls) continue;
+      const toks = String(t.name || "").toLowerCase().split(/\s+/).filter((x) => x.length >= 2);
+      if (toks.length < 2) continue;
+      if (wholeWord(toks[0]) && wholeWord(toks[toks.length - 1])) { matched.add(cls); last = cls; }
+    }
+    if (matched.size === 1) classId = last;
+  }
+
+  // (C) ADDRESS in the text. A relative pays and the memo names the property
+  // ("for 6508 Corkley Rd"). First an exact containment of the whole class
+  // name; then, because the memo usually carries only the street and the
+  // class name carries the full city/state/zip, the house-number-plus-street
+  // signature ("6508 corkley"). A house number is unique to its street, so
+  // the signature is specific -- but two condo units share it, so a signature
+  // that hits more than one class is ambiguous and refused.
   if (!classId && haystack.trim()) {
     const { data: classes } = await sb.from("acct_classes")
       .select("id, name").eq("company_id", job.company_id);
-    // Longest name first, so "100 Oak Street, Unit A" wins over
-    // "100 Oak Street" when both appear.
-    const sorted = (classes || [])
-      .filter(c => c.name && String(c.name).trim().length >= 6)
-      .sort((a, b) => String(b.name).length - String(a.name).length);
-    const hit = sorted.find(c => haystack.includes(String(c.name).trim().toLowerCase()));
-    classId = hit ? hit.id : null;
+    const named = (classes || []).filter((c) => c.name && String(c.name).trim().length >= 6);
+    // Longest name first, so "100 Oak Street, Unit A" wins over "100 Oak Street".
+    const exact = [...named]
+      .sort((a, b) => String(b.name).length - String(a.name).length)
+      .find((c) => haystack.includes(` ${String(c.name).trim().toLowerCase()} `)
+                || haystack.includes(String(c.name).trim().toLowerCase()));
+    if (exact) {
+      classId = exact.id;
+    } else {
+      const sigMatches = new Set();
+      let sigClass = null;
+      for (const c of named) {
+        const m = String(c.name).trim().toLowerCase().match(/^(\d{1,6})\s+([a-z]+)/);
+        if (!m) continue;
+        // The house number must stand alone (not the tail of a longer number)
+        // and the street must be a whole word: "6958 hawthorne", not the "1
+        // main" buried inside "61 main".
+        const sig = new RegExp(`(^|[^0-9])${m[1]}\\s+${m[2]}([^a-z0-9]|$)`);
+        if (sig.test(haystack)) { sigMatches.add(c.id); sigClass = c.id; }
+      }
+      if (sigMatches.size === 1) classId = sigClass;
+    }
   }
 
   const { data: txn } = await sb.from("bank_feed_transaction")
