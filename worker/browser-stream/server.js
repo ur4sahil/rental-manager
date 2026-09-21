@@ -73,6 +73,16 @@ fs.mkdirSync(SHOTS, { recursive: true });
 // words. Per-provider overrides can be added, but this catches the common case.
 const CONFIRM = /thank you|payment (has been )?(received|posted|submitted|scheduled|successful)|confirmation\s*(number|#|code)|successfully (paid|submitted)/i;
 
+// Where a FRESH (no stored session) stream should land — the provider's own
+// sign-in page, so the person lands ready to log in. A client may still pass an
+// explicit ?url= to override.
+const ENTRY = {
+  wssc: "https://my.wsscwater.com/",
+  pepco: "https://secure.pepco.com/",
+  bge: "https://secure.bge.com/",
+  washington_gas: "https://my.washingtongas.com/portal/",
+};
+
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const server = http.createServer((req, res) => {
@@ -96,15 +106,18 @@ wss.on("connection", async (ws, req) => {
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };
   log(`[${sessionId}] connect provider=${provider || "-"}`);
 
-  // A signed-in storageState is required — this service never signs in; the
-  // pay worker (ensure-session) owns login and leaves the state on disk.
+  // A signed-in storageState is used WHEN ONE EXISTS (the pay worker's
+  // ensure-session leaves it on disk). When it does not — WSSC and any portal
+  // whose login has a captcha the bot can't pass — start FRESH: the person
+  // signs in inside the stream (solving the captcha) and pays in the same
+  // session. Either way the card is a human's, and the receipt is captured here.
   let storageState;
   try {
-    const f = path.join(SESSION_DIR, `${provider}.json`);
-    storageState = JSON.parse(fs.readFileSync(f, "utf8"));
+    storageState = JSON.parse(fs.readFileSync(path.join(SESSION_DIR, `${provider}.json`), "utf8"));
+    log(`[${sessionId}] using signed-in session for ${provider}`);
   } catch {
-    send({ type: "fatal", message: `no signed-in session for "${provider}" — sign in first` });
-    ws.close(4004, "no session"); return;
+    storageState = undefined;
+    log(`[${sessionId}] no stored session for ${provider} — fresh sign-in in the stream`);
   }
 
   let browser, context, page, cdp;
@@ -148,7 +161,8 @@ wss.on("connection", async (ws, req) => {
     };
     page.on("framenavigated", (fr) => { if (fr === page.mainFrame()) tryCapture("nav").catch(() => {}); });
 
-    await page.goto(startUrl || storageState.__entry || "about:blank", { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+    const landing = startUrl || ENTRY[provider] || "about:blank";
+    await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
     send({ type: "ready", sessionId });
 
