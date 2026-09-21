@@ -5631,6 +5631,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   async function toggleAccount(id, currentActive) {
   if (currentActive) {
+  // Never deactivate a ledger that still holds a balance. An inactive account
+  // is dropped from the Balance Sheet's Assets/Liabilities/Equity section
+  // totals, but its offsetting activity stays in Net Income — so a non-zero
+  // inactive account makes the report read "Out of Balance" even though the
+  // books are perfectly balanced. Clear the ledger to $0 first.
+  const acct = calcAllBalances(acctAccounts, journalEntries).find(a => a.id === id);
+  if (acct && Math.abs(acct.computedBalance || 0) > 0.005) {
+    showToast(`Can't deactivate ${acct.name || "this account"} — it still has a balance of ${acctFmt(acct.computedBalance)}. Move or clear it to $0 first.`, "error");
+    return;
+  }
   const { data: refs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).eq("company_id", companyId).limit(1);
   if (refs?.length > 0 && !await showConfirm({ message: "This account has journal entries. Deactivating will hide it from reports but existing entries remain. Continue?" })) return;
   }
