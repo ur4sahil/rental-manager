@@ -351,6 +351,19 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!editingTenant) {
   const { data: dupCheck } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(form.name.trim())).eq("property", form.property).is("archived_at", null).maybeSingle();
   if (dupCheck) { showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property.", "error"); return; }
+  // Same name at a DIFFERENT property: almost always the same person re-entered
+  // (a move, or a second record). Left unchecked this mints a SECOND tenant
+  // record with its OWN AR ledger, and the person then shows twice on the
+  // Balance Sheet with split balances — the exact mess that is painful to
+  // unwind. Surface the existing record and let the user choose: edit it
+  // (the move), or knowingly create a separate one.
+  const { data: sameName } = await supabase.from("tenants")
+    .select("id, name, property").eq("company_id", companyId)
+    .ilike("name", escapeFilterValue(form.name.trim()))
+    .is("archived_at", null).neq("property", form.property).limit(1);
+  if (sameName?.length) {
+    if (!await showConfirm({ message: `"${sameName[0].name}" is already an active tenant at ${sameName[0].property}. If this is the same person, edit that record instead — creating a new one gives them a second AR ledger and they'll show twice on reports. Create a separate tenant anyway?` })) return;
+  }
   }
   // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
   const { error } = editingTenant
