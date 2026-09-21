@@ -142,6 +142,14 @@ const PLAYBOOKS = {
       { role: "textbox", name: /User ID/i },
       { role: "button", name: /^Log In$/i },
     ],
+    // The official statement PDF: the account row's own "View Bill" link opens
+    // that account's bill page, whose "Download Bill" link downloads the PDF.
+    // Row-scoped deliberately -- the page-level "View Bill" serves the default
+    // account's bill.
+    statementDownload: {
+      viewBillLink: /view bill/i,
+      downloadLink: /download bill/i,
+    },
     amount: [
       { labelled: /balance\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
       { labelled: /amount\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },

@@ -1006,6 +1006,8 @@ module.exports = async function handler(req, res) {
       let q = sb.from("utilities")
         .select("id, provider, property, account_number, responsibility")
         .eq("company_id", cid)
+        // Archived rows are duplicates or retired accounts -- never swept.
+        .is("archived_at", null)
         // A utility the TENANT is responsible for is not swept. It is not our
         // bill to read, pay or chase, and logging into a portal to fetch a
         // statement we have no business acting on is work with no outcome.
@@ -1015,7 +1017,34 @@ module.exports = async function handler(req, res) {
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      return res.status(200).json({ ok: true, targets: data || [] });
+      const targets = data || [];
+
+      // Attach the date of each account's most recent bill so the sweep can
+      // SKIP an account whose current statement is already on file. Utility
+      // bills are monthly; re-reading and re-downloading every account every
+      // day is wasted portal load. Linkage is
+      // utilities.id -> utility_accounts.legacy_utility_id -> utility_bills.
+      if (targets.length) {
+        const legacyIds = targets.map(t => t.id);
+        const { data: accts } = await sb.from("utility_accounts")
+          .select("id, legacy_utility_id").in("legacy_utility_id", legacyIds);
+        const acctByLegacy = new Map((accts || []).map(a => [a.legacy_utility_id, a.id]));
+        const acctIds = (accts || []).map(a => a.id);
+        const lastByAcct = new Map();
+        if (acctIds.length) {
+          const { data: bills } = await sb.from("utility_bills")
+            .select("utility_account_id, created_at").in("utility_account_id", acctIds)
+            .is("archived_at", null).order("created_at", { ascending: false });
+          for (const b of (bills || [])) {
+            if (!lastByAcct.has(b.utility_account_id)) lastByAcct.set(b.utility_account_id, b.created_at);
+          }
+        }
+        for (const t of targets) {
+          const aid = acctByLegacy.get(t.id);
+          t.last_bill_at = aid ? (lastByAcct.get(aid) || null) : null;
+        }
+      }
+      return res.status(200).json({ ok: true, targets });
     }
 
     // ---- worker reads ENCRYPTED portal credentials ---------------------

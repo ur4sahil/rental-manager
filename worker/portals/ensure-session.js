@@ -66,6 +66,17 @@ function loadPlaywright() {
   die("playwright not installed — run: cd tests && npm i playwright");
 }
 
+// A REAL desktop Chrome, not the bundled headless build. Portals fingerprint
+// the "HeadlessChrome" user-agent and some (WSSC) refuse to sign it in: the
+// same credentials that failed under bundled Chromium logged straight in under
+// channel:chrome with this UA. Fall back to bundled only if Chrome is absent.
+const DESKTOP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+  + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+async function launchBrowser(chromium, opts) {
+  try { return await chromium.launch({ channel: "chrome", ...opts }); }
+  catch { return await chromium.launch(opts); }
+}
+
 // ---------------------------------------------------------------------------
 // DECRYPT — the same scheme as api/encrypt.js, deliberately duplicated rather
 // than imported, because that file is a Vercel handler and this is a CLI.
@@ -210,11 +221,12 @@ async function signedIn(page, book) {
 
   // ---- 1. is the session we have still good? -------------------------
   if (fs.existsSync(sessionFile)) {
-    const browser = await chromium.launch({ headless: !headed });
+    const browser = await launchBrowser(chromium, { headless: !headed });
     try {
       const ctx = await browser.newContext({
         storageState: JSON.parse(fs.readFileSync(sessionFile, "utf8")),
         viewport: { width: 1280, height: 900 },
+        userAgent: DESKTOP_UA,
       });
       const page = await ctx.newPage();
       await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
@@ -239,11 +251,17 @@ async function signedIn(page, book) {
 
   // slowMo, because this is a real form being filled by what should look
   // like a person using it, not a script racing the page.
-  const browser = await chromium.launch({ headless: !headed, slowMo: 120 });
+  const browser = await launchBrowser(chromium, { headless: !headed, slowMo: 120 });
   try {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: DESKTOP_UA });
     const page = await ctx.newPage();
     await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 60000 });
+    // Let the page SETTLE before typing. WSSC's login is JSF/PrimeFaces: the
+    // submit handler is wired up by script that runs after domcontentloaded, so
+    // filling and clicking the instant the field appears makes the submit a
+    // no-op and the form just sits there -- the "signed-out after 90s" failure.
+    // Waiting for network idle is what made a hand-written probe log straight in.
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
     // The username box, from the playbook's own signed-out signal -- the same
     // locator that tells us we are signed out tells us where to type.

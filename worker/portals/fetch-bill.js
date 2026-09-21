@@ -161,6 +161,7 @@ const isoDate = (s) => {
     storageState: JSON.parse(fs.readFileSync(SESSION, "utf8")),
     viewport: { width: 1280, height: 900 },
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    acceptDownloads: true,   // the portal's own statement PDF arrives as a download
   });
   const page = await ctx.newPage();
 
@@ -378,13 +379,45 @@ const isoDate = (s) => {
     // reported as a failure because the page would not render to PDF. The
     // figure is the job; the document is evidence for later.
     let pdfPath = null;
-    try {
-      pdfPath = shot.replace(/\.png$/, "") + ".pdf";
-      await page.pdf({ path: pdfPath, format: "Letter", printBackground: true });
-      record("statement", pdfPath);
-    } catch (e) {
-      pdfPath = null;
-      record("statement", "could not render: " + String(e.message).split("\n")[0].slice(0, 60));
+    // THE REAL STATEMENT, when the portal has one. WSSC's "View Bill" link
+    // inside the account's own row opens that account's bill page, whose
+    // "Download Bill" link downloads the official PDF. Scoped to the row on
+    // purpose: the page-level "View Bill" downloads the DEFAULT account's bill,
+    // which would file 8168 Inverness's statement under everyone else.
+    if (book.statementDownload && wantAccount) {
+      try {
+        const row = require("./accounts").accountRow(page, wantAccount);
+        const vb = row.getByRole("link", { name: book.statementDownload.viewBillLink }).first();
+        if (await vb.count().catch(() => 0)) {
+          await vb.click({ timeout: 8000 });
+          await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+          await page.waitForTimeout(2000);
+          const real = shot.replace(/\.png$/, "") + "-statement.pdf";
+          const [dl] = await Promise.all([
+            page.waitForEvent("download", { timeout: 25000 }),
+            page.getByRole("link", { name: book.statementDownload.downloadLink }).first().click({ timeout: 8000 }),
+          ]);
+          await dl.saveAs(real);
+          if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+            pdfPath = real;
+            record("statement", `official PDF (${dl.suggestedFilename()})`);
+          }
+        }
+      } catch (e) {
+        record("statement", "official download failed: " + String(e.message).split("\n")[0].slice(0, 60));
+      }
+    }
+    // Fallback: a page snapshot. Best effort -- a bill read correctly must not
+    // be reported as a failure because the document could not be captured.
+    if (!pdfPath) {
+      try {
+        pdfPath = shot.replace(/\.png$/, "") + ".pdf";
+        await page.pdf({ path: pdfPath, format: "Letter", printBackground: true });
+        record("statement", "page snapshot (no official PDF)");
+      } catch (e) {
+        pdfPath = null;
+        record("statement", "could not render: " + String(e.message).split("\n")[0].slice(0, 60));
+      }
     }
 
     finish("ok", {

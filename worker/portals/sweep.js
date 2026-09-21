@@ -81,7 +81,10 @@ function runFetch(portal, account) {
 }
 
 (async () => {
-  const only = process.argv[2];
+  // First non-flag arg is the portal filter; flags (--force) may follow it.
+  const only = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : null;
+  const force = process.argv.includes("--force");
+  const SKIP_DAYS = Number(process.env.HOUSY_SWEEP_SKIP_DAYS || 25);
   // Accounts the utility OWES money to. Collected across every portal and
   // printed together at the end, because a credit sitting quietly on one
   // account among forty is exactly the thing nobody notices -- and it is
@@ -126,12 +129,31 @@ function runFetch(portal, account) {
     // no account number anywhere and names the property beside the balance,
     // so it is read ONCE and the reading identifies itself.
     const withAccounts = mine.filter(t => t.account_number);
+    // Each pass carries its target, so an account whose current statement is
+    // already on file can be skipped without a portal round-trip. WSSC-style
+    // portals that expose no account number fall back to a single self-
+    // identifying pass.
     const passes = withAccounts.length
-      ? withAccounts.map(t => t.account_number)
-      : [null];
+      ? withAccounts.map(t => ({ account: t.account_number, last_bill_at: t.last_bill_at, property: t.property }))
+      : [{ account: null, last_bill_at: null, property: null }];
 
-    let read = 0, failed = 0, unmatched = 0, needsSignin = 0;
-    for (const account of passes) {
+    let read = 0, failed = 0, unmatched = 0, needsSignin = 0, skipped = 0;
+    for (const pass of passes) {
+      const account = pass.account;
+
+      // Utility bills are monthly. If this account's most recent bill is newer
+      // than SKIP_DAYS, the current statement is already stored -- reading and
+      // re-downloading it daily is wasted portal load. `--force` overrides, for
+      // a deliberate backfill.
+      if (!force && pass.last_bill_at) {
+        const ageDays = (Date.now() - new Date(pass.last_bill_at).getTime()) / 86400000;
+        if (ageDays < SKIP_DAYS) {
+          skipped++;
+          console.log(`  ${provider.padEnd(15)} ${String(pass.property || account).slice(0, 30).padEnd(32)}   current bill on file (${String(pass.last_bill_at).slice(0, 10)}) — skipped`);
+          continue;
+        }
+      }
+
       const r = await runFetch(portal, account);
 
       // An expired session ends this PORTAL immediately. Carrying on would
@@ -189,7 +211,7 @@ function runFetch(portal, account) {
       }
     }
 
-    summary.push({ provider, read, failed, unmatched, needsSignin });
+    summary.push({ provider, read, skipped, failed, unmatched, needsSignin });
   }
 
   if (inCredit.length) {
