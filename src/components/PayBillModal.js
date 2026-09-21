@@ -34,13 +34,16 @@ export default function PayBillModal({ bill, companyId, userProfile, onClose, on
       const { data: sess } = await supabase.auth.getSession();
       const access = sess?.session?.access_token;
       if (!access) { showToast("Please sign in again.", "error"); setMinting(false); return; }
-      const resp = await fetch("/api/stream-session", {
+      // stream-session is served by /api/encrypt (action) to stay under Vercel's
+      // 12-function cap; it reuses that route's session + membership gate.
+      const resp = await fetch("/api/encrypt", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
         body: JSON.stringify({
+          action: "stream-session", companyId,
           provider: bill.provider_display || bill.provider,
           account: bill.account_number || bill.utility_account_id || null,
-          amount: pay, billId: bill.bill_id || bill.id, companyId,
+          amount: pay, billId: bill.bill_id || bill.id,
         }),
       });
       if (!resp.ok) {

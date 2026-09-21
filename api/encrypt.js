@@ -142,13 +142,18 @@ module.exports = async function handler(req, res) {
   const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme, keyFp } = body;
 
   const isQbImport = QB_ACTIONS.has(action);
-  if (!VALID_ACTIONS.has(action) && !isQbImport) return res.status(400).json({ error: "Invalid action" });
+  // stream-session lives here (not its own function) because Vercel caps this
+  // project at 12 serverless functions and a 13th fails to deploy. It reuses
+  // this route's session + membership gate; it never touches a credential.
+  const isStream = action === "stream-session";
+  if (!VALID_ACTIONS.has(action) && !isQbImport && !isStream) return res.status(400).json({ error: "Invalid action" });
   if (typeof companyId !== "string" || !companyId || companyId.length > MAX_COMPANYID_LEN) {
     return res.status(400).json({ error: "Invalid companyId" });
   }
-  if (isQbImport) {
-    // Import payloads are arrays of rows, not credential strings — the
-    // shape checks below do not apply. _qb-import-impl validates its own.
+  if (isQbImport || isStream) {
+    // Neither carries the ciphertext/iv the credential actions validate below.
+    // QB import validates its own rows; stream-session's fields are checked
+    // where it is handled, after auth.
   } else if (action === "encrypt") {
     if (typeof plaintext !== "string" || plaintext.length > MAX_PLAINTEXT_LEN) {
       return res.status(400).json({ error: "Invalid plaintext" });
@@ -194,6 +199,31 @@ module.exports = async function handler(req, res) {
     .eq("status", "active")
     .maybeSingle();
   if (!membership) return res.status(403).json({ error: "Not a member of this company" });
+
+  // ─── stream-session: mint a short-lived, signed token for one streamed-
+  // browser payment. No card data here; the token only names the provider/
+  // account/amount and expires in 8 minutes. Signed with STREAM_JWT_SECRET,
+  // which the VPS browser-stream service verifies.
+  if (isStream) {
+    const secret = process.env.STREAM_JWT_SECRET;
+    const streamBase = process.env.STREAM_BASE_URL;
+    if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
+    const provider = String(body.provider || "").toLowerCase();
+    if (!provider) return res.status(400).json({ error: "provider is required" });
+    const payload = {
+      provider,
+      account: body.account || null,
+      amount: body.amount != null ? Number(body.amount) : null,
+      billId: body.billId || null,
+      companyId,
+      uid: userData.user.id,
+      exp: Date.now() + 8 * 60 * 1000,
+      jti: crypto.randomBytes(6).toString("hex"),
+    };
+    const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = crypto.createHmac("sha256", secret).update(b64).digest("base64url");
+    return res.status(200).json({ streamBase, token: b64 + "." + sig, provider });
+  }
 
   // Credential actions are restricted to roles that legitimately
   // touch account credentials as part of their job. Without this
