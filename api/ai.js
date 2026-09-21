@@ -172,7 +172,7 @@ async function applySuggestion(sb, job, output) {
   if (!code) return { written: false, reason: "model declined to pick an account" };
 
   const { data: accounts } = await sb.from("acct_accounts")
-    .select("id, code, name").eq("company_id", job.company_id);
+    .select("id, code, name, type").eq("company_id", job.company_id);
   const account = (accounts || []).find(a => String(a.code).trim() === code);
   // An unknown code is the model inventing one. Refuse it rather than
   // guessing at what it meant.
@@ -274,6 +274,28 @@ async function applySuggestion(sb, job, output) {
     }
   }
 
+  // The customer on the books is the TENANT of this property, never whoever's
+  // name is on the transfer -- a relative sending a tenant's rent is noise,
+  // not a new customer. Income only: an expense at a property is owed to a
+  // vendor, not the tenant, so it is left blank here. Attached only when the
+  // property has exactly one active tenant; co-tenants on separate rows or an
+  // empty unit leave it for a person to decide.
+  let entity = null;
+  if (classId && account.type === "Revenue") {
+    const { data: props } = await sb.from("properties")
+      .select("id").eq("company_id", job.company_id).eq("class_id", classId);
+    const propIds = (props || []).map((p) => p.id);
+    if (propIds.length) {
+      const { data: tens } = await sb.from("tenants")
+        .select("id, name").eq("company_id", job.company_id)
+        .in("property_id", propIds)
+        .eq("lease_status", "active").is("archived_at", null);
+      if ((tens || []).length === 1) {
+        entity = { type: "customer", id: String(tens[0].id), name: tens[0].name || "" };
+      }
+    }
+  }
+
   const { data: txn } = await sb.from("bank_feed_transaction")
     .select("id, raw_payload_json, status, suggestion_status").eq("id", job.subject_id)
     .eq("company_id", job.company_id).maybeSingle();
@@ -297,6 +319,9 @@ async function applySuggestion(sb, job, output) {
     accountId: account.id,
     accountName: account.name,
     classId,
+    entityType: entity?.type || "",
+    entityId: entity?.id || "",
+    entityName: entity?.name || "",
     memo: output.memo ? String(output.memo).slice(0, 120) : "",
     source: "housy",
     confidence: typeof output.confidence === "number" ? output.confidence : null,

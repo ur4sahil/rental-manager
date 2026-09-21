@@ -2173,7 +2173,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         setAddForm({
           accountId: sug?.accountId || "", accountName: sug?.accountName || "",
           memo: sug?.memo || "", classId: sug?.classId || "",
-          entityType: "", entityId: "", entityName: "",
+          // The tenant Housy attached to the property, pre-filled as the
+          // customer so accepting books rent to the tenant, not the relative
+          // who sent it.
+          entityType: sug?.entityType || "", entityId: sug?.entityId || "", entityName: sug?.entityName || "",
         });
       }
     };
@@ -2991,7 +2994,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         render: txn => <>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</> },
       { key: "action", label: "ACTION", align: "right", className: "whitespace-nowrap",
         render: txn => { const isExpanded = expandedTxn === txn.id; return (<span onClick={e => e.stopPropagation()}>
-        {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" || txn.suggestion_status === "suggested_ai" ? "Review" : "Add"}</TextLink>}
+        {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "", entityType: sug.entityType || "", entityId: sug.entityId || "", entityName: sug.entityName || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" || txn.suggestion_status === "suggested_ai" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
         {txn.status === "excluded" && <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>}
         </span>); } },
