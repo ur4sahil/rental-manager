@@ -246,6 +246,25 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [amount, setAmount] = useState(entry?.rent || 0);
   const [saving, setSaving] = useState(false);
+  const [existing, setExisting] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  // A tenant gets ONE recurring rent schedule. Look for an active one up front
+  // so this step can say plainly whether it is creating a fresh schedule or
+  // replacing one — instead of silently minting a second (which is what put
+  // duplicate rent on the books) and now trips the one-schedule-per-tenant guard.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!entry?.tenantId) { setChecking(false); return; }
+      const { data } = await supabase.from("recurring_journal_entries")
+        .select("id, amount, frequency, next_post_date")
+        .eq("company_id", companyId).eq("tenant_id", Number(entry.tenantId))
+        .eq("status", "active").is("archived_at", null).limit(1).maybeSingle();
+      if (alive) { setExisting(data || null); setChecking(false); }
+    })();
+    return () => { alive = false; };
+  }, [entry, companyId]);
 
   // Calculate next post date (1st of next month)
   const today = new Date();
@@ -285,6 +304,14 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   // tenant id and silently NULLed the column, which broke
   // tenants.balance updates for every manually-created recurring.
   if (entry.tenantId) payload.tenant_id = Number(entry.tenantId);
+  // Replacing, not stacking: archive the tenant's current active schedule
+  // first so exactly one stays active (and the DB guard is satisfied).
+  if (existing?.id) {
+    const { error: archErr } = await supabase.from("recurring_journal_entries")
+      .update({ status: "cancelled", archived_at: new Date().toISOString() })
+      .eq("company_id", companyId).eq("id", existing.id);
+    if (archErr) { pmError("PM-4008", { raw: archErr, context: "archive prior recurring before replace" }); setSaving(false); return; }
+  }
   const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
   if (error) {
   pmError("PM-4008", { raw: error, context: "create recurring rent entry" });
@@ -315,6 +342,11 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{propertyLabel(entry.property)}</span></div>
   <div className="flex justify-between text-sm mt-1"><span className="text-neutral-500">Lease Period</span><span className="font-medium text-neutral-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
   </div>
+  {existing && (
+  <div className="bg-notice-50 border border-notice-200 rounded-xl p-3 text-xs text-notice-800">
+  <span className="font-semibold">Heads up:</span> {entry.tenantName} already has an active recurring rent schedule (${Number(existing.amount).toLocaleString()}/{existing.frequency}, next {fmtDate(existing.next_post_date)}). Saving will <strong>replace</strong> it with the one below — it won't add a second.
+  </div>
+  )}
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($)</label>
   <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
@@ -339,10 +371,10 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   </div>
   </div>
   <div className="flex gap-3 mt-4">
-  <Btn size="lg" className="flex-1" onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0}>
-  {saving ? "Creating..." : "Create Recurring Entry"}
+  <Btn size="lg" className="flex-1" onClick={handleCreate} disabled={saving || checking || !amount || Number(amount) <= 0}>
+  {saving ? "Saving..." : checking ? "Checking..." : existing ? "Replace Schedule" : "Create Recurring Entry"}
   </Btn>
-  <Btn variant="slate" size="lg" className="flex-1" onClick={onComplete}>Skip for Now</Btn>
+  <Btn variant="slate" size="lg" className="flex-1" onClick={onComplete}>{existing ? "Keep Existing" : "Skip for Now"}</Btn>
   </div>
   </div>
   </div>

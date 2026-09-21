@@ -517,7 +517,25 @@ export async function depositAlreadyPosted(companyId, tenantId) {
         .like('reference', escapeFilterValue(canonical + '-') + '%').limit(1),
     ]);
     if (exact.error || legacy.error) return true;
-    return (exact.data || []).length > 0 || (legacy.data || []).length > 0;
+    if ((exact.data || []).length > 0 || (legacy.data || []).length > 0) return true;
+
+    // Cross-source catch. QB-imported and older deposits carry no DEP-T
+    // reference, so the checks above cannot see them — which is exactly how a
+    // re-onboarded tenant got a SECOND deposit posted on top of the one from
+    // QuickBooks. Fall back to the accounting shape: any non-voided debit on
+    // this tenant's own AR sub-account whose memo names a deposit. Keyed on
+    // tenant_id, so it holds regardless of how the first deposit was written.
+    const { data: arAcct } = await supabase.from('acct_accounts')
+      .select('id').eq('company_id', companyId).eq('tenant_id', tenantId)
+      .like('code', '1100-%').eq('is_active', true).limit(1).maybeSingle();
+    if (arAcct?.id) {
+      const { data: depLines, error: depErr } = await supabase.from('acct_journal_lines')
+        .select('id').eq('company_id', companyId).eq('account_id', arAcct.id)
+        .gt('debit', 0).ilike('memo', '%deposit%').limit(1);
+      if (depErr) return true;
+      if ((depLines || []).length > 0) return true;
+    }
+    return false;
   } catch (_e) {
     return true;
   }
