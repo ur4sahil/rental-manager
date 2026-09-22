@@ -1860,9 +1860,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Responsibility</label>
-                      <Select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={propForm.status !== "occupied"} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
+                      <Select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                         <option value="owner_pays">Owner Pays</option>
                         <option value="tenant_pays">Tenant Pays</option>
+                        <option value="condo_fee">Covered by Condo Fee</option>
                       </Select>
                     </div>
                     <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1">
@@ -2600,7 +2601,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
                   <div className="text-xs text-neutral-500 space-y-0.5">
                     {utilities.filter(u => u.provider.trim()).map((u, i) => (
-                      <div key={i}>{u.type} — {u.provider} — ${Number(u.amount || 0).toLocaleString()}/mo ({u.responsibility === "owner_pays" ? "Owner" : "Tenant"})</div>
+                      <div key={i}>{u.type} — {u.provider} — ${Number(u.amount || 0).toLocaleString()}/mo ({u.responsibility === "owner_pays" ? "Owner" : u.responsibility === "condo_fee" ? "Condo fee" : "Tenant"})</div>
                     ))}
                   </div>
                 ) : completedSteps.has("utilities") ? <p className="text-xs text-neutral-400">No utilities added</p> : null}

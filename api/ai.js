@@ -1008,12 +1008,11 @@ module.exports = async function handler(req, res) {
         .eq("company_id", cid)
         // Archived rows are duplicates or retired accounts -- never swept.
         .is("archived_at", null)
-        // A utility the TENANT is responsible for is not swept. It is not our
-        // bill to read, pay or chase, and logging into a portal to fetch a
-        // statement we have no business acting on is work with no outcome.
-        // NULL responsibility falls through as the owner's, which is the
-        // default everywhere else in the app.
-        .or("responsibility.is.null,responsibility.neq.tenant");
+        // A utility the TENANT is responsible for is not swept -- not our bill
+        // to read, pay or chase. Nor is one COVERED BY THE CONDO FEE: there is
+        // no separate statement to fetch. NULL responsibility falls through as
+        // the owner's, which is the default everywhere else in the app.
+        .or("responsibility.is.null,responsibility.not.in.(tenant,condo_fee)");
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });

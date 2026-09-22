@@ -156,7 +156,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-brand-600" />
   <StatCard onClick={() => setPage("tenants")} label="Delinquent" value={delinquent} sub="tenants with balance" color="text-notice-500" />
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-notice-500" />
-  <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending" && safeNum(u.amount) > 0).length} sub="awaiting payment" color="text-caution-600" />
+  <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending" && u.responsibility !== "condo_fee" && safeNum(u.amount) > 0).length} sub="awaiting payment" color="text-caution-600" />
   </div>
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
@@ -206,7 +206,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   </div>
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Utilities Due</h3>
-  {utilities.filter(u => u.status === "pending" && safeNum(u.amount) > 0).map(u => (
+  {utilities.filter(u => u.status === "pending" && u.responsibility !== "condo_fee" && safeNum(u.amount) > 0).map(u => (
   <div key={u.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
   <div className="text-sm font-medium text-neutral-800">{u.provider}</div>
@@ -218,7 +218,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   </div>
   </div>
   ))}
-  {utilities.filter(u => u.status === "pending" && safeNum(u.amount) > 0).length === 0 && <EmptyState size="inline" title={"No pending utilities"} />}
+  {utilities.filter(u => u.status === "pending" && u.responsibility !== "condo_fee" && safeNum(u.amount) > 0).length === 0 && <EmptyState size="inline" title={"No pending utilities"} />}
   </div>
   {licensesDue.length > 0 && (() => {
   const LIC_LABELS = { rental_license: "Rental License", rental_registration: "Rental Registration", lead_paint: "Lead Paint Cert", lead_risk_assessment: "Lead Risk Assessment", fire_inspection: "Fire Inspection", bbl: "Business License (BBL)", other: "License" };

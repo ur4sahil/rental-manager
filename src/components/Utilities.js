@@ -10,6 +10,11 @@ import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from ".
 import { Spinner, Modal, PropertySelect } from "./shared";
 import PayBillModal from "./PayBillModal";
 
+// "Covered by condo fee" -- the cost is bundled into the monthly condo/HOA
+// fee, so there is no separate bill to fetch, chase or pay. A third value of
+// the existing responsibility field, beside owner and tenant.
+const respLabel = (r) => r === "tenant" ? "Tenant" : r === "condo_fee" ? "Condo fee" : r === "shared" ? "Shared" : "Owner";
+
 // The lifecycle a bill actually has. "Paid or Ignore" was not a design
 // choice -- it was everything one status column on an account could say.
 const BILL_STATUS = {
@@ -199,6 +204,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // too -- that is the layer that actually holds -- but refusing here means
   // no cancelled payment row is created for something that was never
   // legitimate to ask for.
+  if (bill.responsibility === "condo_fee") {
+    showToast("This utility is covered by the condo fee — there's no separate bill to pay.", "error");
+    return;
+  }
   if (bill.responsibility === "tenant") {
     showToast("The tenant is responsible for this utility — it is not ours to pay. Recharge it from their ledger if you have already covered it.", "error");
     return;
@@ -667,7 +676,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && payablePortalFor(bill.provider_display || bill.provider) && (<>
+  {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && bill.responsibility !== "condo_fee" && payablePortalFor(bill.provider_display || bill.provider) && (<>
   <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
   {/* Pay by card in the streamed secure browser: the person enters the card on
       the provider's own page; PropManager never holds it. */}
@@ -751,7 +760,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       "Pending" counted accounts with a status flag; overdue was unanswerable
       because no bill carried its own due date. */}
   {(() => {
-    const open = utilities.filter(u => !["paid", "settled", "excluded", "no_bill", "no_balance"].includes(u.status));
+    const open = utilities.filter(u => u.responsibility !== "condo_fee" && !["paid", "settled", "excluded", "no_bill", "no_balance"].includes(u.status));
     const overdue = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d < 0; });
     const soon = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d >= 0 && d <= 7; });
     const owed = open.reduce((t, u) => t + safeNum(u.amount), 0);
@@ -783,7 +792,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Responsibility</label><Select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })}>
-  {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
+  <option value="owner">Owner</option>
+  <option value="tenant">Tenant</option>
+  <option value="shared">Shared</option>
+  <option value="condo_fee">Covered by condo fee</option>
   </Select></div>
   <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
@@ -845,13 +857,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
-  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold capitalize text-neutral-700">{u.responsibility}</div></div>
+  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div></div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   {/* Same actions as the table view -- the two must stay at parity. */}
   <div className="mt-3 flex flex-wrap gap-2">
   {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
-  {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && (
+  {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && u.responsibility !== "condo_fee" && (
     u.responsibility === "tenant"
       ? <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
       : <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
@@ -911,8 +923,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // nothing ever acted on it; a tenant-responsible bill you paid should
       // become that tenant's debt, not an owner expense.
       { key: "responsibility", label: "Owed by", sort: true, width: 96, render: u => (
-        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>
-          {u.responsibility === "tenant" ? "Tenant" : "Owner"}
+        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
+          {respLabel(u.responsibility)}
         </span>
       ) },
       // One line. This cell used to stack three things -- the portal link, a
@@ -958,7 +970,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             loadBankAccounts();
           }}>Pay</TextLink>
         )}
-        {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && (
+        {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
           u.responsibility === "tenant"
             // The tenant owes this — it is not the owner's to pay on a card.
             // Greyed, not hidden, so it reads as "blocked" rather than missing;
