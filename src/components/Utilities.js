@@ -737,7 +737,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
   {/* Pay by card in the streamed secure browser: the person enters the card on
       the provider's own page; PropManager never holds it. */}
-  <Btn variant="slate" size="sm" onClick={() => setPayingBill({ ...bill, due: bill.due || bill.due_date })}>Pay by card</Btn>
+  <Btn variant="slate" size="sm" onClick={() => setPayingBill({ ...bill, due: bill.due || bill.due_date })}>Online Payment</Btn>
   {/* Paying less than the full amount is a real thing -- a payment plan, or
       holding back a disputed portion. Asking for the figure here keeps it a
       deliberate choice rather than something typed into the provider's form
@@ -924,8 +924,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" && u.final_bill_status !== "pending" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
   {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && u.responsibility !== "condo_fee" && (
     ownerPays(u)
-      ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
-      : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+      ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Online Payment</TextLink>
+      : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Online Payment</span>
   )}
   {u.responsibility === "tenant" && u.final_bill_status !== "settled" && (
     u.final_bill_status === "pending"
@@ -1040,11 +1040,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
         )}
         {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
           ownerPays(u)
-            ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
+            ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Online Payment</TextLink>
             // The tenant owes this — it is not the owner's to pay on a card.
             // Greyed, not hidden, so it reads as "blocked" rather than missing;
             // it opens only after an admin approves paying it on the tenant's behalf.
-            : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+            : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Online Payment</span>
         )}
         {u.responsibility === "tenant" && u.final_bill_status !== "settled" && (
           u.final_bill_status === "pending"
