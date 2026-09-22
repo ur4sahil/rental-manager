@@ -838,10 +838,31 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold capitalize text-neutral-700">{u.responsibility}</div></div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
-  <div className="mt-3 flex gap-2">
+  {/* Same actions as the table view -- the two must stay at parity. */}
+  <div className="mt-3 flex flex-wrap gap-2">
   {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
+  {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && (
+    u.responsibility === "tenant"
+      ? <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+      : <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
+  )}
+  {u.pdf_storage_path && <TextLink tone="neutral" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.pdf_storage_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error"); }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statement</TextLink>}
+  {u.username_encrypted && <TextLink tone="brand" size="xs" underline={false} onClick={async () => {
+    const s = new Set(showCreds);
+    if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; }
+    u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt);
+    u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt);
+    s.add(u.id); setShowCreds(new Set(s));
+  }} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">{showCreds.has(u.id) ? "Hide login" : "Login"}</TextLink>}
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => setHistoryFor(u.id)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">History</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openAuditLog(u)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</TextLink>
   </div>
+  {showCreds.has(u.id) && u.username_encrypted && (
+    <div className="mt-2 text-xs text-neutral-600 truncate" title={`${u._decUser || "—"} / ${u._decPass || "—"}`}>
+      {u._decUser || "—"} / {u._decPass || "—"}
+      {u.website && <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline ml-2">open portal</a>}
+    </div>
+  )}
   </div>
   ))}
   </div>
