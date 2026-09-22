@@ -450,6 +450,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             if (wd.recurring) setRecurring(wd.recurring);
             } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore", silent: true }); }
           }
+          // Tables win before an archive-all commit: an in-progress resume must
+          // reflect the live utility/HOA rows, not just the draft snapshot, or
+          // commit_property_wizard's replace-all would archive live rows the
+          // stale snapshot never held. loadLiveWizardData only overrides when
+          // live rows exist, so a genuine new-property draft is left intact.
+          await loadLiveWizardData(addr);
           return;
         }
         // Edit mode: check for completed wizard and reopen it
