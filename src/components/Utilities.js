@@ -7,13 +7,14 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
-import { Badge, Spinner, Modal, PropertySelect } from "./shared";
+import { Spinner, Modal, PropertySelect } from "./shared";
 import PayBillModal from "./PayBillModal";
 
 // The lifecycle a bill actually has. "Paid or Ignore" was not a design
 // choice -- it was everything one status column on an account could say.
 const BILL_STATUS = {
   no_bill:        { label: "No bill yet", tone: "neutral" },
+  no_balance:     { label: "No balance", tone: "neutral" },
   pending_review: { label: "To review",   tone: "warn" },
   authorized:     { label: "Approved",    tone: "info" },
   paid:           { label: "Paid",        tone: "good" },
@@ -355,7 +356,14 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       amount: b ? b.amount : null,
       due: b?.due_date || null,
       statement_period: b?.statement_period || null,
-      status: b?.status || "no_bill",
+      // A reading of exactly $0 is nothing owed -- a terminal "No balance", not
+      // a bill "to review". Derived from the amount, so existing $0 bills read
+      // as No balance immediately (no data backfill) and never inflate the
+      // dashboard's To-pay / Overdue counts. Already-terminal states win.
+      status: (b && b.amount != null && safeNum(b.amount) === 0
+               && !["paid", "settled", "excluded"].includes(b.status))
+        ? "no_balance"
+        : (b?.status || "no_bill"),
       paid_at: b?.paid_at || null,
       payment_confirmation: b?.payment_confirmation || "",
       pdf_storage_path: b?.pdf_storage_path || null,
@@ -716,6 +724,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <option value="authorized">Approved</option>
   <option value="paid">Paid</option>
   <option value="settled">Recharged</option>
+  <option value="no_balance">No balance</option>
   <option value="no_bill">No bill yet</option>
   <option value="error">Read failed</option>
   </Select>
@@ -742,7 +751,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       "Pending" counted accounts with a status flag; overdue was unanswerable
       because no bill carried its own due date. */}
   {(() => {
-    const open = utilities.filter(u => !["paid", "settled", "excluded", "no_bill"].includes(u.status));
+    const open = utilities.filter(u => !["paid", "settled", "excluded", "no_bill", "no_balance"].includes(u.status));
     const overdue = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d < 0; });
     const soon = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d >= 0 && d <= 7; });
     const owed = open.reduce((t, u) => t + safeNum(u.amount), 0);
@@ -831,7 +840,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div key={u.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{u.provider}</div><div className="text-xs text-neutral-400 mt-0.5">{u.property}</div></div>
-  <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
+  <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div>
+  <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${STATUS_CLASS[(BILL_STATUS[u.status] || BILL_STATUS.pending_review).tone]}`}>{(BILL_STATUS[u.status] || BILL_STATUS.pending_review).label}</span></div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
