@@ -1,29 +1,32 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 
-// A real browser, running on the VPS, rendered here on a canvas. The person
-// sees the utility's own card page and types their card into it; the keystrokes
-// travel to that browser and the card goes browser → utility over HTTPS. Nothing
-// about the card touches PropManager — no state, no storage, no logging.
+// A real browser, running on the VPS, rendered here on a canvas. The person sees
+// the utility's own card page and types their card into it; the keystrokes travel
+// to that browser and the card goes browser → utility over HTTPS. Nothing about
+// the card touches PropManager — no state, no storage, no logging.
 //
-// The server streams JPEG frames (CDP screencast) over a WebSocket and accepts
-// mouse/key/text events back. The page renders at a fixed 1280×900; we scale
-// pointer coordinates from the on-screen canvas into that space so a click lands
-// where the person aimed regardless of how big the canvas is drawn.
+// DESKTOP and MOBILE need different input:
+//   • Desktop has a real keyboard + mouse — relay key events directly (Tab,
+//     Backspace, Enter and typing all work), like a normal browser.
+//   • Mobile has no physical keyboard and a <canvas> can't raise the on-screen
+//     one, so a tap focuses a visible "type-bar" whose keystrokes are relayed,
+//     and a swipe scrolls the remote page.
 const PAGE_W = 1280;
 const PAGE_H = 900;
+const IS_TOUCH = typeof window !== "undefined"
+  && (("ontouchstart" in window) || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches));
 
 export default function StreamedBrowser({ url, provider, streamBase, token, onPaid, onClose }) {
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
   const imgRef = useRef(typeof Image !== "undefined" ? new Image() : null);
-  const kbRef = useRef(null);         // visible type-bar that raises the phone keyboard
-  const kbValRef = useRef("");        // last value seen, to diff into keystrokes
+  const kbRef = useRef(null);         // mobile type-bar
+  const kbValRef = useRef("");        // last type-bar value, to diff into keystrokes
   const [status, setStatus] = useState("connecting"); // connecting | ready | paid | error | expired
   const [detail, setDetail] = useState("");
-  const statusRef = useRef(status);   // current status for the non-React touch listeners
+  const statusRef = useRef(status);
   useEffect(() => { statusRef.current = status; }, [status]);
 
-  // Turn a pointer event into page-space coordinates.
   const toPage = useCallback((e) => {
     const c = canvasRef.current; if (!c) return { x: 0, y: 0 };
     const r = c.getBoundingClientRect();
@@ -49,7 +52,6 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => alive && setStatus((s) => (s === "connecting" ? "connecting" : s));
     ws.onerror = () => { if (alive) { setStatus("error"); setDetail("Could not reach the browser service."); } };
     ws.onclose = (e) => { if (alive && e.code === 4000) setStatus("expired"); };
     ws.onmessage = (m) => {
@@ -60,8 +62,6 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
         img.onload = () => { const ctx = cv.getContext("2d"); ctx && ctx.drawImage(img, 0, 0, PAGE_W, PAGE_H); };
         img.src = "data:image/jpeg;base64," + msg.data;
       } else if (msg.type === "status") {
-        // Progress while the browser signs in and drives to the bill, before
-        // the live view starts. Keep status "connecting" so the loader shows.
         setDetail(msg.message || "");
       } else if (msg.type === "ready") {
         setStatus("ready");
@@ -75,25 +75,28 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
         setStatus("expired");
       }
     };
-
-    // Ask the server to re-check for a confirmation page a moment after any
-    // click, in case a submit navigated without a frame we noticed.
     return () => { alive = false; try { ws.close(); } catch {} };
   }, [streamBase, provider, url, token, onPaid]);
 
-  // All typing (desktop and mobile) goes through the visible type-bar, so the
-  // canvas needs no key handling. iOS only opens the keyboard when focus() runs
-  // INSIDE the tap's own handler, hence focusKeyboard() is called synchronously
-  // from the tap handlers.
-  const focusKeyboard = useCallback(() => {
-    if (status !== "ready") return;
-    const el = kbRef.current;
-    if (el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
-  }, [status]);
+  // ---- DESKTOP: relay the physical keyboard straight through ----------------
+  const onCanvasKeyDown = useCallback((e) => {
+    if (statusRef.current !== "ready") return;
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); sendEv({ type: "text", text: e.key });
+    } else if (["Tab", "Backspace", "Enter", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Escape"].includes(e.key)) {
+      e.preventDefault(); sendEv({ type: "key", down: true, key: e.key, code: e.code, keyCode: e.keyCode });
+    }
+  }, [sendEv]);
+  const onCanvasKeyUp = useCallback((e) => {
+    if (statusRef.current !== "ready") return;
+    if (e.key.length !== 1) sendEv({ type: "key", down: false, key: e.key, code: e.code, keyCode: e.keyCode });
+  }, [sendEv]);
 
-  // iOS reports keyCode 229 while composing, so onKeyDown is unreliable there --
-  // diff the input's value on every change instead. Added chars go as text;
-  // a shorter value means Backspace(s); a replacement is backspaced then retyped.
+  // ---- MOBILE: type-bar keystroke relay ------------------------------------
+  const focusKeyboard = useCallback(() => {
+    const el = kbRef.current; if (el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
+  }, []);
+  const clearBar = useCallback(() => { const el = kbRef.current; if (el) el.value = ""; kbValRef.current = ""; }, []);
   const onKbInput = useCallback(() => {
     const el = kbRef.current; if (!el) return;
     const nv = el.value, ov = kbValRef.current;
@@ -106,27 +109,21 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
       for (const ch of nv) sendEv({ type: "text", text: ch });
     }
     kbValRef.current = nv;
-    // Keep the buffer from growing forever; reset once it is comfortably long.
     if (nv.length > 40) { el.value = ""; kbValRef.current = ""; }
   }, [sendEv]);
-
   const onKbKeyDown = useCallback((e) => {
-    // Enter (submit) and Backspace-on-empty won't show up in onKbInput.
     if (e.key === "Enter") { e.preventDefault(); sendEv({ type: "key", down: true, key: "Enter", code: "Enter", keyCode: 13 }); }
     else if (e.key === "Backspace" && kbRef.current && kbRef.current.value === "") {
       sendEv({ type: "key", down: true, key: "Backspace", code: "Backspace", keyCode: 8 });
     }
   }, [sendEv]);
 
-  // TOUCH on mobile: a swipe must scroll the REMOTE page (so the bottom of a
-  // long card form — State, Zip, Submit — is reachable), and a tap must click.
-  // The remote viewport is fixed, so nothing below it is captured unless the
-  // remote page itself scrolls; we relay drags as wheel deltas. Attached as a
-  // NON-passive listener (React's onTouchMove is passive and can't preventDefault).
+  // ---- MOBILE touch: swipe scrolls the remote page, tap clicks + refocuses --
   useEffect(() => {
+    if (!IS_TOUCH) return;
     const c = canvasRef.current; if (!c) return;
     const st = { y: 0, moved: false };
-    const pt = (clientX, clientY) => { const r = c.getBoundingClientRect(); return { x: (clientX - r.left) * (PAGE_W / r.width), y: (clientY - r.top) * (PAGE_H / r.height), ratio: PAGE_H / r.height }; };
+    const pt = (cx, cy) => { const r = c.getBoundingClientRect(); return { x: (cx - r.left) * (PAGE_W / r.width), y: (cy - r.top) * (PAGE_H / r.height), ratio: PAGE_H / r.height }; };
     const onStart = (e) => { const t = e.touches[0]; st.y = t.clientY; st.moved = false; };
     const onMove = (e) => {
       if (statusRef.current !== "ready") return;
@@ -139,18 +136,19 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
       }
     };
     const onEnd = (e) => {
-      if (statusRef.current !== "ready" || st.moved) return; // a scroll, not a tap
-      e.preventDefault();                                    // suppress the synthetic click (would double-fire)
+      if (statusRef.current !== "ready" || st.moved) return;
+      e.preventDefault();
       const t = e.changedTouches[0]; const p = pt(t.clientX, t.clientY);
       sendEv({ type: "mousedown", x: p.x, y: p.y, clickCount: 1 });
       sendEv({ type: "mouseup", x: p.x, y: p.y, clickCount: 1 });
+      clearBar();          // new field → start a fresh buffer so fields don't concatenate
       const el = kbRef.current; if (el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
     };
     c.addEventListener("touchstart", onStart, { passive: true });
     c.addEventListener("touchmove", onMove, { passive: false });
     c.addEventListener("touchend", onEnd, { passive: false });
     return () => { c.removeEventListener("touchstart", onStart); c.removeEventListener("touchmove", onMove); c.removeEventListener("touchend", onEnd); };
-  }, [sendEv]);
+  }, [sendEv, clearBar]);
 
   const interactive = status === "ready";
   return (
@@ -165,25 +163,25 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
              style={{ background: status === "paid" ? "#052e16" : status === "error" || status === "expired" ? "#3f1d1d" : "#1e293b",
                       color: status === "paid" ? "#86efac" : status === "error" || status === "expired" ? "#fca5a5" : "#93c5fd" }}>
           {status === "connecting" && (detail || "Starting a secure browser and signing in…")}
-          {status === "ready" && "Tap a field, type in the bar below, then submit. We’ll capture the receipt — your card never touches our servers."}
+          {status === "ready" && (IS_TOUCH
+            ? "Tap a field, type in the bar below, then submit. Your card never touches our servers."
+            : "Click a field and type as you normally would — Tab, Backspace and Enter all work. Your card never touches our servers.")}
           {status === "paid" && `✓ Paid. ${detail}. Receipt saved to this property.`}
           {status === "error" && `Couldn’t continue. ${detail}`}
           {status === "expired" && "The session timed out for safety. Reopen to try again."}
         </div>
 
         <div className="relative bg-white overflow-hidden" style={{ opacity: interactive ? 1 : 0.6 }}>
-          {/* No tabIndex and no key handlers on the canvas: it must NOT take
-              focus, or every tap blurs the type-bar and the phone keyboard
-              flickers shut. Touch (tap + swipe-to-scroll) is handled by the
-              non-passive listener above; mouse handlers cover desktop. */}
           <canvas
             ref={canvasRef} width={PAGE_W} height={PAGE_H}
+            tabIndex={IS_TOUCH ? undefined : 0}
             className="block w-full h-auto outline-none select-none"
-            style={{ cursor: interactive ? "crosshair" : "default" }}
             onMouseMove={(e) => interactive && sendEv({ type: "mousemove", ...toPage(e) })}
-            onMouseDown={(e) => { if (interactive) { e.preventDefault(); sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); focusKeyboard(); } }}
+            onMouseDown={(e) => { if (interactive) { sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); if (!IS_TOUCH) canvasRef.current?.focus(); } }}
             onMouseUp={(e) => interactive && sendEv({ type: "mouseup", ...toPage(e), clickCount: e.detail || 1 })}
             onWheel={(e) => interactive && sendEv({ type: "wheel", ...toPage(e), dx: e.deltaX, dy: e.deltaY })}
+            onKeyDown={IS_TOUCH ? undefined : onCanvasKeyDown}
+            onKeyUp={IS_TOUCH ? undefined : onCanvasKeyUp}
           />
           {status === "connecting" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3">
@@ -198,10 +196,8 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
           )}
         </div>
 
-        {/* Type-bar: a REAL, visible input. iOS won't raise the keyboard for a
-            hidden/opacity-0 field, which is why tapping did nothing before. What
-            you type here relays to the field you tapped in the page above. */}
-        {interactive && (
+        {/* Type-bar: MOBILE ONLY. Desktop types straight into the canvas above. */}
+        {interactive && IS_TOUCH && (
           <div className="px-3 py-2 bg-neutral-800 border-t border-neutral-700">
             <input
               ref={kbRef}
@@ -212,7 +208,7 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
               placeholder="Tap a field above, then type here…"
               className="w-full rounded-lg px-3 py-2.5 text-base bg-white text-neutral-900 placeholder-neutral-400 outline-none"
             />
-            <div className="text-[11px] text-neutral-400 mt-1 text-center">Goes to the field you tapped above · press Enter to submit</div>
+            <div className="text-[11px] text-neutral-400 mt-1 text-center">Goes to the field you tapped · swipe the page to scroll · Enter to submit</div>
           </div>
         )}
       </div>
