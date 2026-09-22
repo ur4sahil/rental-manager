@@ -150,23 +150,36 @@ async function fetchCredentials(book, companyId) {
 // Enroll helper: fill the login form so the person only has to click Log in
 // (their real click is what passes reCAPTCHA v3). Returns true if it filled.
 async function autoFillLogin(page, book, companyId, send, sessionId) {
-  if (!book?.loginFields?.user) return false;
+  if (!book) return false;
   try {
     await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
-    const userBox = page.locator(book.loginFields.user).first();
+    // Find the username field: the book's explicit selector, else its signed-out
+    // textbox signal, else a generic email / Azure-B2C (#signInName) guess. This
+    // mirrors ensure-session.js so the streamed browser can fill the same B2C
+    // form the sweep does. BGE/Pepco carry no loginFields (only signedOutSignals)
+    // and used to fall straight through here unfilled -- which, once a saved
+    // session expired, left the person on a blank login page.
+    const userSig = (book.signedOutSignals || []).find(s => s.role === "textbox");
+    const userBox = book.loginFields?.user
+      ? page.locator(book.loginFields.user).first()
+      : userSig
+        ? page.getByRole("textbox", { name: userSig.name }).first()
+        : page.locator('#signInName, input[type="email"], input[name*="user" i], input[id*="user" i]').first();
     if (!await userBox.isVisible({ timeout: 6000 }).catch(() => false)) return false;
     const creds = await fetchCredentials(book, companyId);
-    if (!creds || !creds.username) { log(`[${sessionId}] enroll: no stored credentials for ${book.provider}`); return false; }
+    if (!creds || !creds.username) { log(`[${sessionId}] login: no stored credentials for ${book.provider}`); return false; }
     await userBox.click(); await userBox.pressSequentially(creds.username, { delay: 55 });
-    const passBox = page.locator(book.loginFields.pass || 'input[type="password"]').first();
+    const passBox = page.locator(book.loginFields?.pass || 'input[type="password"]').first();
     await passBox.click(); await passBox.pressSequentially(creds.password, { delay: 55 });
-    log(`[${sessionId}] enroll: pre-filled ${book.provider} login`);
+    log(`[${sessionId}] login: pre-filled ${book.provider}`);
     // reCAPTCHA v3 returns "Invalid Captcha" for an automated click (tested on
     // Washington Gas), so the person clicks Log In themselves -- their genuine
-    // interaction is what passes v3. Everything else is done for them.
-    send({ type: "status", message: `Your ${book.provider} login is filled in \u2014 just click \u201cLog In\u201d, then close this window and it's connected.` });
+    // interaction is what passes v3. BGE has no captcha but a mailed/texted
+    // verification code (mfa), which also needs the person, so we stop here too.
+    const codeHint = book.mfa ? " and enter the verification code they send you" : "";
+    send({ type: "status", message: `Your ${book.provider} login is filled in \u2014 click \u201cLog In\u201d${codeHint}.` });
     return true;
-  } catch (e) { log(`[${sessionId}] enroll fill failed: ${String(e.message).split("\n")[0].slice(0,70)}`); return false; }
+  } catch (e) { log(`[${sessionId}] login fill failed: ${String(e.message).split("\n")[0].slice(0,70)}`); return false; }
 }
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -481,13 +494,22 @@ wss.on("connection", async (ws, req) => {
     // in FIRST. Driving a pay flow on a page that isn't signed in is what left
     // the person staring at a blank canvas -- there's nothing to pay until they
     // log in. Auto-fill the login and tell them so.
-    if (claims?.enroll || (!storageState && HUMAN_LOGIN[provider])) {
-      const filled = await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false);
-      const pay = !claims?.enroll;
-      if (!filled) send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()}${pay ? " first, then pay your bill" : " — once you're in, close this window and it's connected"}.` });
-      else if (pay) send({ type: "status", message: "Click “Log In”, then open your bill to pay it here." });
-    } else {
+    // Try a login fill whenever the provider needs a human login (or we're
+    // enrolling). autoFillLogin only fills when a login field is actually on
+    // screen, so this ALSO catches an EXPIRED saved session that has bounced us
+    // to the login page: the old code trusted the session file, ran autoDrive on
+    // the login page, and left the person stuck (BGE's cookies lapse in hours).
+    // If no login field is present the session is still good, so drive to the bill.
+    const pay = !claims?.enroll;
+    const filled = (claims?.enroll || HUMAN_LOGIN[provider])
+      ? await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false)
+      : false;
+    if (filled) {
+      send({ type: "status", message: pay ? "Once you're signed in, open your bill and pay it here." : "Once you're signed in, close this window and it's connected." });
+    } else if (pay) {
       await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
+    } else {
+      send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()} — once you're in, close this window and it's connected.` });
     }
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
     send({ type: "ready", sessionId });
