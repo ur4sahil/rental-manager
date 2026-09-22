@@ -856,6 +856,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       ? <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
       : <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
   )}
+  {payablePortalFor(u.provider_display || u.provider) && (
+    <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
+  )}
   {u.pdf_storage_path && <TextLink tone="neutral" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.pdf_storage_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error"); }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statement</TextLink>}
   {u.username_encrypted && <TextLink tone="brand" size="xs" underline={false} onClick={async () => {
     const s = new Set(showCreds);
@@ -963,6 +966,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             ? <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
             : <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
         )}
+        {payablePortalFor(u.provider_display || u.provider) && (
+          // Sign in to the provider in the streamed browser (reCAPTCHA/code
+          // portals a bot can't pass). The session is saved for the daily fetch.
+          <TextLink tone="neutral" size="xs" className="mr-2" title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })}>Log in</TextLink>
+        )}
         {u.pdf_storage_path && (
           <TextLink tone="neutral" size="xs" className="mr-2" onClick={async () => {
             // Signed on demand and short-lived: a statement carries an
@@ -997,7 +1005,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* ---- Pay by card in the streamed secure browser ----------------- */}
   {payingBill && (
     <PayBillModal
-      bill={payingBill} companyId={companyId} userProfile={userProfile}
+      bill={payingBill} enroll={payingBill.__enroll === true} companyId={companyId} userProfile={userProfile}
       showToast={showToast}
       onClose={() => setPayingBill(null)}
       onPaid={() => { setPayingBill(null); fetchAutomationData(); }}

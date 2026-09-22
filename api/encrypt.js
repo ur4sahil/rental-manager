@@ -252,6 +252,9 @@ module.exports = async function handler(req, res) {
       amount: approvedAmount,
       full: body.full === true,
       method: body.method === "ach" ? "ach" : "card",
+      // Enroll: open the portal only to sign in (reCAPTCHA/code portals a bot
+      // can't pass). No payment, no auto-drive; the stream saves the session.
+      enroll: body.enroll === true,
       billId: body.billId || null,
       paymentId,
       companyId,

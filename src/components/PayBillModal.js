@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { supabase } from "../supabase";
 import { safeNum, formatCurrency } from "../utils/helpers";
 import StreamedBrowser from "./StreamedBrowser";
@@ -11,7 +11,7 @@ import StreamedBrowser from "./StreamedBrowser";
 // (select account -> Pay -> Make a Payment -> amount page: set amount + method
 // -> Next). The person only types the card and submits. The amount-as-money and
 // the card live on the provider's site, never in Housy.
-export default function PayBillModal({ bill, companyId, onClose, onPaid, showToast }) {
+export default function PayBillModal({ bill, companyId, onClose, onPaid, showToast, enroll = false }) {
   const due = safeNum(bill.amount);
   const [full, setFull] = useState(due > 0);      // default to the full balance when there is one
   const [other, setOther] = useState("");
@@ -27,7 +27,10 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
   const start = useCallback(async () => {
     setError(null); setBusy(true);
     try {
-      const body = JSON.stringify({
+      const body = JSON.stringify(enroll ? {
+        action: "stream-session", companyId, provider: bill.provider_display || bill.provider,
+        account: bill.account_number || bill.utility_account_id || null, enroll: true,
+      } : {
         action: "stream-session", companyId, provider: bill.provider_display || bill.provider,
         account: bill.account_number || bill.utility_account_id || null,
         amount: full ? due : amount, full, method,
@@ -69,15 +72,35 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
     } catch {
       setError("Couldn't reach the payment service."); setBusy(false);
     }
-  }, [bill, companyId, full, method, amount, due]);
+  }, [bill, companyId, full, method, amount, due, enroll]);
+
+  // Enroll opens straight into the portal to sign in -- no amount to pick.
+  useEffect(() => { if (enroll) start(); }, [enroll, start]);
 
   if (stream) {
     return (
       <StreamedBrowser
         streamBase={stream.streamBase} token={stream.token} provider={stream.provider}
-        onPaid={(msg) => { showToast("Payment confirmed — receipt captured.", "success"); onPaid && onPaid(msg); }}
+        onPaid={(msg) => { showToast && showToast("Payment confirmed — receipt captured.", "success"); onPaid && onPaid(msg); }}
         onClose={onClose}
       />
+    );
+  }
+
+  // Enroll: no amount/method step -- just open the portal to sign in.
+  if (enroll) {
+    return (
+      <div className="fixed inset-0 z-[2500] bg-black/40 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-pop w-full max-w-md p-6 text-center">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-1">Connect {provider}</h3>
+          <p className="text-sm text-neutral-500 mb-4">
+            {error || `Opening ${provider}'s site in a secure browser. Sign in there, then close the window — Housy will reuse that login to fetch your bills automatically. Your password never touches Housy.`}
+          </p>
+          {error
+            ? <button onClick={onClose} className="w-full bg-neutral-100 text-neutral-700 rounded-xl py-2.5 text-sm font-medium">Close</button>
+            : <div className="text-sm text-neutral-400">Opening secure browser…</div>}
+        </div>
+      </div>
     );
   }
 
