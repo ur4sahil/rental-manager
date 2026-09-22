@@ -229,7 +229,10 @@ async function signedIn(page, book) {
   const sessionFile = path.join(SESSION_DIR, `${portal}.json`);
 
   // ---- 1. is the session we have still good? -------------------------
-  if (fs.existsSync(sessionFile)) {
+  // Some portals expire so fast that a "still valid" check passes and the very
+  // next read finds it gone (Pepco). For those, don't reuse -- fresh-login
+  // every time, which is cheap when there's no captcha or code.
+  if (fs.existsSync(sessionFile) && !book.noSessionReuse) {
     const browser = await launchBrowser(chromium, { headless: !headed });
     try {
       const ctx = await browser.newContext({

@@ -161,8 +161,28 @@ function runFetch(portal, account, opts = {}) {
         continue;
       }
       const chooser = listed.accounts || [];
-      console.log(`${provider}: portal chooser lists ${chooser.length} account${chooser.length === 1 ? "" : "s"}`);
-      passes = chooser.map(ca => ({ account: ca.number, last_bill_at: null, property: null }));
+      // house-number + first street word, e.g. "2311 COLUMBIA", to line a Housy
+      // property up with a chooser row when Housy has no account number.
+      const skey = (a) => { const m = String(a || "").toUpperCase().replace(/[.,]/g, " ").match(/(\d+)\s+([A-Z]+)/); return m ? `${m[1]} ${m[2]}` : null; };
+      if (chooser.length <= 25) {
+        // A small login: read EVERY account -- each identifies its own property
+        // from the dashboard, so nothing has to be matched up front.
+        console.log(`${provider}: chooser lists ${chooser.length} account${chooser.length === 1 ? "" : "s"} — reading all`);
+        passes = chooser.map(ca => ({ account: ca.number, last_bill_at: null, property: null }));
+      } else {
+        // A big login (Pepco carries ~75, most closed): read only the accounts
+        // that match a Housy utility -- by stored number, else by street key --
+        // so the run stays bounded and never reads dozens of accounts nobody
+        // tracks. A Housy utility with no chooser match is reported, not guessed.
+        console.log(`${provider}: chooser lists ${chooser.length}; matching to ${mine.length} Housy utilit${mine.length === 1 ? "y" : "ies"}`);
+        passes = [];
+        for (const u of mine) {
+          let ca = u.account_number ? chooser.find(c => c.number === u.account_number) : null;
+          if (!ca) { const uk = skey(u.property); if (uk) ca = chooser.find(c => skey(c.address) === uk); }
+          if (ca) passes.push({ account: ca.number, last_bill_at: null, property: u.property });
+          else console.log(`  ${provider.padEnd(15)} ${String(u.property).slice(0, 30).padEnd(32)} no chooser account found`);
+        }
+      }
     } else {
       const withAccounts = mine.filter(t => t.account_number);
       // Each pass carries its target, so an account whose current statement is
@@ -208,7 +228,7 @@ function runFetch(portal, account, opts = {}) {
 
       const rec = await api("record-reading", {
         companyId: COMPANY, provider, account,
-        property: r.property ?? null, outcome: r.outcome,
+        property: pass.property || r.property || null, outcome: r.outcome,
         // Signed. A credit arrives negative and is stored negative, so the
         // in-credit report is a plain amount < 0 and nothing downstream has
         // to remember a separate flag to avoid paying money that is owed TO

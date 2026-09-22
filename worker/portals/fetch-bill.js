@@ -228,7 +228,24 @@ const isoDate = (s) => {
         }
         res = await listChooserAccounts(page).catch(e => ({ ok: false, reason: String(e.message) }));
       }
-      finish(res.ok ? "ok" : "error", { accounts: res.accounts || [], error: res.reason || null });
+      // Paginate a NUMBERED pager (Pepco spreads ~80 accounts over pages 1..8;
+      // "Next Page" isn't clickable, the page-number links are). Click each
+      // number in turn -- the pager reveals the next as you go -- and
+      // accumulate unique accounts.
+      const all = [...(res.accounts || [])];
+      const nums = (await page.getByRole("link", { name: /^\s*\d+\s*$/ }).allInnerTexts().catch(() => []))
+        .map(t => parseInt(t, 10)).filter(n => n >= 1 && n <= 99);
+      const maxPage = nums.length ? Math.max(...nums) : 1;
+      for (let pg = 2; pg <= maxPage; pg++) {
+        const lnk = page.getByRole("link", { name: new RegExp(`^\\s*${pg}\\s*$`) }).first();
+        if (!(await lnk.count().catch(() => 0))) continue;   // not in the window yet
+        await lnk.click({ timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(2800);
+        const more = await listChooserAccounts(page).catch(() => ({ accounts: [] }));
+        for (const a of (more.accounts || [])) if (!all.some(x => x.number === a.number)) all.push(a);
+      }
+      record("list", `${all.length} accounts across ${maxPage} page(s)`);
+      finish(all.length ? "ok" : "error", { accounts: all, error: all.length ? null : (res.reason || "no accounts") });
     }
 
     // Switch to the requested account and CONFIRM it took. A click that

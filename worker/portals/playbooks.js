@@ -261,6 +261,9 @@ const PLAYBOOKS = {
     // Bounced to the public site = signed out. The button names drift with
     // every redesign; the hostname does not.
     signedOutUrl: /^https?:\/\/www\.pepco\.com/,
+    // Pepco sessions expire within minutes; a reuse check passes and the next
+    // read finds it gone. Fresh-login every sweep (B2C, no captcha, so cheap).
+    noSessionReuse: true,
     // Same entry-redirect as BGE, and it hid behind a condition that made it
     // look absent: measured on a fresh session, https://secure.pepco.com/
     // lands on Pages/ChangeAccount.aspx and everything looks fine. Measured

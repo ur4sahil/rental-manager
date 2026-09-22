@@ -22,6 +22,6 @@ for p in $PROVIDERS; do
   echo "===== $(date -u +%FT%TZ) ensure-session $p ====="
   timeout 200 node portals/ensure-session.js "$p" || echo "ensure-session $p exited $?"
   echo "===== $(date -u +%FT%TZ) sweep $p ====="
-  timeout 900 node portals/sweep.js "$p" || echo "sweep $p exited $?"
+  timeout 2400 node portals/sweep.js "$p" || echo "sweep $p exited $?"
 done
 echo "===== $(date -u +%FT%TZ) done ====="
