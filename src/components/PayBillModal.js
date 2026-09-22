@@ -27,7 +27,17 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
   const start = useCallback(async () => {
     setError(null); setBusy(true);
     try {
-      const { data: sess } = await supabase.auth.getSession();
+      // getSession() returns the STORED token without refreshing it. On mobile
+      // the auto-refresh timer pauses while the tab/PWA is backgrounded, so that
+      // token can be expired by the time this runs -- the server then rejects it
+      // as "Invalid session". Refresh when it is missing, expired, or within two
+      // minutes of expiring.
+      let { data: sess } = await supabase.auth.getSession();
+      const expMs = (sess?.session?.expires_at || 0) * 1000;
+      if (!sess?.session?.access_token || expMs < Date.now() + 120000) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed?.session) sess = refreshed;
+      }
       const access = sess?.session?.access_token;
       if (!access) { setError("Please sign in again."); setBusy(false); return; }
       const resp = await fetch("/api/encrypt", {
