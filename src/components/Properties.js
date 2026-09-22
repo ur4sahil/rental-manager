@@ -183,6 +183,9 @@ function stripCredentials(wd) {
 function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, userProfile, userRole, allowedPages, onComplete, onDismiss }) {
   // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
   const [step, setStep] = useState(1);
+  // When a Review-card "Edit" is clicked, jump to that one step and come
+  // straight back to Review on save -- not walk the whole wizard forward.
+  const [returnToReview, setReturnToReview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [wizardId, setWizardId] = useState("");
   const [completedSteps, setCompletedSteps] = useState(new Set());
@@ -799,7 +802,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       const newCompleted = new Set(completedSteps);
       newCompleted.add(currentStepId);
       setCompletedSteps(newCompleted);
-      const nextStep = step + 1;
+      const reviewStep = steps.indexOf("review") + 1;
+      const nextStep = returnToReview ? reviewStep : step + 1;
+      if (returnToReview) setReturnToReview(false);
       setStep(nextStep);
       await persistProgress(nextStep, newCompleted);
     } catch (e) {
@@ -809,11 +814,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     }
   }
 
+  function editCard(stepId) {
+    const idx = steps.indexOf(stepId);
+    if (idx < 0) return;
+    setReturnToReview(true);
+    setStep(idx + 1);
+  }
+
+  function goBackToReview() {
+    setReturnToReview(false);
+    setStep(steps.indexOf("review") + 1);
+  }
+
   function handleBack() {
+    if (returnToReview) { goBackToReview(); return; }
     if (step > 1) setStep(step - 1);
   }
 
   async function handleSkip() {
+    if (returnToReview) { goBackToReview(); return; }
     const nextStep = step + 1;
     setStep(nextStep);
     await persistProgress(nextStep, completedSteps);
@@ -2627,7 +2646,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">Property Details</span>
                   <div className="flex items-center gap-2">
                     {stepBadge("property_details")}
-                    <Chip onClick={() => setStep(steps.indexOf("property_details") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("property_details")}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("property_details") ? (
@@ -2646,7 +2665,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <span className="text-sm font-semibold text-neutral-700">Tenant & Lease</span>
                     <div className="flex items-center gap-2">
                       {stepBadge("tenant_lease")}
-                      <Chip onClick={() => setStep(steps.indexOf("tenant_lease") + 1)}>Edit</Chip>
+                      <Chip onClick={() => editCard("tenant_lease")}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("tenant_lease") ? (
@@ -2665,7 +2684,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">Utilities</span>
                   <div className="flex items-center gap-2">
                     {stepBadge("utilities")}
-                    <Chip onClick={() => setStep(steps.indexOf("utilities") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("utilities")}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
@@ -2683,7 +2702,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">HOA</span>
                   <div className="flex items-center gap-2">
                     {stepBadge("hoa")}
-                    <Chip onClick={() => setStep(steps.indexOf("hoa") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("hoa")}>Edit</Chip>
                   </div>
                 </div>
                 {/* An HOA exists if it has a name. That is the test saveHoa()
@@ -2710,7 +2729,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <span className="text-sm font-semibold text-neutral-700">Loan / Mortgage</span>
                     <div className="flex items-center gap-2">
                       {stepBadge("loan")}
-                      <Chip onClick={() => setStep(steps.indexOf("loan") + 1)}>Edit</Chip>
+                      <Chip onClick={() => editCard("loan")}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("loan") && loan.enabled ? (
@@ -2730,7 +2749,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">Documents</span>
                   <div className="flex items-center gap-2">
                     {uploadedDocs.length > 0 ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <Chip onClick={() => setStep(steps.indexOf("documents") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("documents")}>Edit</Chip>
                   </div>
                 </div>
                 {uploadedDocs.length > 0 && (
@@ -2746,7 +2765,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">Insurance</span>
                   <div className="flex items-center gap-2">
                     {stepBadge("insurance")}
-                    <Chip onClick={() => setStep(steps.indexOf("insurance") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("insurance")}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("insurance") && insurance.enabled ? (
@@ -2764,7 +2783,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <span className="text-sm font-semibold text-neutral-700">Property Tax</span>
                   <div className="flex items-center gap-2">
                     {stepBadge("property_tax")}
-                    <Chip onClick={() => setStep(steps.indexOf("property_tax") + 1)}>Edit</Chip>
+                    <Chip onClick={() => editCard("property_tax")}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("property_tax") && taxes.enabled ? (
@@ -2784,7 +2803,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <span className="text-sm font-semibold text-neutral-700">Recurring Rent</span>
                     <div className="flex items-center gap-2">
                       {stepBadge("recurring_rent")}
-                      <Chip onClick={() => setStep(steps.indexOf("recurring_rent") + 1)}>Edit</Chip>
+                      <Chip onClick={() => editCard("recurring_rent")}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("recurring_rent") ? (
@@ -2830,11 +2849,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       <div className="bg-white border-t border-neutral-200 px-6 py-4 flex items-center justify-between">
         <TextLink tone="neutral" size="sm" underline={false} onClick={handleBack} disabled={step === 1} className="disabled:opacity-30">&#8592; Back</TextLink>
         <div className="flex gap-3">
-          {currentStepId !== "review" && currentStepId !== "property_details" && (
+          {currentStepId !== "review" && currentStepId !== "property_details" && !returnToReview && (
             <TextLink tone="neutral" size="sm" underline={false} onClick={handleSkip}>Skip</TextLink>
           )}
           {step < totalSteps ? (
-            <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next →"}</Btn>
+            <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : (returnToReview ? "Done — back to review ✓" : "Next →")}</Btn>
           ) : (
             <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? (savedPropertyId ? "Saving..." : "Completing...") : (savedPropertyId ? "Save Changes ✓" : "Complete Setup ✓")}</Btn>
           )}
