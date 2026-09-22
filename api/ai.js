@@ -1023,17 +1023,6 @@ module.exports = async function handler(req, res) {
     if (action === "sweep-targets") {
       const { companyId: cid, providers = [] } = body;
       if (!cid) return res.status(400).json({ error: "companyId is required" });
-      // A utility flipped to the tenant but whose CLOSEOUT bill is still the
-      // owner's (utility_accounts.final_bill_status='pending') must STILL be
-      // swept -- that final statement is the owner's to capture and pay. Pull
-      // those accounts' linked utilities.id and let them through the filter.
-      const { data: pendingAccts } = await sb.from("utility_accounts")
-        .select("legacy_utility_id")
-        .eq("company_id", cid).eq("responsibility", "tenant").eq("final_bill_status", "pending")
-        .is("archived_at", null).not("legacy_utility_id", "is", null);
-      const pendingLegacyIds = (pendingAccts || []).map(a => a.legacy_utility_id).filter(Boolean);
-      let orFilter = "responsibility.is.null,responsibility.not.in.(tenant,condo_fee)";
-      if (pendingLegacyIds.length) orFilter += `,id.in.(${pendingLegacyIds.join(",")})`;
       let q = sb.from("utilities")
         .select("id, provider, property, account_number, responsibility")
         .eq("company_id", cid)
@@ -1042,9 +1031,9 @@ module.exports = async function handler(req, res) {
         // A utility the TENANT is responsible for is not swept -- not our bill
         // to read, pay or chase. Nor is one COVERED BY THE CONDO FEE: there is
         // no separate statement to fetch. NULL responsibility falls through as
-        // the owner's, which is the default everywhere else in the app. The
-        // exception is a pending-final tenant utility, added by id above.
-        .or(orFilter);
+        // the owner's, which is the default everywhere else in the app. A final-
+        // bill line is owner-responsible, so it is already included here.
+        .or("responsibility.is.null,responsibility.not.in.(tenant,condo_fee)");
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
