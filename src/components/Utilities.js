@@ -361,7 +361,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       property: a.property,
       account_number: a.account_number,
       website: a.website || a.login_url || "",
-      responsibility: b?.responsibility || a.responsibility || "owner",
+      // The ACCOUNT's responsibility is what the user manages and is the current
+      // truth; the bill only carries a snapshot taken when the sweep fetched it,
+      // which goes stale the moment the account's responsibility is changed (e.g.
+      // 11455 set to Owner but old bills still read Tenant). Account wins; the
+      // bill's value is a fallback only when the account has none.
+      responsibility: a.responsibility || b?.responsibility || "owner",
       amount: b ? b.amount : null,
       due: b?.due_date || null,
       statement_period: b?.statement_period || null,
