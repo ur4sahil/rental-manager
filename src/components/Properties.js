@@ -10,22 +10,21 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
+import { generateBillsForProperty } from "../utils/taxes";
+import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
+import { pathForPage, subPathFor } from "../utils/routes";
 
 // The utilities table stores responsibility SHORT ("owner"/"tenant"/"condo_fee");
 // the wizard dropdown uses the "_pays" long form. Map short -> long on load, or
 // the Select silently falls back to its first option ("Owner Pays") while the
-// review reads the raw value as "Tenant" -- the two disagreeing, and the field
-// impossible to change.
+// review reads the raw value as "Tenant".
 const respToForm = (r) =>
   r === "owner" ? "owner_pays"
   : r === "tenant" ? "tenant_pays"
   : r === "condo_fee" ? "condo_fee"
   : (r === "owner_pays" || r === "tenant_pays") ? r
   : "owner_pays";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
-import { generateBillsForProperty } from "../utils/taxes";
-import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
-import { pathForPage, subPathFor } from "../utils/routes";
 
 const LICENSE_TYPE_OPTIONS = [
   { value: "rental_license", label: "Rental License" },
