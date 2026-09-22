@@ -309,7 +309,9 @@ const PLAYBOOKS = {
     // whole bill when a partial was approved. A dry run confirms or corrects
     // each label, exactly as Washington Gas's did.
     pay: {
-      payNav: /^(Make a Payment|Make Payment|Pay Bill|Pay Now)$/i,
+      // The account dashboard has a "Pay Bill" BUTTON (the nav link of the same
+      // name goes to a marketing page); the generic drive prefers the button.
+      payNav: /^Pay Bill$/i,
       amountRadio: /^(Amount Due|Total Amount Due|Current Balance|Pay Full Amount)/i,
       otherAmountRadio: [
         /^Other Amount$/i, /^Other amount/i, /^Pay Other Amount$/i,

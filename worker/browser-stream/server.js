@@ -264,6 +264,14 @@ async function autoDrive(page, provider, claims, send, sessionId) {
     return;
   }
 
+  // Land on the signed-in chooser first. A plain entry can redirect to a
+  // marketing page (Pepco/BGE), where the account switcher isn't present.
+  if (book.signedInEntry) {
+    await step("open account chooser", async () => {
+      await page.goto(book.signedInEntry, { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.waitForTimeout(1500);
+    });
+  }
   if (!await step("select account", async () => {
     const sel = await accounts.selectAccountAny(page, claims.account);
     if (!sel || !sel.ok) throw new Error((sel && sel.reason) || "account not selected");
@@ -272,11 +280,26 @@ async function autoDrive(page, provider, claims, send, sessionId) {
   })) { send({ type: "status", message: "Couldn't select the account automatically \u2014 pick it and continue." }); return; }
 
   if (!await step("Make a Payment", async () => {
-    const nav = page.getByRole("link", { name: pay.payNav }).first();
+    // A button (Pepco's billing-summary "Pay Bill") wins over the same-named
+    // nav link, which goes to a marketing page.
+    const btn = page.getByRole("button", { name: pay.payNav }).first();
+    const nav = (await btn.count().catch(() => 0)) ? btn : page.getByRole("link", { name: pay.payNav }).first();
     await nav.click({ timeout: 8000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
   })) { send({ type: "status", message: "Couldn't open the payment page automatically \u2014 continue from here." }); return; }
+
+  // Provider-specific hop from the pay landing to the card form (Pepco/BGE show
+  // a "Pay Online" card before the processor page).
+  if (pay.payOnline) {
+    await step("Pay Online", async () => {
+      const byRole = page.getByRole("link", { name: pay.payOnline }).first();
+      if (await byRole.count().catch(() => 0)) await byRole.click({ timeout: 8000 });
+      else await page.getByText(pay.payOnline).first().click({ timeout: 8000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(2500);
+    });
+  }
 
   if (!claims.full && claims.amount != null) {
     await step("set other amount", async () => {
