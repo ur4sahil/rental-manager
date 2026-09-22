@@ -15,6 +15,13 @@ import PayBillModal from "./PayBillModal";
 // the existing responsibility field, beside owner and tenant.
 const respLabel = (r) => r === "tenant" ? "Tenant" : r === "condo_fee" ? "Condo fee" : r === "shared" ? "Shared" : "Owner";
 
+// A utility flipped owner->tenant can still owe the owner one CLOSEOUT bill (or
+// a credit) for usage up to the meter transfer. While that final bill is
+// pending, the owner still pays it in-app -- so `ownerPays` returns true for it
+// even though the tenant is now responsible going forward.
+const isFinalPending = (u) => u.responsibility === "tenant" && u.final_bill_status === "pending";
+const ownerPays = (u) => u.responsibility === "owner" || isFinalPending(u);
+
 // The lifecycle a bill actually has. "Paid or Ignore" was not a design
 // choice -- it was everything one status column on an account could say.
 const BILL_STATUS = {
@@ -110,7 +117,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   supabase.from("utility_providers").select("*").eq("is_active", true).order("display_name"), // Intentionally unscoped — shared reference table of utility companies
   ]);
   setUtilAccounts(accts.data || []);
-  setAutoBills(bills.data || []);
+  // Carry each account's final_bill_status onto its bills so ownerPays() reads
+  // the pending-final case here too (a raw utility_bills row has no such column).
+  const acctFinalById = new Map((accts.data || []).map(a => [a.id, a.final_bill_status || "none"]));
+  setAutoBills((bills.data || []).map(b => ({ ...b, final_bill_status: acctFinalById.get(b.utility_account_id) || "none" })));
   setAutoJobs(jobs.data || []);
   setProviders(provs.data || []);
   }
@@ -185,6 +195,28 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   fetchAutomationData();
   }
 
+  // Owner->tenant handoff: mark whether a final bill/credit in the owner's name
+  // is still owed ('pending') or has been settled ('settled'). Pending keeps the
+  // utility on the owner's to-pay list and payable in-app; settled hands it fully
+  // to the tenant.
+  async function setFinalBillStatus(u, status) {
+  const acctId = u.account?.id || u.id;
+  const { error } = await supabase.from("utility_accounts")
+    .update({ final_bill_status: status, updated_at: new Date().toISOString() })
+    .eq("id", acctId).eq("company_id", companyId);
+  if (error) { pmError("PM-4002", { raw: error, context: "updating utility final-bill status" }); return; }
+  logAudit("update", "utilities",
+    status === "pending" ? `Final bill flagged as owner's: ${u.provider} — ${u.property}`
+      : status === "settled" ? `Final bill settled, utility handed to tenant: ${u.provider} — ${u.property}`
+      : `Final-bill status cleared: ${u.provider} — ${u.property}`,
+    String(acctId), userProfile?.email, userRole, companyId);
+  addNotification("⚡",
+    status === "pending" ? "Final bill kept in your name: " + u.provider
+      : status === "settled" ? "Final bill settled — handed to tenant: " + u.provider
+      : "Updated: " + u.provider);
+  fetchUtilities();
+  }
+
   // A person pressing Pay is the whole authorisation. It writes an APPROVED
   // payment; the worker on the box picks it up, pays the portal, captures the
   // receipt and marks the bill paid.
@@ -208,7 +240,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     showToast("This utility is covered by the condo fee — there's no separate bill to pay.", "error");
     return;
   }
-  if (bill.responsibility === "tenant") {
+  if (bill.responsibility === "tenant" && bill.final_bill_status !== "pending") {
     showToast("The tenant is responsible for this utility — it is not ours to pay. Recharge it from their ledger if you have already covered it.", "error");
     return;
   }
@@ -367,6 +399,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // 11455 set to Owner but old bills still read Tenant). Account wins; the
       // bill's value is a fallback only when the account has none.
       responsibility: a.responsibility || b?.responsibility || "owner",
+      // 'none' | 'pending' | 'settled'. 'pending' = flipped to tenant but the
+      // closeout bill/credit is still the owner's, so it stays payable here.
+      final_bill_status: a.final_bill_status || "none",
       amount: b ? b.amount : null,
       due: b?.due_date || null,
       statement_period: b?.statement_period || null,
@@ -427,7 +462,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       if (!payForm.bank_account_id) { showToast("Which account did it come out of?", "error"); return; }
 
       const bill = payBill;
-      const recharge = payForm.recharge && bill.responsibility === "tenant";
+      // A pending final bill is the OWNER's closeout expense, never recharged to
+      // the tenant -- so it's excluded from the recharge path here.
+      const recharge = payForm.recharge && bill.responsibility === "tenant" && bill.final_bill_status !== "pending";
 
       // The tenant to charge it on to, scoped to this property. Refuses to
       // guess: two tenants at one address and the wrong one gets the debt.
@@ -509,6 +546,15 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
         (recharge ? ` — recharged to ${tenant.name}` : ""),
         bill.bill_id, userProfile?.email, userRole, companyId);
       addNotification("✅", `${bill.provider} ${formatCurrency(amt)} recorded${recharge ? " and recharged to " + tenant.name : ""}`);
+
+      // The owner's final closeout bill is now paid -> settle the pending flag so
+      // the utility is fully the tenant's from here (Pay hidden, plain Tenant).
+      if (bill.responsibility === "tenant" && bill.final_bill_status === "pending") {
+        await supabase.from("utility_accounts")
+          .update({ final_bill_status: "settled", updated_at: new Date().toISOString() })
+          .eq("id", bill.account?.id || bill.id).eq("company_id", companyId);
+      }
+
       showToast("Payment recorded.", "success");
       setPayBill(null); setPayForm(null);
       fetchUtilities();
@@ -681,7 +727,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && bill.responsibility !== "condo_fee" && payablePortalFor(bill.provider_display || bill.provider) && (<>
+  {["pending_review", "partial"].includes(bill.status) && ownerPays(bill) && payablePortalFor(bill.provider_display || bill.provider) && (<>
   <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
   {/* Pay by card in the streamed secure browser: the person enters the card on
       the provider's own page; PropManager never holds it. */}
@@ -769,7 +815,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     const overdue = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d < 0; });
     const soon = open.filter(u => { const d = billAge(u, todayRef); return d !== null && d >= 0 && d <= 7; });
     const owed = open.reduce((t, u) => t + safeNum(u.amount), 0);
-    const tenantOwed = open.filter(u => u.responsibility === "tenant").reduce((t, u) => t + safeNum(u.amount), 0);
+    // A pending final bill reads as tenant-responsible but is the OWNER's, so it
+    // is excluded from the tenants' share.
+    const tenantOwed = open.filter(u => u.responsibility === "tenant" && !isFinalPending(u)).reduce((t, u) => t + safeNum(u.amount), 0);
     const card = (value, label, tone) => (
       <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1">
         <div className={"text-lg font-bold " + tone}>{value}</div>
@@ -862,16 +910,21 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
-  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div></div>
+  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{isFinalPending(u) ? <span className="text-warn-700" title="Tenant responsible, but the closeout bill/credit is still yours">Tenant · final bill pending</span> : respLabel(u.responsibility)}</div></div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   {/* Same actions as the table view -- the two must stay at parity. */}
   <div className="mt-3 flex flex-wrap gap-2">
-  {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
+  {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" && u.final_bill_status !== "pending" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
   {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && u.responsibility !== "condo_fee" && (
-    u.responsibility === "tenant"
-      ? <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
-      : <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
+    ownerPays(u)
+      ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Pay by card</TextLink>
+      : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+  )}
+  {u.responsibility === "tenant" && u.final_bill_status !== "settled" && (
+    u.final_bill_status === "pending"
+      ? <TextLink tone="positive" size="xs" underline={false} onClick={() => setFinalBillStatus(u, "settled")} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50" title="The final owner bill/credit is done — hand this utility fully to the tenant">Settle final bill</TextLink>
+      : <TextLink tone="neutral" size="xs" underline={false} onClick={() => setFinalBillStatus(u, "pending")} className="border border-warn-200 px-3 py-1 rounded-lg hover:bg-warn-50" title="A closeout bill/credit is still in your name — keep it payable here until settled">Final bill still mine</TextLink>
   )}
   {payablePortalFor(u.provider_display || u.provider) && (
     <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
@@ -927,10 +980,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // Who owes it. utilities.responsibility has always held this and
       // nothing ever acted on it; a tenant-responsible bill you paid should
       // become that tenant's debt, not an owner expense.
-      { key: "responsibility", label: "Owed by", sort: true, width: 96, render: u => (
-        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
-          {respLabel(u.responsibility)}
-        </span>
+      { key: "responsibility", label: "Owed by", sort: true, width: 118, render: u => (
+        isFinalPending(u)
+          ? <span className="text-2xs px-1.5 py-0.5 rounded-full bg-warn-100 text-warn-700 whitespace-nowrap" title="Tenant responsible, but the closeout bill/credit is still yours">Tenant · final</span>
+          : <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
+              {respLabel(u.responsibility)}
+            </span>
       ) },
       // One line. This cell used to stack three things -- the portal link, a
       // "Show login" toggle, and the revealed credentials underneath -- which
@@ -969,19 +1024,25 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
               method: "",
               // Default ON for a tenant-responsible bill: that is what
               // `responsibility` means, and defaulting it off quietly turns
-              // every tenant's bill into an owner expense.
-              recharge: u.responsibility === "tenant",
+              // every tenant's bill into an owner expense. But a pending final
+              // bill is the OWNER's closeout, so it defaults OFF there.
+              recharge: u.responsibility === "tenant" && u.final_bill_status !== "pending",
             });
             loadBankAccounts();
           }}>Pay</TextLink>
         )}
         {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
-          u.responsibility === "tenant"
+          ownerPays(u)
+            ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
             // The tenant owes this — it is not the owner's to pay on a card.
             // Greyed, not hidden, so it reads as "blocked" rather than missing;
             // it opens only after an admin approves paying it on the tenant's behalf.
-            ? <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
-            : <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay by card</TextLink>
+            : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Pay by card</span>
+        )}
+        {u.responsibility === "tenant" && u.final_bill_status !== "settled" && (
+          u.final_bill_status === "pending"
+            ? <TextLink tone="positive" size="xs" className="mr-2" onClick={() => setFinalBillStatus(u, "settled")} title="The final owner bill/credit is done — hand this utility fully to the tenant">Settle final bill</TextLink>
+            : <TextLink tone="neutral" size="xs" className="mr-2" onClick={() => setFinalBillStatus(u, "pending")} title="A closeout bill/credit is still in your name — keep it payable here until settled">Final bill still mine</TextLink>
         )}
         {payablePortalFor(u.provider_display || u.provider) && (
           // Sign in to the provider in the streamed browser (reCAPTCHA/code
@@ -1074,7 +1135,19 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     placeholder="From the provider's receipt" />
   </div>
 
-  {payBill.responsibility === "tenant" && (
+  {isFinalPending(payBill) && (
+  <div className="flex items-start gap-2 bg-warn-50 border border-warn-100 rounded-lg p-3">
+    <span className="text-xs text-neutral-700">
+      <span className="font-semibold">Final bill in your name.</span>
+      <span className="block text-neutral-500 mt-0.5">
+        This utility is now the tenant's, but this closeout bill is yours — it posts as your
+        expense, and recording it hands the utility fully to the tenant.
+      </span>
+    </span>
+  </div>
+  )}
+
+  {payBill.responsibility === "tenant" && payBill.final_bill_status !== "pending" && (
   <label className="flex items-start gap-2 bg-brand-50 border border-brand-100 rounded-lg p-3 cursor-pointer">
     <input type="checkbox" className="mt-0.5 rounded accent-brand-600" checked={!!payForm.recharge}
       onChange={e => setPayForm(f => ({ ...f, recharge: e.target.checked }))} />
