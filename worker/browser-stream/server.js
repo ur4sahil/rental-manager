@@ -477,9 +477,15 @@ wss.on("connection", async (ws, req) => {
     // sees the final page appear instead of watching the browser scroll a long
     // account list. Best-effort: wherever it lands is where streaming begins.
     send({ type: "status", message: "Opening your bill…" });
-    if (claims?.enroll) {
+    // Enroll, OR a PAY on a captcha/code portal that has no session yet: sign
+    // in FIRST. Driving a pay flow on a page that isn't signed in is what left
+    // the person staring at a blank canvas -- there's nothing to pay until they
+    // log in. Auto-fill the login and tell them so.
+    if (claims?.enroll || (!storageState && HUMAN_LOGIN[provider])) {
       const filled = await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false);
-      if (!filled) send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()} — once you're in, close this window and it's connected.` });
+      const pay = !claims?.enroll;
+      if (!filled) send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()}${pay ? " first, then pay your bill" : " — once you're in, close this window and it's connected"}.` });
+      else if (pay) send({ type: "status", message: "Click “Log In”, then open your bill to pay it here." });
     } else {
       await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
     }
