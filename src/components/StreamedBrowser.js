@@ -57,6 +57,10 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
         if (!img || !cv) return;
         img.onload = () => { const ctx = cv.getContext("2d"); ctx && ctx.drawImage(img, 0, 0, PAGE_W, PAGE_H); };
         img.src = "data:image/jpeg;base64," + msg.data;
+      } else if (msg.type === "status") {
+        // Progress while the browser signs in and drives to the bill, before
+        // the live view starts. Keep status "connecting" so the loader shows.
+        setDetail(msg.message || "");
       } else if (msg.type === "ready") {
         setStatus("ready");
       } else if (msg.type === "paid") {
@@ -134,25 +138,13 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
         <div className="px-4 py-2 text-xs text-center"
              style={{ background: status === "paid" ? "#052e16" : status === "error" || status === "expired" ? "#3f1d1d" : "#1e293b",
                       color: status === "paid" ? "#86efac" : status === "error" || status === "expired" ? "#fca5a5" : "#93c5fd" }}>
-          {status === "connecting" && "Starting a secure browser and signing in…"}
-          {status === "ready" && "Enter your card details on the page below and submit. We’ll capture the receipt — your card never touches our servers."}
+          {status === "connecting" && (detail || "Starting a secure browser and signing in…")}
+          {status === "ready" && "Tap a field, type in the bar below, then submit. We’ll capture the receipt — your card never touches our servers."}
           {status === "paid" && `✓ Paid. ${detail}. Receipt saved to this property.`}
           {status === "error" && `Couldn’t continue. ${detail}`}
           {status === "expired" && "The session timed out for safety. Reopen to try again."}
         </div>
 
-        {/* Hidden input that raises the phone keyboard when the stream is tapped;
-            its keystrokes are relayed to the remote page. Off-screen but real
-            (not display:none) so iOS actually opens the keyboard. */}
-        <input
-          ref={kbRef}
-          onInput={onKbInput}
-          onKeyDown={onKbKeyDown}
-          type="text" inputMode="text"
-          autoCapitalize="none" autoComplete="off" autoCorrect="off" spellCheck={false}
-          aria-hidden="true" tabIndex={-1}
-          style={{ position: "absolute", top: 0, left: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, background: "transparent", color: "transparent", caretColor: "transparent" }}
-        />
         <div className="relative bg-white overflow-auto" style={{ opacity: interactive ? 1 : 0.6 }}>
           <canvas
             ref={canvasRef} width={PAGE_W} height={PAGE_H}
@@ -163,14 +155,20 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
             onMouseDown={(e) => { if (interactive) { sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); } }}
             onMouseUp={(e) => interactive && sendEv({ type: "mouseup", ...toPage(e), clickCount: e.detail || 1 })}
             // A tap synthesises the mouse events above (which click the remote
-            // field); this only opens the keyboard, in the tap's own handler so
-            // iOS honours it. Native scrolling still works because we no longer
-            // set touch-action: none.
+            // field); this also focuses the type-bar so the phone keyboard opens
+            // (in the tap's own handler, which iOS requires). Native scrolling
+            // still works — we no longer set touch-action: none.
             onTouchEnd={() => focusKeyboard()}
             onWheel={(e) => interactive && sendEv({ type: "wheel", ...toPage(e), dx: e.deltaX, dy: e.deltaY })}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => interactive && e.key.length !== 1 && sendEv({ type: "key", down: false, key: e.key, code: e.code, keyCode: e.keyCode })}
           />
+          {status === "connecting" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3">
+              <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              <div className="text-sm text-neutral-500 px-6 text-center">{detail || "Loading…"}</div>
+            </div>
+          )}
           {(status === "paid" || status === "expired" || status === "error") && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40">
               <button onClick={onClose} className="bg-white text-neutral-900 rounded-lg px-4 py-2 text-sm font-medium">Done</button>
@@ -178,14 +176,21 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
           )}
         </div>
 
-        {/* Fallback for phones: an explicit way to raise the keyboard if a tap
-            on a field did not (e.g. the tap landed just off the input). */}
+        {/* Type-bar: a REAL, visible input. iOS won't raise the keyboard for a
+            hidden/opacity-0 field, which is why tapping did nothing before. What
+            you type here relays to the field you tapped in the page above. */}
         {interactive && (
-          <div className="px-4 py-2 bg-neutral-800 flex sm:hidden">
-            <button onClick={() => focusKeyboard()}
-              className="w-full text-sm text-white bg-brand-600 rounded-lg py-2 font-medium">
-              ⌨︎ Tap here to type into the selected field
-            </button>
+          <div className="px-3 py-2 bg-neutral-800 border-t border-neutral-700">
+            <input
+              ref={kbRef}
+              onInput={onKbInput}
+              onKeyDown={onKbKeyDown}
+              type="text" inputMode="text"
+              autoCapitalize="none" autoComplete="off" autoCorrect="off" spellCheck={false}
+              placeholder="Tap a field above, then type here…"
+              className="w-full rounded-lg px-3 py-2.5 text-base bg-white text-neutral-900 placeholder-neutral-400 outline-none"
+            />
+            <div className="text-[11px] text-neutral-400 mt-1 text-center">Goes to the field you tapped above · press Enter to submit</div>
           </div>
         )}
       </div>

@@ -284,11 +284,13 @@ wss.on("connection", async (ws, req) => {
 
     const landing = startUrl || ENTRY[provider] || "about:blank";
     await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+    // Drive to the amount/card page BEFORE the live view starts, so the person
+    // sees the final page appear instead of watching the browser scroll a long
+    // account list. Best-effort: wherever it lands is where streaming begins.
+    send({ type: "status", message: "Opening your bill…" });
+    await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
     send({ type: "ready", sessionId });
-    // Drive to the card page with the person's amount/method already applied,
-    // then hand over. Runs in the background so frames keep flowing meanwhile.
-    autoDrive(page, provider, claims, send, sessionId).catch(() => {});
 
     // Input in. Coordinates arrive already in page space (the client scales
     // the canvas). Text uses insertText so IME/paste behave; single keys use
