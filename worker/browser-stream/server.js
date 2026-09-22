@@ -272,6 +272,30 @@ wss.on("connection", async (ws, req) => {
       const conf = body.match(/confirmation\s*(?:number|#|code)?\s*:?\s*([A-Z0-9-]{5,})/i);
       log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"}`);
       send({ type: "paid", confirmation: conf ? conf[1] : null, receipt: path.basename(pdf), screenshot: path.basename(png) });
+
+      // Persist it: upload the receipt PDF and mark the bill paid/partial. The
+      // approved payment row was created when the token was minted, so record-
+      // utility-payment can match the amount. Best-effort -- the payment already
+      // succeeded at the provider; a failure here only means it did not auto-file.
+      if (CAN_LOGIN && claims && claims.paymentId && claims.billId && claims.companyId) {
+        try {
+          const pdfBuf = fs.readFileSync(pdf);
+          const API = String(process.env.HOUSY_API_BASE || "").replace(/\/$/, "");
+          const headers = { "Content-Type": "application/json", "x-worker-token": process.env.AI_WORKER_TOKEN };
+          if (process.env.VERCEL_BYPASS_TOKEN) headers["x-vercel-protection-bypass"] = process.env.VERCEL_BYPASS_TOKEN;
+          const rr = await fetch(API + "/api/ai?action=record-utility-payment", {
+            method: "POST", headers,
+            body: JSON.stringify({
+              companyId: claims.companyId, paymentId: claims.paymentId, billId: claims.billId,
+              amount: claims.amount, confirmation: conf ? conf[1] : null,
+              receiptBase64: pdfBuf.toString("base64"),
+              receiptFilename: (provider || "utility") + "-" + (claims.account || "receipt"),
+            }),
+          });
+          const jj = await rr.json().catch(() => ({}));
+          log(`[${sessionId}] record payment -> HTTP ${rr.status} ${jj.bill_status || jj.error || ""}`);
+        } catch (e) { log(`[${sessionId}] record payment failed: ${String(e.message).slice(0, 90)}`); }
+      }
     };
     // A screenshot on each PAGE LOAD — for us to watch the flow and debug.
     // Deliberately on navigation only, never on a timer: a page has just

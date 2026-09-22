@@ -210,16 +210,50 @@ module.exports = async function handler(req, res) {
     if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
     const provider = String(body.provider || "").toLowerCase();
     if (!provider) return res.status(400).json({ error: "provider is required" });
+    // Create an APPROVED payment row so the confirmation can be recorded against
+    // it (record-utility-payment matches the approved amount). The person is
+    // about to enter their card and submit in the stream -- that IS the approval.
+    // Amount is resolved from the DB bill (full balance) or the chosen amount.
+    let paymentId = null;
+    let approvedAmount = body.amount != null ? Number(body.amount) : null;
+    const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (body.billId && svcKey) {
+      try {
+        const svc = createClient(process.env.REACT_APP_SUPABASE_URL, svcKey, { auth: { persistSession: false } });
+        const { data: bill } = await svc.from("utility_bills")
+          .select("id, amount, provider, property, due_date, statement_period")
+          .eq("id", body.billId).eq("company_id", companyId).maybeSingle();
+        if (bill) {
+          approvedAmount = body.full === true ? Number(bill.amount) : Number(body.amount);
+          if (Number.isFinite(approvedAmount) && approvedAmount > 0) {
+            const { data: pay } = await svc.from("utility_payments").insert({
+              company_id: companyId,
+              provider: bill.provider || provider,
+              approved_amount: approvedAmount,
+              approved_at: new Date().toISOString(),
+              approved_by: userEmail,
+              requested_by: userEmail,
+              status: "approved",
+              bill_id: bill.id,
+              property: bill.property || null,
+              due_date: bill.due_date || null,
+              statement_ref: bill.statement_period || null,
+              idem_key: "stream:" + bill.id + ":" + Date.now() + ":" + crypto.randomBytes(3).toString("hex"),
+            }).select("id").single();
+            paymentId = pay && pay.id ? pay.id : null;
+          }
+        }
+      } catch (e) { /* non-fatal: the stream still opens; the receipt just will not auto-file */ }
+    }
+
     const payload = {
       provider,
       account: body.account || null,
-      amount: body.amount != null ? Number(body.amount) : null,
-      // Pay-intent, chosen in Housy, auto-applied on the provider's amount page:
-      // full balance vs a specific amount, and card vs ACH. The money and the
-      // card are still entered/submitted by the person on the provider's site.
+      amount: approvedAmount,
       full: body.full === true,
       method: body.method === "ach" ? "ach" : "card",
       billId: body.billId || null,
+      paymentId,
       companyId,
       uid: userData.user.id,
       exp: Date.now() + 8 * 60 * 1000,
