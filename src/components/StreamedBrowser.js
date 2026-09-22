@@ -16,10 +16,12 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
   const imgRef = useRef(typeof Image !== "undefined" ? new Image() : null);
-  const kbRef = useRef(null);         // hidden input that raises the phone keyboard
+  const kbRef = useRef(null);         // visible type-bar that raises the phone keyboard
   const kbValRef = useRef("");        // last value seen, to diff into keystrokes
   const [status, setStatus] = useState("connecting"); // connecting | ready | paid | error | expired
   const [detail, setDetail] = useState("");
+  const statusRef = useRef(status);   // current status for the non-React touch listeners
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   // Turn a pointer event into page-space coordinates.
   const toPage = useCallback((e) => {
@@ -79,20 +81,10 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
     return () => { alive = false; try { ws.close(); } catch {} };
   }, [streamBase, provider, url, token, onPaid]);
 
-  // Physical keyboard (desktop): printable chars as text, control keys as key
-  // events so Tab/Enter/Backspace work in the form.
-  const onKeyDown = useCallback((e) => {
-    if (status !== "ready") return;
-    e.preventDefault();
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) sendEv({ type: "text", text: e.key });
-    else sendEv({ type: "key", down: true, key: e.key, code: e.code, keyCode: e.keyCode });
-  }, [status, sendEv]);
-
-  // MOBILE keyboard. A <canvas> cannot raise the on-screen keyboard, so a tap
-  // on the stream focuses a hidden input; the phone keyboard opens against it
-  // and we relay its keystrokes to the remote page. iOS only opens the keyboard
-  // when focus() runs INSIDE the tap's own handler, hence focusKeyboard() is
-  // called synchronously from the touch/mouse handlers below.
+  // All typing (desktop and mobile) goes through the visible type-bar, so the
+  // canvas needs no key handling. iOS only opens the keyboard when focus() runs
+  // INSIDE the tap's own handler, hence focusKeyboard() is called synchronously
+  // from the tap handlers.
   const focusKeyboard = useCallback(() => {
     if (status !== "ready") return;
     const el = kbRef.current;
@@ -126,6 +118,40 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
     }
   }, [sendEv]);
 
+  // TOUCH on mobile: a swipe must scroll the REMOTE page (so the bottom of a
+  // long card form — State, Zip, Submit — is reachable), and a tap must click.
+  // The remote viewport is fixed, so nothing below it is captured unless the
+  // remote page itself scrolls; we relay drags as wheel deltas. Attached as a
+  // NON-passive listener (React's onTouchMove is passive and can't preventDefault).
+  useEffect(() => {
+    const c = canvasRef.current; if (!c) return;
+    const st = { y: 0, moved: false };
+    const pt = (clientX, clientY) => { const r = c.getBoundingClientRect(); return { x: (clientX - r.left) * (PAGE_W / r.width), y: (clientY - r.top) * (PAGE_H / r.height), ratio: PAGE_H / r.height }; };
+    const onStart = (e) => { const t = e.touches[0]; st.y = t.clientY; st.moved = false; };
+    const onMove = (e) => {
+      if (statusRef.current !== "ready") return;
+      const t = e.touches[0]; const dy = st.y - t.clientY;
+      if (st.moved || Math.abs(dy) > 4) {
+        e.preventDefault(); st.moved = true;
+        const p = pt(t.clientX, t.clientY);
+        sendEv({ type: "wheel", x: p.x, y: p.y, dx: 0, dy: dy * p.ratio });
+        st.y = t.clientY;
+      }
+    };
+    const onEnd = (e) => {
+      if (statusRef.current !== "ready" || st.moved) return; // a scroll, not a tap
+      e.preventDefault();                                    // suppress the synthetic click (would double-fire)
+      const t = e.changedTouches[0]; const p = pt(t.clientX, t.clientY);
+      sendEv({ type: "mousedown", x: p.x, y: p.y, clickCount: 1 });
+      sendEv({ type: "mouseup", x: p.x, y: p.y, clickCount: 1 });
+      const el = kbRef.current; if (el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
+    };
+    c.addEventListener("touchstart", onStart, { passive: true });
+    c.addEventListener("touchmove", onMove, { passive: false });
+    c.addEventListener("touchend", onEnd, { passive: false });
+    return () => { c.removeEventListener("touchstart", onStart); c.removeEventListener("touchmove", onMove); c.removeEventListener("touchend", onEnd); };
+  }, [sendEv]);
+
   const interactive = status === "ready";
   return (
     <div className="fixed inset-0 z-[3000] bg-black/70 flex items-center justify-center p-2 sm:p-4">
@@ -145,23 +171,19 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
           {status === "expired" && "The session timed out for safety. Reopen to try again."}
         </div>
 
-        <div className="relative bg-white overflow-auto" style={{ opacity: interactive ? 1 : 0.6 }}>
+        <div className="relative bg-white overflow-hidden" style={{ opacity: interactive ? 1 : 0.6 }}>
+          {/* No tabIndex and no key handlers on the canvas: it must NOT take
+              focus, or every tap blurs the type-bar and the phone keyboard
+              flickers shut. Touch (tap + swipe-to-scroll) is handled by the
+              non-passive listener above; mouse handlers cover desktop. */}
           <canvas
             ref={canvasRef} width={PAGE_W} height={PAGE_H}
-            tabIndex={0}
-            className="block w-full h-auto outline-none"
+            className="block w-full h-auto outline-none select-none"
             style={{ cursor: interactive ? "crosshair" : "default" }}
             onMouseMove={(e) => interactive && sendEv({ type: "mousemove", ...toPage(e) })}
-            onMouseDown={(e) => { if (interactive) { sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); } }}
+            onMouseDown={(e) => { if (interactive) { e.preventDefault(); sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); focusKeyboard(); } }}
             onMouseUp={(e) => interactive && sendEv({ type: "mouseup", ...toPage(e), clickCount: e.detail || 1 })}
-            // A tap synthesises the mouse events above (which click the remote
-            // field); this also focuses the type-bar so the phone keyboard opens
-            // (in the tap's own handler, which iOS requires). Native scrolling
-            // still works — we no longer set touch-action: none.
-            onTouchEnd={() => focusKeyboard()}
             onWheel={(e) => interactive && sendEv({ type: "wheel", ...toPage(e), dx: e.deltaX, dy: e.deltaY })}
-            onKeyDown={onKeyDown}
-            onKeyUp={(e) => interactive && e.key.length !== 1 && sendEv({ type: "key", down: false, key: e.key, code: e.code, keyCode: e.keyCode })}
           />
           {status === "connecting" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3">
