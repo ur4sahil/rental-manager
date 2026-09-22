@@ -80,7 +80,7 @@ const payControls = utilities.slice(
   utilities.indexOf('Pay part') + 200);
 assert("the pay controls sit behind status, responsibility AND payability",
   /\["pending_review", "partial"\]\.includes\(bill\.status\)/.test(payControls)
-  && /bill\.responsibility !== "tenant"/.test(payControls)
+  && /ownerPays\(bill\)/.test(payControls)
   && /payablePortalFor\(bill\.provider_display \|\| bill\.provider\)/.test(payControls),
   "any one of the three missing offers a payment that cannot or should not happen");
 assert("BOTH the full and part-pay controls are behind that same guard",
@@ -115,12 +115,12 @@ assert("re-recording an already-paid bill changes nothing",
 // ---- 3b. THE TENANT'S BILL IS NOT OURS TO PAY ------------------------
 // Three layers, because the app is one of four ways a row could reach
 // utility_payments and the only unbypassable place is the database.
-assert("the Pay button is hidden on a tenant-responsibility bill",
-  /bill\.responsibility !== "tenant"[\s\S]{0,120}payablePortalFor/.test(utilities),
-  "layer 1: it should not be offered");
+assert("the Pay button is gated on ownerPays (tenant hidden unless final bill pending)",
+  /ownerPays\(bill\)[\s\S]{0,120}payablePortalFor/.test(utilities),
+  "layer 1: a plain tenant bill is not offered; a pending-final one is");
 
-assert("the handler refuses a tenant bill even if reached another way",
-  /if \(bill\.responsibility === "tenant"\) \{/.test(utilities)
+assert("the handler refuses a plain tenant bill (but allows a pending-final one)",
+  /bill\.responsibility === "tenant" && bill\.final_bill_status !== "pending"/.test(utilities)
   && /not ours to pay/.test(utilities),
   "layer 2: no cancelled row for something never legitimate to ask for");
 
@@ -133,9 +133,10 @@ assert("the worker falls back to the ACCOUNT when the bill does not say",
   /if \(!responsibility && bill\?\.utility_account_id\)/.test(runner),
   "responsibility can be set on either row");
 
-assert("the sweep does not even read a tenant's utility",
-  /responsibility\.is\.null,responsibility\.neq\.tenant/.test(ai),
-  "logging into a portal for a statement we cannot act on is work with no outcome");
+assert("the sweep skips plain tenant utilities but still sweeps pending-final ones",
+  /responsibility\.not\.in\.\(tenant,condo_fee\)/.test(ai)
+  && /final_bill_status", "pending"/.test(ai),
+  "a plain tenant statement is work with no outcome; a pending final bill is the owner's to capture");
 
 // ---- 4. the statement and the receipt are FILED, not just uploaded ---
 assert("attach-bill-document files the statement as a document",

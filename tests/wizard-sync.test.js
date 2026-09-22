@@ -90,10 +90,14 @@ assert("the commit reports what the form was holding",
   "without this the RPC cannot tell 'removed' from 'added while you were editing'");
 
 // ---- 4. an in-progress wizard still trusts its snapshot ----------------
-// That work has never been committed and exists nowhere else.
-assert("the live read is scoped to COMPLETED wizards",
-  props.indexOf("await loadLiveWizardData(addr)") > props.indexOf("wizard data restore (edit mode)"),
-  "an in-progress draft must keep its snapshot -- nothing else holds that work");
+// The live read now also runs on the in-progress resume path (so an archive-all
+// commit can't wipe live rows a stale snapshot never held), but it only
+// OVERRIDES the form when live rows actually exist. A genuine new draft -- work
+// committed nowhere else -- has no live rows, so its snapshot is left untouched.
+// That guard is the guarantee, not the absence of the call.
+assert("the live read only overrides when live rows exist (new drafts keep their snapshot)",
+  /if \(utilRows\.length\) setUtilities/.test(props) && /if \(hoaRows\.length\) setHoas/.test(props),
+  "an in-progress draft with nothing committed must keep its snapshot -- nothing else holds that work");
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);
