@@ -64,7 +64,11 @@ function scanFile(file) {
         /\.eq\(\s*["']pm_company_id["']/.test(chunk) ||
         // A single parent id. The parent was itself reached by a scoped
         // query, and RLS refuses a parent belonging to another company.
-        /\.eq\(\s*["'](journal_entry_id|tenant_id|property_id|lease_id)["']/.test(chunk) ||
+        // account_id is such a parent: acct_journal_lines' RLS staff policy is
+        // company_id IN get_staff_company_ids(), so a cross-company account_id
+        // returns nothing -- the same guarantee .in("account_id") already relies
+        // on below.
+        /\.eq\(\s*["'](journal_entry_id|account_id|tenant_id|property_id|lease_id)["']/.test(chunk) ||
         /companyQuery|companyInsert|companyUpsert/.test(chunk) ||
         // Addressing ONE row by its own primary key is scoped by the key.
         // The row was found by a query that was itself company-filtered, or
