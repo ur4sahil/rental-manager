@@ -110,17 +110,22 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
 
   async function fetchAutomationData() {
-  const [accts, bills, jobs, provs] = await Promise.all([
+  const [accts, bills, jobs, provs, receipts] = await Promise.all([
   supabase.from("utility_accounts").select("*").eq("company_id", companyId).is("archived_at", null).order("property"),
   supabase.from("utility_bills").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
   supabase.from("automation_jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
   supabase.from("utility_providers").select("*").eq("is_active", true).order("display_name"), // Intentionally unscoped — shared reference table of utility companies
+  // Receipts, so a paid bill can open its receipt PDF straight from the
+  // Utilities page (it was only reachable under Documents before).
+  supabase.from("utility_payments").select("bill_id, receipt_storage_path, created_at").eq("company_id", companyId).not("receipt_storage_path", "is", null).order("created_at", { ascending: false }),
   ]);
   setUtilAccounts(accts.data || []);
   // Carry each account's final_bill_status onto its bills so ownerPays() reads
   // the pending-final case here too (a raw utility_bills row has no such column).
   const acctFinalById = new Map((accts.data || []).map(a => [a.id, a.final_bill_status || "none"]));
-  setAutoBills((bills.data || []).map(b => ({ ...b, final_bill_status: acctFinalById.get(b.utility_account_id) || "none" })));
+  const receiptByBill = new Map();
+  for (const r of (receipts.data || [])) { if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path); }
+  setAutoBills((bills.data || []).map(b => ({ ...b, final_bill_status: acctFinalById.get(b.utility_account_id) || "none", receipt_path: receiptByBill.get(b.id) || null })));
   setAutoJobs(jobs.data || []);
   setProviders(provs.data || []);
   }
@@ -416,6 +421,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       paid_at: b?.paid_at || null,
       payment_confirmation: b?.payment_confirmation || "",
       pdf_storage_path: b?.pdf_storage_path || null,
+      receipt_path: b?.receipt_path || null,
       last_check_status: a.last_check_status,
       last_check_error: a.last_check_error,
       last_checked_at: a.last_checked_at,
@@ -930,6 +936,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
   )}
   {u.pdf_storage_path && <TextLink tone="neutral" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.pdf_storage_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error"); }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statement</TextLink>}
+  {u.receipt_path && <TextLink tone="positive" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.receipt_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that receipt.", "error"); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipt</TextLink>}
   {u.username_encrypted && <TextLink tone="brand" size="xs" underline={false} onClick={async () => {
     const s = new Set(showCreds);
     if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; }
@@ -1058,6 +1065,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             if (url) window.open(url, "_blank", "noopener");
             else showToast("Could not open that statement.", "error");
           }}>Statement</TextLink>
+        )}
+        {u.receipt_path && (
+          <TextLink tone="positive" size="xs" className="mr-2" onClick={async () => {
+            const url = await getSignedUrl("documents", u.receipt_path, 300);
+            if (url) window.open(url, "_blank", "noopener");
+            else showToast("Could not open that receipt.", "error");
+          }}>Receipt</TextLink>
         )}
         <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setHistoryFor(u.id)}>History</TextLink>
         <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
