@@ -1048,6 +1048,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         pre.utilities.push({
           provider: u.provider.trim(),
           type: u.type || 'Electric',
+          account_number: u.account_number || '',
           due_day: Number(u.due_date) || 1,
           responsibility: u.responsibility,
           website: u.website || '',
