@@ -177,7 +177,7 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
             tabIndex={IS_TOUCH ? undefined : 0}
             className="block w-full h-auto outline-none select-none"
             onMouseMove={(e) => interactive && sendEv({ type: "mousemove", ...toPage(e) })}
-            onMouseDown={(e) => { if (interactive) { sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); if (!IS_TOUCH) canvasRef.current?.focus(); } }}
+            onMouseDown={(e) => { if (interactive) { const p = toPage(e); sendEv({ type: "mousemove", ...p }); sendEv({ type: "mousedown", ...p, clickCount: e.detail || 1 }); if (!IS_TOUCH) canvasRef.current?.focus(); } }}
             onMouseUp={(e) => interactive && sendEv({ type: "mouseup", ...toPage(e), clickCount: e.detail || 1 })}
             onWheel={(e) => interactive && sendEv({ type: "wheel", ...toPage(e), dx: e.deltaX, dy: e.deltaY })}
             onKeyDown={IS_TOUCH ? undefined : onCanvasKeyDown}

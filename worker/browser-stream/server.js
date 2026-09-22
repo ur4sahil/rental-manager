@@ -102,18 +102,23 @@ async function autoDrive(page, provider, claims, send, sessionId) {
     try { await fn(); log(`[${sessionId}] auto-drive: ${label}`); return true; }
     catch (e) { log(`[${sessionId}] auto-drive stop at "${label}": ${String(e.message).split("\n")[0].slice(0, 70)}`); return false; }
   };
-  await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
-  if (!await step("select account", async () => {
-    const sel = await accounts.selectAccountAny(page, claims.account, { inline: true });
-    if (!sel || !sel.ok) throw new Error((sel && sel.reason) || "not selected");
-  })) return;
-  if (!await step("open Pay", async () => {
-    await accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first().click({ timeout: 8000 });
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  if (!await step("open account payment", async () => {
+    // Click the account row's own "Pay" link directly. The generic account
+    // selector clicks "View" first, which times out ~8s per candidate on WSSC's
+    // actionability checks (~40s total); the row's Pay link goes straight to
+    // the payment page in ~1s, and the row already shows its balance so no
+    // "expand" step is needed.
+    const pay = accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first();
+    await pay.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+    await pay.click({ timeout: 8000 });
+    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1200);
   })) return;
   if (!await step("Make a Payment", async () => {
     await page.getByRole("link", { name: /make a payment/i }).first().click({ timeout: 8000 });
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(1200);
   })) return;
   // These are PrimeFaces radios: the real <input> is visually hidden, so we

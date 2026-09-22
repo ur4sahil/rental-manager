@@ -369,15 +369,24 @@ async function selectChooserAccount(page, number, opts = {}) {
     : (await button.count().catch(() => 0)) ? button : row;
   for (const el of rowTarget(outer)) {
     if (!(await el.count().catch(() => 0))) continue;
-    await el.click({ timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(800);
-    // Stop at the first click that actually moved us off the chooser.
-    if (!(await onChooserPage(page))) { clicked = true; break; }
+    await el.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    // Stop at the first click that TOOK. For a page chooser that means we left
+    // the chooser; for an inline one it means THIS row now shows a balance.
+    // Without the inline break the loop clicked every control in the row, each
+    // waiting out its click timeout -- ~40s of dead time on WSSC.
+    if (opts.inline) {
+      const t = await accountRow(page, number).innerText().catch(() => "");
+      if (/$s?-?[d,]+.d{2}/.test(t)) { clicked = true; break; }
+    } else if (!(await onChooserPage(page))) { clicked = true; break; }
     clicked = true;
   }
   if (!clicked) return { ok: false, reason: `account ${number} is on the chooser page but nothing in its row responded to a click` };
 
-  await page.waitForLoadState("networkidle", { timeout: 25000 }).catch(() => {});
+  // Inline chooser confirms readiness by polling the row for a balance below,
+  // so a long networkidle wait here is dead time -- WSSC's JSF page never reaches
+  // idle. Skip it for inline; a shorter settle is plenty for page choosers.
+  if (!opts.inline) await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
 
   // An INLINE chooser is supposed to still be showing. WSSC expands the
   // account inside its own row rather than navigating, so "are we still on
