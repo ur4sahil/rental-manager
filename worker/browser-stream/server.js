@@ -151,6 +151,28 @@ const server = http.createServer((req, res) => {
 });
 const wss = new WebSocketServer({ server, maxPayload: 8 * 1024 * 1024 });
 
+// Freshen the portal's signed-in session before a pay session opens. WSSC's
+// session lasts ~an hour -- far shorter than the gap between the daily cron's
+// refreshes -- so by the time someone pays, the stored session is usually
+// expired and the stream would land on the portal login page. ensure-session
+// reuses a live session or logs in (creds fetched over the worker API,
+// decrypted with the on-box encryption key). It needs those env vars, so this
+// is a safe no-op when they are absent.
+const CAN_LOGIN = !!(process.env.ENCRYPTION_KEY_FILE || process.env.ENCRYPTION_KEY)
+  && !!process.env.HOUSY_API_BASE && !!process.env.AI_WORKER_TOKEN;
+function freshenSession(provider) {
+  return new Promise((resolve) => {
+    const script = path.join(__dirname, "portals", "ensure-session.js");
+    if (!fs.existsSync(script)) return resolve({ ok: false, reason: "no ensure-session" });
+    const cp = require("child_process").spawn(process.execPath, [script, provider], { cwd: __dirname, env: process.env });
+    let out = "";
+    cp.stdout.on("data", (d) => { out += d; });
+    cp.stderr.on("data", () => {});
+    const t = setTimeout(() => { try { cp.kill("SIGKILL"); } catch {} resolve({ ok: false, reason: "timeout" }); }, 120000);
+    cp.on("close", (code) => { clearTimeout(t); resolve({ ok: code === 0, code }); });
+  });
+}
+
 wss.on("connection", async (ws, req) => {
   const url = new URL(req.url, "http://x");
   // Auth: a valid per-session token is REQUIRED whenever a secret is set.
@@ -164,6 +186,14 @@ wss.on("connection", async (ws, req) => {
   const sessionId = crypto.randomBytes(4).toString("hex");
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };
   log(`[${sessionId}] connect provider=${provider || "-"}`);
+
+  // Make sure the signed-in session is live before opening the browser, so the
+  // stream never lands the person on the portal's login page.
+  if (CAN_LOGIN && ENTRY[provider]) {
+    send({ type: "status", message: `Signing in to ${provider.toUpperCase()}…` });
+    const r = await freshenSession(provider);
+    log(`[${sessionId}] freshen ${provider}: ${r.ok ? "ok" : "failed(" + (r.reason || r.code) + ")"}`);
+  }
 
   // A signed-in storageState is used WHEN ONE EXISTS (the pay worker's
   // ensure-session leaves it on disk). When it does not — WSSC and any portal

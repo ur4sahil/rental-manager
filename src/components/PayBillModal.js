@@ -27,29 +27,37 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
   const start = useCallback(async () => {
     setError(null); setBusy(true);
     try {
-      // getSession() returns the STORED token without refreshing it. On mobile
-      // the auto-refresh timer pauses while the tab/PWA is backgrounded, so that
-      // token can be expired by the time this runs -- the server then rejects it
-      // as "Invalid session". Refresh when it is missing, expired, or within two
-      // minutes of expiring.
-      let { data: sess } = await supabase.auth.getSession();
-      const expMs = (sess?.session?.expires_at || 0) * 1000;
-      if (!sess?.session?.access_token || expMs < Date.now() + 120000) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        if (refreshed?.session) sess = refreshed;
-      }
-      const access = sess?.session?.access_token;
-      if (!access) { setError("Please sign in again."); setBusy(false); return; }
-      const resp = await fetch("/api/encrypt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
-        body: JSON.stringify({
-          action: "stream-session", companyId, provider: bill.provider_display || bill.provider,
-          account: bill.account_number || bill.utility_account_id || null,
-          amount: full ? due : amount, full, method,
-          billId: bill.bill_id || bill.id,
-        }),
+      const body = JSON.stringify({
+        action: "stream-session", companyId, provider: bill.provider_display || bill.provider,
+        account: bill.account_number || bill.utility_account_id || null,
+        amount: full ? due : amount, full, method,
+        billId: bill.bill_id || bill.id,
       });
+      const post = (tok) => fetch("/api/encrypt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+        body,
+      });
+
+      // Use the stored token as-is first -- refreshing pre-emptively can fire
+      // SIGNED_OUT and bounce the user to the landing page when the refresh
+      // token is stale (see utils/encryption.js). getSession() does NOT refresh
+      // on its own, so on mobile the access token may be expired here; if the
+      // server rejects it (401 "Invalid session"), THEN refresh once and retry.
+      let { data: { session } } = await supabase.auth.getSession();
+      let access = session?.access_token;
+      let resp = access ? await post(access) : null;
+
+      if (!resp || resp.status === 401) {
+        const { data: r } = await supabase.auth.refreshSession().catch(() => ({ data: {} }));
+        const fresh = r?.session?.access_token;
+        if (fresh && fresh !== access) { access = fresh; resp = await post(access); }
+      }
+
+      if (!resp || resp.status === 401) {
+        setError("Your session has expired. Reload the page (or sign out and back in), then try again.");
+        setBusy(false); return;
+      }
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({}));
         setError(e.error === "streamed payments are not configured"
