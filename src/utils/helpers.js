@@ -1011,6 +1011,23 @@ export const sameAddress = (a, b) => {
 //    so the string has six segments. Keeping only what precedes the first
 //    city-looking tail is impossible to do reliably there, so those fall
 //    back to the first segment, which is what they showed before.
+// Ledger descriptions come straight from the bank feed -- e.g. "Deposit Cash App
+// DES:Anish Gupt ID:T39HXGKF855V7K1 INDN:Anish Gupt CO ID:XXXXX29876 PPD" -- and
+// the same raw string is echoed as the line's memo, so the account ledger printed
+// it TWICE. Reduce it to the human part plus the payer name (QuickBooks-style);
+// anything without the bank/JE pattern passes through untouched.
+export function cleanLedgerDesc(desc) {
+  let s = String(desc == null ? "" : desc).trim();
+  s = s.replace(/^Journal Entry\s*#?\d+\s*[-\u2013:]?\s*/i, "");
+  const m = s.match(/^(.*?)\s+(?:DES:|ID:[A-Z0-9X]|INDN:|CO ID:)/i);
+  if (m) {
+    const head = m[1].replace(/^Deposit\s+/i, "").trim();
+    const payer = (s.match(/INDN:\s*([A-Za-z][\w .,'&\/-]{1,40}?)(?:\s+CO ID:|\s+PPD\b|\s+WEB\b|\s+CCD\b|\s*$)/i) || [])[1];
+    s = (head || "Payment") + (payer ? " \u2014 " + payer.replace(/\s+/g, " ").trim() : "");
+  }
+  return s.trim() || String(desc == null ? "" : desc).trim();
+}
+
 export function propertyLabel(address) {
   if (!address || typeof address !== "string") return "";
   const parts = address.split(",").map(s => s.trim()).filter(Boolean);

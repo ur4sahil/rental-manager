@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -625,7 +625,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   function exportCSV() {
   const multi = multiAccount;
   const rows = [["Date", "JE #", "Description", "Reference", ...(multi ? ["Account"] : []), "Property", "Memo", "Debit", "Credit", "Balance"]];
-  allLines.forEach(l => rows.push([l.date, l.number, l.description, l.reference, ...(multi ? [l.accountName] : []), l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
+  allLines.forEach(l => rows.push([l.date, l.number, cleanLedgerDesc(l.description), l.reference, ...(multi ? [l.accountName] : []), l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
   const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
@@ -660,7 +660,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const PDF_COLUMNS = [
     { label: "Date", render: l => esc(l.date) },
     { label: "JE #", render: l => esc(l.number || "—") },
-    { label: "Description", render: l => esc(l.description || "") + (l.memo ? ` <span class="mut">(${esc(l.memo)})</span>` : "") },
+    { label: "Description", render: l => esc(cleanLedgerDesc(l.description) || "\u2014") },
     { label: "Ref", render: l => esc(refLabel(l.reference)) },
     ...(multi ? [{ label: "Account", render: l => esc(l.accountName || "") }] : []),
     { label: "Property", render: l => esc(propertyLabel(l.property) || "—") },
@@ -767,8 +767,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
   <div className="text-xs text-neutral-500">{fmtDate(l.date)}</div>
   <div className={`tnum text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
   </div>
-  <div className="text-sm text-neutral-700 mb-1 leading-tight">{l.description}</div>
-  {l.memo && <div className="text-xs text-neutral-400 mb-1">{l.memo}</div>}
+  <div className="text-sm text-neutral-700 mb-1 leading-tight">{cleanLedgerDesc(l.description)}</div>
   <div className="flex items-center gap-3 text-xs">
   {l.debit > 0 && <span className="text-success-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-danger-500">CR {acctFmt(l.credit)}</span>}
@@ -789,7 +788,7 @@ th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;l
         { key: "number", label: "JE #", className: "text-xs text-brand-600 tnum",
           render: l => l.number || "\u2014" },
         { key: "description", label: "Description", className: "text-neutral-700 text-xs max-w-xs truncate",
-          render: l => (<span title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</span>) },
+          render: l => (<span title={(l.description || "") + (l.memo ? " | " + l.memo : "")}>{cleanLedgerDesc(l.description)}</span>) },
         { key: "reference", label: "Ref", className: "text-xs text-neutral-400",
           render: l => <span title={l.reference || ""}>{refLabel(l.reference)}</span> },
         // The Account column exists only in a multi-account ledger. Kept as
