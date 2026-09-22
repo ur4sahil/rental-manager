@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, EntityPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink, DataTable, PageHeader, TabBar, EmptyState, MenuItem, usePersistedView} from "../ui";
@@ -218,6 +218,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [bulkForm, setBulkForm] = useState({ accountId: "", accountName: "", classId: "", entityType: "", entityId: "", entityName: "", reason: "duplicate" });
   const [bulkBusy, setBulkBusy] = useState(null); // { done, total } while running
   const [expandedTxn, setExpandedTxn] = useState(null);
+  // Bumps on every fetch so a slow suggestion merge from an older fetch
+  // never lands on a newer list.
+  const suggestSeqRef = useRef(0);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [plaidConnecting, setPlaidConnecting] = useState(false);
@@ -509,9 +512,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         if (cutoff) q = q.gte("posted_date", cutoff);
         return q;
       });
-      setTransactions(await withHistorySuggestions(rows));
+      setTransactions(rows);
       setTotalTxnCount(totalCount);
       setTxnTruncated(truncated);
+      mergeSuggestionsAsync(rows);
     } catch (e) {
       pmError("PM-5001", { raw: e, context: "fetch bank transactions", silent: true });
     }
@@ -595,6 +599,25 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
   }
 
+  // Render the list first, then fold the (heavy) history suggestions in when
+  // they arrive -- the list must never wait on the RPC. Merges by id onto the
+  // CURRENT rows, so a row actioned in the meantime keeps its state, and a
+  // superseded fetch's late result is dropped.
+  function mergeSuggestionsAsync(rows) {
+    if (!rows?.length) return;
+    const seq = ++suggestSeqRef.current;
+    withHistorySuggestions(rows).then(merged => {
+      if (suggestSeqRef.current !== seq || merged === rows) return;
+      const byId = new Map(merged.map(m => [m.id, m]));
+      setTransactions(cur => cur.map(t => {
+        const m = byId.get(t.id);
+        return (m && m.suggestion_status === "suggested_ai")
+          ? { ...t, suggestion_status: "suggested_ai", raw_payload_json: m.raw_payload_json }
+          : t;
+      }));
+    });
+  }
+
   async function refreshData() {
     return fetchAll({ silent: true });
   }
@@ -620,9 +643,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
     ]);
     setFeeds(feedsRes.data || []);
-    setTransactions(await withHistorySuggestions(txnPaged.rows));
+    setTransactions(txnPaged.rows);
     setTotalTxnCount(txnPaged.totalCount);
     setTxnTruncated(txnPaged.truncated);
+    mergeSuggestionsAsync(txnPaged.rows);
     const fetchedRules = rulesRes.data || [];
     // Auto-migrate V1 rules to V2 format on first load
     if (fetchedRules.some(r => r.condition_json && !r.condition_json.conditions)) {
@@ -2137,6 +2161,32 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (row?.scrollIntoView) row.scrollIntoView({ block: "nearest" });
   }, [selectedTxn]);
 
+  // Seed the action panel from the row's suggestion. Shared by the keyboard
+  // path, the Add/Review link, and a plain row click, so clicking a row can
+  // never leave the PREVIOUS row's memo/category sitting in the form -- the
+  // bug where every Housy-suggested entry showed the same memo.
+  const openPanel = useCallback((txn) => {
+    setExpandedTxn(txn.id);
+    if (txn.status !== "for_review") return;
+    const sug = txn.raw_payload_json?._suggestion;
+    if (sug?.type === "split" && sug.lines?.length >= 2) {
+      setActionMode("split");
+      const abs = Math.abs(txn.amount);
+      setSplitLines(sug.lines.map(l => ({
+        accountId: l.account_id || "", accountName: l.account_name || "",
+        classId: l.class_id || "", memo: sug.memo || "",
+        amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0),
+      })));
+    } else {
+      setActionMode("add");
+      setAddForm({
+        accountId: sug?.accountId || "", accountName: sug?.accountName || "",
+        memo: sug?.memo || "", classId: sug?.classId || "",
+        entityType: sug?.entityType || "", entityId: sug?.entityId || "", entityName: sug?.entityName || "",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === "rules") return;
 
@@ -2153,33 +2203,6 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       if (expandedTxn) openPanel(txn);
     };
 
-    // Opening a row seeds the action panel from the rule suggestion, the
-    // same way the Add link does — otherwise the keyboard path would
-    // silently lose the suggested account the mouse path fills in.
-    const openPanel = (txn) => {
-      setExpandedTxn(txn.id);
-      if (txn.status !== "for_review") return;
-      const sug = txn.raw_payload_json?._suggestion;
-      if (sug?.type === "split" && sug.lines?.length >= 2) {
-        setActionMode("split");
-        const abs = Math.abs(txn.amount);
-        setSplitLines(sug.lines.map(l => ({
-          accountId: l.account_id || "", accountName: l.account_name || "",
-          classId: l.class_id || "", memo: sug.memo || "",
-          amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0),
-        })));
-      } else {
-        setActionMode("add");
-        setAddForm({
-          accountId: sug?.accountId || "", accountName: sug?.accountName || "",
-          memo: sug?.memo || "", classId: sug?.classId || "",
-          // The tenant Housy attached to the property, pre-filled as the
-          // customer so accepting books rent to the tenant, not the relative
-          // who sent it.
-          entityType: sug?.entityType || "", entityId: sug?.entityId || "", entityName: sug?.entityName || "",
-        });
-      }
-    };
 
     const handler = (e) => {
       // Cmd/Ctrl+Enter posts even from inside a field — you finish typing
@@ -2273,7 +2296,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeTab, paginatedTxns, selectedTxn, expandedTxn, actionMode, addForm, transferForm, splitLines]);
+  }, [activeTab, paginatedTxns, selectedTxn, expandedTxn, actionMode, addForm, transferForm, splitLines, openPanel]);
 
   // --- Posting detail for already-actioned transactions ---------------
   // Categorized/matched/posted rows used to render a hardcoded "Posted"
@@ -3008,7 +3031,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // by the migration -- the cursor became invisible and rows stopped
     // opening on click.
     rowClassName={txn => `hover:bg-neutral-50 ${expandedTxn === txn.id ? "bg-brand-50/50" : ""} ${selectedTxn === txn.id ? "ring-2 ring-inset ring-brand-400" : ""}`}
-    onRowClick={txn => { setSelectedTxn(txn.id); setExpandedTxn(expandedTxn === txn.id ? null : txn.id); }}
+    onRowClick={txn => { setSelectedTxn(txn.id); if (expandedTxn === txn.id) setExpandedTxn(null); else openPanel(txn); }}
     expandedRow={txn => {
       const isExpanded = expandedTxn === txn.id;
       if (!isExpanded) return null;
