@@ -18,8 +18,15 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showCreds, setShowCreds] = useState(new Set());
+  const emptyPortfolioForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", account_number: "", loan_start_date: "", maturity_date: "", escrow_included: false, escrow_amount: "", status: "active", notes: "", website: "", username: "", password: "", properties: [] };
+  const [portfolioLoans, setPortfolioLoans] = useState([]);
+  const [portfolioProps, setPortfolioProps] = useState([]);
+  const [showPortfolioForm, setShowPortfolioForm] = useState(false);
+  const [editingPortfolio, setEditingPortfolio] = useState(null);
+  const [portfolioForm, setPortfolioForm] = useState(emptyPortfolioForm);
+  const [pfPropToAdd, setPfPropToAdd] = useState("");
 
-  useEffect(() => { fetchLoans(); }, [companyId]);
+  useEffect(() => { fetchLoans(); fetchPortfolioLoans(); }, [companyId]);
 
   async function fetchLoans() {
   const { data } = await supabase.from("property_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
@@ -110,6 +117,66 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("recordLoanPayment"); }
+  }
+
+  async function fetchPortfolioLoans() {
+  const [{ data: pl }, { data: pp }] = await Promise.all([
+    supabase.from("portfolio_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
+    supabase.from("portfolio_loan_properties").select("*").eq("company_id", companyId),
+  ]);
+  setPortfolioLoans(pl || []);
+  setPortfolioProps(pp || []);
+  }
+
+  async function savePortfolioLoan() {
+  if (!guardSubmit("savePortfolioLoan")) return;
+  try {
+  if (!portfolioForm.lender_name || !portfolioForm.original_amount) { showToast("Lender name and original amount are required.", "error"); return; }
+  if (!portfolioForm.properties.length) { showToast("Attach at least one property to the portfolio loan.", "error"); return; }
+  const base = {
+    lender_name: portfolioForm.lender_name, loan_type: portfolioForm.loan_type,
+    original_amount: Number(portfolioForm.original_amount),
+    current_balance: Number(portfolioForm.current_balance || portfolioForm.original_amount),
+    interest_rate: Number(portfolioForm.interest_rate || 0), monthly_payment: Number(portfolioForm.monthly_payment || 0),
+    account_number: portfolioForm.account_number || null,
+    loan_start_date: portfolioForm.loan_start_date || null, maturity_date: portfolioForm.maturity_date || null,
+    escrow_included: portfolioForm.escrow_included, escrow_amount: portfolioForm.escrow_included ? Number(portfolioForm.escrow_amount || 0) : 0,
+    status: portfolioForm.status, notes: portfolioForm.notes || "", website: portfolioForm.website || "",
+  };
+  if (portfolioForm.username || portfolioForm.password) {
+    try {
+      const resU = await encryptCredential(portfolioForm.username || "", companyId);
+      const resP = await encryptCredential(portfolioForm.password || "", companyId, resU.salt);
+      base.username_encrypted = resU.encrypted; base.password_encrypted = resP.encrypted;
+      base.encryption_iv_username = resU.iv || null; base.encryption_iv = resP.iv || resU.iv; base.encryption_salt = resU.salt || resP.salt;
+    } catch (e) { showToast("Could not encrypt credentials: " + (e.message || e), "error"); return; }
+  }
+  let loanId = editingPortfolio?.id;
+  if (editingPortfolio) {
+    const { error } = await supabase.from("portfolio_loans").update({ ...base, updated_at: new Date().toISOString() }).eq("id", editingPortfolio.id).eq("company_id", companyId);
+    if (error) { showToast("Error updating portfolio loan: " + error.message, "error"); return; }
+  } else {
+    const { data, error } = await supabase.from("portfolio_loans").insert([{ ...base, company_id: companyId }]).select("id").single();
+    if (error) { showToast("Error saving portfolio loan: " + error.message, "error"); return; }
+    loanId = data.id;
+  }
+  // Replace the property links with the current selection.
+  await supabase.from("portfolio_loan_properties").delete().eq("portfolio_loan_id", loanId).eq("company_id", companyId);
+  const links = portfolioForm.properties.map(p => ({ company_id: companyId, portfolio_loan_id: loanId, property: p }));
+  if (links.length) { const { error: le } = await supabase.from("portfolio_loan_properties").insert(links); if (le) { showToast("Loan saved, but attaching properties failed: " + le.message, "error"); } }
+  addNotification("\ud83c\udfe6", `Portfolio loan ${editingPortfolio ? "updated" : "added"}: ${portfolioForm.lender_name}`);
+  logAudit(editingPortfolio ? "update" : "create", "loans", `Portfolio loan: ${portfolioForm.lender_name} across ${portfolioForm.properties.length} propert${portfolioForm.properties.length === 1 ? "y" : "ies"}`, loanId, userProfile?.email, userRole, companyId);
+  setShowPortfolioForm(false); setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm);
+  fetchPortfolioLoans();
+  } finally { guardRelease("savePortfolioLoan"); }
+  }
+
+  async function deletePortfolioLoan(id) {
+  if (!await showConfirm({ message: "Archive this portfolio loan? Its property links are removed.", confirmText: "Archive" })) return;
+  const { error } = await supabase.from("portfolio_loans").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || null }).eq("id", id).eq("company_id", companyId);
+  if (error) { showToast("Error: " + error.message, "error"); return; }
+  logAudit("delete", "loans", "Portfolio loan archived", id, userProfile?.email, userRole, companyId);
+  fetchPortfolioLoans();
   }
 
   if (loading) return <Spinner />;
@@ -225,6 +292,76 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   />
   {filtered.length === 0 && <EmptyState size="compact" title={"No loans found"} />}
   </div>
+
+  {/* ---- Portfolio Loans: one loan across many properties, tracked only ---- */}
+  <div className="mt-8">
+  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+  <div><h2 className="text-lg font-display font-bold text-neutral-800">Portfolio Loans</h2>
+  <p className="text-xs text-neutral-400">One loan covering multiple properties — entered once, tracked at the portfolio level (no per-property split).</p></div>
+  <Btn variant="success-fill" className="md:ml-auto" onClick={() => { setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); }}>+ Add Portfolio Loan</Btn>
+  </div>
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
+  <DataTable
+    columns={[
+      { key: "lender", label: "Lender", className: "font-medium text-neutral-800", render: l => (<>{l.lender_name}</>) },
+      { key: "type", label: "Type", className: "text-neutral-500", render: l => (<>{l.loan_type}</>) },
+      { key: "props", label: "Properties", className: "text-neutral-600 text-xs",
+        render: l => { const ps = portfolioProps.filter(p => p.portfolio_loan_id === l.id); return ps.length
+          ? <span title={ps.map(p => p.property).join(", ")}>{ps.length} propert{ps.length === 1 ? "y" : "ies"}</span>
+          : <span className="text-neutral-300">none</span>; } },
+      { key: "rate", label: "Rate", align: "right", className: "text-neutral-600", render: l => (<>{safeNum(l.interest_rate).toFixed(2)}%</>) },
+      { key: "monthly", label: "Monthly", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.monthly_payment)}</>) },
+      { key: "balance", label: "Balance", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.current_balance)}</>) },
+      { key: "maturity", label: "Maturity", className: "text-neutral-400", render: l => (<>{fmtDate(l.maturity_date) || "\u2014"}</>) },
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => (<>
+        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => { setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true); }}>Edit</TextLink>
+        <TextLink tone="danger" size="xs" onClick={() => deletePortfolioLoan(l.id)}>Delete</TextLink>
+      </>) },
+    ]}
+    rows={portfolioLoans}
+    rowKey={l => l.id}
+    empty="No portfolio loans"
+  />
+  {portfolioLoans.length === 0 && <EmptyState size="compact" title={"No portfolio loans yet"} />}
+  </div>
+  </div>
+
+  {showPortfolioForm && (
+  <Modal title={editingPortfolio ? "Edit Portfolio Loan" : "New Portfolio Loan"} onClose={() => { setShowPortfolioForm(false); setEditingPortfolio(null); }}>
+  <div className="grid grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Kiavi Portfolio" value={portfolioForm.lender_name} onChange={e => setPortfolioForm({ ...portfolioForm, lender_name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={portfolioForm.loan_type} onChange={e => setPortfolioForm({ ...portfolioForm, loan_type: e.target.value })}>
+  <option value="Conventional">Conventional</option><option value="DSCR">DSCR</option><option value="Portfolio">Portfolio</option><option value="Blanket">Blanket</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
+  </Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="1000000" type="number" value={portfolioForm.original_amount} onChange={e => setPortfolioForm({ ...portfolioForm, original_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="950000" type="number" value={portfolioForm.current_balance} onChange={e => setPortfolioForm({ ...portfolioForm, current_balance: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Interest Rate (%)</label><Input placeholder="7.25" type="number" step="0.01" value={portfolioForm.interest_rate} onChange={e => setPortfolioForm({ ...portfolioForm, interest_rate: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="6800" type="number" value={portfolioForm.monthly_payment} onChange={e => setPortfolioForm({ ...portfolioForm, monthly_payment: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={portfolioForm.account_number} onChange={e => setPortfolioForm({ ...portfolioForm, account_number: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status</label><Select value={portfolioForm.status} onChange={e => setPortfolioForm({ ...portfolioForm, status: e.target.value })}><option value="active">Active</option><option value="paid_off">Paid Off</option></Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Start Date</label><Input type="date" value={portfolioForm.loan_start_date} onChange={e => setPortfolioForm({ ...portfolioForm, loan_start_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Maturity Date</label><Input type="date" value={portfolioForm.maturity_date} onChange={e => setPortfolioForm({ ...portfolioForm, maturity_date: e.target.value })} /></div>
+  <div className="col-span-2">
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Properties Covered *</label>
+  <PropertySelect value={pfPropToAdd} onChange={v => { if (v && !portfolioForm.properties.includes(v)) setPortfolioForm(f => ({ ...f, properties: [...f.properties, v] })); setPfPropToAdd(""); }} companyId={companyId} />
+  <div className="flex flex-wrap gap-1 mt-2">
+  {portfolioForm.properties.map(p => <span key={p} className="inline-flex items-center gap-1 bg-neutral-100 rounded-lg px-2 py-1 text-xs text-neutral-700">{propertyLabel(p)}<button type="button" onClick={() => setPortfolioForm(f => ({ ...f, properties: f.properties.filter(x => x !== p) }))} className="text-neutral-400 hover:text-danger-600 leading-none">\u00d7</button></span>)}
+  {portfolioForm.properties.length === 0 && <span className="text-xs text-neutral-400">No properties attached yet — add the ones this loan covers.</span>}
+  </div>
+  </div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={portfolioForm.notes} onChange={e => setPortfolioForm({ ...portfolioForm, notes: e.target.value })} /></div>
+  <div className="col-span-2"><label className="flex items-center gap-2 cursor-pointer"><Checkbox checked={portfolioForm.escrow_included} onChange={e => setPortfolioForm({ ...portfolioForm, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-neutral-600">Escrow Included</span></label></div>
+  {portfolioForm.escrow_included && <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="1200" type="number" value={portfolioForm.escrow_amount} onChange={e => setPortfolioForm({ ...portfolioForm, escrow_amount: e.target.value })} /></div>}
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={portfolioForm.website || ""} onChange={e => setPortfolioForm({ ...portfolioForm, website: e.target.value })} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={portfolioForm.username || ""} onChange={e => setPortfolioForm({ ...portfolioForm, username: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={portfolioForm.password || ""} onChange={e => setPortfolioForm({ ...portfolioForm, password: e.target.value })} /></div>
+  </div></div>
+  </div>
+  <div className="flex gap-2 mt-4"><Btn variant="success-fill" onClick={savePortfolioLoan}>Save</Btn><Btn variant="secondary" onClick={() => { setShowPortfolioForm(false); setEditingPortfolio(null); }}>Cancel</Btn></div>
+  </Modal>
+  )}
   </div>
   );
 }

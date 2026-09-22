@@ -283,6 +283,31 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const updateHoa = (idx, field, val) => setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
   const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
+  // Portfolio loan: this property can be ATTACHED to a loan that spans several
+  // properties (created/edited in the Loans page). Tracked, never split.
+  const [portfolioLoans, setPortfolioLoans] = useState([]);
+  const [portfolioLoanId, setPortfolioLoanId] = useState("");
+  const [origPortfolioLoanId, setOrigPortfolioLoanId] = useState("");
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("portfolio_loans").select("id, lender_name, current_balance")
+        .eq("company_id", companyId).is("archived_at", null).order("lender_name");
+      if (!cancelled) setPortfolioLoans(data || []);
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
+  useEffect(() => {
+    if (!companyId || !savedAddress) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("portfolio_loan_properties").select("portfolio_loan_id")
+        .eq("company_id", companyId).eq("property", savedAddress).maybeSingle();
+      if (!cancelled) { const id = data?.portfolio_loan_id || ""; setPortfolioLoanId(id); setOrigPortfolioLoanId(id); }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, savedAddress]);
   const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
   // One licence per property, so this is a single record rather than a
   // collection. `enabled` mirrors the other optional steps: a property
@@ -1301,6 +1326,22 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       }
     } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit tax bills', silent: true }); phaseCFailures.push('property tax bills'); }
 
+    // Attach / detach this property from a portfolio loan (managed in the Loans
+    // page; nothing is split onto the property, it is just linked).
+    try {
+      if (portfolioLoanId !== origPortfolioLoanId) {
+        if (origPortfolioLoanId) {
+          await supabase.from("portfolio_loan_properties").delete()
+            .eq("company_id", companyId).eq("portfolio_loan_id", origPortfolioLoanId).eq("property", compositeAddress);
+        }
+        if (portfolioLoanId) {
+          await supabase.from("portfolio_loan_properties").upsert(
+            { company_id: companyId, portfolio_loan_id: portfolioLoanId, property: compositeAddress, property_id: resPropertyId ? Number(resPropertyId) : null },
+            { onConflict: "portfolio_loan_id,property" });
+        }
+      }
+    } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit portfolio loan link', silent: true }); phaseCFailures.push('portfolio loan link'); }
+
     // The deposit and first month's rent are posted at most ONCE per tenant,
     // and the check that enforces that must not depend on the lease start date.
     //
@@ -2003,6 +2044,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
+              {portfolioLoans.length > 0 && (
+                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Covered by a portfolio loan?</label>
+                  <Select value={portfolioLoanId} onChange={e => setPortfolioLoanId(e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="">No — its own loan (or none)</option>
+                    {portfolioLoans.map(pl => <option key={pl.id} value={pl.id}>{pl.lender_name} — {formatCurrency(pl.current_balance)}</option>)}
+                  </Select>
+                  <p className="text-xs text-neutral-400 mt-1">A portfolio loan spans several properties. Its details live in the Loans page; here you just attach this property to it.</p>
+                </div>
+              )}
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!loan.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLoan({ ...loan, enabled: !loan.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
@@ -2663,6 +2714,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                       {loan.setup_recurring && <div className="text-positive-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
                   ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
+                  {portfolioLoanId && (() => { const pl = portfolioLoans.find(x => x.id === portfolioLoanId); return <div className="text-xs text-neutral-500 mt-1">Part of portfolio loan: <span className="font-medium text-neutral-700">{pl ? pl.lender_name : "\u2014"}</span></div>; })()}
                 </div>
               )}
 
