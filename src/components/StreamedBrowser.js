@@ -16,6 +16,8 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
   const imgRef = useRef(typeof Image !== "undefined" ? new Image() : null);
+  const kbRef = useRef(null);         // hidden input that raises the phone keyboard
+  const kbValRef = useRef("");        // last value seen, to diff into keystrokes
   const [status, setStatus] = useState("connecting"); // connecting | ready | paid | error | expired
   const [detail, setDetail] = useState("");
 
@@ -73,14 +75,52 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
     return () => { alive = false; try { ws.close(); } catch {} };
   }, [streamBase, provider, url, token, onPaid]);
 
-  // Keyboard: printable characters go as text (so card digits type cleanly);
-  // control keys go as key events so Tab/Enter/Backspace work in the form.
+  // Physical keyboard (desktop): printable chars as text, control keys as key
+  // events so Tab/Enter/Backspace work in the form.
   const onKeyDown = useCallback((e) => {
     if (status !== "ready") return;
     e.preventDefault();
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) sendEv({ type: "text", text: e.key });
     else sendEv({ type: "key", down: true, key: e.key, code: e.code, keyCode: e.keyCode });
   }, [status, sendEv]);
+
+  // MOBILE keyboard. A <canvas> cannot raise the on-screen keyboard, so a tap
+  // on the stream focuses a hidden input; the phone keyboard opens against it
+  // and we relay its keystrokes to the remote page. iOS only opens the keyboard
+  // when focus() runs INSIDE the tap's own handler, hence focusKeyboard() is
+  // called synchronously from the touch/mouse handlers below.
+  const focusKeyboard = useCallback(() => {
+    if (status !== "ready") return;
+    const el = kbRef.current;
+    if (el) { try { el.focus({ preventScroll: true }); } catch { el.focus(); } }
+  }, [status]);
+
+  // iOS reports keyCode 229 while composing, so onKeyDown is unreliable there --
+  // diff the input's value on every change instead. Added chars go as text;
+  // a shorter value means Backspace(s); a replacement is backspaced then retyped.
+  const onKbInput = useCallback(() => {
+    const el = kbRef.current; if (!el) return;
+    const nv = el.value, ov = kbValRef.current;
+    if (nv.length > ov.length && nv.startsWith(ov)) {
+      for (const ch of nv.slice(ov.length)) sendEv({ type: "text", text: ch });
+    } else if (nv.length < ov.length && ov.startsWith(nv)) {
+      for (let i = 0; i < ov.length - nv.length; i++) sendEv({ type: "key", down: true, key: "Backspace", code: "Backspace", keyCode: 8 });
+    } else if (nv !== ov) {
+      for (let i = 0; i < ov.length; i++) sendEv({ type: "key", down: true, key: "Backspace", code: "Backspace", keyCode: 8 });
+      for (const ch of nv) sendEv({ type: "text", text: ch });
+    }
+    kbValRef.current = nv;
+    // Keep the buffer from growing forever; reset once it is comfortably long.
+    if (nv.length > 40) { el.value = ""; kbValRef.current = ""; }
+  }, [sendEv]);
+
+  const onKbKeyDown = useCallback((e) => {
+    // Enter (submit) and Backspace-on-empty won't show up in onKbInput.
+    if (e.key === "Enter") { e.preventDefault(); sendEv({ type: "key", down: true, key: "Enter", code: "Enter", keyCode: 13 }); }
+    else if (e.key === "Backspace" && kbRef.current && kbRef.current.value === "") {
+      sendEv({ type: "key", down: true, key: "Backspace", code: "Backspace", keyCode: 8 });
+    }
+  }, [sendEv]);
 
   const interactive = status === "ready";
   return (
@@ -101,15 +141,32 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
           {status === "expired" && "The session timed out for safety. Reopen to try again."}
         </div>
 
+        {/* Hidden input that raises the phone keyboard when the stream is tapped;
+            its keystrokes are relayed to the remote page. Off-screen but real
+            (not display:none) so iOS actually opens the keyboard. */}
+        <input
+          ref={kbRef}
+          onInput={onKbInput}
+          onKeyDown={onKbKeyDown}
+          type="text" inputMode="text"
+          autoCapitalize="none" autoComplete="off" autoCorrect="off" spellCheck={false}
+          aria-hidden="true" tabIndex={-1}
+          style={{ position: "absolute", top: 0, left: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, background: "transparent", color: "transparent", caretColor: "transparent" }}
+        />
         <div className="relative bg-white overflow-auto" style={{ opacity: interactive ? 1 : 0.6 }}>
           <canvas
             ref={canvasRef} width={PAGE_W} height={PAGE_H}
             tabIndex={0}
-            className="block w-full h-auto outline-none touch-none"
+            className="block w-full h-auto outline-none"
             style={{ cursor: interactive ? "crosshair" : "default" }}
             onMouseMove={(e) => interactive && sendEv({ type: "mousemove", ...toPage(e) })}
-            onMouseDown={(e) => { if (interactive) { canvasRef.current?.focus(); sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); } }}
+            onMouseDown={(e) => { if (interactive) { sendEv({ type: "mousedown", ...toPage(e), clickCount: e.detail || 1 }); } }}
             onMouseUp={(e) => interactive && sendEv({ type: "mouseup", ...toPage(e), clickCount: e.detail || 1 })}
+            // A tap synthesises the mouse events above (which click the remote
+            // field); this only opens the keyboard, in the tap's own handler so
+            // iOS honours it. Native scrolling still works because we no longer
+            // set touch-action: none.
+            onTouchEnd={() => focusKeyboard()}
             onWheel={(e) => interactive && sendEv({ type: "wheel", ...toPage(e), dx: e.deltaX, dy: e.deltaY })}
             onKeyDown={onKeyDown}
             onKeyUp={(e) => interactive && e.key.length !== 1 && sendEv({ type: "key", down: false, key: e.key, code: e.code, keyCode: e.keyCode })}
@@ -120,6 +177,17 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
             </div>
           )}
         </div>
+
+        {/* Fallback for phones: an explicit way to raise the keyboard if a tap
+            on a field did not (e.g. the tap landed just off the input). */}
+        {interactive && (
+          <div className="px-4 py-2 bg-neutral-800 flex sm:hidden">
+            <button onClick={() => focusKeyboard()}
+              className="w-full text-sm text-white bg-brand-600 rounded-lg py-2 font-medium">
+              ⌨︎ Tap here to type into the selected field
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

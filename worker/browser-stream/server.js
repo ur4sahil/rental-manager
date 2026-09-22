@@ -121,19 +121,27 @@ async function autoDrive(page, provider, claims, send, sessionId) {
   // "Last Statement Balance" (DUE_AMOUNT) is checked by default; the METHOD
   // radios are NOT, and an unselected method is what made "Next" bounce.
   await step("set amount", async () => {
+    // "Last Statement Balance" (DUE_AMOUNT) is checked by default; only touch
+    // the radios for a custom amount. Each PrimeFaces radio/field change fires
+    // an AJAX re-render, so settle between steps or the next click races it.
     if (!claims.full && claims.amount != null) {
       await page.locator('label[for="PaymentAmountRadioGroup:1"]').click({ timeout: 5000 }); // Other Amount
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(1200);
       await page.locator('input[type="text"]:visible, input[type="number"]:visible').first()
         .fill(String(claims.amount), { timeout: 5000 }).catch(() => {});
-    } else {
-      await page.locator('label[for="PaymentAmountRadioGroup:0"]').click({ timeout: 3000 }).catch(() => {}); // full (already default)
+      await page.waitForTimeout(1200);
     }
   });
   await step("set method", async () => {
+    // Method is NOT selected by default -- an unset method is what makes "Next"
+    // bounce with a validation error. Click and VERIFY it took (the amount
+    // re-render above can eat the first click), retrying a couple of times.
     const id = claims.method === "ach" ? "PaymentMethodRadioGroup:1" : "PaymentMethodRadioGroup:0";
-    await page.locator(`label[for="${id}"]`).click({ timeout: 5000 });
-    await page.waitForTimeout(400);
+    for (let i = 0; i < 3; i++) {
+      await page.locator(`label[for="${id}"]`).click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      if (await page.locator(`input[id="${id}"]`).isChecked().catch(() => false)) break;
+    }
   });
   // STOP HERE, deliberately. This page discloses the processor's fees and (for
   // card over $750) splits the charge into several transactions, then asks the
