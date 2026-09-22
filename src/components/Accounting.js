@@ -403,7 +403,7 @@ export {
 // activity. Sahil: "cmd click on ledger balances or totals, shows total of
 // AR =0". Same failure AcctReports already guards against; this view was
 // simply never handed the flags.
-export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId }) {
+export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId, classes = [] }) {
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [propertyFilter, setPropertyFilter] = useState("");
@@ -493,15 +493,22 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const sortedJEs = journalEntries.filter(je => je.status === "posted").sort((a, b) => a.date.localeCompare(b.date) || (a.id || "").localeCompare(b.id || ""));
   const inScope = (je) => je.date >= start && je.date <= end && (!propertyFilter || je.property === propertyFilter);
 
+  // A journal entry's property is a single header value; a multi-property entry
+  // (e.g. a housing-authority payment covering several tenants) then stamped
+  // EVERY line with the first property. Each LINE carries its own class, and a
+  // class's name IS its property address, so resolve the property per line from
+  // the class -- falling back to the header only when a line has no class.
+  const classProp = new Map((classes || []).map(c => [String(c.id), c.name]));
+  const lineProp = (classId, headerProp) => classProp.get(String(classId)) || headerProp || "";
   const candidateRows = useServerRows
     ? rpcRows.map(r => ({
         accountId: r.account_id, date: r.je_date, number: r.je_number, jeId: r.je_id,
-        description: r.description, reference: r.reference, property: r.property,
+        description: r.description, reference: r.reference, property: lineProp(r.class_id, r.property),
         memo: r.memo, debit: safeNum(r.debit), credit: safeNum(r.credit),
       }))
     : sortedJEs.flatMap(je => (inScope(je) ? (je.lines || []).map(l => ({
         accountId: l.account_id, date: je.date, number: je.number, jeId: je.id,
-        description: je.description, reference: je.reference, property: je.property,
+        description: je.description, reference: je.reference, property: lineProp(l.class_id, je.property),
         memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit),
       })) : []));
 
@@ -6197,7 +6204,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
 
   {/* Account Ledger Drill-Down — a page of its own */}
-  {ledgerView && <AccountLedgerView companyId={companyId} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView companyId={companyId} classes={acctClasses} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>
