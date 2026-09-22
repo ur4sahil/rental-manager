@@ -229,6 +229,18 @@ wss.on("connection", async (ws, req) => {
       catch { return await chromium.launch({ headless: true }); }
     })();
     context = await browser.newContext({ storageState, viewport: { width: 1280, height: 900 } });
+    // Kill smooth scrolling on every page. When the auto-drive scrolls to an
+    // account far down a long list, an animated scroll streams as a long crawl
+    // that reads as "it keeps scrolling"; instant jumps stream as a single step.
+    await context.addInitScript(() => {
+      const apply = () => { try {
+        const s = document.createElement("style");
+        s.textContent = "html,body,*{scroll-behavior:auto !important}";
+        (document.head || document.documentElement).appendChild(s);
+      } catch {} };
+      if (document.head || document.documentElement) apply();
+      document.addEventListener("DOMContentLoaded", apply);
+    });
     page = await context.newPage();
     cdp = await context.newCDPSession(page);
 
