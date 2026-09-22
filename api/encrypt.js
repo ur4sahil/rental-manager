@@ -214,6 +214,11 @@ module.exports = async function handler(req, res) {
       provider,
       account: body.account || null,
       amount: body.amount != null ? Number(body.amount) : null,
+      // Pay-intent, chosen in Housy, auto-applied on the provider's amount page:
+      // full balance vs a specific amount, and card vs ACH. The money and the
+      // card are still entered/submitted by the person on the provider's site.
+      full: body.full === true,
+      method: body.method === "ach" ? "ach" : "card",
       billId: body.billId || null,
       companyId,
       uid: userData.user.id,

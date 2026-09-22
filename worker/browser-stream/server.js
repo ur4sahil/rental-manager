@@ -85,6 +85,65 @@ const ENTRY = {
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
+// AUTO-DRIVE to the card-entry page. These are the clicks that carry no secret:
+// select the account, open Pay, choose the amount (full or the person's number)
+// and the method (card/ACH) they already picked in Housy, and advance to where
+// the card is typed. It STOPS there -- the card and the final submit are always
+// the person's. Best-effort and non-fatal: if any step's selector has changed,
+// it stops and the person drives the rest by hand in the same live stream.
+async function autoDrive(page, provider, claims, send, sessionId) {
+  if (provider !== "wssc" || !claims || !claims.account) return;
+  let accounts = null;
+  for (const p of [path.join(__dirname, "portals", "accounts"), path.join(__dirname, "..", "portals", "accounts")]) {
+    try { accounts = require(p); if (accounts) break; } catch {}
+  }
+  if (!accounts) { log(`[${sessionId}] auto-drive: accounts module not found`); return; }
+  const step = async (label, fn) => {
+    try { await fn(); log(`[${sessionId}] auto-drive: ${label}`); return true; }
+    catch (e) { log(`[${sessionId}] auto-drive stop at "${label}": ${String(e.message).split("\n")[0].slice(0, 70)}`); return false; }
+  };
+  await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
+  if (!await step("select account", async () => {
+    const sel = await accounts.selectAccountAny(page, claims.account, { inline: true });
+    if (!sel || !sel.ok) throw new Error((sel && sel.reason) || "not selected");
+  })) return;
+  if (!await step("open Pay", async () => {
+    await accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first().click({ timeout: 8000 });
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+  })) return;
+  if (!await step("Make a Payment", async () => {
+    await page.getByRole("link", { name: /make a payment/i }).first().click({ timeout: 8000 });
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+  })) return;
+  // These are PrimeFaces radios: the real <input> is visually hidden, so we
+  // click the associated <label for=...>, which fires PrimeFaces' own handler.
+  // "Last Statement Balance" (DUE_AMOUNT) is checked by default; the METHOD
+  // radios are NOT, and an unselected method is what made "Next" bounce.
+  await step("set amount", async () => {
+    if (!claims.full && claims.amount != null) {
+      await page.locator('label[for="PaymentAmountRadioGroup:1"]').click({ timeout: 5000 }); // Other Amount
+      await page.waitForTimeout(400);
+      await page.locator('input[type="text"]:visible, input[type="number"]:visible').first()
+        .fill(String(claims.amount), { timeout: 5000 }).catch(() => {});
+    } else {
+      await page.locator('label[for="PaymentAmountRadioGroup:0"]').click({ timeout: 3000 }).catch(() => {}); // full (already default)
+    }
+  });
+  await step("set method", async () => {
+    const id = claims.method === "ach" ? "PaymentMethodRadioGroup:1" : "PaymentMethodRadioGroup:0";
+    await page.locator(`label[for="${id}"]`).click({ timeout: 5000 });
+    await page.waitForTimeout(400);
+  });
+  // STOP HERE, deliberately. This page discloses the processor's fees and (for
+  // card over $750) splits the charge into several transactions, then asks the
+  // person to tick "I agree to pay the amount stated above." Agreeing to a fee
+  // and a total is the person's decision, not automation's -- so we leave the
+  // amount and method chosen, and hand over at the agreement.
+  log(`[${sessionId}] auto-drive finished at ${page.url()} (amount + method set; awaiting agreement)`);
+  send({ type: "status", message: "Review the total and fees, tick “I agree”, click Next, then enter your card." });
+}
+
 const server = http.createServer((req, res) => {
   // A bare health check for the tunnel/monitor; everything real is WS.
   if (req.url.startsWith("/health")) { res.writeHead(200); res.end("ok"); return; }
@@ -177,6 +236,9 @@ wss.on("connection", async (ws, req) => {
     await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
     send({ type: "ready", sessionId });
+    // Drive to the card page with the person's amount/method already applied,
+    // then hand over. Runs in the background so frames keep flowing meanwhile.
+    autoDrive(page, provider, claims, send, sessionId).catch(() => {});
 
     // Input in. Coordinates arrive already in page space (the client scales
     // the canvas). Text uses insertText so IME/paste behave; single keys use
