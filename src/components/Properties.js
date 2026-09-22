@@ -180,7 +180,7 @@ function stripCredentials(wd) {
   return clean(wd);
 }
 
-function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, userProfile, userRole, onComplete, onDismiss }) {
+function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, userProfile, userRole, allowedPages, onComplete, onDismiss }) {
   // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -356,7 +356,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // Review page + Tasks & Approvals stay in lock-step on what counts
   // as an applicable step. `review` is wizard-only and appended here.
   const steps = [
-    ...getWizardApplicableSteps({ propertyStatus: propForm.status, userRole, yearBuilt: propForm.year_built }),
+    ...getWizardApplicableSteps({ propertyStatus: propForm.status, userRole, yearBuilt: propForm.year_built, allowedPages }),
     "review",
   ];
   const totalSteps = steps.length;
@@ -428,7 +428,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             const statusForSteps = wizardData?.addingTenant
               ? "occupied"
               : (existing.wizard_data?.propForm?.status || propForm.status);
-            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: statusForSteps, userRole }), "review"];
+            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: statusForSteps, userRole, allowedPages }), "review"];
             const idx = stepsForProp.indexOf(jumpId);
             if (idx >= 0) openAt = idx + 1;
           }
@@ -468,7 +468,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             const jumpId = wizardData?.startAtStep;
             if (jumpId) {
               let wd = {}; try { wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : (completed.wizard_data || {}); } catch (_e) {}
-              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (wd.propForm?.status || propForm.status), userRole }), "review"];
+              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (wd.propForm?.status || propForm.status), userRole, allowedPages }), "review"];
               const idx = stepsForProp.indexOf(jumpId);
               if (idx >= 0) openAt = idx + 1;
             }
@@ -531,7 +531,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             setPropForm(filledProp);
             // Jump to the requested step (e.g. tenant_lease for Add Tenant).
             if (wizardData?.startAtStep) {
-              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: _statusForForm, userRole }), "review"];
+              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: _statusForForm, userRole, allowedPages }), "review"];
               const jIdx = stepsForProp.indexOf(wizardData.startAtStep);
               if (jIdx >= 0) setStep(jIdx + 1);
             }
@@ -2839,7 +2839,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
 }
 
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
-function Properties({ addNotification, userRole, userProfile, companyId, setPage, showToast, showConfirm, initialAction }) {
+function Properties({ addNotification, userRole, allowedPages, userProfile, companyId, setPage, showToast, showConfirm, initialAction }) {
   function exportProperties() {
   const exportData = properties.filter(p => !p.archived_at);
   exportToCSV(exportData, [
@@ -3766,7 +3766,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
     const completedSteps = wizard.completed_steps || [];
     const approvedSkips = wizard.skipped_approved_steps || [];
     // property_details is required to create the row, never "optional"
-    const optionalSteps = getWizardApplicableSteps({ propertyStatus: property.status, userRole })
+    const optionalSteps = getWizardApplicableSteps({ propertyStatus: property.status, userRole, allowedPages })
       .filter(s => s !== "property_details");
     const missing = optionalSteps.filter(s => !completedSteps.includes(s) && !approvedSkips.includes(s));
     return { wizard, completedSteps, missing, total: optionalSteps.length, completed: optionalSteps.length - missing.length, isInProgress: true, isComplete: missing.length === 0 };
@@ -4605,7 +4605,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
-  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
+  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} allowedPages={allowedPages} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   {showLicenseForm && <LicenseFormModal license={showLicenseForm.license} propertyId={showLicenseForm.propertyId} propertyAddress={showLicenseForm.propertyAddress} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onClose={() => setShowLicenseForm(null)} onSaved={async () => { if (selectedProperty) { const { data } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", selectedProperty.id).is("archived_at", null).order("expiry_date", { ascending: true }); setPropertyLicenses(data || []); } }} />}
   </div>

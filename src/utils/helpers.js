@@ -537,11 +537,19 @@ export function requiredLicenses({ yearBuilt } = {}) {
   return out;
 }
 
-export function getWizardApplicableSteps({ propertyStatus, userRole, yearBuilt } = {}) {
+export function getWizardApplicableSteps({ propertyStatus, userRole, yearBuilt, allowedPages } = {}) {
   const s = ["property_details"];
   if (propertyStatus === "occupied") s.push("tenant_lease");
   s.push("utilities", "hoa");
-  if (userRole === "admin" || userRole === "owner") s.push("loan");
+  // The loan step follows Loans-module access, not a role. An employee whose
+  // custom access includes the Loans module (allowedPages has "loans") records
+  // loans too -- matching the Team & Roles checkboxes. When allowedPages is not
+  // supplied (the review/task counters, which do not carry the viewer's menu)
+  // fall back to the old admin/owner check so their totals are unchanged.
+  const canLoan = Array.isArray(allowedPages)
+    ? allowedPages.includes("loans")
+    : (userRole === "admin" || userRole === "owner");
+  if (canLoan) s.push("loan");
   // Every rental property needs a licence, so the wizard asks for one.
   // It had never asked: "rental_license" existed only as a TYPE in a
   // dropdown behind Properties -> a property -> Licenses tab -> add, and

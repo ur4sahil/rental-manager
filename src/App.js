@@ -1498,6 +1498,7 @@ function AppInner() {
   currentUser={currentUser}
   userRole={userRole}
   userProfile={userProfile}
+  allowedPages={allowedPages}
   companyId={activeCompany.id}
   activeCompany={activeCompany}
   showToast={showToast}
