@@ -10,6 +10,18 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
+
+// The utilities table stores responsibility SHORT ("owner"/"tenant"/"condo_fee");
+// the wizard dropdown uses the "_pays" long form. Map short -> long on load, or
+// the Select silently falls back to its first option ("Owner Pays") while the
+// review reads the raw value as "Tenant" -- the two disagreeing, and the field
+// impossible to change.
+const respToForm = (r) =>
+  r === "owner" ? "owner_pays"
+  : r === "tenant" ? "tenant_pays"
+  : r === "condo_fee" ? "condo_fee"
+  : (r === "owner_pays" || r === "tenant_pays") ? r
+  : "owner_pays";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
@@ -509,7 +521,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
               supabase.from("property_taxes").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
             ]);
-            if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: u.responsibility || "owner_pays", website: u.website || "", username: u.username || "", password: u.password || "" })));
+            if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: respToForm(u.responsibility), website: u.website || "", username: u.username || "", password: u.password || "" })));
             // Credentials are NOT read back: hoa_payments stores only
             // ciphertext, so h.username has always been undefined here and
             // the blank boxes are honest. commit_property_wizard carries the
@@ -836,7 +848,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     if (utilRows.length) setUtilities(utilRows.map(u => ({
       provider: u.provider || "", type: u.type || "Electric",
       account_number: u.account_number || "", due_date: u.due || u.due_date || 1,
-      responsibility: u.responsibility === "owner" ? "owner_pays" : u.responsibility || "tenant_pays",
+      responsibility: respToForm(u.responsibility),
       website: u.website || "", username: "", password: "",
     })));
 
