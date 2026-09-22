@@ -81,7 +81,93 @@ const ENTRY = {
   pepco: "https://secure.pepco.com/",
   bge: "https://secure.bge.com/",
   washington_gas: "https://my.washingtongas.com/portal/",
+  // SMECO has no billing portal of its own -- sign-in is hosted on Opower.
+  smeco: "https://dss-smcc.opower.com",
 };
+
+// Portals whose login a headless bot cannot pass: Washington Gas scores every
+// login through reCAPTCHA v3 (a datacenter IP fails silently), and BGE mails a
+// one-time code. For these, DON'T burn 90s on a headless freshen -- reuse a
+// saved session if one is on disk, else the person signs in inside the stream
+// (real Chrome + real interaction pass v3), and we save that session on close.
+const HUMAN_LOGIN = { washington_gas: true, bge: true };
+
+// PLAYBOOKS: loaded once, for login-field selectors + provider aliases.
+let _PLAYBOOKS = null;
+function getBook(provider) {
+  if (!_PLAYBOOKS) {
+    for (const base of [path.join(__dirname, "portals"), path.join(__dirname, "..", "portals")]) {
+      try { ({ PLAYBOOKS: _PLAYBOOKS } = require(path.join(base, "playbooks"))); if (_PLAYBOOKS) break; } catch {}
+    }
+  }
+  return (_PLAYBOOKS && _PLAYBOOKS[provider]) || null;
+}
+
+// DECRYPT — same scheme as ensure-session.js / api/encrypt.js (PBKDF2-SHA256,
+// 100k, AES-256-GCM, 16-byte tag appended). Duplicated on purpose.
+function _masterKey() {
+  let m = process.env.ENCRYPTION_KEY;
+  if (!m && process.env.ENCRYPTION_KEY_FILE) { try { m = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf8"); } catch {} }
+  return m;
+}
+function _decrypt(master, b64, ivHex, saltHex) {
+  if (!b64 || !ivHex || !saltHex) return "";
+  const key = crypto.pbkdf2Sync(master, Buffer.from(saltHex, "hex"), 100000, 32, "sha256");
+  const combined = Buffer.from(b64, "base64"); const TAG = 16;
+  if (combined.length < TAG) return "";
+  const d = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  d.setAuthTag(combined.slice(combined.length - TAG));
+  return Buffer.concat([d.update(combined.slice(0, combined.length - TAG)), d.final()]).toString("utf8");
+}
+// Fetch + decrypt a portal login. The box holds the encryption key but no
+// service key, so it asks the app for the ciphertext over the worker API.
+async function fetchCredentials(book, companyId) {
+  const master = _masterKey(); if (!master || !book) return null;
+  const API = String(process.env.HOUSY_API_BASE || "").replace(/\/$/, "");
+  const TOKEN = process.env.AI_WORKER_TOKEN || "";
+  const COMPANY = companyId || process.env.HOUSY_COMPANY_ID;
+  if (!API || !TOKEN || !COMPANY) return null;
+  const headers = { "Content-Type": "application/json", "x-worker-token": TOKEN };
+  if (process.env.VERCEL_BYPASS_TOKEN) headers["x-vercel-protection-bypass"] = process.env.VERCEL_BYPASS_TOKEN;
+  let rows = [];
+  try {
+    const r = await fetch(`${API}/api/ai?action=portal-credentials`, {
+      method: "POST", headers, body: JSON.stringify({ companyId: COMPANY, provider: book.provider }),
+    });
+    if (!r.ok) return null;
+    rows = (await r.json().catch(() => ({}))).credentials || [];
+  } catch { return null; }
+  const aliases = (book.aliases || []).map(a => a.toLowerCase());
+  const m = rows.find(r => { const p = String(r.provider || "").trim().toLowerCase(); return aliases.some(a => p === a || p.includes(a)); });
+  if (!m) return null;
+  try {
+    return {
+      username: _decrypt(master, m.username_encrypted, m.encryption_iv_username, m.encryption_salt),
+      password: _decrypt(master, m.password_encrypted, m.encryption_iv, m.encryption_salt),
+    };
+  } catch { return null; }
+}
+// Enroll helper: fill the login form so the person only has to click Log in
+// (their real click is what passes reCAPTCHA v3). Returns true if it filled.
+async function autoFillLogin(page, book, companyId, send, sessionId) {
+  if (!book?.loginFields?.user) return false;
+  try {
+    await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+    const userBox = page.locator(book.loginFields.user).first();
+    if (!await userBox.isVisible({ timeout: 6000 }).catch(() => false)) return false;
+    const creds = await fetchCredentials(book, companyId);
+    if (!creds || !creds.username) { log(`[${sessionId}] enroll: no stored credentials for ${book.provider}`); return false; }
+    await userBox.click(); await userBox.pressSequentially(creds.username, { delay: 55 });
+    const passBox = page.locator(book.loginFields.pass || 'input[type="password"]').first();
+    await passBox.click(); await passBox.pressSequentially(creds.password, { delay: 55 });
+    log(`[${sessionId}] enroll: pre-filled ${book.provider} login`);
+    // reCAPTCHA v3 returns "Invalid Captcha" for an automated click (tested on
+    // Washington Gas), so the person clicks Log In themselves -- their genuine
+    // interaction is what passes v3. Everything else is done for them.
+    send({ type: "status", message: `Your ${book.provider} login is filled in \u2014 just click \u201cLog In\u201d, then close this window and it's connected.` });
+    return true;
+  } catch (e) { log(`[${sessionId}] enroll fill failed: ${String(e.message).split("\n")[0].slice(0,70)}`); return false; }
+}
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -92,10 +178,14 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 // the person's. Best-effort and non-fatal: if any step's selector has changed,
 // it stops and the person drives the rest by hand in the same live stream.
 async function autoDrive(page, provider, claims, send, sessionId) {
-  if (provider !== "wssc" || !claims || !claims.account) return;
-  let accounts = null;
-  for (const p of [path.join(__dirname, "portals", "accounts"), path.join(__dirname, "..", "portals", "accounts")]) {
-    try { accounts = require(p); if (accounts) break; } catch {}
+  if (!claims || !claims.account) return;
+  // Load the shared account + playbook modules from wherever they sit relative
+  // to this file (repo layout vs. deployed layout).
+  let accounts = null, PLAYBOOKS = null;
+  for (const base of [path.join(__dirname, "portals"), path.join(__dirname, "..", "portals")]) {
+    try { if (!accounts) accounts = require(path.join(base, "accounts")); } catch {}
+    try { if (!PLAYBOOKS) ({ PLAYBOOKS } = require(path.join(base, "playbooks"))); } catch {}
+    if (accounts && PLAYBOOKS) break;
   }
   if (!accounts) { log(`[${sessionId}] auto-drive: accounts module not found`); return; }
   const step = async (label, fn) => {
@@ -104,57 +194,104 @@ async function autoDrive(page, provider, claims, send, sessionId) {
   };
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(800);
-  if (!await step("open account payment", async () => {
-    // Click the account row's own "Pay" link directly. The generic account
-    // selector clicks "View" first, which times out ~8s per candidate on WSSC's
-    // actionability checks (~40s total); the row's Pay link goes straight to
-    // the payment page in ~1s, and the row already shows its balance so no
-    // "expand" step is needed.
-    const pay = accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first();
-    await pay.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
-    await pay.click({ timeout: 8000 });
-    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1200);
-  })) return;
-  if (!await step("Make a Payment", async () => {
-    await page.getByRole("link", { name: /make a payment/i }).first().click({ timeout: 8000 });
-    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1200);
-  })) return;
-  // These are PrimeFaces radios: the real <input> is visually hidden, so we
-  // click the associated <label for=...>, which fires PrimeFaces' own handler.
-  // "Last Statement Balance" (DUE_AMOUNT) is checked by default; the METHOD
-  // radios are NOT, and an unselected method is what made "Next" bounce.
-  await step("set amount", async () => {
-    // "Last Statement Balance" (DUE_AMOUNT) is checked by default; only touch
-    // the radios for a custom amount. Each PrimeFaces radio/field change fires
-    // an AJAX re-render, so settle between steps or the next click races it.
-    if (!claims.full && claims.amount != null) {
-      await page.locator('label[for="PaymentAmountRadioGroup:1"]').click({ timeout: 5000 }); // Other Amount
+
+  // ───────────────────────── WSSC ─────────────────────────
+  // Hand-tuned and proven end to end. WSSC is PrimeFaces, not the Exelon/Opower
+  // shape the generic path below assumes, so it keeps its own steps.
+  if (provider === "wssc") {
+    if (!await step("open account payment", async () => {
+      // Click the account row's own "Pay" link directly. The generic account
+      // selector clicks "View" first, which times out ~8s per candidate on WSSC's
+      // actionability checks (~40s total); the row's Pay link goes straight to
+      // the payment page in ~1s, and the row already shows its balance so no
+      // "expand" step is needed.
+      const pay = accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first();
+      await pay.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+      await pay.click({ timeout: 8000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
       await page.waitForTimeout(1200);
+    })) return;
+    if (!await step("Make a Payment", async () => {
+      await page.getByRole("link", { name: /make a payment/i }).first().click({ timeout: 8000 });
+      await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(1200);
+    })) return;
+    // These are PrimeFaces radios: the real <input> is visually hidden, so we
+    // click the associated <label for=...>, which fires PrimeFaces' own handler.
+    await step("set amount", async () => {
+      // "Last Statement Balance" (DUE_AMOUNT) is checked by default; only touch
+      // the radios for a custom amount. Each PrimeFaces radio/field change fires
+      // an AJAX re-render, so settle between steps or the next click races it.
+      if (!claims.full && claims.amount != null) {
+        await page.locator('label[for="PaymentAmountRadioGroup:1"]').click({ timeout: 5000 }); // Other Amount
+        await page.waitForTimeout(1200);
+        await page.locator('input[type="text"]:visible, input[type="number"]:visible').first()
+          .fill(String(claims.amount), { timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(1200);
+      }
+    });
+    await step("set method", async () => {
+      // Method is NOT selected by default -- an unset method is what makes "Next"
+      // bounce with a validation error. Click and VERIFY it took (the amount
+      // re-render above can eat the first click), retrying a couple of times.
+      const id = claims.method === "ach" ? "PaymentMethodRadioGroup:1" : "PaymentMethodRadioGroup:0";
+      for (let i = 0; i < 3; i++) {
+        await page.locator(`label[for="${id}"]`).click({ timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(700);
+        if (await page.locator(`input[id="${id}"]`).isChecked().catch(() => false)) break;
+      }
+    });
+    // STOP HERE, deliberately. This page discloses the processor's fees and (for
+    // card over $750) splits the charge, then asks the person to tick "I agree".
+    log(`[${sessionId}] auto-drive finished at ${page.url()} (amount + method set; awaiting agreement)`);
+    send({ type: "status", message: "Review the total and fees, tick \u201cI agree\u201d, click Next, then enter your card." });
+    return;
+  }
+
+  // ──────────────────── Generic (Exelon/Opower + others) ────────────────────
+  // Best-effort, and deliberately conservative: it selects the account and opens
+  // the payment page, and for a PARTIAL payment tries to set the amount -- then
+  // STOPS. It never clicks the recipe's `commit`, and it does not blind-advance
+  // past the payment page, because these selectors are candidates (confirmed
+  // only in read runs) and the card-entry location differs per portal. The
+  // stream is interactive, so wherever the drive stops, the person finishes by
+  // hand. As each provider is proven live, its steps get extended past here.
+  const book = PLAYBOOKS && PLAYBOOKS[provider];
+  const pay = book && book.pay;
+  if (!pay) {
+    log(`[${sessionId}] auto-drive: no pay recipe for ${provider || "(none)"} -- leaving on the landing page`);
+    send({ type: "status", message: "Signed in. Navigate to the bill and enter your card to pay." });
+    return;
+  }
+
+  if (!await step("select account", async () => {
+    const sel = await accounts.selectAccountAny(page, claims.account);
+    if (!sel || !sel.ok) throw new Error((sel && sel.reason) || "account not selected");
+    await page.waitForLoadState("domcontentloaded", { timeout: 12000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  })) { send({ type: "status", message: "Couldn't select the account automatically \u2014 pick it and continue." }); return; }
+
+  if (!await step("Make a Payment", async () => {
+    const nav = page.getByRole("link", { name: pay.payNav }).first();
+    await nav.click({ timeout: 8000 });
+    await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+  })) { send({ type: "status", message: "Couldn't open the payment page automatically \u2014 continue from here." }); return; }
+
+  if (!claims.full && claims.amount != null) {
+    await step("set other amount", async () => {
+      for (const re of (pay.otherAmountRadio || [])) {
+        const r = page.getByText(re).first();
+        if (await r.count().catch(() => 0)) { await r.click({ timeout: 4000 }).catch(() => {}); break; }
+      }
+      await page.waitForTimeout(800);
       await page.locator('input[type="text"]:visible, input[type="number"]:visible').first()
         .fill(String(claims.amount), { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(1200);
-    }
-  });
-  await step("set method", async () => {
-    // Method is NOT selected by default -- an unset method is what makes "Next"
-    // bounce with a validation error. Click and VERIFY it took (the amount
-    // re-render above can eat the first click), retrying a couple of times.
-    const id = claims.method === "ach" ? "PaymentMethodRadioGroup:1" : "PaymentMethodRadioGroup:0";
-    for (let i = 0; i < 3; i++) {
-      await page.locator(`label[for="${id}"]`).click({ timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(700);
-      if (await page.locator(`input[id="${id}"]`).isChecked().catch(() => false)) break;
-    }
-  });
-  // STOP HERE, deliberately. This page discloses the processor's fees and (for
-  // card over $750) splits the charge into several transactions, then asks the
-  // person to tick "I agree to pay the amount stated above." Agreeing to a fee
-  // and a total is the person's decision, not automation's -- so we leave the
-  // amount and method chosen, and hand over at the agreement.
-  log(`[${sessionId}] auto-drive finished at ${page.url()} (amount + method set; awaiting agreement)`);
-  send({ type: "status", message: "Review the total and fees, tick “I agree”, click Next, then enter your card." });
+    });
+  }
+
+  log(`[${sessionId}] auto-drive finished at ${page.url()} (on the payment page)`);
+  send({ type: "status", message: "On the payment page \u2014 choose your amount, enter your card, and submit." });
 }
 
 const server = http.createServer((req, res) => {
@@ -202,7 +339,7 @@ wss.on("connection", async (ws, req) => {
 
   // Make sure the signed-in session is live before opening the browser, so the
   // stream never lands the person on the portal's login page.
-  if (CAN_LOGIN && ENTRY[provider]) {
+  if (CAN_LOGIN && ENTRY[provider] && !HUMAN_LOGIN[provider]) {
     send({ type: "status", message: `Signing in to ${provider.toUpperCase()}…` });
     const r = await freshenSession(provider);
     log(`[${sessionId}] freshen ${provider}: ${r.ok ? "ok" : "failed(" + (r.reason || r.code) + ")"}`);
@@ -317,7 +454,12 @@ wss.on("connection", async (ws, req) => {
     // sees the final page appear instead of watching the browser scroll a long
     // account list. Best-effort: wherever it lands is where streaming begins.
     send({ type: "status", message: "Opening your bill…" });
-    await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
+    if (claims?.enroll) {
+      const filled = await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false);
+      if (!filled) send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()} — once you're in, close this window and it's connected.` });
+    } else {
+      await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
+    }
     await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
     send({ type: "ready", sessionId });
 
@@ -346,7 +488,22 @@ wss.on("connection", async (ws, req) => {
   // Bound the session: card pages should be minutes, not hours. Idle-agnostic
   // hard cap so an abandoned tab can't hold a browser open forever.
   const hardStop = setTimeout(() => { send({ type: "expired" }); ws.close(4000, "session time limit"); }, 15 * 60 * 1000);
-  ws.on("close", async () => { clearTimeout(hardStop); await closeAll(); log(`[${sessionId}] closed`); });
+  // Persist a human sign-in for the daily fetch to reuse. Guarded: never
+  // overwrite a good session with a signed-out one (a visible password field
+  // means they never got past login).
+  const saveSession = async () => {
+    if (!CAN_LOGIN || !provider || !context) return;
+    try {
+      const stillOnLogin = await page.locator('input[type="password"]:visible').count().catch(() => 1);
+      if (stillOnLogin > 0) { log(`[${sessionId}] not saving ${provider} — still on a login page`); return; }
+      const state = await context.storageState();
+      if (!state.cookies || !state.cookies.length) return;
+      fs.mkdirSync(SESSION_DIR, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(SESSION_DIR, `${provider}.json`), JSON.stringify(state), { mode: 0o600 });
+      log(`[${sessionId}] saved ${provider} session (${state.cookies.length} cookies)`);
+    } catch (e) { log(`[${sessionId}] save ${provider} session failed: ${String(e.message).split("\n")[0].slice(0, 80)}`); }
+  };
+  ws.on("close", async () => { clearTimeout(hardStop); await saveSession(); await closeAll(); log(`[${sessionId}] closed`); });
 });
 
 server.listen(PORT, () => log(`browser-stream listening on :${PORT}  (auth: ${TOKEN ? "token" : "OPEN — dev only"})`));

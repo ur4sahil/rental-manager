@@ -46,7 +46,16 @@ const { PLAYBOOKS } = require("./playbooks");
 // code-entry screen until it times out.
 const NEEDS_A_PERSON = {
   bge: "BGE sends a verification code to the account holder. There is no way "
-     + "to read that here, so BGE needs `enroll.js bge` and a person.",
+     + "to read that here, so BGE needs a person: use the 'Log in' button in "
+     + "Housy Utilities to sign in through the streamed browser; that session "
+     + "is saved and reused here.",
+  // Washington Gas scores every login through reCAPTCHA v3, which a datacenter
+  // bot fails silently. A valid session is still REUSED (this fires only when
+  // there is none to reuse); a person signs in via the streamed browser and
+  // that session is saved for the fetch.
+  washington_gas: "Washington Gas runs reCAPTCHA v3 on its login, which a bot "
+     + "cannot pass. Use the 'Log in' button in Housy Utilities to sign in "
+     + "through the streamed browser; that session is saved and reused here.",
 };
 
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR
@@ -229,7 +238,7 @@ async function signedIn(page, book) {
         userAgent: DESKTOP_UA,
       });
       const page = await ctx.newPage();
-      await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+      await page.goto(book.signedInEntry || book.entry, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
       if (await signedIn(page, book)) {
         console.log(JSON.stringify({ outcome: "ok", session: "reused", portal }, null, 2));
         await browser.close().catch(() => {});
@@ -263,24 +272,58 @@ async function signedIn(page, book) {
     // Waiting for network idle is what made a hand-written probe log straight in.
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
+    // Some portals land on a marketing homepage and hide the real login form
+    // behind a "Sign In" link that federates to Azure B2C (Exelon: Pepco, BGE).
+    // Click through to it before looking for the username box.
+    if (book.signInClick) {
+      const si = page.getByRole(book.signInClick.role, { name: book.signInClick.name }).first();
+      if (await si.isVisible({ timeout: 8000 }).catch(() => false)) {
+        await si.click().catch(() => {});
+        await page.waitForLoadState("domcontentloaded", { timeout: 30000 }).catch(() => {});
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+      }
+    }
+
     // The username box, from the playbook's own signed-out signal -- the same
     // locator that tells us we are signed out tells us where to type.
+    // Explicit CSS selectors win when the form's fields carry no accessible
+    // name (Washington Gas: #txtLogin/#txtpwd/#btnlogin). Otherwise fall back
+    // to the playbook's signed-out signals, then to generic guesses.
     const userSig = (book.signedOutSignals || []).find(s => s.role === "textbox");
-    const userBox = userSig
-      ? page.getByRole("textbox", { name: userSig.name }).first()
-      : page.locator('input[type="email"], input[name*="user" i], input[id*="user" i]').first();
+    const userBox = book.loginFields?.user
+      ? page.locator(book.loginFields.user).first()
+      : userSig
+        ? page.getByRole("textbox", { name: userSig.name }).first()
+        : page.locator('input[type="email"], input[name*="user" i], input[id*="user" i]').first();
     await userBox.waitFor({ state: "visible", timeout: 30000 });
-    await userBox.fill(username);
+    // Move the pointer to a field along a path before clicking, then type with
+    // per-key delays. reCAPTCHA v3 (Washington Gas) scores pointer + keystroke
+    // entropy; a teleported click and an instant fill() read as a bot.
+    const humanClick = async (loc) => {
+      const box = await loc.boundingBox().catch(() => null);
+      if (box) {
+        await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2, { steps: 12 });
+        await page.waitForTimeout(120 + Math.random() * 180);
+        await page.mouse.move(box.x + box.width * 0.55, box.y + box.height / 2, { steps: 6 });
+      }
+      await loc.click();
+    };
+    await humanClick(userBox);
+    await userBox.pressSequentially(username, { delay: 70 + Math.random() * 60 });
 
-    const passBox = page.locator('input[type="password"]').first();
+    const passBox = page.locator(book.loginFields?.pass || 'input[type="password"]').first();
     await passBox.waitFor({ state: "visible", timeout: 20000 });
-    await passBox.fill(password);
+    await humanClick(passBox);
+    await passBox.pressSequentially(password, { delay: 70 + Math.random() * 60 });
+    await page.waitForTimeout(500 + Math.random() * 400);
 
     const submitSig = (book.signedOutSignals || []).find(s => s.role === "button");
-    const submit = submitSig
-      ? page.getByRole("button", { name: submitSig.name }).first()
-      : page.getByRole("button", { name: /log ?in|sign ?in/i }).first();
-    await submit.click();
+    const submit = book.loginFields?.submit
+      ? page.locator(book.loginFields.submit).first()
+      : submitSig
+        ? page.getByRole("button", { name: submitSig.name }).first()
+        : page.getByRole("button", { name: /log ?in|sign ?in/i }).first();
+    await humanClick(submit);
 
     // Wait for the signed-out signals to go away, which is the only
     // definition of "signed in" that does not depend on guessing a URL.
@@ -305,10 +348,24 @@ async function signedIn(page, book) {
       }
     }
     if (!ok) {
+      // Leave evidence. A blank "signed-out after 90s" told us nothing about
+      // WHY; a screenshot + the reCAPTCHA state says whether it is a challenge
+      // (unsolvable here), wrong credentials, or a changed form.
+      let shot = null, diag = {};
+      try {
+        const dir = "/tmp/housy-shots"; fs.mkdirSync(dir, { recursive: true });
+        shot = path.join(dir, `signin-fail-${portal}-${Date.now()}.png`);
+        await page.screenshot({ path: shot, fullPage: false });
+        diag = await page.evaluate(() => ({
+          recaptcha: typeof window.grecaptcha !== "undefined" || !!document.querySelector("iframe[src*=recaptcha]"),
+          challenge: !!document.querySelector("iframe[src*='bframe'], iframe[title*='recaptcha challenge' i]"),
+          text: (document.body.innerText || "").replace(/\s+/g, " ").slice(0, 240),
+        }));
+      } catch {}
       console.error(JSON.stringify({
-        outcome: "signin_failed",
-        error: "still showing the signed-out form after 90s — the credentials may be wrong, "
-             + "or the portal is presenting something this does not handle",
+        outcome: "signin_failed", shot, ...diag,
+        error: "still showing the signed-out form after 90s — reCAPTCHA challenge, "
+             + "wrong credentials, or a form this does not handle",
       }, null, 2));
       process.exit(3);
     }

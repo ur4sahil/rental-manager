@@ -193,10 +193,9 @@ const PLAYBOOKS = {
     aliases: ["washington gas", "wash gas", "washington gas light", "wgl", "wgl gas"],
     verified: true,
     entry: "https://my.washingtongas.com/portal/",
-    signedOutSignals: [
-      { role: "textbox", name: /UserName/i },
-      { role: "button", name: /^Log In$/i },
-    ],
+    // The login inputs carry no accessible name, so target them by id.
+    loginFields: { user: "#txtLogin", pass: "#txtpwd", submit: "#btnlogin" },
+    signedOutSignals: ["#txtLogin", "#btnlogin"],
     amount: [
       { role: "heading", name: /amount due|current charges|balance/i },
       { labelled: /current\s+balance[^$]{0,40}\$\s?([\d,]+\.\d{2})/i },
@@ -284,7 +283,16 @@ const PLAYBOOKS = {
     // to Exelon's Azure B2C. BGE below is the same federation, so what is
     // learned on one applies to the other.
     entry: "https://secure.pepco.com/",
-    signedOutSignals: COMMON_SIGNED_OUT,
+    // The marketing homepage hides the login behind "Sign In", which federates
+    // to Exelon's Azure B2C form (both fields on one page).
+    signInClick: { role: "link", name: /^sign in$/i },
+    // Azure B2C: #signInName (aria "Email or Username") + #password + "Continue".
+    // "Sign In" (the marketing link) is the signed-out signal on the homepage.
+    signedOutSignals: [
+      { role: "textbox", name: /email or username/i },
+      { role: "button", name: /^continue$/i },
+      { role: "link", name: /^sign in$/i },
+    ],
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
     identifyBy: "address",
@@ -353,7 +361,12 @@ const PLAYBOOKS = {
     // login -- "Select an Account To View", with every account listed -- which
     // is the shape selectAccountFirst and accounts.js are written against.
     signedInEntry: "https://secure.bge.com/Pages/ChangeAccount.aspx",
-    signedOutSignals: COMMON_SIGNED_OUT,
+    signInClick: { role: "link", name: /^sign in$/i },
+    signedOutSignals: [
+      { role: "textbox", name: /email or username/i },
+      { role: "button", name: /^continue$/i },
+      { role: "link", name: /^sign in$/i },
+    ],
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
     identifyBy: "address",
