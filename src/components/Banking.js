@@ -583,6 +583,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               accountId: s.account_id,
               accountName: s.account_name,
               classId: s.class_id || null,
+              className: s.class_name || null,
               memo: (t.bank_description_clean || t.bank_description_raw || "").slice(0, 120),
               source: "history",
               support: Number(s.support),
@@ -2963,7 +2964,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           if (sg.source === "history" && sg.scope === "siblings") {
             return <span className="ml-1.5 text-xs bg-info-100 text-info-700 px-1.5 py-0.5 rounded-full whitespace-nowrap"
               title={`Coded this way ${sg.support} time${sg.support === 1 ? "" : "s"} in your other companies — this one has no precedent yet`}>
-              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "Your other books"}{sg.support ? ` · ${sg.support}` : ""}
+              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "Your other books"}{sg.className ? ` · ${sg.className}` : ""}{sg.support ? ` · ${sg.support}` : ""}
               <span className="ml-1 opacity-70">(other books)</span></span>;
           }
           if (sg.source === "history") {
@@ -2977,7 +2978,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             // reviewable in bulk, which is the one thing it exists for.
             return <span className="ml-1.5 text-xs bg-positive-100 text-positive-700 px-1.5 py-0.5 rounded-full whitespace-nowrap"
               title={`Housy AI — you coded ${sg.support} similar transaction${sg.support === 1 ? "" : "s"} this way${pct != null ? ` (${pct}% of them)` : ""}`}>
-              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "History"}{sg.support ? ` · ${sg.support}` : ""}</span>;
+              <HousyMark />{sg.accountName ? `→ ${sg.accountName}` : "History"}{sg.className ? ` · ${sg.className}` : ""}{sg.support ? ` · ${sg.support}` : ""}</span>;
           }
           const c = sg.confidence;
           // The confidence is the MODEL'S own and is not calibrated -- it
