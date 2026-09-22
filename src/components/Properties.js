@@ -472,12 +472,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // count while the user was just editing. commitWizard's
             // RPC sets status="completed" on Save Changes regardless.
             setWizardId(completed.id);
-            // Honour Tasks & Approvals' startAtStep; else last step.
-            let openAt = completed.current_step || 1;
+            // Editing a completed property lands on REVIEW (the summary), not
+            // wherever the wizard was last left. current_step drifts when the
+            // applicable-step list changes length (e.g. the loan step turning on
+            // for a role/access), which is what started opening a middle step.
+            // Review is always the last step. Tasks & Approvals' startAtStep
+            // still wins when present.
+            let wd = {}; try { wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : (completed.wizard_data || {}); } catch (_e) {}
+            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (wd.propForm?.status || propForm.status), userRole, allowedPages }), "review"];
+            let openAt = stepsForProp.length; // Review
             const jumpId = wizardData?.startAtStep;
             if (jumpId) {
-              let wd = {}; try { wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : (completed.wizard_data || {}); } catch (_e) {}
-              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (wd.propForm?.status || propForm.status), userRole, allowedPages }), "review"];
               const idx = stepsForProp.indexOf(jumpId);
               if (idx >= 0) openAt = idx + 1;
             }
