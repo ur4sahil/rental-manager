@@ -450,8 +450,16 @@ wss.on("connection", async (ws, req) => {
       try { await page.screenshot({ path: png, fullPage: true }); } catch {}
       try { await page.pdf({ path: pdf, format: "Letter", printBackground: true }); } catch {}
       const conf = body.match(/confirmation\s*(?:number|#|code)?\s*:?\s*([A-Z0-9-]{5,})/i);
-      log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"}`);
-      send({ type: "paid", confirmation: conf ? conf[1] : null, receipt: path.basename(pdf), screenshot: path.basename(png) });
+      // The amount ACTUALLY charged, read off the confirmation page -- the
+      // receipt's truth, which can differ from the approved figure (a portal
+      // minimum, a fee, or an amount changed on the portal). Best-effort parse
+      // near a payment/total label, plus any labelled convenience fee.
+      const amtM = body.match(/(?:payment amount|amount paid|total (?:amount )?(?:paid|charged|due)?|you (?:paid|are paying)|paid)\s*:?\s*\$\s*([\d,]+\.\d{2})/i);
+      const observedAmount = amtM ? Number(amtM[1].replace(/,/g, "")) : null;
+      const feeM = body.match(/\$\s*([\d,]+\.\d{2})\s*(?:convenience|service|processing)\s*fee|(?:convenience|service|processing)\s*fee[^$]{0,24}\$\s*([\d,]+\.\d{2})/i);
+      const observedFee = feeM ? Number((feeM[1] || feeM[2]).replace(/,/g, "")) : null;
+      log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"} observed=${observedAmount ?? "?"} fee=${observedFee ?? "-"}`);
+      send({ type: "paid", confirmation: conf ? conf[1] : null, amount: observedAmount, receipt: path.basename(pdf), screenshot: path.basename(png) });
 
       // Persist it: upload the receipt PDF and mark the bill paid/partial. The
       // approved payment row was created when the token was minted, so record-
@@ -467,7 +475,7 @@ wss.on("connection", async (ws, req) => {
             method: "POST", headers,
             body: JSON.stringify({
               companyId: claims.companyId, paymentId: claims.paymentId, billId: claims.billId,
-              amount: claims.amount, confirmation: conf ? conf[1] : null,
+              amount: claims.amount, observedAmount, observedFee, confirmation: conf ? conf[1] : null,
               receiptBase64: pdfBuf.toString("base64"),
               receiptFilename: (provider || "utility") + "-" + (claims.account || "receipt"),
             }),

@@ -891,7 +891,7 @@ module.exports = async function handler(req, res) {
     // from the feed. The bill's own status, amount and confirmation number
     // are the record that it was paid; the ledger entry is the bank's.
     if (action === "record-utility-payment") {
-      const { companyId: cid, paymentId, billId, amount, confirmation, paidOn,
+      const { companyId: cid, paymentId, billId, amount, observedAmount, observedFee, confirmation, paidOn,
               receiptBase64, receiptFilename } = body;
       if (!cid || !paymentId || !billId) {
         return res.status(400).json({ error: "companyId, paymentId and billId are required" });
@@ -967,8 +967,24 @@ module.exports = async function handler(req, res) {
       // total actually covers the bill. Otherwise a $10 payment on a $27.66
       // bill reads as settled, the remaining $17.66 is invisible, and the
       // provider's late notice is the thing that tells you.
+      // What the person ACTUALLY paid, read off the confirmation page by the
+      // worker (minus any convenience fee), can differ from the pre-approved
+      // figure -- a portal minimum, a fee, or an amount they changed on the
+      // portal. Prefer that observed amount when it is present and sane; fall
+      // back to the approved amount otherwise. The approved amount already
+      // passed the guard above, so a parse bug cannot settle a payment that was
+      // never approved -- only mis-state one that was, and the ceiling below
+      // catches a wildly wrong parse.
+      const obs = Number(observedAmount);
+      const feeAmt = Number(observedFee);
+      let applied = amt;
+      if (Number.isFinite(obs) && obs > 0) {
+        const utilPortion = Math.round((obs - (Number.isFinite(feeAmt) && feeAmt > 0 && feeAmt < obs ? feeAmt : 0)) * 100) / 100;
+        const ceiling = (Number(bill.amount) || 0) > 0 ? (Number(bill.amount) || 0) + 25 : obs;
+        if (utilPortion > 0 && utilPortion <= ceiling) applied = utilPortion;
+      }
       const already = Number(bill.amount_paid) || 0;
-      const totalPaid = Math.round((already + amt) * 100) / 100;
+      const totalPaid = Math.round((already + applied) * 100) / 100;
       const billTotal = Number(bill.amount) || 0;
       const covered = billTotal > 0 ? totalPaid >= billTotal - 0.005 : true;
 
@@ -982,11 +998,15 @@ module.exports = async function handler(req, res) {
       }).eq("id", billId).eq("company_id", cid);
       if (bUp) return res.status(500).json({ error: bUp.message });
 
-      if (receiptPath) {
-        await sb.from("utility_payments")
-          .update({ receipt_storage_path: receiptPath })
-          .eq("id", paymentId).eq("company_id", cid);
-      }
+      // Record what actually happened on the payment row: the observed amount
+      // (the receipt's figure) and the confirmation number -- both were being
+      // dropped, leaving the row stuck on the approved figure with no proof and
+      // the books disagreeing with the receipt.
+      await sb.from("utility_payments").update({
+        observed_amount: Number.isFinite(obs) && obs > 0 ? obs : null,
+        confirmation_ref: confirmation ? String(confirmation).slice(0, 200) : null,
+        ...(receiptPath ? { receipt_storage_path: receiptPath } : {}),
+      }).eq("id", paymentId).eq("company_id", cid);
 
       return res.status(200).json({
         ok: true, bill_status: covered ? "paid" : "partial",
