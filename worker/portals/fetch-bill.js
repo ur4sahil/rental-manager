@@ -21,6 +21,10 @@ const key = (process.argv[2] || "").toLowerCase();
 // attributed to a property nobody chose.
 const acctIdx = process.argv.indexOf("--account");
 const wantAccount = acctIdx > -1 ? process.argv[acctIdx + 1] : null;
+// --list-accounts enumerates the portal's own account list (number + address)
+// so the sweep can read EVERY account, not only the ones whose number Housy
+// already stored.
+const listMode = process.argv.includes("--list-accounts");
 const book = PLAYBOOKS[key];
 if (!book) { console.error(`usage: fetch-bill.js <${Object.keys(PLAYBOOKS).join("|")}>`); process.exit(1); }
 
@@ -206,6 +210,26 @@ const isoDate = (s) => {
       }
     }
     record("session", "still valid");
+
+    if (listMode) {
+      const { listAccountsAny, listChooserAccounts } = require("./accounts");
+      let res = await listAccountsAny(page).catch(e => ({ ok: false, reason: String(e.message) }));
+      // Once an account is active, Exelon (Pepco/BGE) shows the chooser only
+      // behind a "Change Account" control -- click it, then the rows appear.
+      if (!res.ok || !(res.accounts || []).length) {
+        record("list", "no accounts on landing — revealing the account chooser");
+        for (const nm of [/^change account$/i, /change account/i, /switch account/i, /view all accounts/i, /select an account/i, /^change$/i]) {
+          const btn = page.getByRole("button", { name: nm }).or(page.getByRole("link", { name: nm })).first();
+          if (await btn.count().catch(() => 0)) {
+            await btn.click({ timeout: 8000 }).catch(() => {});
+            await page.waitForTimeout(3500);
+            break;
+          }
+        }
+        res = await listChooserAccounts(page).catch(e => ({ ok: false, reason: String(e.message) }));
+      }
+      finish(res.ok ? "ok" : "error", { accounts: res.accounts || [], error: res.reason || null });
+    }
 
     // Switch to the requested account and CONFIRM it took. A click that
     // silently failed would leave the previous property loaded and its

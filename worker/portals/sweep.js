@@ -70,10 +70,11 @@ async function api(action, body) {
 // its whole process group (so its Chrome dies too, not orphaned) and move on --
 // the reading is simply retried next run.
 const FETCH_TIMEOUT_MS = Number(process.env.HOUSY_FETCH_TIMEOUT_MS || 150000);
-function runFetch(portal, account) {
+function runFetch(portal, account, opts = {}) {
   return new Promise(resolve => {
     const args = [path.join(__dirname, "fetch-bill.js"), portal];
-    if (account) args.push("--account", account);
+    if (opts.list) args.push("--list-accounts");
+    else if (account) args.push("--account", account);
     const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env, detached: true });
     let out = "", done = false;
     const finish = (val) => { if (done) return; done = true; clearTimeout(t); resolve(val); };
@@ -84,7 +85,13 @@ function runFetch(portal, account) {
     child.stdout.on("data", d => { out += d; });
     child.stderr.on("data", () => {});
     child.on("close", () => {
-      try { finish(JSON.parse(out.slice(out.lastIndexOf("{"), out.lastIndexOf("}") + 1))); }
+      // finish() prints "\n" + pretty JSON, so the top-level object opens at
+      // column 0 while nested objects (the accounts array) are indented. Take
+      // the last line-start brace, not the last brace anywhere -- otherwise a
+      // --list-accounts result parses a fragment of its own accounts array.
+      const i = out.lastIndexOf("\n{");
+      const from = i >= 0 ? i + 1 : out.lastIndexOf("{");
+      try { finish(JSON.parse(out.slice(from))); }
       catch { finish({ outcome: "error", error: "could not parse the fetch result" }); }
     });
   });
@@ -138,14 +145,34 @@ function runFetch(portal, account) {
     // switches between numbered accounts, so each is read in turn. WSSC has
     // no account number anywhere and names the property beside the balance,
     // so it is read ONCE and the reading identifies itself.
-    const withAccounts = mine.filter(t => t.account_number);
-    // Each pass carries its target, so an account whose current statement is
-    // already on file can be skipped without a portal round-trip. WSSC-style
-    // portals that expose no account number fall back to a single self-
-    // identifying pass.
-    const passes = withAccounts.length
-      ? withAccounts.map(t => ({ account: t.account_number, last_bill_at: t.last_bill_at, property: t.property }))
-      : [{ account: null, last_bill_at: null, property: null }];
+    // Two ways to build the read list. A CHOOSER portal (Pepco/BGE/Washington
+    // Gas) holds many accounts behind one login and Housy has the number for
+    // only a few, so we enumerate the portal's OWN chooser and read EVERY
+    // account -- each reading identifies its property from the page (addressNear)
+    // and record_utility_reading matches it to the Housy utility by address.
+    // Everything else keeps the old model: read the accounts Housy knows.
+    let passes;
+    if (book.enumerateChooser) {
+      const listed = await runFetch(portal, null, { list: true });
+      if (listed.outcome === "needs_signin") {
+        console.log(`${provider}: session expired — sign in via the streamed browser`);
+        await api("record-reading", { companyId: COMPANY, provider, account: null, outcome: "needs_signin", error: "the saved session has expired" }).catch(() => {});
+        summary.push({ provider, read: 0, note: "needs signin", needsSignin: 1 });
+        continue;
+      }
+      const chooser = listed.accounts || [];
+      console.log(`${provider}: portal chooser lists ${chooser.length} account${chooser.length === 1 ? "" : "s"}`);
+      passes = chooser.map(ca => ({ account: ca.number, last_bill_at: null, property: null }));
+    } else {
+      const withAccounts = mine.filter(t => t.account_number);
+      // Each pass carries its target, so an account whose current statement is
+      // already on file can be skipped without a portal round-trip. WSSC-style
+      // portals that expose no account number fall back to a single self-
+      // identifying pass.
+      passes = withAccounts.length
+        ? withAccounts.map(t => ({ account: t.account_number, last_bill_at: t.last_bill_at, property: t.property }))
+        : [{ account: null, last_bill_at: null, property: null }];
+    }
 
     let read = 0, failed = 0, unmatched = 0, needsSignin = 0, skipped = 0;
     for (const pass of passes) {

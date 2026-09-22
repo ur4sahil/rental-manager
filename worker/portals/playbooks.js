@@ -189,6 +189,9 @@ const PLAYBOOKS = {
 
   washington_gas: {
     provider: "Washington Gas",
+    // The login holds many accounts; the sweep enumerates the portal's own
+    // chooser and reads EVERY one, matching each to its Housy utility by address.
+    enumerateChooser: true,
     // "Wash Gas" is what two of the three production rows actually say.
     aliases: ["washington gas", "wash gas", "washington gas light", "wgl", "wgl gas"],
     verified: true,
@@ -275,6 +278,9 @@ const PLAYBOOKS = {
     // state and cleared a bug that was there.
     signedInEntry: "https://secure.pepco.com/Pages/ChangeAccount.aspx",
     provider: "Pepco",
+    // The login holds many accounts; the sweep enumerates the portal's own
+    // chooser and reads EVERY one, matching each to its Housy utility by address.
+    enumerateChooser: true,
     aliases: ["pepco", "potomac electric", "potomac electric power"],
     // VERIFIED 2026-09-14: signed in end to end and read $513.99 due
     // 09/14/2026 off the dashboard. No captcha, no MFA.
@@ -296,6 +302,9 @@ const PLAYBOOKS = {
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
     identifyBy: "address",
+    // The dashboard prints the service address as "14302 Colonel Clagett Ct
+    // Uppr Marlboro MD 20772" -- captured so a reading records against its property.
+    addressNear: /(?<!\d)(\d{1,6}\s+[A-Za-z0-9 .'#-]{2,38}?\b(?:ST|STREET|AVE|AVENUE|DR|DRIVE|CT|COURT|RD|ROAD|LN|LANE|PL|PLACE|TER|TERRACE|WAY|BLVD|CIR|CIRCLE|PKWY|TURN|RUN|ROW|SQ|TRL|HWY|CV|PT|LOOP|XING|CRES))\b/i,
     // Exelon portals commonly put the balance on a dashboard card and the
     // due date only on the billing page behind this link.
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
@@ -330,6 +339,9 @@ const PLAYBOOKS = {
     // every redesign; the hostname does not.
     signedOutUrl: /^https?:\/\/www\.bge\.com/,
     provider: "BGE",
+    // The login holds many accounts; the sweep enumerates the portal's own
+    // chooser and reads EVERY one, matching each to its Housy utility by address.
+    enumerateChooser: true,
     aliases: ["bge", "baltimore gas and electric", "baltimore gas & electric"],
     // 2026-09-14: signs in through Azure B2C, then demands a verification
     // code. With the code supplied WHILE THE SESSION IS STILL OPEN it goes
@@ -372,6 +384,9 @@ const PLAYBOOKS = {
     amount: AMOUNT_CANDIDATES,
     dueDate: DUE_DATE_CANDIDATES,
     identifyBy: "address",
+    // The account dashboard prints the service address as "4229 Crosswick Turn
+    // Bowie MD 20715" -- captured so a reading records against its property.
+    addressNear: /(?<!\d)(\d{1,6}\s+[A-Za-z0-9 .'#-]{2,38}?\b(?:ST|STREET|AVE|AVENUE|DR|DRIVE|CT|COURT|RD|ROAD|LN|LANE|PL|PLACE|TER|TERRACE|WAY|BLVD|CIR|CIRCLE|PKWY|TURN|RUN|ROW|SQ|TRL|HWY|CV|PT|LOOP|XING|CRES))\b/i,
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
     // PAYING -- UNVERIFIED, and a session needs a PERSON.
     //
