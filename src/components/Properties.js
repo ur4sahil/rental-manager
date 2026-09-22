@@ -1048,6 +1048,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const creds = await encryptRow(!!(u.username && u.password), u.username, u.password);
         pre.utilities.push({
           provider: u.provider.trim(),
+          type: u.type || 'Electric',
           due_day: Number(u.due_date) || 1,
           responsibility: u.responsibility,
           website: u.website || '',
