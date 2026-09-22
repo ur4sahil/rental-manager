@@ -102,6 +102,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [autoBills, setAutoBills] = useState([]);
   const [autoJobs, setAutoJobs] = useState([]);
   const [providers, setProviders] = useState([]);
+  const [showPendingProviders, setShowPendingProviders] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
@@ -123,7 +124,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   for (const r of (receipts.data || [])) { if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path); }
   setAutoBills((bills.data || []).map(b => ({ ...b, receipt_path: receiptByBill.get(b.id) || null })));
   setAutoJobs(jobs.data || []);
-  setProviders(provs.data || []);
+  // Approved providers, plus any this company proposed and an admin has not
+  // approved yet (usable immediately). A legacy row with no approval_status
+  // reads as approved.
+  setProviders((provs.data || []).filter(p => p.approval_status !== "pending" || p.requested_company_id === companyId));
   }
 
   async function saveAccount() {
@@ -545,6 +549,35 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       /^1\d{3}$/.test(String(a.code || "")) || /^2\d{3}$/.test(String(a.code || ""))));
   }
 
+  // Add a provider from a form. Employees pick from the list; only admins/owners
+  // add an APPROVED one. Anyone else's addition saves 'pending' for an admin to
+  // approve -- usable immediately so nobody is blocked. Returns the name, or null.
+  async function addUtilityProvider(rawName) {
+    const name = String(rawName || "").trim();
+    if (!name) return null;
+    const existing = providers.find(p => p.display_name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.display_name;
+    const isAdmin = userRole === "admin" || userRole === "owner";
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) + "_" + Math.random().toString(36).slice(2, 8);
+    const { error } = await supabase.from("utility_providers").insert([{
+      id, display_name: name, login_url: "", region: "", account_type: "electric",
+      is_active: true, approval_status: isAdmin ? "approved" : "pending",
+      requested_by: userProfile?.email || null, requested_company_id: companyId,
+    }]);
+    if (error) { showToast("Could not add provider: " + error.message, "error"); return null; }
+    await fetchAutomationData();
+    showToast(isAdmin ? `Added "${name}" to the provider list.` : `"${name}" sent to an admin for approval — you can use it now.`, "success");
+    return name;
+  }
+  // Admin approve / reject of a proposed provider.
+  async function reviewProvider(id, approve) {
+    const patch = approve ? { approval_status: "approved" } : { is_active: false };
+    const { error } = await supabase.from("utility_providers").update(patch).eq("id", id);
+    if (error) { showToast("Could not update provider: " + error.message, "error"); return; }
+    await fetchAutomationData();
+    showToast(approve ? "Provider approved." : "Provider rejected.", "success");
+  }
+
   async function addUtility() {
   if (!guardSubmit("addUtility")) return;
   try {
@@ -628,6 +661,28 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ))}
   </div>
   </div>
+
+  {/* Admin: providers an employee proposed, awaiting approval. */}
+  {(userRole === "admin" || userRole === "owner") && providers.filter(p => p.approval_status === "pending").length > 0 && (
+  <div className="mb-4">
+  <button onClick={() => setShowPendingProviders(v => !v)} className="text-xs font-medium text-warn-700 bg-warn-50 border border-warn-200 rounded-lg px-3 py-1.5">
+  {providers.filter(p => p.approval_status === "pending").length} provider{providers.filter(p => p.approval_status === "pending").length !== 1 ? "s" : ""} pending approval {showPendingProviders ? "▲" : "▼"}
+  </button>
+  {showPendingProviders && (
+  <div className="mt-2 bg-white border border-neutral-200 rounded-xl p-3 space-y-2 max-w-lg">
+  {providers.filter(p => p.approval_status === "pending").map(p => (
+  <div key={p.id} className="flex items-center justify-between gap-3 text-sm">
+  <span><span className="font-medium">{p.display_name}</span> <span className="text-neutral-400 text-xs">requested by {p.requested_by || "—"}</span></span>
+  <span className="flex gap-3">
+  <TextLink tone="positive" size="xs" onClick={() => reviewProvider(p.id, true)}>Approve</TextLink>
+  <TextLink tone="neutral" size="xs" onClick={() => reviewProvider(p.id, false)}>Reject</TextLink>
+  </span>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
 
   {/* ===== AUTOMATION TAB ===== */}
   {utilTab === "automation" && (
@@ -813,7 +868,17 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-neutral-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider</label>
+  <Select value={providers.some(p => p.display_name === form.provider) ? form.provider : (form.provider ? "__keep__" : "")} onChange={async e => {
+    const v = e.target.value;
+    if (v === "__add__") { const name = window.prompt("New utility provider name:"); if (name && name.trim()) { const dn = await addUtilityProvider(name); if (dn) setForm(f => ({ ...f, provider: dn })); } }
+    else if (v !== "__keep__") { setForm(f => ({ ...f, provider: v })); }
+  }}>
+    <option value="">Select provider…</option>
+    {form.provider && !providers.some(p => p.display_name === form.provider) && <option value="__keep__">{form.provider} (current)</option>}
+    {providers.map(p => <option key={p.id} value={p.display_name}>{p.display_name}{p.approval_status === "pending" ? " (pending)" : ""}</option>)}
+    <option value="__add__">+ Add new provider…</option>
+  </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Responsibility</label><Select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })}>

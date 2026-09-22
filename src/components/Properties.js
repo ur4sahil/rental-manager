@@ -271,6 +271,38 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const [utilities, setUtilities] = useState([
     { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }
   ]);
+  // Utility PROVIDERS come from the canonical utility_providers list (a dropdown,
+  // not free text -- free text is what created "BGE"/"bge"/"BGE Sigma"). Load the
+  // approved ones plus any this company proposed and an admin has not approved yet.
+  const [utilProviders, setUtilProviders] = useState([]);
+  const loadUtilProviders = React.useCallback(async () => {
+    if (!companyId) return;
+    const { data } = await supabase.from("utility_providers")
+      .select("id, display_name, account_type, approval_status, requested_company_id")
+      .eq("is_active", true).order("display_name");
+    setUtilProviders((data || []).filter(p => p.approval_status === "approved" || p.requested_company_id === companyId));
+  }, [companyId]);
+  useEffect(() => { loadUtilProviders(); }, [loadUtilProviders]);
+  // Employees pick from the list; only admins/owners add an APPROVED provider.
+  // Anyone else's addition is saved 'pending' for an admin to approve -- usable
+  // immediately so nobody is blocked. Returns the display_name to select, or null.
+  async function addUtilityProvider(rawName) {
+    const name = String(rawName || "").trim();
+    if (!name) return null;
+    const existing = utilProviders.find(p => p.display_name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.display_name;
+    const isAdmin = userRole === "admin" || userRole === "owner";
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) + "_" + shortId().slice(0, 6);
+    const { error } = await supabase.from("utility_providers").insert([{
+      id, display_name: name, login_url: "", region: "", account_type: "electric",
+      is_active: true, approval_status: isAdmin ? "approved" : "pending",
+      requested_by: userProfile?.email || null, requested_company_id: companyId,
+    }]);
+    if (error) { showToast("Could not add provider: " + error.message, "error"); return null; }
+    await loadUtilProviders();
+    showToast(isAdmin ? `Added "${name}" to the provider list.` : `"${name}" sent to an admin for approval — you can use it now.`, "success");
+    return name;
+  }
   // An HOA involves three separate places you sign in -- the association's
   // own site, the management company that runs it, and whatever portal
   // actually takes the fee -- plus a person to ring when a charge is queried.
@@ -1926,7 +1958,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Provider *</label>
-                      <Input type="text" value={u.provider} onChange={e => updateUtility(idx, "provider", e.target.value)} placeholder="e.g. BGE, Pepco" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <Select value={utilProviders.some(p => p.display_name === u.provider) ? u.provider : (u.provider ? "__keep__" : "")} onChange={async e => {
+                        const v = e.target.value;
+                        if (v === "__add__") {
+                          const name = window.prompt("New utility provider name (e.g. Comcast, City of Laurel):");
+                          if (name && name.trim()) { const dn = await addUtilityProvider(name); if (dn) updateUtility(idx, "provider", dn); }
+                        } else if (v !== "__keep__") {
+                          updateUtility(idx, "provider", v);
+                        }
+                      }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                        <option value="">Select provider…</option>
+                        {u.provider && !utilProviders.some(p => p.display_name === u.provider) && <option value="__keep__">{u.provider} (current)</option>}
+                        {utilProviders.map(p => <option key={p.id} value={p.display_name}>{p.display_name}{p.approval_status === "pending" ? " (pending approval)" : ""}</option>)}
+                        <option value="__add__">+ Add new provider…</option>
+                      </Select>
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Type</label>
