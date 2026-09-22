@@ -165,7 +165,14 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
       : userSig
         ? page.getByRole("textbox", { name: userSig.name }).first()
         : page.locator('#signInName, input[type="email"], input[name*="user" i], input[id*="user" i]').first();
-    if (!await userBox.isVisible({ timeout: 6000 }).catch(() => false)) return false;
+    // waitFor, NOT isVisible: locator.isVisible() is an INSTANT check (its
+    // timeout is ignored), so it returned false before BGE's JS-rendered Azure
+    // B2C form appeared (~2-9s after the authorize redirect) and the flow fell
+    // through to autoDrive on a not-yet-rendered login page. waitFor actually
+    // waits; if no login field ever appears, the catch returns false and a
+    // valid session drives on to the bill.
+    const visible = await userBox.waitFor({ state: "visible", timeout: 12000 }).then(() => true).catch(() => false);
+    if (!visible) return false;
     const creds = await fetchCredentials(book, companyId);
     if (!creds || !creds.username) { log(`[${sessionId}] login: no stored credentials for ${book.provider}`); return false; }
     await userBox.click(); await userBox.pressSequentially(creds.username, { delay: 55 });
