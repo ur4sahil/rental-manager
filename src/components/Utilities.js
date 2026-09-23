@@ -88,6 +88,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [utilView, setUtilView] = usePersistedView("utilities", "card", ["card", "table"]);
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
+  const [utilFilterResp, setUtilFilterResp] = useState("all");   // all / owner / tenant / condo_fee
+  const [utilHideZero, setUtilHideZero] = useState(false);       // hide rows with no positive balance
   const [utilFilterProps, setUtilFilterProps] = useState([]);   // [] = all
   // Biller filter. 79 bills across a dozen providers, and the only way to
   // see just BGE's was to type it into the free-text search -- which also
@@ -841,6 +843,18 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <option value="no_bill">No bill yet</option>
   <option value="error">Read failed</option>
   </Select>
+  {/* Owed by: pick Owner to exclude tenant-billed (and condo-fee) utilities. */}
+  <Select filter value={utilFilterResp} onChange={e => setUtilFilterResp(e.target.value)}>
+  <option value="all">All Owed by</option>
+  <option value="owner">Owner</option>
+  <option value="tenant">Tenant</option>
+  <option value="condo_fee">Condo fee</option>
+  </Select>
+  {/* Hide anything with no positive balance ($0, no bill yet, or a credit). */}
+  <label className="flex items-center gap-1.5 text-xs text-neutral-600 whitespace-nowrap px-1 cursor-pointer">
+  <input type="checkbox" checked={utilHideZero} onChange={e => setUtilHideZero(e.target.checked)} className="accent-brand-500" />
+  Hide $0 balances
+  </label>
   {/* Multi-select, and searchable: "BGE and Pepco" or two named properties
       is a normal question, and a single-value filter cannot answer it.
       [] means all, so nothing needs an "all" sentinel value. */}
@@ -930,6 +944,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {(() => {
   const filteredUtils = utilities.filter(u =>
   (utilFilterStatus === "all" || u.status === utilFilterStatus) &&
+  (utilFilterResp === "all" || (u.responsibility || "owner") === utilFilterResp) &&
+  (!utilHideZero || safeNum(u.amount) > 0) &&
   (utilFilterProps.length === 0 || utilFilterProps.includes(u.property)) &&
   (utilFilterProviders.length === 0 || utilFilterProviders.includes(u.provider)) &&
   (!utilSearch || u.provider?.toLowerCase().includes(utilSearch.toLowerCase()) || u.property?.toLowerCase().includes(utilSearch.toLowerCase()))
