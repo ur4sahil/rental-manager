@@ -210,6 +210,25 @@ module.exports = async function handler(req, res) {
     if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
     const provider = String(body.provider || "").toLowerCase();
     if (!provider) return res.status(400).json({ error: "provider is required" });
+
+    // DB-ENFORCED GATE: a tenant-owed utility can only be paid on the tenant's
+    // behalf by an ADMIN. The greyed "Online Payment" button is only a hint;
+    // this is the guard that holds if the button is bypassed. Read the bill's
+    // responsibility through the caller's own RLS session (not the service key),
+    // so it works regardless of service-key config and can only see this
+    // company's bills. Enroll (sign-in only, no payment) is never gated.
+    if (body.billId && body.enroll !== true) {
+      const { data: gateBill } = await userClient
+        .from("utility_bills")
+        .select("responsibility")
+        .eq("id", body.billId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (gateBill && gateBill.responsibility === "tenant" && membership.role !== "admin") {
+        return res.status(403).json({ error: "Tenant-owed utilities need an admin to authorize payment." });
+      }
+    }
+
     // Create an APPROVED payment row so the confirmation can be recorded against
     // it (record-utility-payment matches the approved amount). The person is
     // about to enter their card and submit in the stream -- that IS the approval.

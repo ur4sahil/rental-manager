@@ -137,6 +137,12 @@ const PLAYBOOKS = {
     provider: "WSSC",
     aliases: ["wssc", "wssc water", "washington suburban sanitary commission"],
     verified: true,
+    // Read TENANT-responsible accounts too, not just the owner's. WSSC water
+    // often stays in the owner's name even when the tenant pays, so the owner
+    // wants the bill + statement on file for every unit. Payment is still
+    // gated: a tenant bill can only be paid by an admin (api/encrypt.js). Only
+    // WSSC opts in; every other portal stays owner-only.
+    sweepTenant: true,
     // The stored URL in the app (my.wsscwater.com/selfcare/views/public)
     // 404s. This is the entry that actually resolves.
     entry: "https://my.wsscwater.com/",

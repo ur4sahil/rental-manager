@@ -128,7 +128,17 @@ function runFetch(portal, account, opts = {}) {
     // Resolve each row through the alias table rather than comparing
     // strings: that is what lets one playbook serve "Wash Gas" and
     // "Washington Gas" both.
-    const mine = (targets || []).filter(t => playbookFor(t.provider)?.key === portal);
+    // Tenant-responsible rows are read ONLY for portals that opt in
+    // (book.sweepTenant -- WSSC). Everywhere else stays owner-only. condo_fee
+    // is never swept (no separate statement); it is already excluded server-
+    // side, guarded again here.
+    const mine = (targets || []).filter(t => {
+      if (playbookFor(t.provider)?.key !== portal) return false;
+      const resp = t.responsibility || "owner";
+      if (resp === "condo_fee") return false;
+      if (resp === "tenant" && !book.sweepTenant) return false;
+      return true;
+    });
     if (mine.length && !book.verified) {
       // An unverified playbook is a hypothesis, and saying so is the
       // difference between "Housy read your bill" and "Housy read

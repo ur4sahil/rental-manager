@@ -240,5 +240,24 @@ assert("bge declares a statementHistory download config on secure.bge.com",
   && PLAYBOOKS.bge.statementHistory.viewBill.test("View Bill")
   && !PLAYBOOKS.bge.statementHistory.viewBill.test("View Sample Bills"));
 
+// ─────────────────────────────────────────────────────────────────────
+// WSSC READS TENANT ACCOUNTS; TENANT PAYMENT IS ADMIN-GATED (DB-ENFORCED).
+//
+// WSSC water stays in the owner's name even when the tenant pays, so the owner
+// wants every unit's bill + statement on file -- but reading a tenant bill must
+// never make it payable by a non-admin. The read opt-in is per playbook; the
+// payment gate lives in api/encrypt.js (the pay-token minter), not just the UI.
+const apiAi = fs.readFileSync(path.join(__dirname, "..", "api", "ai.js"), "utf8");
+const apiEncrypt = fs.readFileSync(path.join(__dirname, "..", "api", "encrypt.js"), "utf8");
+assert("WSSC opts into reading tenant accounts; Pepco and BGE do not",
+  PLAYBOOKS.wssc.sweepTenant === true && !PLAYBOOKS.pepco.sweepTenant && !PLAYBOOKS.bge.sweepTenant);
+assert("the sweep skips tenant rows unless the playbook opts in",
+  /resp === "tenant" && !book\.sweepTenant/.test(read("sweep.js")));
+assert("sweep-targets no longer excludes tenant server-side (only condo_fee)",
+  /responsibility\.neq\.condo_fee/.test(apiAi) && !/not\.in\.\(tenant,condo_fee\)/.test(apiAi));
+assert("a tenant utility payment token is refused to a non-admin (DB-enforced, not just the button)",
+  /responsibility === "tenant" && membership\.role !== "admin"/.test(apiEncrypt)
+  && /status\(403\)/.test(apiEncrypt.slice(apiEncrypt.indexOf('responsibility === "tenant"'), apiEncrypt.indexOf('responsibility === "tenant"') + 300)));
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

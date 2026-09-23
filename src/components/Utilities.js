@@ -998,7 +998,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && u.responsibility !== "condo_fee" && (
     u.responsibility !== "tenant"
       ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Online Payment</TextLink>
-      : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Online Payment</span>
+      : userRole === "admin"
+        ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Online Payment</TextLink>
+        : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
   )}
   {payablePortalFor(u.provider_display || u.provider) && (
     <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
@@ -1108,10 +1110,14 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
         {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
           u.responsibility !== "tenant"
             ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Online Payment</TextLink>
-            // The tenant owes this — it is not the owner's to pay on a card.
-            // Greyed, not hidden, so it reads as "blocked" rather than missing;
-            // it opens only after an admin approves paying it on the tenant's behalf.
-            : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — needs admin approval before it can be paid on their behalf">Online Payment</span>
+            // The tenant owes this — paying it on the owner's card is an admin
+            // decision. Enabled only for an admin (approval == the admin paying);
+            // greyed, not hidden, for everyone else so it reads as "blocked".
+            // The server (api/encrypt.js) refuses a pay token for a tenant bill
+            // to a non-admin, so the gate holds even if the button is bypassed.
+            : userRole === "admin"
+              ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Online Payment</TextLink>
+              : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
         )}
         {payablePortalFor(u.provider_display || u.provider) && (
           // Sign in to the provider in the streamed browser (reCAPTCHA/code

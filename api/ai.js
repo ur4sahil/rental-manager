@@ -1028,12 +1028,13 @@ module.exports = async function handler(req, res) {
         .eq("company_id", cid)
         // Archived rows are duplicates or retired accounts -- never swept.
         .is("archived_at", null)
-        // A utility the TENANT is responsible for is not swept -- not our bill
-        // to read, pay or chase. Nor is one COVERED BY THE CONDO FEE: there is
-        // no separate statement to fetch. NULL responsibility falls through as
-        // the owner's, which is the default everywhere else in the app. A final-
-        // bill line is owner-responsible, so it is already included here.
-        .or("responsibility.is.null,responsibility.not.in.(tenant,condo_fee)");
+        // Exclude only CONDO-FEE utilities -- there is no separate statement to
+        // fetch for those. Owner AND tenant rows are both returned; the sweep
+        // decides per playbook whether to read tenant accounts (only WSSC opts
+        // in, via sweepTenant), so the owner can keep a tenant unit's bill +
+        // statement on file. Reading a tenant bill never pays it: payment stays
+        // admin-gated (api/encrypt.js). NULL responsibility = owner's default.
+        .or("responsibility.is.null,responsibility.neq.condo_fee");
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
