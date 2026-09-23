@@ -103,6 +103,26 @@ function getBook(provider) {
   return (_PLAYBOOKS && _PLAYBOOKS[provider]) || null;
 }
 
+// Resolve an incoming provider STRING to its canonical playbook KEY.
+//
+// The client sends the provider NAME (utilities.provider, free text: "Washington
+// Gas", "Wash Gas", "BGE"), but ENTRY, HUMAN_LOGIN, the session filename and
+// getBook are all keyed by the playbook key ("washington_gas", "bge"). For
+// Pepco/BGE the lowercased name happens to equal the key, so it worked; for
+// "Washington Gas" it does not ("washington gas" != "washington_gas"), so the
+// stream never left about:blank. Match by key, then by alias.
+function resolveProviderKey(raw) {
+  const p = String(raw || "").trim().toLowerCase();
+  if (!p) return "";
+  getBook(p); // force _PLAYBOOKS to load
+  if (_PLAYBOOKS && _PLAYBOOKS[p]) return p;
+  for (const [key, book] of Object.entries(_PLAYBOOKS || {})) {
+    const aliases = (book.aliases || []).map(a => String(a).toLowerCase());
+    if (key === p || aliases.some(a => p === a || p.includes(a))) return key;
+  }
+  return p;
+}
+
 // DECRYPT — same scheme as ensure-session.js / api/encrypt.js (PBKDF2-SHA256,
 // 100k, AES-256-GCM, 16-byte tag appended). Duplicated on purpose.
 function _masterKey() {
@@ -374,7 +394,7 @@ wss.on("connection", async (ws, req) => {
   if ((JWT_SECRET || TOKEN) && !claims) { ws.close(4001, "unauthorized"); return; }
   // Provider/amount come from the SIGNED token when present, so the client
   // can't widen its own grant by editing a query string.
-  const provider = (claims?.provider || url.searchParams.get("provider") || "").toLowerCase();
+  const provider = resolveProviderKey(claims?.provider || url.searchParams.get("provider") || "");
   const startUrl = url.searchParams.get("url") || null;
   const sessionId = crypto.randomBytes(4).toString("hex");
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };
@@ -382,7 +402,11 @@ wss.on("connection", async (ws, req) => {
 
   // Make sure the signed-in session is live before opening the browser, so the
   // stream never lands the person on the portal's login page.
-  if (CAN_LOGIN && ENTRY[provider] && !HUMAN_LOGIN[provider]) {
+  // Skip the headless freshen when the person explicitly opened "Log in"
+  // (enroll): they intend to sign in by hand in the stream, so attempting a
+  // headless login first just wastes ~90s and burns a reCAPTCHA-scored attempt
+  // (which is exactly what fails for WSSC/WG from the box's datacenter IP).
+  if (CAN_LOGIN && ENTRY[provider] && !HUMAN_LOGIN[provider] && !claims?.enroll) {
     send({ type: "status", message: `Signing in to ${provider.toUpperCase()}…` });
     const r = await freshenSession(provider);
     log(`[${sessionId}] freshen ${provider}: ${r.ok ? "ok" : "failed(" + (r.reason || r.code) + ")"}`);
