@@ -76,6 +76,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // fills the same state from utility_accounts, so both tabs read one list.
   // Which account's bill history is open.
   const [historyFor_, setHistoryFor] = useState(null);
+  const [docPicker, setDocPicker] = useState(null); // { kind: "statements"|"receipts", accountId }
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
   const [auditLog, setAuditLog] = useState([]);
@@ -340,13 +341,21 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // The accounts are still read, because a bill needs its account's login and
   // because an account with no bill yet should still be visible -- otherwise
   // a newly added account vanishes until the first successful sweep.
-  const [billsRes, acctRes] = await Promise.all([
+  const [billsRes, acctRes, receiptsRes] = await Promise.all([
     supabase.from("utility_bills")
       .select("*").eq("company_id", companyId).is("archived_at", null)
       .order("due_date", { ascending: true, nullsFirst: false }).limit(1000),
     supabase.from("utility_accounts")
       .select("*").eq("company_id", companyId).is("archived_at", null)
       .order("provider").limit(1000),
+    // Receipts live in utility_payments (one per confirmed payment, keyed by
+    // bill), not on the bill row. Loaded here so a bill's history carries its
+    // receipt PDF and the Receipts picker can list every one -- the same
+    // documents already filed under the property, surfaced where the bill lives.
+    supabase.from("utility_payments")
+      .select("bill_id, receipt_storage_path, created_at")
+      .eq("company_id", companyId).not("receipt_storage_path", "is", null)
+      .order("created_at", { ascending: false }),
   ]);
   if (billsRes.error) pmError("PM-4003", { raw: billsRes.error, context: "loading utility bills", phase: "read" });
   if (acctRes.error) pmError("PM-4003", { raw: acctRes.error, context: "loading utility accounts", phase: "read" });
@@ -354,11 +363,24 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const accounts = acctRes.data || [];
   setUtilAccounts(accounts);
 
+  // Attach each bill's receipt path (newest receipt per bill) so the card, the
+  // bill history and the Statements/Receipts pickers can all open it.
+  const receiptByBill = new Map();
+  for (const r of (receiptsRes.data || [])) {
+    if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path);
+  }
+  const billsAll = (billsRes.data || []).map(b => ({ ...b, receipt_path: receiptByBill.get(b.id) || null }));
+
+  // Which accounts have at least one statement / at least one receipt on file,
+  // so a row only offers a picker that would have something in it.
+  const stmtAccts = new Set(billsAll.filter(b => b.pdf_storage_path).map(b => b.utility_account_id));
+  const rcptAccts = new Set(billsAll.filter(b => b.receipt_path).map(b => b.utility_account_id));
+
   // The newest bill per account is what the list shows; the rest are its
   // history. Sorted by statement period rather than by read time, because a
   // late re-read of an old statement must not make it look like this month's.
   const latest = new Map();
-  for (const b of (billsRes.data || [])) {
+  for (const b of billsAll) {
     const k = b.utility_account_id;
     if (k == null) continue;
     const cur = latest.get(k);
@@ -400,6 +422,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       payment_confirmation: b?.payment_confirmation || "",
       pdf_storage_path: b?.pdf_storage_path || null,
       receipt_path: b?.receipt_path || null,
+      // Whether the Statements / Receipts pickers would have anything to show
+      // for this account (across its whole bill history, not just the latest).
+      has_statements: stmtAccts.has(a.id),
+      has_receipts: rcptAccts.has(a.id),
       last_check_status: a.last_check_status,
       last_check_error: a.last_check_error,
       last_checked_at: a.last_checked_at,
@@ -411,7 +437,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     };
   });
 
-  setAllBills(billsRes.data || []);
+  setAllBills(billsAll);
   setUtilities(rows);
   setLoading(false);
   }
@@ -961,8 +987,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {payablePortalFor(u.provider_display || u.provider) && (
     <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
   )}
-  {u.pdf_storage_path && <TextLink tone="neutral" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.pdf_storage_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error"); }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statement</TextLink>}
-  {u.receipt_path && <TextLink tone="positive" size="xs" underline={false} onClick={async () => { const url = await getSignedUrl("documents", u.receipt_path, 300); if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that receipt.", "error"); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipt</TextLink>}
+  {u.has_statements && <TextLink tone="neutral" size="xs" underline={false} onClick={() => setDocPicker({ kind: "statements", accountId: u.id })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statements</TextLink>}
+  {u.has_receipts && <TextLink tone="positive" size="xs" underline={false} onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipts</TextLink>}
   {u.username_encrypted && <TextLink tone="brand" size="xs" underline={false} onClick={async () => {
     const s = new Set(showCreds);
     if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; }
@@ -1076,22 +1102,15 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
           // portals a bot can't pass). The session is saved for the daily fetch.
           <TextLink tone="neutral" size="xs" className="mr-2" title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })}>Log in</TextLink>
         )}
-        {u.pdf_storage_path && (
-          <TextLink tone="neutral" size="xs" className="mr-2" onClick={async () => {
-            // Signed on demand and short-lived: a statement carries an
-            // account number and a service address, so a permanent public
-            // link is not the right shape for it.
-            const url = await getSignedUrl("documents", u.pdf_storage_path, 300);
-            if (url) window.open(url, "_blank", "noopener");
-            else showToast("Could not open that statement.", "error");
-          }}>Statement</TextLink>
+        {u.has_statements && (
+          // Every statement for this biller at this property, newest first --
+          // the user opens whichever they want. Signed on demand and
+          // short-lived: a statement carries an account number and a service
+          // address, so a permanent public link is not the right shape for it.
+          <TextLink tone="neutral" size="xs" className="mr-2" onClick={() => setDocPicker({ kind: "statements", accountId: u.id })}>Statements</TextLink>
         )}
-        {u.receipt_path && (
-          <TextLink tone="positive" size="xs" className="mr-2" onClick={async () => {
-            const url = await getSignedUrl("documents", u.receipt_path, 300);
-            if (url) window.open(url, "_blank", "noopener");
-            else showToast("Could not open that receipt.", "error");
-          }}>Receipt</TextLink>
+        {u.has_receipts && (
+          <TextLink tone="positive" size="xs" className="mr-2" onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })}>Receipts</TextLink>
         )}
         <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setHistoryFor(u.id)}>History</TextLink>
         <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
@@ -1197,6 +1216,46 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   {/* ---- Bill history ------------------------------------------------ */}
+  {docPicker && (() => {
+  const acct = utilAccounts.find(a => a.id === docPicker.accountId);
+  const isReceipts = docPicker.kind === "receipts";
+  // Every statement / receipt for this biller at this property, newest first.
+  // These are the same PDFs filed under the property's Documents -- listed here
+  // where the bill lives, so the user opens the one they want without hunting.
+  const rows = historyFor(docPicker.accountId).filter(b => isReceipts ? b.receipt_path : b.pdf_storage_path);
+  return (
+  <Modal title={`${acct?.provider || "Utility"} — ${isReceipts ? "receipts" : "statements"}`} onClose={() => setDocPicker(null)}>
+  <div className="space-y-3">
+  <div className="text-xs text-neutral-500">{acct?.property}{acct?.account_number ? ` · account ${acct.account_number}` : ""}</div>
+  {rows.length === 0
+    ? <EmptyState size="compact" title={`No ${isReceipts ? "receipts" : "statements"} on file`}
+        hint={isReceipts
+          ? "A receipt appears here after a payment is confirmed with the provider."
+          : "A statement appears here the first time this account is read."} />
+    : <ul className="divide-y divide-neutral-100">
+        {rows.map(b => (
+          <li key={b.id} className="flex items-center justify-between py-2">
+            <div>
+              <div className="text-sm text-neutral-700">{b.statement_period || (b.due_date ? fmtDate(b.due_date) : "—")}</div>
+              <div className="text-2xs text-neutral-400">
+                {formatCurrency(safeNum(b.amount))}{b.due_date ? ` · due ${fmtDate(b.due_date)}` : ""}
+              </div>
+            </div>
+            <TextLink tone="brand" size="xs" underline={false} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30"
+              onClick={async () => {
+                const path = isReceipts ? b.receipt_path : b.pdf_storage_path;
+                const url = await getSignedUrl("documents", path, 300);
+                if (url) window.open(url, "_blank", "noopener");
+                else showToast(`Could not open that ${isReceipts ? "receipt" : "statement"}.`, "error");
+              }}>Open</TextLink>
+          </li>
+        ))}
+      </ul>}
+  </div>
+  </Modal>
+  );
+  })()}
+
   {historyFor_ != null && (() => {
   const acct = utilAccounts.find(a => a.id === historyFor_);
   const rows = historyFor(historyFor_);
@@ -1224,6 +1283,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             ? <TextLink tone="brand" size="xs" onClick={async () => {
                 const url = await getSignedUrl("documents", b.pdf_storage_path, 300);
                 if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that statement.", "error");
+              }}>Open</TextLink>
+            : <span className="text-neutral-300 text-2xs">—</span> },
+          { key: "receipt_path", label: "Receipt", width: 80, render: b => b.receipt_path
+            ? <TextLink tone="positive" size="xs" onClick={async () => {
+                const url = await getSignedUrl("documents", b.receipt_path, 300);
+                if (url) window.open(url, "_blank", "noopener"); else showToast("Could not open that receipt.", "error");
               }}>Open</TextLink>
             : <span className="text-neutral-300 text-2xs">—</span> },
         ]}
