@@ -77,6 +77,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // Which account's bill history is open.
   const [historyFor_, setHistoryFor] = useState(null);
   const [docPicker, setDocPicker] = useState(null); // { kind: "statements"|"receipts", accountId }
+  const [menuOpenId, setMenuOpenId] = useState(null); // account id whose ⋯ overflow menu is open
+  const [showFilters, setShowFilters] = useState(false); // filter popover open
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
   const [auditLog, setAuditLog] = useState([]);
@@ -829,50 +831,74 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {/* ===== MANUAL BILLS TAB ===== */}
   {utilTab === "bills" && (<>
-  {/* Toolbar */}
-  <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <div className="mr-auto"></div>
-  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-64" />
-  <Select filter value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
-  <option value="all">All Status</option>
-  <option value="pending_review">To review</option>
-  <option value="authorized">Approved</option>
-  <option value="paid">Paid</option>
-  <option value="settled">Recharged</option>
-  <option value="no_balance">No balance</option>
-  <option value="no_bill">No bill yet</option>
-  <option value="error">Read failed</option>
-  </Select>
-  {/* Owed by: pick Owner to exclude tenant-billed (and condo-fee) utilities. */}
-  <Select filter value={utilFilterResp} onChange={e => setUtilFilterResp(e.target.value)}>
-  <option value="all">All Owed by</option>
-  <option value="owner">Owner</option>
-  <option value="tenant">Tenant</option>
-  <option value="condo_fee">Condo fee</option>
-  </Select>
-  {/* Hide anything with no positive balance ($0, no bill yet, or a credit). */}
-  <label className="flex items-center gap-1.5 text-xs text-neutral-600 whitespace-nowrap px-1 cursor-pointer">
-  <input type="checkbox" checked={utilHideZero} onChange={e => setUtilHideZero(e.target.checked)} className="accent-brand-500" />
-  Hide $0 balances
+  {/* Toolbar — search stays out; Status / Owed-by / Hide-$0 / Biller / Property
+      collapse behind one Filters button (badge = how many are active). */}
+  {(() => {
+  const activeFilters = (utilFilterStatus !== "all" ? 1 : 0) + (utilFilterResp !== "all" ? 1 : 0)
+    + (utilHideZero ? 1 : 0) + (utilFilterProviders.length ? 1 : 0) + (utilFilterProps.length ? 1 : 0);
+  return (
+  <div className="flex gap-2 mb-4 items-center">
+  <Input placeholder="Search provider or property…" value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="flex-1 min-w-0" />
+  <div className="relative">
+  <Btn variant="secondary" onClick={() => setShowFilters(!showFilters)} className="whitespace-nowrap">
+    Filters{activeFilters ? <span className="ml-1.5 text-2xs bg-brand-500 text-white rounded-full px-1.5 py-0.5">{activeFilters}</span> : ""}
+  </Btn>
+  {showFilters && (<>
+  <div className="fixed inset-0 z-10" onClick={() => setShowFilters(false)} />
+  <div className="absolute right-0 top-11 z-20 w-80 bg-white border border-neutral-200 rounded-xl shadow-pop p-4 space-y-3.5">
+  <div>
+    <label className="text-2xs uppercase tracking-wide text-neutral-400 mb-1 block">Status</label>
+    <Select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="w-full">
+    <option value="all">All Status</option>
+    <option value="pending_review">To review</option>
+    <option value="authorized">Approved</option>
+    <option value="paid">Paid</option>
+    <option value="settled">Recharged</option>
+    <option value="no_balance">No balance</option>
+    <option value="no_bill">No bill yet</option>
+    <option value="error">Read failed</option>
+    </Select>
+  </div>
+  <div>
+    <label className="text-2xs uppercase tracking-wide text-neutral-400 mb-1 block">Owed by</label>
+    <Select value={utilFilterResp} onChange={e => setUtilFilterResp(e.target.value)} className="w-full">
+    <option value="all">All Owed by</option>
+    <option value="owner">Owner</option>
+    <option value="tenant">Tenant</option>
+    <option value="condo_fee">Condo fee</option>
+    </Select>
+  </div>
+  <div>
+    <label className="text-2xs uppercase tracking-wide text-neutral-400 mb-1 block">Biller</label>
+    <MultiSelect ariaLabel="Filter by biller" allLabel="All Billers" searchPlaceholder="Filter billers…"
+      value={utilFilterProviders} onChange={setUtilFilterProviders}
+      options={[...new Set(utilities.map(u => u.provider).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+        .map(p => ({ value: p, label: p, hint: String(utilities.filter(u => u.provider === p).length) }))} />
+  </div>
+  <div>
+    <label className="text-2xs uppercase tracking-wide text-neutral-400 mb-1 block">Property</label>
+    <MultiSelect ariaLabel="Filter by property" allLabel="All Properties" searchPlaceholder="Filter properties…"
+      value={utilFilterProps} onChange={setUtilFilterProps}
+      options={[...new Set(utilities.map(u => u.property).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+        .map(p => ({ value: p, label: p }))} />
+  </div>
+  <label className="flex items-center justify-between text-sm text-neutral-600 cursor-pointer pt-1">
+    <span>Hide $0 balances</span>
+    <input type="checkbox" checked={utilHideZero} onChange={e => setUtilHideZero(e.target.checked)} className="accent-brand-500 w-4 h-4" />
   </label>
-  {/* Multi-select, and searchable: "BGE and Pepco" or two named properties
-      is a normal question, and a single-value filter cannot answer it.
-      [] means all, so nothing needs an "all" sentinel value. */}
-  <MultiSelect ariaLabel="Filter by biller" allLabel="All Billers" searchPlaceholder="Filter billers…"
-    value={utilFilterProviders} onChange={setUtilFilterProviders}
-    options={[...new Set(utilities.map(u => u.provider).filter(Boolean))].sort((a, b) => a.localeCompare(b))
-      .map(p => ({ value: p, label: p, hint: String(utilities.filter(u => u.provider === p).length) }))} />
-  <MultiSelect ariaLabel="Filter by property" allLabel="All Properties" searchPlaceholder="Filter properties…"
-    value={utilFilterProps} onChange={setUtilFilterProps}
-    options={[...new Set(utilities.map(u => u.property).filter(Boolean))].sort((a, b) => a.localeCompare(b))
-      .map(p => ({ value: p, label: p }))} />
+  {activeFilters > 0 && <button onClick={() => { setUtilFilterStatus("all"); setUtilFilterResp("all"); setUtilHideZero(false); setUtilFilterProviders([]); setUtilFilterProps([]); }} className="text-xs text-brand-600 hover:underline">Clear all filters</button>}
+  </div>
+  </>)}
+  </div>
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
   <button key={m} onClick={() => setUtilView(m)} title={m === "card" ? "Cards" : "Table"} aria-label={(m === "card" ? "Cards" : "Table") + " view"} aria-pressed={utilView === m} className={`px-3 py-1.5 text-sm rounded-lg ${utilView === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
-  <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
+  <Btn onClick={() => setShowForm(!showForm)} className="whitespace-nowrap">+ Bill</Btn>
   </div>
+  );
+  })()}
 
   {/* Stats — asked of BILLS, which is the first time they can mean anything.
       "Pending" counted accounts with a status flag; overdue was unanswerable
@@ -885,20 +911,24 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     // A pending final bill reads as tenant-responsible but is the OWNER's, so it
     // is excluded from the tenants' share.
     const tenantOwed = open.filter(u => u.responsibility === "tenant").reduce((t, u) => t + safeNum(u.amount), 0);
-    const card = (value, label, tone) => (
-      <div className="bg-white rounded-xl border border-neutral-200 px-3 py-2 text-center flex-1">
-        <div className={"text-lg font-bold " + tone}>{value}</div>
-        <div className="text-xs text-neutral-400">{label}</div>
-      </div>
-    );
+    // Compact single strip (was six separate cards). Minimal colour: only a
+    // real Overdue count is red; everything else is neutral.
+    const cells = [
+      [utilities.length, "Accounts", "text-neutral-800"],
+      [open.length, "To pay", "text-neutral-800"],
+      [overdue.length, "Overdue", overdue.length ? "text-danger-600" : "text-neutral-300"],
+      [soon.length, "Due in 7 days", "text-neutral-800"],
+      [formatCurrency(owed), "Outstanding", "text-neutral-800"],
+      ...(tenantOwed > 0 ? [[formatCurrency(tenantOwed), "Tenants' share", "text-neutral-800"]] : []),
+    ];
     return (
-      <div className="flex gap-3 mb-4 flex-wrap">
-        {card(utilities.length, "Accounts", "font-display text-neutral-800")}
-        {card(open.length, "To pay", "text-warn-600")}
-        {card(overdue.length, "Overdue", overdue.length ? "text-danger-600" : "text-neutral-400")}
-        {card(soon.length, "Due in 7 days", "text-notice-600")}
-        {card(formatCurrency(owed), "Outstanding", "text-danger-500")}
-        {tenantOwed > 0 ? card(formatCurrency(tenantOwed), "Tenants' share", "text-brand-600") : null}
+      <div className="flex mb-4 bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
+        {cells.map(([v, l, c], i) => (
+          <div key={l} className={`flex-1 min-w-0 px-3 py-2.5 ${i < cells.length - 1 ? "border-r border-neutral-100" : ""}`}>
+            <div className={`text-base font-bold tabular-nums ${c}`}>{v}</div>
+            <div className="text-2xs uppercase tracking-wide text-neutral-400 mt-0.5">{l}</div>
+          </div>
+        ))}
       </div>
     );
   })()}
@@ -992,30 +1022,31 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div></div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
-  {/* Same actions as the table view -- the two must stay at parity. */}
-  <div className="mt-3 flex flex-wrap gap-2">
-  {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <TextLink tone="positive" size="xs" underline={false} onClick={() => { setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Pay</TextLink>}
+  {/* Actions — Online Payment / Statements / Receipts stay outside; the rest
+      (manual payment, history, portal login, re-auth, audit) move into the ⋯
+      menu. Card and table stay at parity. */}
+  <div className="mt-3 flex items-center gap-2">
   {payablePortalFor(u.provider_display || u.provider) && !["paid","settled","excluded"].includes(u.status) && u.responsibility !== "condo_fee" && (
-    u.responsibility !== "tenant"
+    (u.responsibility !== "tenant" || userRole === "admin")
       ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Online Payment</TextLink>
-      : userRole === "admin"
-        ? <TextLink tone="brand" size="xs" underline={false} onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Online Payment</TextLink>
-        : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
-  )}
-  {payablePortalFor(u.provider_display || u.provider) && (
-    <TextLink tone="neutral" size="xs" underline={false} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Log in</TextLink>
+      : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
   )}
   {u.has_statements && <TextLink tone="neutral" size="xs" underline={false} onClick={() => setDocPicker({ kind: "statements", accountId: u.id })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statements</TextLink>}
   {u.has_receipts && <TextLink tone="positive" size="xs" underline={false} onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipts</TextLink>}
-  {u.username_encrypted && <TextLink tone="brand" size="xs" underline={false} onClick={async () => {
-    const s = new Set(showCreds);
-    if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; }
-    u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt);
-    u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt);
-    s.add(u.id); setShowCreds(new Set(s));
-  }} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">{showCreds.has(u.id) ? "Hide login" : "Login"}</TextLink>}
-  <TextLink tone="brand" size="xs" underline={false} onClick={() => setHistoryFor(u.id)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">History</TextLink>
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openAuditLog(u)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</TextLink>
+  <div className="relative ml-auto">
+    <button aria-label="More actions" onClick={() => setMenuOpenId(menuOpenId === u.id ? null : u.id)} className="w-8 h-8 rounded-lg border border-neutral-200 text-neutral-400 hover:text-neutral-700 hover:border-neutral-300 leading-none text-lg">⋯</button>
+    {menuOpenId === u.id && (<>
+      <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
+      <div className="absolute right-0 top-9 z-20 w-56 bg-white border border-neutral-200 rounded-xl shadow-pop p-1">
+        {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <button onClick={() => { setMenuOpenId(null); setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Record manual payment</button>}
+        <button onClick={() => { setMenuOpenId(null); setHistoryFor(u.id); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Bill history</button>
+        {u.username_encrypted && <button onClick={async () => { setMenuOpenId(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
+        {payablePortalFor(u.provider_display || u.provider) && <button onClick={() => { setMenuOpenId(null); setPayingBill({ ...u, __enroll: true }); }} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Re-authenticate portal</button>}
+        <div className="border-t border-neutral-100 my-1" />
+        <button onClick={() => { setMenuOpenId(null); openAuditLog(u); }} className="w-full text-left text-sm text-neutral-500 px-3 py-2 rounded-lg hover:bg-neutral-50">Audit trail</button>
+      </div>
+    </>)}
+  </div>
   </div>
   {showCreds.has(u.id) && u.username_encrypted && (
     <div className="mt-2 text-xs text-neutral-600 truncate" title={`${u._decUser || "—"} / ${u._decPass || "—"}`}>
