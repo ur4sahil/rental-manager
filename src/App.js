@@ -516,6 +516,13 @@ function AppInner() {
   // touch listeners to the element the user actually scrolls.
   const mainScrollRef = useRef(null);
 
+  // Changing pages returns the main scroll container to the top. The app
+  // scrolls <main>, not the window, so without this a new page inherits the
+  // previous page's scroll position and can open partway (or fully) down.
+  useEffect(() => {
+    if (mainScrollRef.current) mainScrollRef.current.scrollTop = 0;
+  }, [page]);
+
   function showToast(message, type = "info", errorObj = null) {
   const id = ++_toastIdCounter;
   if (errorObj?.isError) {

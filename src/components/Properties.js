@@ -3705,6 +3705,16 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const [showPropertyWizard, setShowPropertyWizard] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);
 
+  // Opening a property scrolls back to the top. The app scrolls the <main>
+  // element, not the window, so a detail opened from far down the list would
+  // otherwise render already scrolled to the bottom.
+  useEffect(() => {
+    if (!selectedProperty) return;
+    const m = document.querySelector("main");
+    if (m) m.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }, [selectedProperty?.id]);
+
   // ---- A PROPERTY IS A PLACE -----------------------------------------
   // /properties/{id}. Same reasoning as tenants: opening one used to leave
   // the address bar on /properties, so Back left the page, a refresh lost

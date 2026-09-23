@@ -177,9 +177,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (!t) return;
     setSelectedTenant(t);
     setActivePanel(initialAction.panel || "detail");
+    // The detail page shows the ledger and messages together, so load both on a
+    // deep-link the same way openFromUrl does -- otherwise a tenant opened from
+    // the property page shows an empty ledger until you click away and back.
+    openLedger(t);
+    openMessages(t);
     if (initialAction.panel === "documents") fetchTenantDocs(t);
-    if (initialAction.panel === "ledger") openLedger(t);
-    if (initialAction.panel === "messages") openMessages(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction?.openTenantId, tenants.length]);
 
@@ -231,9 +234,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }, []);
 
   useEffect(() => {
-    if (tenants.length) openFromUrl(tenants);
+    if (!tenants.length) return;
+    // A deep-link from another page (openTenantId) owns the selection. At this
+    // point the URL is still the bare /tenants (setPage did not include the
+    // tenant sub-path), so openFromUrl would see "no sub-path" and immediately
+    // CLEAR the selection the deep-link effect just set -- landing the user on
+    // the whole list instead of the tenant they clicked. Let the deep-link win.
+    if (initialAction?.openTenantId) return;
+    openFromUrl(tenants);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenants.length]);
+  }, [tenants.length, initialAction?.openTenantId]);
 
   useEffect(() => {
     const onPop = () => openFromUrl(tenants);
@@ -261,6 +271,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     } catch (_e) { /* a URL we cannot write must never block the UI */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTenant?.id, activePanel]);
+
+  // Opening a tenant scrolls back to the top. The app scrolls the <main>
+  // element, not the window, so a detail opened from far down the list would
+  // otherwise render already scrolled to the bottom.
+  useEffect(() => {
+    if (!selectedTenant) return;
+    const m = document.querySelector("main");
+    if (m) m.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }, [selectedTenant?.id]);
 
   async function fetchTenants() {
   const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);
