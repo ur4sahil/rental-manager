@@ -424,6 +424,17 @@ const PLAYBOOKS = {
     // Bowie MD 20715" -- captured so a reading records against its property.
     addressNear: /(?<!\d)(\d{1,6}\s+[A-Za-z0-9 .'#-]{2,38}?\b(?:ST|STREET|AVE|AVENUE|DR|DRIVE|CT|COURT|RD|ROAD|LN|LANE|PL|PLACE|TER|TERRACE|WAY|BLVD|CIR|CIRCLE|PKWY|TURN|RUN|ROW|SQ|TRL|HWY|CV|PT|LOOP|XING|CRES))\b/i,
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
+    // Official statement PDFs -- same Exelon WebForms flow as Pepco, on the
+    // bge.com host. Account History lists every issued bill in an accordion
+    // ("Bill Issued 09/21/2026 $537.18 View Bill") and each "View Bill" streams
+    // that bill as a PDF download. Verified live 2026-09-23: six bills listed
+    // for 0543163784, View Bill saved a real PDF. Account is re-confirmed on the
+    // page before download (a separate app from the dashboard).
+    statementHistory: {
+      url: "https://secure.bge.com/MyAccount/MyBillUsage/Pages/Secure/AccountHistory.aspx",
+      viewBill: /^View Bill$/,
+      billRow: /Bill Issued\s+(\d{2}\/\d{2}\/\d{4})\s+\$([\d,]+\.\d{2})/i,
+    },
     // PAYING -- UNVERIFIED, and a session needs a PERSON.
     //
     // Same Exelon/Opower pay shape as Pepco. BGE mails a verification code at

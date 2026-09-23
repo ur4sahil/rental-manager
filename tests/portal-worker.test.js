@@ -234,6 +234,11 @@ assert("the newest bill's control ('View Bill') is what statementHistory matches
 assert("fetch-bill re-confirms the account on Account History before downloading",
   /statementHistory[\s\S]{0,900}?onPage[\s\S]{0,200}?not downloading/.test(fetchBill),
   "the download must be gated on the wanted account appearing on the page");
+// BGE shares Pepco's Exelon WebForms statement flow, on the bge.com host.
+assert("bge declares a statementHistory download config on secure.bge.com",
+  PLAYBOOKS.bge.statementHistory && /secure\.bge\.com.*AccountHistory/i.test(PLAYBOOKS.bge.statementHistory.url)
+  && PLAYBOOKS.bge.statementHistory.viewBill.test("View Bill")
+  && !PLAYBOOKS.bge.statementHistory.viewBill.test("View Sample Bills"));
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);
