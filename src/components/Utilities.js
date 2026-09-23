@@ -77,7 +77,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // Which account's bill history is open.
   const [historyFor_, setHistoryFor] = useState(null);
   const [docPicker, setDocPicker] = useState(null); // { kind: "statements"|"receipts", accountId }
-  const [menuOpenId, setMenuOpenId] = useState(null); // account id whose ⋯ overflow menu is open
+  const [menuOpenId, setMenuOpenId] = useState(null); // account id whose ⋯ overflow menu is open (card view)
+  const [tableMenu, setTableMenu] = useState(null); // { id, top, right } — table ⋯ menu, positioned fixed so the scroll container can't clip it
   const [showFilters, setShowFilters] = useState(false); // filter popover open
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
@@ -1120,54 +1121,21 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
           )}
         </div>
       ) },
-      { key: "actions", label: "Actions", width: 150, align: "right", className: "whitespace-nowrap", render: u => (<>
-        {u.bill_id && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && (
-          <TextLink tone="positive" size="xs" className="mr-2" onClick={() => {
-            setPayBill(u);
-            setPayForm({
-              amount: String(safeNum(u.amount) || ""),
-              paid_on: formatLocalDate(new Date()),
-              bank_account_id: "",
-              confirmation: "",
-              method: "",
-              // Default ON for a tenant-responsible bill: that is what
-              // `responsibility` means, and defaulting it off quietly turns
-              // every tenant's bill into an owner expense.
-              recharge: u.responsibility === "tenant",
-            });
-            loadBankAccounts();
-          }}>Pay</TextLink>
-        )}
+      // Parity with the card view: Online Payment / Statements / Receipts stay
+      // visible; the rest live in the ⋯ menu. The menu is positioned FIXED (see
+      // tableMenu) so the table's horizontal scroll container cannot clip it.
+      { key: "actions", label: "Actions", width: 210, align: "right", className: "whitespace-nowrap", render: u => (
+        <div className="flex items-center justify-end gap-2.5">
         {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
-          u.responsibility !== "tenant"
-            ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Online Payment</TextLink>
-            // The tenant owes this — paying it on the owner's card is an admin
-            // decision. Enabled only for an admin (approval == the admin paying);
-            // greyed, not hidden, for everyone else so it reads as "blocked".
-            // The server (api/encrypt.js) refuses a pay token for a tenant bill
-            // to a non-admin, so the gate holds even if the button is bypassed.
-            : userRole === "admin"
-              ? <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Online Payment</TextLink>
-              : <span className="text-xs text-neutral-300 mr-2 cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
+          (u.responsibility !== "tenant" || userRole === "admin")
+            ? <TextLink tone="brand" size="xs" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay online</TextLink>
+            : <span className="text-2xs text-neutral-300 cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Pay online</span>
         )}
-        {payablePortalFor(u.provider_display || u.provider) && (
-          // Sign in to the provider in the streamed browser (reCAPTCHA/code
-          // portals a bot can't pass). The session is saved for the daily fetch.
-          <TextLink tone="neutral" size="xs" className="mr-2" title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" onClick={() => setPayingBill({ ...u, __enroll: true })}>Log in</TextLink>
-        )}
-        {u.has_statements && (
-          // Every statement for this biller at this property, newest first --
-          // the user opens whichever they want. Signed on demand and
-          // short-lived: a statement carries an account number and a service
-          // address, so a permanent public link is not the right shape for it.
-          <TextLink tone="neutral" size="xs" className="mr-2" onClick={() => setDocPicker({ kind: "statements", accountId: u.id })}>Statements</TextLink>
-        )}
-        {u.has_receipts && (
-          <TextLink tone="positive" size="xs" className="mr-2" onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })}>Receipts</TextLink>
-        )}
-        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => setHistoryFor(u.id)}>History</TextLink>
-        <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
-      </>) },
+        {u.has_statements && <TextLink tone="neutral" size="xs" onClick={() => setDocPicker({ kind: "statements", accountId: u.id })}>Stmts</TextLink>}
+        {u.has_receipts && <TextLink tone="positive" size="xs" onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })}>Rcpts</TextLink>}
+        <button aria-label="More actions" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTableMenu(tableMenu?.id === u.id ? null : { id: u.id, top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); }} className="w-7 h-7 rounded-md border border-neutral-200 text-neutral-400 hover:text-neutral-700 hover:border-neutral-300 leading-none text-base">⋯</button>
+        </div>
+      ) },
     ]}
     rows={fu}
     rowKey={u => u.id}
@@ -1181,6 +1149,22 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   />
   </div>
   )}
+  {tableMenu && (() => {
+    const u = fu.find(x => x.id === tableMenu.id);
+    if (!u) return null;
+    const item = "w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50";
+    return (<>
+      <div className="fixed inset-0 z-40" onClick={() => setTableMenu(null)} />
+      <div className="fixed z-50 w-56 bg-white border border-neutral-200 rounded-xl shadow-pop p-1" style={{ top: tableMenu.top, right: tableMenu.right }}>
+        {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <button className={item} onClick={() => { setTableMenu(null); setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }}>Record manual payment</button>}
+        <button className={item} onClick={() => { setTableMenu(null); setHistoryFor(u.id); }}>Bill history</button>
+        {u.username_encrypted && <button className={item} onClick={async () => { setTableMenu(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}>{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
+        {payablePortalFor(u.provider_display || u.provider) && <button className={item} onClick={() => { setTableMenu(null); setPayingBill({ ...u, __enroll: true }); }}>Re-authenticate portal</button>}
+        <div className="border-t border-neutral-100 my-1" />
+        <button className={item + " text-neutral-500"} onClick={() => { setTableMenu(null); openAuditLog(u); }}>Audit trail</button>
+      </div>
+    </>);
+  })()}
   {fu.length === 0 && <EmptyState size="compact" title={"No utility bills found"} />}
   </>;
   })()}
