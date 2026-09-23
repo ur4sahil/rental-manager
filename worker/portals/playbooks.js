@@ -326,6 +326,24 @@ const PLAYBOOKS = {
     // Exelon portals commonly put the balance on a dashboard card and the
     // due date only on the billing page behind this link.
     dueDateFollow: { role: "link", name: /billing|bill\s*&?\s*payment|my bill/i },
+    // THE OFFICIAL STATEMENT PDF -- Pepco's own way, not WSSC's.
+    //
+    // The Angular dashboard has no downloadable bill. The WebForms billing
+    // app does: Account History lists every issued bill in an accordion
+    // ("Bill Issued 09/02/2026  $345.00  View Bill"), and each "View Bill"
+    // STREAMS that bill as a PDF download (GUID-named), not a link to follow.
+    // So this is a download-on-click flow, and the newest row is the current
+    // statement. The page is keyed to the account selected in the chooser --
+    // re-confirmed on the page before downloading, because it is a separate
+    // app from the dashboard and must never file one property's bill under
+    // another. Verified live 2026-09-23: six bills listed for 55037075276,
+    // newest "Bill Issued 09/02/2026 $345.00", View Bill saved a real %PDF.
+    statementHistory: {
+      url: "https://secure.pepco.com/MyAccount/MyBillUsage/Pages/Secure/AccountHistory.aspx",
+      viewBill: /^View Bill$/,
+      // Each accordion header: issue date + amount + the View Bill control.
+      billRow: /Bill Issued\s+(\d{2}\/\d{2}\/\d{4})\s+\$([\d,]+\.\d{2})/i,
+    },
     // PAYING -- UNVERIFIED against the live pay form.
     //
     // Pepco and BGE are Exelon portals on the Opower billing UI, so this is

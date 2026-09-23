@@ -214,5 +214,26 @@ assert(
     (() => { for (const c of PLAYBOOKS.bge.amount) { if (c.labelled) { const m = "Total Amount Due by 10/01/2026 $88.20 Usage".match(c.labelled); if (m) return Number(m[1]); } } return null; })() === 88.20);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// THE OFFICIAL PEPCO STATEMENT PDF, AND THE WRONG-ACCOUNT GUARD.
+//
+// Pepco's real bill is a download off Account History's accordion, a
+// separate WebForms app from the dashboard the amount is read on. The
+// danger of a separate app is that its "current account" could differ from
+// the one just selected, so a download would file one property's statement
+// under another. fetch-bill re-confirms the account on the page before
+// downloading; these assertions fail loudly if either the config or that
+// guard is removed.
+assert("pepco declares a statementHistory download config",
+  PLAYBOOKS.pepco.statementHistory && /AccountHistory/i.test(PLAYBOOKS.pepco.statementHistory.url)
+  && PLAYBOOKS.pepco.statementHistory.viewBill instanceof RegExp);
+assert("the newest bill's control ('View Bill') is what statementHistory matches",
+  PLAYBOOKS.pepco.statementHistory.viewBill.test("View Bill")
+  && !PLAYBOOKS.pepco.statementHistory.viewBill.test("View Sample Bills"),
+  "must match the accordion control, not the 'View Sample Bills' nav link");
+assert("fetch-bill re-confirms the account on Account History before downloading",
+  /statementHistory[\s\S]{0,900}?onPage[\s\S]{0,200}?not downloading/.test(fetchBill),
+  "the download must be gated on the wanted account appearing on the page");
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

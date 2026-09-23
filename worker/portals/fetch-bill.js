@@ -453,6 +453,46 @@ const isoDate = (s) => {
         record("statement", "official download failed: " + String(e.message).split("\n")[0].slice(0, 60));
       }
     }
+    // THE REAL STATEMENT, Pepco's way: Account History streams each bill as a
+    // PDF download when its "View Bill" is clicked. The newest row is the
+    // current statement. Account History is a SEPARATE app from the dashboard
+    // the amount was read on, so the account is re-confirmed on this page
+    // before anything is downloaded -- filing one property's bill under
+    // another is exactly the failure this whole file guards against.
+    if (!pdfPath && book.statementHistory && wantAccount) {
+      try {
+        const sh = book.statementHistory;
+        const digits = String(wantAccount).replace(/\D/g, "");
+        await page.goto(sh.url, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(4000);
+        const onPage = (await page.locator("body").innerText().catch(() => "")).replace(/\D/g, "").includes(digits);
+        if (!onPage) {
+          record("statement", `account history did not show ${wantAccount} — not downloading`);
+        } else {
+          // The newest bill's control is the first "View Bill" in the accordion.
+          const vb = page.locator("a, span, button").filter({ hasText: sh.viewBill }).first();
+          if (await vb.count().catch(() => 0)) {
+            const real = shot.replace(/\.png$/, "") + "-statement.pdf";
+            const [dl] = await Promise.all([
+              page.waitForEvent("download", { timeout: 30000 }),
+              vb.click({ timeout: 8000 }),
+            ]);
+            await dl.saveAs(real);
+            if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+              pdfPath = real;
+              record("statement", `official PDF (${dl.suggestedFilename()})`);
+            } else {
+              record("statement", "view bill did not yield a PDF");
+            }
+          } else {
+            record("statement", "no View Bill control in account history");
+          }
+        }
+      } catch (e) {
+        record("statement", "history download failed: " + String(e.message).split("\n")[0].slice(0, 60));
+      }
+    }
     // Fallback: a page snapshot. Best effort -- a bill read correctly must not
     // be reported as a failure because the document could not be captured.
     if (!pdfPath) {
