@@ -173,5 +173,46 @@ assert(
   Object.entries(PLAYBOOKS).every(([, b]) => typeof b.verified === "boolean"),
   "an unverified playbook is a guess, and a guessed URL looks exactly like a blocked portal");
 
+// ─────────────────────────────────────────────────────────────────────
+// THE BALANCE READER MUST TOLERATE A DUE DATE BETWEEN LABEL AND FIGURE.
+//
+// Pepco/BGE (Opower) print "Total Amount Due by 09/23/2026 $345.00": the
+// due date sits BETWEEN the label and the dollar amount. The strict
+// "amount due: $" candidate matched nothing on this shape, and every owner
+// account with a real balance was recorded as "no amount found" on a page
+// whose balance was plainly on screen. Verified live 2026-09-22: 11411
+// Abbottswood read $345.00 only after the tolerant candidate was added.
+//
+// A regex over the candidate list, not the browser: this is exactly the
+// kind of parsing bug a unit test can hold, and the reason it went unseen
+// is that none did.
+{
+  // Reproduce fetch-bill's own loop: first candidate whose `labelled`
+  // pattern hits wins, in order.
+  const readAmount = (text) => {
+    for (const c of PLAYBOOKS.pepco.amount) {
+      if (!c.labelled) continue;
+      const m = text.match(c.labelled);
+      if (m && m[1]) return Number(m[1].replace(/,/g, ""));
+    }
+    return null;
+  };
+  const OPOWER = "Billing Summary As of Today, 4:01 AM ET Total Amount Due by 09/23/2026 $345.00 Usage";
+  assert("Opower 'Amount Due by <date> $X' is read (the live Pepco/BGE shape)",
+    readAmount(OPOWER) === 345, `got ${readAmount(OPOWER)}`);
+  assert("a strict 'Amount Due: $X' still reads",
+    readAmount("Amount Due: $123.45") === 123.45);
+  assert("a label with no date gap ('Total Amount Due $67.00') still reads",
+    readAmount("Total Amount Due $67.00") === 67);
+  // The tolerant candidate must not reach across a date-shaped gap to grab
+  // an unrelated figure elsewhere on a page full of dollar amounts.
+  assert("a bare label near a far-off figure is NOT misread as the balance",
+    readAmount("Amount Due for your records; billing at a glance shows $9999.99 elsewhere") === null,
+    `got ${readAmount("Amount Due for your records; billing at a glance shows $9999.99 elsewhere")}`);
+  // BGE shares the candidate set, so it must parse the same shape.
+  assert("BGE (same Opower shape) reads 'Total Amount Due by <date> $X'",
+    (() => { for (const c of PLAYBOOKS.bge.amount) { if (c.labelled) { const m = "Total Amount Due by 10/01/2026 $88.20 Usage".match(c.labelled); if (m) return Number(m[1]); } } return null; })() === 88.20);
+}
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

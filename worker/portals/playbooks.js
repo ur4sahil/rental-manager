@@ -80,6 +80,21 @@ const NOTHING_DUE = [
 
 const AMOUNT_CANDIDATES = [
   { labelled: /(?:total\s+)?amount\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
+  // THE DUE DATE SITS BETWEEN THE LABEL AND THE FIGURE ON OPOWER.
+  //
+  // Pepco and BGE (both Exelon/Opower dashboards) render the balance as
+  // "Total Amount Due by 09/23/2026 $345.00" -- the due date is wedged
+  // between "Amount Due" and the dollar amount, so the strict candidate
+  // above (which wants the "$" right after the label) matches nothing and
+  // the whole read falls through to "no amount found" on a page whose
+  // balance is plainly on screen. Verified live 2026-09-22: 11411
+  // Abbottswood read $345.00 only once this candidate existed.
+  //
+  // Deliberately anchored on "by <short date>": it will not reach past a
+  // date-shaped gap to a figure elsewhere on the page (the "billing at a
+  // glance" trap the whole file is careful about), because the balance is
+  // always the first figure after its own label.
+  { labelled: /(?:total\s+)?amount\s+due\s+by\s+[A-Za-z0-9,\/. -]{4,22}?\s*\$\s?([\d,]+\.\d{2})/i },
   { labelled: /total\s+due\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
   { labelled: /current\s+(?:balance|charges)\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
   { labelled: /balance\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
