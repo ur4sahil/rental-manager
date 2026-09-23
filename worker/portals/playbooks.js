@@ -229,6 +229,18 @@ const PLAYBOOKS = {
     // Washington Gas numbers its accounts and switches between them, so a
     // reading identifies itself by account rather than by address.
     identifyBy: "account",
+    // Official statement PDF -- WG's own way (not Exelon). The billing
+    // dashboard has a "View your Detailed Bill PDF" link that streams the bill
+    // as a PDF download (it calls BillDashboard.aspx/DownloadPdf under the
+    // hood). BillDashboard is the SAME session/account just selected on the
+    // dashboard, so no separate re-confirm is needed. Verified live 2026-09-23:
+    // downloaded a 432KB %PDF-1.4. Statement history rows also live here (SEP
+    // 2026 CURRENT BILL etc.) for a future multi-statement fetch.
+    statementClick: {
+      url: "https://my.washingtongas.com/portal/BillDashboard.aspx",
+      selector: "a.viewpdfdetailspopup, #myAnchor",
+      text: /view your detailed bill pdf/i,
+    },
     // PAYING. The only portal with a pay recipe, and therefore the only one
     // the app offers a Pay button for. Kept here rather than in pay-bill.js
     // so there is ONE answer to "can this provider be paid": a second list

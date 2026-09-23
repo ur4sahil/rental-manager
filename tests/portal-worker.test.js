@@ -259,5 +259,24 @@ assert("a tenant utility payment token is refused to a non-admin (DB-enforced, n
   /responsibility === "tenant" && membership\.role !== "admin"/.test(apiEncrypt)
   && /status\(403\)/.test(apiEncrypt.slice(apiEncrypt.indexOf('responsibility === "tenant"'), apiEncrypt.indexOf('responsibility === "tenant"') + 300)));
 
+// ─────────────────────────────────────────────────────────────────────
+// WASHINGTON GAS: string signed-out signals, and its own PDF-download flow.
+//
+// WG's signedOutSignals are CSS-selector STRINGS ("#txtLogin"), not { role,
+// name } objects. fetch-bill's signed-out loop only handled the object form,
+// so a string fell through to getByRole("button", { name: undefined }) -- which
+// matches every button -- and a valid imported WG session that landed on the
+// dashboard was reported "signed out". And WG's statement is a click-to-
+// download ("View your Detailed Bill PDF") on its billing dashboard, not
+// Exelon's Account History accordion.
+assert("fetch-bill handles a CSS-selector (string) signed-out signal, not just {role,name}",
+  /typeof sig === "string"/.test(fetchBill) && /page\.locator\(sig\)\.first\(\)\.isVisible/.test(fetchBill));
+assert("Washington Gas declares a statementClick PDF flow on its billing dashboard",
+  PLAYBOOKS.washington_gas.statementClick
+  && /BillDashboard/i.test(PLAYBOOKS.washington_gas.statementClick.url)
+  && /viewpdfdetailspopup/.test(PLAYBOOKS.washington_gas.statementClick.selector));
+assert("fetch-bill implements the statementClick download flow",
+  /book\.statementClick && wantAccount/.test(fetchBill) && /waitForEvent\("download"/.test(fetchBill.slice(fetchBill.indexOf("statementClick && wantAccount"))));
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

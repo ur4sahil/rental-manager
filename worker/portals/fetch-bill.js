@@ -195,17 +195,26 @@ const isoDate = (s) => {
       finish("needs_signin", { error: "the saved session has expired — run enroll.js again", screenshot: shot });
     }
     for (const sig of book.signedOutSignals) {
+      // A signal is EITHER a CSS-selector string ("#txtLogin", Washington Gas)
+      // OR a { role, name } object (Pepco/BGE's "Sign In" link). ensure-session
+      // handles both; this loop only handled the object form, so a string
+      // signal fell through to getByRole("button", { name: undefined }) -- which
+      // matches EVERY button on the page. A valid, imported WG session that
+      // landed on Dashboard.aspx was therefore reported "signed out". Match a
+      // string by locator+visibility (the login field only exists when signed
+      // out); keep the role form for the rest.
+      //
       // Ask for the role the playbook actually declared. This used to send
       // everything that was not a textbox to getByRole("button"), so the
       // { role: "link" } signal that six of the eight playbooks carry could
       // never match anything. BGE's logged-out homepage has two "Sign In"
-      // LINKS and no such button, so an expired session read as "still
-      // valid" -- and every account then failed as `wrong_account`, which
-      // sends you looking at account numbers when the truth is you are
-      // signed out. Sweep summarised it as needsSignin: 0.
-      const loc = page.getByRole(sig.role || "button", { name: sig.name });
-      if (await loc.count().catch(() => 0)) {
-        record("signed out", `saw ${sig.role} matching ${sig.name}`);
+      // LINKS and no such button, so an expired session read as "still valid".
+      const isStr = typeof sig === "string";
+      const present = isStr
+        ? await page.locator(sig).first().isVisible({ timeout: 1500 }).catch(() => false)
+        : (await page.getByRole(sig.role || "button", { name: sig.name }).count().catch(() => 0)) > 0;
+      if (present) {
+        record("signed out", `saw ${isStr ? sig : `${sig.role} matching ${sig.name}`}`);
         finish("needs_signin", { error: "the saved session has expired — run enroll.js again", screenshot: shot });
       }
     }
@@ -491,6 +500,39 @@ const isoDate = (s) => {
         }
       } catch (e) {
         record("statement", "history download failed: " + String(e.message).split("\n")[0].slice(0, 60));
+      }
+    }
+    // THE REAL STATEMENT, Washington Gas's way: the billing dashboard has a
+    // "View your Detailed Bill PDF" link that streams the bill as a download.
+    // BillDashboard.aspx is the same session/account already selected, so no
+    // separate re-confirm is needed (unlike Pepco/BGE's separate WebForms app).
+    if (!pdfPath && book.statementClick && wantAccount) {
+      try {
+        const sc = book.statementClick;
+        await page.goto(sc.url, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(3500);
+        let trig = null;
+        if (sc.selector) { const l = page.locator(sc.selector).first(); if (await l.count().catch(() => 0)) trig = l; }
+        if (!trig && sc.text) { const l = page.getByText(sc.text).first(); if (await l.count().catch(() => 0)) trig = l; }
+        if (trig) {
+          const real = shot.replace(/\.png$/, "") + "-statement.pdf";
+          const [dl] = await Promise.all([
+            page.waitForEvent("download", { timeout: 30000 }),
+            trig.click({ timeout: 8000 }),
+          ]);
+          await dl.saveAs(real);
+          if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+            pdfPath = real;
+            record("statement", `official PDF (${dl.suggestedFilename()})`);
+          } else {
+            record("statement", "detailed-bill link did not yield a PDF");
+          }
+        } else {
+          record("statement", "no detailed-bill link on the billing page");
+        }
+      } catch (e) {
+        record("statement", "detailed-bill download failed: " + String(e.message).split("\n")[0].slice(0, 60));
       }
     }
     // Fallback: a page snapshot. Best effort -- a bill read correctly must not
