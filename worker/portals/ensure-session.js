@@ -239,6 +239,10 @@ async function signedIn(page, book) {
         storageState: JSON.parse(fs.readFileSync(sessionFile, "utf8")),
         viewport: { width: 1280, height: 900 },
         userAgent: DESKTOP_UA,
+        // Route through a residential exit (a reverse SOCKS tunnel to the
+        // owner's Mac) when set, so reCAPTCHA-scored logins (WG/WSSC) come from
+        // a home IP instead of the box's flagged datacenter IP.
+        ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}),
       });
       const page = await ctx.newPage();
       await page.goto(book.signedInEntry || book.entry, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
@@ -265,7 +269,8 @@ async function signedIn(page, book) {
   // like a person using it, not a script racing the page.
   const browser = await launchBrowser(chromium, { headless: !headed, slowMo: 120 });
   try {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: DESKTOP_UA });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: DESKTOP_UA,
+      ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}) });
     const page = await ctx.newPage();
     await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 60000 });
     // Let the page SETTLE before typing. WSSC's login is JSF/PrimeFaces: the

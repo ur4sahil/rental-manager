@@ -166,6 +166,9 @@ const isoDate = (s) => {
     viewport: { width: 1280, height: 900 },
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
     acceptDownloads: true,   // the portal's own statement PDF arrives as a download
+    // Optional residential exit (reverse SOCKS tunnel to the owner's Mac) so a
+    // portal that fingerprints the box's datacenter IP sees a home IP instead.
+    ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}),
   });
   const page = await ctx.newPage();
 
