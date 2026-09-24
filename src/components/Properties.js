@@ -317,7 +317,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const addHoa = () => { if (hoas.length < 5) setHoas([...hoas, { ...EMPTY_HOA }]); };
   const updateHoa = (idx, field, val) => setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
   const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
-  const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
+  const [loan, setLoan] = useState({ enabled: false, id: "", lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
+  // A property can carry more than one loan (1st mortgage + HELOC). The wizard
+  // loads them all here so the loan step can offer a picker; loan.id says which
+  // one commit_property_wizard should update ("" = add a new loan).
+  const [loanChoices, setLoanChoices] = useState([]);
+  const emptyLoan = { enabled: true, id: "", lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" };
+  const selectExistingLoan = (id) => {
+    if (id === "__new__") { setLoan(emptyLoan); return; }
+    const l = loanChoices.find(x => String(x.id) === String(id));
+    if (!l) return;
+    setLoan({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "", interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "", escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "", escrow_covers: l.escrow_covers || { taxes: false, insurance: false, pmi: false }, loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false, website: l.website || "", username: "", password: "" });
+  };
   // Portfolio loan: this property can be ATTACHED to a loan that spans several
   // properties (created/edited in the Loans page). Tracked, never split.
   const [portfolioLoans, setPortfolioLoans] = useState([]);
@@ -610,7 +621,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               contact_name: h.contact_name || "", contact_email: h.contact_email || "",
               contact_phone: h.contact_phone || "",
             })));
-            if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
+            setLoanChoices(loanRes.data || []);
+            if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
             if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
             if (taxRes.data?.[0]) { const tx = taxRes.data[0]; setTaxes({ enabled: true, assessed_value: tx.assessed_value || "", tax_year: tx.tax_year || new Date().getFullYear(), annual_tax_amount: tx.annual_tax_amount || "", billing_frequency: tx.billing_frequency || "semi_annual", next_due_date: tx.next_due_date || "", parcel_id: tx.parcel_id || "", exemptions: tx.exemptions || "", escrow_paid_by_lender: tx.escrow_paid_by_lender || false, records_url: tx.records_url || "", notes: tx.notes || "", setup_recurring: false }); }
           }
@@ -963,17 +975,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         .eq("property", address).is("archived_at", null).limit(5),
     ]);
 
-    const l = (loanRes.data || [])[0];
-    if (l) setLoan(prev => ({
-      ...prev, enabled: true,
-      lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional",
-      original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "",
-      interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "",
-      escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "",
-      loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "",
-      account_number: l.account_number || "", notes: l.notes || "",
-      website: l.website || "", username: "", password: "",
-    }));
+    const loans = loanRes.data || [];
+    setLoanChoices(loans);
+    if (loans.length) setLoan(prev => {
+      // Freshen the loan the user is editing (multi-loan picker), not always
+      // the first one; fall back to the first if the picked id is gone.
+      const l = loans.find(x => String(x.id) === String(prev.id)) || loans[0];
+      return {
+        ...prev, enabled: true, id: l.id,
+        lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional",
+        original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "",
+        interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "",
+        escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "",
+        loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "",
+        account_number: l.account_number || "", notes: l.notes || "",
+        website: l.website || "", username: "", password: "",
+      };
+    });
 
     const ins = (insRes.data || [])[0];
     if (ins) setInsurance(prev => ({
@@ -1199,6 +1217,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const creds = await encryptRow(!!(loan.username && loan.password), loan.username, loan.password);
         pre.loan = {
           enabled: true,
+          id: loan.id || null,
           lender_name: loan.lender_name.trim(),
           loan_type: loan.loan_type,
           original_amount: Number(loan.original_amount) || 0,
@@ -2137,6 +2156,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               </label>
               {loan.enabled && (
                 <div className="space-y-3 pt-2">
+                  {loanChoices.length >= 1 && (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Editing loan</label>
+                      <Select value={loan.id || "__new__"} onChange={e => selectExistingLoan(e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                        {loanChoices.map(l => <option key={l.id} value={l.id}>{l.lender_name || "Loan"}{l.current_balance ? ` — ${formatCurrency(l.current_balance)}` : ""}</option>)}
+                        <option value="__new__">+ Add another loan</option>
+                      </Select>
+                      {loanChoices.length > 1 && <p className="text-xs text-neutral-400 mt-1">This property has {loanChoices.length} loans — pick which one to edit, or add another.</p>}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Lender Name *</label>
