@@ -654,6 +654,26 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   setShowAudit(u);
   }
 
+  // Change who owes a utility, right from the Utilities page (admins only).
+  // Writes BOTH the account (what this page reads) and its linked legacy
+  // `utilities` row (what the property wizard reads), so the two stay in sync —
+  // exactly the wizard↔utilities drift that used to require a wizard re-save.
+  async function changeResponsibility(u, newResp) {
+    if (newResp === (u.responsibility || "owner")) return;
+    const { error } = await supabase.from("utility_accounts")
+      .update({ responsibility: newResp, updated_at: new Date().toISOString() })
+      .eq("id", u.id).eq("company_id", companyId);
+    if (error) { pmError("PM-4003", { raw: error, context: "update utility responsibility", phase: "write" }); return; }
+    // Keep the wizard's source row in agreement.
+    if (u.account?.legacy_utility_id) {
+      await supabase.from("utilities").update({ responsibility: newResp })
+        .eq("id", u.account.legacy_utility_id).eq("company_id", companyId);
+    }
+    logAudit("update", "utilities", `Responsibility → ${respLabel(newResp)}: ${u.provider} at ${u.property}`, String(u.id), userProfile?.email, userRole, companyId);
+    showToast(`Owed by set to ${respLabel(newResp)}.`, "success");
+    fetchUtilities();
+  }
+
   if (loading) return <Spinner />;
 
   return (
@@ -1020,7 +1040,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
-  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div></div>
+  <div><span className="text-neutral-400">Owed by</span>{userRole === "admin"
+    ? <select value={u.responsibility || "owner"} onChange={e => changeResponsibility(u, e.target.value)} className="mt-0.5 block w-full text-xs font-semibold text-neutral-700 bg-transparent border border-neutral-200 rounded-md px-1.5 py-1 cursor-pointer hover:border-neutral-300"><option value="owner">Owner</option><option value="tenant">Tenant</option><option value="condo_fee">Condo fee</option></select>
+    : <div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div>}</div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   {/* Actions — Online Payment / Statements / Receipts stay outside; the rest
@@ -1091,10 +1113,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // Who owes it. utilities.responsibility has always held this and
       // nothing ever acted on it; a tenant-responsible bill you paid should
       // become that tenant's debt, not an owner expense.
-      { key: "responsibility", label: "Owed by", sort: true, width: 118, render: u => (
-        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
-          {respLabel(u.responsibility)}
-        </span>
+      { key: "responsibility", label: "Owed by", sort: true, width: 130, render: u => (
+        userRole === "admin"
+          ? <select value={u.responsibility || "owner"} onChange={e => changeResponsibility(u, e.target.value)} className="text-2xs bg-transparent border border-neutral-200 rounded-md px-1 py-0.5 cursor-pointer hover:border-neutral-300 text-neutral-600"><option value="owner">Owner</option><option value="tenant">Tenant</option><option value="condo_fee">Condo fee</option></select>
+          : <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
+              {respLabel(u.responsibility)}
+            </span>
       ) },
       // One line. This cell used to stack three things -- the portal link, a
       // "Show login" toggle, and the revealed credentials underneath -- which
