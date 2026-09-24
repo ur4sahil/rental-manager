@@ -1034,7 +1034,12 @@ module.exports = async function handler(req, res) {
         // in, via sweepTenant), so the owner can keep a tenant unit's bill +
         // statement on file. Reading a tenant bill never pays it: payment stays
         // admin-gated (api/encrypt.js). NULL responsibility = owner's default.
-        .or("responsibility.is.null,responsibility.neq.condo_fee");
+        .or("responsibility.is.null,responsibility.neq.condo_fee")
+        // Never sweep the owner->tenant final-bill CLOSEOUT line: it is a manual
+        // record of the owner's last balance, and it shares the ongoing line's
+        // account number, so reading the portal would attribute the tenant's
+        // live balance to it.
+        .neq("is_final_bill", true);
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });

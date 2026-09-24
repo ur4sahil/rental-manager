@@ -255,6 +255,8 @@ assert("the sweep skips tenant rows unless the playbook opts in",
   /resp === "tenant" && !book\.sweepTenant/.test(read("sweep.js")));
 assert("sweep-targets no longer excludes tenant server-side (only condo_fee)",
   /responsibility\.neq\.condo_fee/.test(apiAi) && !/not\.in\.\(tenant,condo_fee\)/.test(apiAi));
+assert("sweep-targets excludes the owner->tenant final-bill closeout line",
+  /\.neq\("is_final_bill", true\)/.test(apiAi));
 assert("a tenant utility payment token is refused to a non-admin (DB-enforced, not just the button)",
   /responsibility === "tenant" && membership\.role !== "admin"/.test(apiEncrypt)
   && /status\(403\)/.test(apiEncrypt.slice(apiEncrypt.indexOf('responsibility === "tenant"'), apiEncrypt.indexOf('responsibility === "tenant"') + 300)));
