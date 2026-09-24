@@ -111,7 +111,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [showPendingProviders, setShowPendingProviders] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
-  const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
+  const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" });
 
   useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
 
@@ -137,51 +137,62 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function saveAccount() {
-  if (!accountForm.property || !accountForm.provider || !accountForm.username || !accountForm.password) {
+  // Property is always required. Provider + credentials are required only when
+  // ADDING; on an edit the account already has them, and the provider Select
+  // keeps the current value (stored accounts carry a provider NAME, not a
+  // reference id, so they don't map back to an option).
+  if (!accountForm.property) { showToast("Property is required.", "error"); return; }
+  if (!editingAccount && (!accountForm.provider || !accountForm.username || !accountForm.password)) {
   showToast("Property, provider, username, and password are required.", "error"); return;
   }
-  // Encrypt credentials client-side before sending
-  // In production, this should be done server-side via Edge Function
-  // For now, we use a simple encoding (NOT production-grade encryption)
-  const providerInfo = providers.find(p => p.id === accountForm.provider);
-  // AES-256-GCM encryption for credentials using Web Crypto API
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
-  // Derive a key from companyId (deterministic per company — not perfect but far better than Base64)
-  // For production, move encryption to a Supabase Edge Function with a server-managed key
-  const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode((companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0")), { name: "AES-GCM" }, false, ["encrypt"]);
-  async function encryptField(plaintext) {
-  if (!plaintext) return "";
-  const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keyMaterial, encoded);
-  return btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
-  }
+  const providerInfo = (accountForm.provider && accountForm.provider !== "__keep__")
+    ? providers.find(p => p.id === accountForm.provider) : null;
   const payload = {
   company_id: companyId,
   property: accountForm.property,
-  provider: accountForm.provider,
-  provider_display: providerInfo?.display_name || accountForm.provider,
   account_number: accountForm.account_number,
-  username_encrypted: await encryptField(accountForm.username),
-  password_encrypted: await encryptField(accountForm.password),
-  encryption_iv: ivHex,
-  login_url: providerInfo?.login_url || "",
   account_type: accountForm.account_type,
   check_frequency: accountForm.check_frequency,
   two_factor_method: accountForm.two_factor_method,
   notes: accountForm.notes,
+  responsibility: accountForm.responsibility || "owner",
   };
+  // Only set the provider when a real one was chosen (add, or a deliberate
+  // change) — otherwise the existing provider/provider_display are preserved.
+  if (providerInfo) {
+  payload.provider = accountForm.provider;
+  payload.provider_display = providerInfo.display_name;
+  payload.login_url = providerInfo.login_url || "";
+  }
+  // Encrypt + set credentials only when BOTH are supplied. On an edit, leaving
+  // them blank keeps the stored login untouched (AES-256-GCM via Web Crypto).
+  if (accountForm.username && accountForm.password) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
+  const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode((companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0")), { name: "AES-GCM" }, false, ["encrypt"]);
+  const enc = async (pt) => { const c = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keyMaterial, new TextEncoder().encode(pt)); return btoa(String.fromCharCode(...new Uint8Array(c))); };
+  payload.username_encrypted = await enc(accountForm.username);
+  payload.password_encrypted = await enc(accountForm.password);
+  payload.encryption_iv = ivHex;
+  }
   let error;
   if (editingAccount) {
   ({ error } = await supabase.from("utility_accounts").update(payload).eq("id", editingAccount.id).eq("company_id", companyId));
+  // Keep the property wizard's legacy row in agreement (responsibility +
+  // account number), so the two never drift.
+  if (!error && editingAccount.legacy_utility_id) {
+  await supabase.from("utilities").update({ responsibility: payload.responsibility, account_number: accountForm.account_number || null })
+    .eq("id", editingAccount.legacy_utility_id).eq("company_id", companyId);
+  }
   } else {
   ({ error } = await supabase.from("utility_accounts").insert([payload]));
   }
   if (error) { pmError("PM-4002", { raw: error, context: "saving utility account" }); return; }
-  addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || accountForm.provider));
+  logAudit("update", "utilities", `${editingAccount ? "Edited" : "Added"} utility account: ${providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider} at ${accountForm.property} (${respLabel(payload.responsibility)})`, String(editingAccount?.id || ""), userProfile?.email, userRole, companyId);
+  addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider));
   setShowAccountForm(false);
   setEditingAccount(null);
-  setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
+  setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" });
   fetchAutomationData();
   }
 
@@ -654,26 +665,6 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   setShowAudit(u);
   }
 
-  // Change who owes a utility, right from the Utilities page (admins only).
-  // Writes BOTH the account (what this page reads) and its linked legacy
-  // `utilities` row (what the property wizard reads), so the two stay in sync —
-  // exactly the wizard↔utilities drift that used to require a wizard re-save.
-  async function changeResponsibility(u, newResp) {
-    if (newResp === (u.responsibility || "owner")) return;
-    const { error } = await supabase.from("utility_accounts")
-      .update({ responsibility: newResp, updated_at: new Date().toISOString() })
-      .eq("id", u.id).eq("company_id", companyId);
-    if (error) { pmError("PM-4003", { raw: error, context: "update utility responsibility", phase: "write" }); return; }
-    // Keep the wizard's source row in agreement.
-    if (u.account?.legacy_utility_id) {
-      await supabase.from("utilities").update({ responsibility: newResp })
-        .eq("id", u.account.legacy_utility_id).eq("company_id", companyId);
-    }
-    logAudit("update", "utilities", `Responsibility → ${respLabel(newResp)}: ${u.provider} at ${u.property}`, String(u.id), userProfile?.email, userRole, companyId);
-    showToast(`Owed by set to ${respLabel(newResp)}.`, "success");
-    fetchUtilities();
-  }
-
   if (loading) return <Spinner />;
 
   return (
@@ -743,7 +734,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-subtle-700">Connected Utility Accounts</h3>
   <p className="text-xs text-subtle-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
   </div>
-  <Btn onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }}>+ Add Account</Btn>
+  <Btn onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" }); setShowAccountForm(true); }}>+ Add Account</Btn>
   </div>
 
   {showAccountForm && (
@@ -751,12 +742,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-subtle-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Provider *</label><Select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }}><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</Select></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Provider{editingAccount ? "" : " *"}</label><Select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || accountForm.account_type}); }}>{editingAccount && <option value="__keep__">{editingAccount.provider_display} (current)</option>}<option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</Select></div>
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Account Number</label><Input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} /></div>
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Account Type</label><Select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})}><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></Select></div>
-  <div className="col-span-1 sm:col-span-2 bg-warn-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-warn-700">🔐 Login Credentials (encrypted before storage)</div></div>
-  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Username / Email *</label><Input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
-  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Password *</label><Input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Owed by</label><Select value={accountForm.responsibility} onChange={e => setAccountForm({...accountForm, responsibility: e.target.value})}><option value="owner">Owner</option><option value="tenant">Tenant</option><option value="condo_fee">Condo fee</option></Select></div>
+  <div className="col-span-1 sm:col-span-2 bg-warn-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-warn-700">🔐 Login Credentials (encrypted before storage){editingAccount ? " — leave blank to keep the current login" : ""}</div></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Username / Email{editingAccount ? "" : " *"}</label><Input placeholder={editingAccount ? "Leave blank to keep" : "your-login@email.com"} value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Password{editingAccount ? "" : " *"}</label><Input type="password" placeholder={editingAccount ? "Leave blank to keep" : "••••••••"} value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Check Frequency</label><Select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})}><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></Select></div>
   <div><label className="text-xs font-medium text-subtle-500 mb-1 block">2FA Method</label><Select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})}><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></Select></div>
   </div>
@@ -789,6 +781,17 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
   <TextLink tone="brand" size="xs" underline={false} onClick={() => triggerManualCheck(acct)} className="border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => {
+    setEditingAccount(acct);
+    setAccountForm({
+      property: acct.property || "", provider: "__keep__", account_number: acct.account_number || "",
+      username: "", password: "", account_type: acct.account_type || "electric",
+      check_frequency: acct.check_frequency || "weekly", two_factor_method: acct.two_factor_method || "none",
+      notes: acct.notes || "", responsibility: acct.responsibility || "owner",
+    });
+    setShowAccountForm(true);
+    const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
+  }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>
@@ -1040,9 +1043,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{fmtDate(u.due)}</div></div>
-  <div><span className="text-neutral-400">Owed by</span>{userRole === "admin"
-    ? <select value={u.responsibility || "owner"} onChange={e => changeResponsibility(u, e.target.value)} className="mt-0.5 block w-full text-xs font-semibold text-neutral-700 bg-transparent border border-neutral-200 rounded-md px-1.5 py-1 cursor-pointer hover:border-neutral-300"><option value="owner">Owner</option><option value="tenant">Tenant</option><option value="condo_fee">Condo fee</option></select>
-    : <div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div>}</div>
+  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold text-neutral-700">{respLabel(u.responsibility)}</div></div>
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{fmtDate(u.paid_at, "—")}</div></div>
   </div>
   {/* Actions — Online Payment / Statements / Receipts stay outside; the rest
@@ -1113,12 +1114,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // Who owes it. utilities.responsibility has always held this and
       // nothing ever acted on it; a tenant-responsible bill you paid should
       // become that tenant's debt, not an owner expense.
-      { key: "responsibility", label: "Owed by", sort: true, width: 130, render: u => (
-        userRole === "admin"
-          ? <select value={u.responsibility || "owner"} onChange={e => changeResponsibility(u, e.target.value)} className="text-2xs bg-transparent border border-neutral-200 rounded-md px-1 py-0.5 cursor-pointer hover:border-neutral-300 text-neutral-600"><option value="owner">Owner</option><option value="tenant">Tenant</option><option value="condo_fee">Condo fee</option></select>
-          : <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
-              {respLabel(u.responsibility)}
-            </span>
+      { key: "responsibility", label: "Owed by", sort: true, width: 118, render: u => (
+        <span className={`text-2xs px-1.5 py-0.5 rounded-full ${u.responsibility === "tenant" ? "bg-brand-100 text-brand-700" : u.responsibility === "condo_fee" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>
+          {respLabel(u.responsibility)}
+        </span>
       ) },
       // One line. This cell used to stack three things -- the portal link, a
       // "Show login" toggle, and the revealed credentials underneath -- which
