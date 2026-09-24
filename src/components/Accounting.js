@@ -1062,7 +1062,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
         </div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={() => { /* nav handled by parent tab */ }} title="Opens the Journal Entries tab via the usual sidebar click">View journal entry →</Btn>
-          <Btn variant="danger" onClick={handleVoid}>Reverse opening balance</Btn>
+          <Btn variant="danger" onClick={handleVoid}>Void</Btn>
         </div>
       </div>
     );
@@ -1753,6 +1753,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
     ]}
     rows={pagedEntries}
     rowKey={je => je.id}
+    onRowClick={je => openView(je)}
     empty="Nothing to show"
   />
   </div>
@@ -3685,7 +3686,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           {refreshing ? "Refreshing…" : "Refresh"}
         </Btn>
         )}
-        <Btn variant="slate" size="sm" icon="download" onClick={exportExcel}>Export</Btn>
+        <Btn variant="slate" size="sm" icon="download" onClick={exportExcel}>Export Excel</Btn>
         <Btn variant="slate" size="sm" icon="picture_as_pdf" onClick={exportPDF}>PDF</Btn>
         <Btn variant="slate" size="sm" icon="print" onClick={printReport}>Print</Btn>
       </div>

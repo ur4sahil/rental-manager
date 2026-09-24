@@ -567,6 +567,35 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   fetchInspections();
   }
 
+  async function createWOFromInspection(insp) {
+  if (!guardSubmit("woFromInsp", insp.id)) return;
+  try {
+  // `checklist`, not `items`. saveInspection writes the checklist to
+  // inspections.checklist; there is no `items` column on the table, so
+  // this always parsed undefined -> {} and every inspection reported
+  // "No failed items", making it impossible to raise a work order from
+  // a failed inspection at all.
+  //
+  // The column is jsonb, so it arrives already parsed as an object;
+  // older rows written by the UI hold a JSON *string*. Handle both.
+  const items = (() => {
+    const raw = insp.checklist;
+    if (!raw) return {};
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(raw); } catch { return {}; }
+  })();
+  const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
+  if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
+  if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
+  // Find tenant at this property for the WO
+  const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
+  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${fmtDate(insp.date)}` }]);
+  if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
+  showToast("Work order created. Go to Maintenance to view it.", "success");
+  addNotification("🔧", `Work order created from inspection at ${insp.property}`);
+  } finally { guardRelease("woFromInsp", insp.id); }
+  }
+
   function initChecklist(type) {
   const items = checklistTemplates[type] || [];
   const initial = {};
@@ -607,6 +636,10 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   );
   } catch { return null; }
   })()}
+  <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-brand-50">
+  {selectedInspection.status === "scheduled" && <Btn variant="success-fill" size="xs" onClick={() => { updateStatus(selectedInspection.id, "completed"); setSelectedInspection(null); }}>✓ Mark Complete</Btn>}
+  {selectedInspection.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={() => createWOFromInspection(selectedInspection)}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
+  </div>
   </Modal>
   )}
 
@@ -666,36 +699,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div><span className="text-neutral-400">Type</span><div className="font-semibold text-neutral-700">{insp.type}</div></div>
   </div>
   <div className="mt-3 flex gap-2 flex-wrap">
-  <Btn variant="secondary" size="xs" onClick={() => setSelectedInspection(insp)}>📋 View Report</Btn>
+  <Btn variant="secondary" size="xs" onClick={() => setSelectedInspection(insp)}>📋 View Checklist</Btn>
   {insp.status === "scheduled" && <Btn variant="success-fill" size="xs" onClick={() => updateStatus(insp.id, "completed")}>✓ Mark Complete</Btn>}
-  {insp.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={async () => {
-  if (!guardSubmit("woFromInsp", insp.id)) return;
-  try {
-  // `checklist`, not `items`. saveInspection writes the checklist to
-  // inspections.checklist; there is no `items` column on the table, so
-  // this always parsed undefined -> {} and every inspection reported
-  // "No failed items", making it impossible to raise a work order from
-  // a failed inspection at all.
-  //
-  // The column is jsonb, so it arrives already parsed as an object;
-  // older rows written by the UI hold a JSON *string*. Handle both.
-  const items = (() => {
-    const raw = insp.checklist;
-    if (!raw) return {};
-    if (typeof raw === "object") return raw;
-    try { return JSON.parse(raw); } catch { return {}; }
-  })();
-  const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
-  if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
-  if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
-  // Find tenant at this property for the WO
-  const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).in("lease_status", ACTIVE_LEASE).maybeSingle();
-  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${fmtDate(insp.date)}` }]);
-  if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
-  showToast("Work order created. Go to Maintenance to view it.", "success");
-  addNotification("🔧", `Work order created from inspection at ${insp.property}`);
-  } finally { guardRelease("woFromInsp", insp.id); }
-  }}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
+  {insp.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={() => createWOFromInspection(insp)}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
   </div>
   </div>
   ))}

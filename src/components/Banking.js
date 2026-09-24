@@ -2676,6 +2676,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
         <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-pop py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
           <MenuItem onClick={() => { setGlMapModal({ feedId: feed.id, feedName: feed.account_name || "Bank Account" }); setGlMapValue(feed.gl_account_id || ""); setFeedMenuOpen(null); }} tone="neutral" icon="link">Change GL Mapping</MenuItem>
+          {(feed.connection_type === "teller" || feed.connection_type === "plaid") && (
+          <MenuItem onClick={() => { setSyncFromDate(""); setSyncDateModal(true); setFeedMenuOpen(null); }} tone="neutral" icon="sync">Sync</MenuItem>
+          )}
           {feed.status === "inactive" ? (
           <MenuItem onClick={() => { reactivateFeed(feed.id); setFeedMenuOpen(null); }} tone="positive" icon="link">Reactivate</MenuItem>
           ) : (
@@ -3109,11 +3112,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 </div>
               </div>
 
-              {d.je?.id && onViewJE && (
-                <div className="pt-1">
+              <div className="pt-1 flex items-center gap-3">
+                {d.je?.id && onViewJE && (
                   <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); onViewJE(d.je.id); }} className="font-semibold hover:underline">Open in Journal Entries →</TextLink>
-                </div>
-              )}
+                )}
+                <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>
+              </div>
             </div>
             )}
           </div>
@@ -3126,6 +3130,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {txn.excluded_by ? <> by <strong className="text-neutral-700">{txn.excluded_by}</strong></> : ""}
           {txn.excluded_at ? ` on ${fmtDate(txn.excluded_at)}` : ""}. Nothing was posted to the general ledger.</p>
           <p><span className="text-neutral-400">Bank description:</span> <span className="text-neutral-700">{txn.bank_description_raw || txn.bank_description_clean || "—"}</span></p>
+          <div className="pt-2">
+            <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>
+          </div>
         </div>
         )}
         {/* Inline Action Panel */}

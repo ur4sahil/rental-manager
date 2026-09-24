@@ -96,6 +96,7 @@ function Occupancy({ tenancies }) {
 export default function PropertyPage({
   property, tenants = [], utilities = [], hoas = [], loans = [], insurance = [], readOnly, userRole,
   onBack, onEdit, onUploadDoc, onWorkOrder, onOpenTenant, onAddTenant, onArchive,
+  onDeactivate, onReactivate, onDelete, onRequestDelete,
   tabs,
 }) {
   if (!property) return null;
@@ -181,7 +182,10 @@ export default function PropertyPage({
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onAddTenant?.(p)}>Add tenant</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onWorkOrder?.(p)}>Work order</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onUploadDoc?.(p)}>Upload doc</Btn>
-              {!readOnly && <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onArchive?.(p)}>Archive property</Btn>}
+              {!readOnly && userRole === "admin" && p.status !== "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-warn-600" onClick={() => onDeactivate?.(p)}>Deactivate</Btn>}
+              {!readOnly && userRole === "admin" && p.status === "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-positive-600" onClick={() => onReactivate?.(p)}>Reactivate</Btn>}
+              {!readOnly && userRole === "admin" && <Btn variant="secondary" size="sm" className="w-full justify-center text-danger-600" onClick={() => onDelete?.(p)}>Delete</Btn>}
+              {!readOnly && userRole !== "admin" && <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onRequestDelete?.(p)}>Request Delete</Btn>}
             </div>
           </DetailPanel>
         </div>

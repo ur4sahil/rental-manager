@@ -3923,7 +3923,10 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
           onUploadDoc={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}
           onWorkOrder={() => { setPage("maintenance"); setSelectedProperty(null); }}
           onOpenTenant={t => { setSelectedProperty(null); setPage("tenants", { openTenantId: t.id, tenantName: t.name }); }}
-          onArchive={() => deleteProperty(selectedProperty.id, selectedProperty.address)}
+          onDeactivate={() => deactivateProperty(selectedProperty)}
+          onReactivate={() => reactivateProperty(selectedProperty)}
+          onDelete={() => deleteProperty(selectedProperty.id, selectedProperty.address)}
+          onRequestDelete={() => requestDeleteProperty(selectedProperty)}
           tabs={<>
   {/* Tab Navigation */}
   <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
@@ -4551,6 +4554,8 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
           {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
             {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
             {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
+            {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)} className="mr-2">Deactivate</TextLink>}
+            {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)} className="mr-2">Reactivate</TextLink>}
             {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
             {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
             {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" className="mr-2" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>PM</TextLink>}

@@ -369,7 +369,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
   <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn></div>
+  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn></div>
   </div>
   ); })}
   </div>

@@ -272,6 +272,10 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
             if (url) window.open(url, "_blank", "noopener,noreferrer");
             else showToast("Could not generate secure link for this file.", "error");
             }}>View</TextLink>
+            <TextLink tone="positive" size="xs" onClick={async () => {
+            const url = await getSignedUrl("documents", d.file_name);
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            }}>Download</TextLink>
             </>
             ) : (
             <span className="text-xs text-neutral-400">No file</span>

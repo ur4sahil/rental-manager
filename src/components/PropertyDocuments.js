@@ -343,6 +343,13 @@ export default function PropertyDocuments({
           <span className="material-icons-outlined text-sm">open_in_new</span>
           {busyId === d.key ? "Opening…" : "View"}
         </TextLink>
+        <TextLink tone="positive" size="xs" onClick={async () => {
+          const url = await getSignedUrl("documents", d.path, 300);
+          if (url) window.open(url, "_blank", "noopener,noreferrer");
+          else showToast("That file could not be opened — it may have been moved or removed from storage.", "error");
+        }} className="flex items-center gap-1">
+          <span className="material-icons-outlined text-sm">download</span>Download
+        </TextLink>
         {d.deletable && !d.archived && !isReadOnly && (
           <TextLink tone="danger" size="xs" underline={false} onClick={() => remove(d)}>Delete</TextLink>
         )}

@@ -217,6 +217,15 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   } finally { guardRelease("sendStatement"); }
   }
 
+  // NOTE: Print currently dumps raw JSON.stringify of the statement — it is
+  // NOT a real print template. Flagged for a future templated layout.
+  function printStatement(statement) {
+  const w = window.open("", "_blank", "noopener,noreferrer");
+  w.document.write("<pre>" + escapeHtml(JSON.stringify(statement, null, 2)) + "</pre>");
+  w.document.title = "Statement " + sanitizeForPrint(statement.period);
+  setTimeout(() => w.print(), 300);
+  }
+
   async function payOwner(owner) {
   if (!guardSubmit("payOwner")) return;
   try {
@@ -418,6 +427,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-right">
   <div className="text-xs text-neutral-400">Net: <span className="text-brand-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
   </div>
+  {s.status === "draft" && <Btn variant="secondary" size="xs" onClick={e => { e.stopPropagation(); sendStatement(s); }}>📧 Send</Btn>}
+  <Btn variant="secondary" size="xs" onClick={e => { e.stopPropagation(); printStatement(s); }}><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-positive-100 text-positive-700" : s.status === "sent" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{s.status}</span>
   </div>
   </div>
@@ -438,7 +449,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   <div className="flex items-center gap-2">
   {viewStatement.status === "draft" && <Btn variant="secondary" size="xs" onClick={() => sendStatement(viewStatement)}>📧 Send</Btn>}
-  <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
+  <Btn onClick={() => printStatement(viewStatement)} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{viewStatement.status}</span>
   </div>
   </div>

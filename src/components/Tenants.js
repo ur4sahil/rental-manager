@@ -9,7 +9,7 @@ import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted } from "../utils/accounting";
-import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
+import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -1708,7 +1708,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-medium text-neutral-700">{p.method || p.type || "Payment"}</div>
   <div className="text-xs text-neutral-400">{fmtDate(p.date)}{p.status ? " · " + p.status : ""}</div>
   </div>
+  <div className="flex items-center gap-3">
   <div className="text-right font-semibold tnum text-positive-600">{formatCurrency(p.amount)}</div>
+  <Btn variant="success-fill" size="xs" onClick={() => generatePaymentReceipt({ tenant: archivedDetail.tenant.name, property: archivedDetail.tenant.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="py-0.5">Receipt</Btn>
+  </div>
   </div>
   ))}
   </div>
@@ -2245,18 +2248,24 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // themselves to the longest value in the table. A tenant called
   // "Alice E Allen Brown & Michael A Brown" was setting the width of the
   // whole column, which is what pushed the actions onto a second line.
-  const TenantActions = ({t}) => (
+  const TenantActions = ({t}) => {
+  const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
+  return (
   <div className="flex gap-1 items-center justify-end flex-nowrap whitespace-nowrap">
   <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-1.5 py-0.5 rounded-md hover:bg-brand-50">Ledger</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Msg</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Lease</TextLink>
   <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
+  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <TextLink tone="danger" size="xs" underline={false} onClick={() => applyLateFeeForTenant(t)} className="border border-danger-100 px-1.5 py-0.5 rounded-md hover:bg-danger-50/30">Late Fee</TextLink>}
+  {portalStatus !== "active" && (
   <TextLink tone="highlight" size="xs" disabled={!t.email || !!invitingTenant[t.id || t.email || ""]}
-    title={!t.email ? "Add an email to this tenant first" : "Send a portal invite"}
-    onClick={() => inviteTenant(t)}>{invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : "Invite"}</TextLink>
+    title={!t.email ? "Add an email to this tenant first" : portalStatus === "invited" ? "Re-send the portal invite email" : "Send a portal invite"}
+    onClick={() => inviteTenant(t)}>{invitingTenant[t.id || t.email || ""] ? "Sending\u2026" : (portalStatus === "invited" ? "Resend Invite" : "Invite to Portal")}</TextLink>
+  )}
   <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
   </div>
   );
+  };
   return <>
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2282,7 +2291,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2">
-  <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="font-medium shrink-0">View Ledger</TextLink>
+  <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="font-medium shrink-0">Ledger</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openMessages(t); }} className="font-medium shrink-0">Msg</TextLink>
+  <TextLink tone="info" size="xs" underline={false} onClick={e => { e.stopPropagation(); startEdit(t); }} className="font-medium shrink-0">Edit</TextLink>
   {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</TextLink>}
   {portalStatus !== "active" && (
   <button
@@ -2362,6 +2373,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</span>
   <Badge status={t.lease_status} />
   <TextLink tone="brand" size="xs" onClick={() => openLedger(t)}>Ledger</TextLink>
+  <TextLink tone="neutral" size="xs" onClick={() => openMessages(t)}>Msg</TextLink>
   <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
   </div>
   ))}
