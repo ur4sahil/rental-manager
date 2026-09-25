@@ -335,7 +335,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const [portfolioLoanId, setPortfolioLoanId] = useState("");
   const [origPortfolioLoanId, setOrigPortfolioLoanId] = useState("");
   // Inline "create a new portfolio loan" without leaving the wizard.
-  const [newPortfolio, setNewPortfolio] = useState({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "" });
+  const [newPortfolio, setNewPortfolio] = useState({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", account_number: "" });
   const [showNewPortfolio, setShowNewPortfolio] = useState(false);
   const [savingPortfolio, setSavingPortfolio] = useState(false);
   async function createPortfolioLoan() {
@@ -350,13 +350,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         current_balance: Number(newPortfolio.current_balance || newPortfolio.original_amount) || 0,
         interest_rate: Number(newPortfolio.interest_rate || 0),
         monthly_payment: Number(newPortfolio.monthly_payment || 0),
+        account_number: newPortfolio.account_number || null,
         status: "active",
       }]).select("id, lender_name, current_balance").single();
       if (error) { showToast("Couldn't create portfolio loan: " + error.message, "error"); return; }
       setPortfolioLoans(prev => [...prev, data].sort((a, b) => (a.lender_name || "").localeCompare(b.lender_name || "")));
       setPortfolioLoanId(data.id);
       setShowNewPortfolio(false);
-      setNewPortfolio({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "" });
+      setNewPortfolio({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", account_number: "" });
       showToast("Portfolio loan created and selected.", "success");
     } finally { setSavingPortfolio(false); }
   }
@@ -2179,6 +2180,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div><label className="text-xs font-medium text-neutral-500 block mb-1">Current Balance ($)</label><MoneyInput value={newPortfolio.current_balance} onChange={v => setNewPortfolio({ ...newPortfolio, current_balance: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     <div><label className="text-xs font-medium text-neutral-500 block mb-1">Interest Rate (%)</label><Input type="number" step="0.01" value={newPortfolio.interest_rate} onChange={e => setNewPortfolio({ ...newPortfolio, interest_rate: e.target.value })} placeholder="7.25" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     <div><label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Payment ($)</label><MoneyInput value={newPortfolio.monthly_payment} onChange={v => setNewPortfolio({ ...newPortfolio, monthly_payment: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div className="col-span-2"><label className="text-xs font-medium text-neutral-500 block mb-1">Account Number</label><Input type="text" value={newPortfolio.account_number} onChange={e => setNewPortfolio({ ...newPortfolio, account_number: e.target.value })} placeholder="Loan account #" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     <div className="col-span-2 flex gap-2"><Btn size="sm" variant="success-fill" onClick={createPortfolioLoan} disabled={savingPortfolio}>{savingPortfolio ? "Creating…" : "Create portfolio loan"}</Btn><Btn size="sm" variant="secondary" onClick={() => { setShowNewPortfolio(false); }}>Cancel</Btn></div>
                   </div>
                 )}
