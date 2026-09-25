@@ -2248,9 +2248,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="border-t border-neutral-100 pt-2 mt-2">
                     <p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" value={loan.website||""} onChange={e => setLoan({...loan, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" value={loan.username||""} onChange={e => setLoan({...loan, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" value={loan.password||""} onChange={e => setLoan({...loan, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" autoComplete="off" value={loan.website||""} onChange={e => setLoan({...loan, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" name="loan_portal_user" autoComplete="off" value={loan.username||""} onChange={e => setLoan({...loan, username: e.target.value})} placeholder={loan.id ? "Saved — leave blank to keep" : ""} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" name="loan_portal_pass" autoComplete="new-password" value={loan.password||""} onChange={e => setLoan({...loan, password: e.target.value})} placeholder={loan.id ? "Saved — leave blank to keep" : ""} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     </div>
                   </div>
                 </div>
@@ -2597,9 +2597,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="border-t border-neutral-100 pt-2 mt-1">
                     <p className="text-xs text-neutral-400 mb-2">Insurance Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" value={insurance.website||""} onChange={e => setInsurance({...insurance, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" value={insurance.username||""} onChange={e => setInsurance({...insurance, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" value={insurance.password||""} onChange={e => setInsurance({...insurance, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" autoComplete="off" value={insurance.website||""} onChange={e => setInsurance({...insurance, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" name="ins_portal_user" autoComplete="off" value={insurance.username||""} onChange={e => setInsurance({...insurance, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" name="ins_portal_pass" autoComplete="new-password" value={insurance.password||""} onChange={e => setInsurance({...insurance, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     </div>
                   </div>
                 </div>
