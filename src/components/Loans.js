@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanTypeOptions} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -45,24 +45,42 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   payload.loan_start_date = form.loan_start_date || null;
   payload.maturity_date = form.maturity_date || null;
   payload.website = form.website || "";
-  if (form.username || form.password) {
+  // Encrypted columns forbid '' (chk_property_loans_creds_not_blank) and default
+  // to '', so we must write real ciphertext or NULL — never ''. Only save creds
+  // when BOTH fields are present and both encrypt to non-empty (a Chrome autofill
+  // that fills only one field would otherwise write a broken half-credential and
+  // the whole save would fail the constraint).
+  let creds = null;
+  if (form.username && form.password) {
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
-      const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-      payload.username_encrypted = resU.encrypted;
-      payload.password_encrypted = resP.encrypted;
-      payload.encryption_iv_username = resU.iv || null;
-      payload.encryption_iv = resP.iv || resU.iv;
-      payload.encryption_salt = resU.salt || resP.salt;
+      const resU = await encryptCredential(form.username, companyId);
+      const resP = await encryptCredential(form.password, companyId, resU.salt);
+      if (resU.encrypted && resP.encrypted) {
+        creds = {
+          username_encrypted: resU.encrypted,
+          password_encrypted: resP.encrypted,
+          encryption_iv: resP.iv || resU.iv,
+          encryption_iv_username: resU.iv || null,
+          encryption_salt: resU.salt || resP.salt,
+        };
+      }
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
+  const nb = v => (v && v !== "" ? v : null); // null-if-blank: '' violates the not-blank constraint
   if (editingLoan) {
-  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: payload.username_encrypted || editingLoan.username_encrypted || "", password_encrypted: payload.password_encrypted || editingLoan.password_encrypted || "", encryption_iv: payload.encryption_iv || editingLoan.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingLoan.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingLoan.encryption_salt || null }).eq("id", editingLoan.id).eq("company_id", companyId);
+  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: creds ? creds.username_encrypted : nb(editingLoan.username_encrypted), password_encrypted: creds ? creds.password_encrypted : nb(editingLoan.password_encrypted), encryption_iv: creds ? creds.encryption_iv : nb(editingLoan.encryption_iv), encryption_iv_username: creds ? creds.encryption_iv_username : nb(editingLoan.encryption_iv_username), encryption_salt: creds ? creds.encryption_salt : nb(editingLoan.encryption_salt) }).eq("id", editingLoan.id).eq("company_id", companyId);
   if (loanErr) { showToast("Error updating loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan updated: ${form.lender_name}`);
   logAudit("update", "loans", `Loan updated: ${form.lender_name} ${formatCurrency(form.original_amount)}`, editingLoan.id, userProfile?.email, userRole, companyId);
   } else {
-  const insPayload = { ...payload, company_id: companyId }; delete insPayload.username; delete insPayload.password;
+  // No creds -> write NULLs, not the '' column default (which fails the constraint).
+  const insPayload = { ...payload, company_id: companyId,
+    username_encrypted: creds ? creds.username_encrypted : null,
+    password_encrypted: creds ? creds.password_encrypted : null,
+    encryption_iv: creds ? creds.encryption_iv : null,
+    encryption_iv_username: creds ? creds.encryption_iv_username : null,
+    encryption_salt: creds ? creds.encryption_salt : null };
+  delete insPayload.username; delete insPayload.password;
   const { error: loanErr } = await supabase.from("property_loans").insert([insPayload]);
   if (loanErr) { showToast("Error saving loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan added: ${form.lender_name} — ${formatCurrency(form.original_amount)}`);
@@ -143,7 +161,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     escrow_included: portfolioForm.escrow_included, escrow_amount: portfolioForm.escrow_included ? Number(portfolioForm.escrow_amount || 0) : 0,
     status: portfolioForm.status, notes: portfolioForm.notes || "", website: portfolioForm.website || "",
   };
-  if (portfolioForm.username || portfolioForm.password) {
+  if (portfolioForm.username && portfolioForm.password) {
     try {
       const resU = await encryptCredential(portfolioForm.username || "", companyId);
       const resP = await encryptCredential(portfolioForm.password || "", companyId, resU.salt);
@@ -220,7 +238,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Wells Fargo" value={form.lender_name} onChange={e => setForm({ ...form, lender_name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })}>
-  <option value="Conventional">Conventional</option><option value="FHA">FHA</option><option value="VA">VA</option><option value="DSCR">DSCR</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
+  {loanTypeOptions(form.loan_type).map(t => <option key={t} value={t}>{t}</option>)}
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
@@ -331,7 +349,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Kiavi Portfolio" value={portfolioForm.lender_name} onChange={e => setPortfolioForm({ ...portfolioForm, lender_name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={portfolioForm.loan_type} onChange={e => setPortfolioForm({ ...portfolioForm, loan_type: e.target.value })}>
-  <option value="Conventional">Conventional</option><option value="DSCR">DSCR</option><option value="Portfolio">Portfolio</option><option value="Blanket">Blanket</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
+  {loanTypeOptions(portfolioForm.loan_type).map(t => <option key={t} value={t}>{t}</option>)}
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="1000000" type="number" value={portfolioForm.original_amount} onChange={e => setPortfolioForm({ ...portfolioForm, original_amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="950000" type="number" value={portfolioForm.current_balance} onChange={e => setPortfolioForm({ ...portfolioForm, current_balance: e.target.value })} /></div>

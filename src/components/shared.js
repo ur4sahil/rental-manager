@@ -88,11 +88,18 @@ export function Spinner() {
 export function Modal({ title, onClose, children, labelledBy }) {
   const panelRef = React.useRef(null);
   const titleId = React.useRef("modal-title-" + Math.random().toString(36).slice(2, 9)).current;
+  // Keep the latest onClose in a ref so the keydown listener never has to
+  // re-subscribe (and the focus effect never has to re-run) when a caller
+  // passes a new inline onClose each render.
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
 
+  // Initial focus + restore-on-close — MOUNT ONLY. This used to depend on
+  // [onClose]; callers pass an inline onClose (a fresh function reference every
+  // render), so it re-ran on EVERY keystroke and re-focused the first field,
+  // yanking the caret out mid-type ("the cursor vanishes while typing" bug).
+  // Focus once on open; restore once on close.
   React.useEffect(() => {
-    // Remember where focus was so it can be restored on close --
-    // otherwise focus falls back to <body> and keyboard users lose
-    // their place in the page.
     const restoreTo = document.activeElement;
     const panel = panelRef.current;
     if (panel) {
@@ -101,9 +108,13 @@ export function Modal({ title, onClose, children, labelledBy }) {
       );
       (first || panel).focus({ preventScroll: true });
     }
+    return () => { if (restoreTo && typeof restoreTo.focus === "function") restoreTo.focus({ preventScroll: true }); };
+  }, []);
 
+  // Escape-to-close + Tab focus-trap. Stable listener (reads onClose via ref).
+  React.useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === "Escape") { e.stopPropagation(); onClose && onClose(); return; }
+      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current && onCloseRef.current(); return; }
       if (e.key !== "Tab" || !panelRef.current) return;
       // Focus trap. Without it Tab leaves the dialog and lands on the
       // page behind, which is both an accessibility failure and a way
@@ -116,13 +127,9 @@ export function Modal({ title, onClose, children, labelledBy }) {
       if (e.shiftKey && document.activeElement === firstEl) { e.preventDefault(); lastEl.focus(); }
       else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); firstEl.focus(); }
     }
-
     document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-      if (restoreTo && typeof restoreTo.focus === "function") restoreTo.focus({ preventScroll: true });
-    };
-  }, [onClose]);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, []);
 
   return (
   <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"

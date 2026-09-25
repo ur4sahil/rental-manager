@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
-import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
+import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -2174,7 +2174,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Loan Type</label>
                       <Select value={loan.loan_type} onChange={e => setLoan({ ...loan, loan_type: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
-                        {["Conventional", "FHA", "VA", "USDA", "ARM", "Interest-Only", "HELOC", "Commercial", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                        {loanTypeOptions(loan.loan_type).map(t => <option key={t} value={t}>{t}</option>)}
                       </Select>
                     </div>
                   </div>

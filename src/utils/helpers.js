@@ -142,6 +142,13 @@ export function shortId() {
 
 // Generate secure random ID (better than Date.now + Math.random)
 export const CLASS_COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+// Single source of truth for loan types across the Loans page, the property
+// wizard, and portfolio loans. Previously each had its own list, so a type
+// picked in one (e.g. ARM) had no matching <option> in another and the select
+// silently displayed the first item ("Conventional"). Render with the stored
+// value injected first so any legacy/foreign value still shows as itself.
+export const LOAN_TYPES = ["Conventional","FHA","VA","USDA","ARM","DSCR","Interest-Only","Hard Money","HELOC","Commercial","Portfolio","Blanket","Other"];
+export const loanTypeOptions = (current) => [...new Set([current, ...LOAN_TYPES].filter(Boolean))];
 export const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
 export const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
 export function pickColor(str) {
