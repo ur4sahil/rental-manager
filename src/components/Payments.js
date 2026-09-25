@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, PageHeader, DataTable, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel, fmtDate} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate, propertyLabel, fmtDate, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -403,9 +403,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="mt-2 flex items-center justify-between">
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
-  <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>
-  <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</Btn>
-  <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>
+  {canManage(userRole) && <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>}
+  {canManage(userRole) && <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</Btn>}
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>}
   </div>
   </div>
   </div>

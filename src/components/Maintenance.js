@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE, fmtDate} from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE, fmtDate, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -495,7 +495,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {w.status === "open" && <Btn variant="purple" size="xs" onClick={() => updateStatus(w, "in_progress")}>▶ In Progress</Btn>}
   {w.status === "in_progress" && <TextLink tone="positive" size="xs" underline={false} onClick={() => updateStatus(w, "completed")} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</TextLink>}
   {w.status === "completed" && <TextLink tone="neutral" size="xs" underline={false} onClick={() => updateStatus(w, "open")} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</TextLink>}
-  {w.tenant && <TextLink tone="danger" size="xs" underline={false} onClick={() => billTenantForWO(w)} className="border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</TextLink>}
+  {w.tenant && canManage(userRole) && <TextLink tone="danger" size="xs" underline={false} onClick={() => billTenantForWO(w)} className="border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</TextLink>}
   <Btn variant="purple" size="xs" onClick={() => openPhotos(w)}>📸 Photos</Btn>
   <Btn variant="secondary" size="xs" onClick={() => startEdit(w)}>✏️ Edit</Btn>
   </div>
@@ -1033,7 +1033,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {v.notes && <div className="text-xs text-neutral-400 mb-2">{v.notes}</div>}
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEditVendor(v)}>Edit</Btn>
-  <Btn variant="danger" size="xs" onClick={() => deleteVendor(v.id, v.name)}>Delete</Btn>
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => deleteVendor(v.id, v.name)}>Delete</Btn>}
   <div className="flex items-center gap-0.5 ml-2">
   {[1,2,3,4,5].map(star => (
   <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-warn-400" : "text-neutral-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor} from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
@@ -792,7 +792,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     setShowAccountForm(true);
     const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
   }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
-  <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
+  {canManage(userRole) && <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>}
   </div>
   </div>
   ))}
@@ -808,7 +808,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {fmtDate(bill.due_date, "—")}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && bill.responsibility !== "condo_fee" && payablePortalFor(bill.provider_display || bill.provider) && (<>
+  {canManage(userRole) && ["pending_review", "partial"].includes(bill.status) && bill.responsibility !== "tenant" && bill.responsibility !== "condo_fee" && payablePortalFor(bill.provider_display || bill.provider) && (<>
   <Btn variant="positive" size="sm" onClick={() => payBillViaPortal(bill)}>Pay this bill</Btn>
   {/* Pay by card in the streamed secure browser: the person enters the card on
       the provider's own page; PropManager never holds it. */}
@@ -1149,7 +1149,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       // tableMenu) so the table's horizontal scroll container cannot clip it.
       { key: "actions", label: "Actions", width: 210, align: "right", className: "whitespace-nowrap", render: u => (
         <div className="flex items-center justify-end gap-2.5">
-        {payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
+        {canManage(userRole) && payablePortalFor(u.provider_display || u.provider) && u.status !== "paid" && u.status !== "settled" && u.status !== "excluded" && u.responsibility !== "condo_fee" && (
           (u.responsibility !== "tenant" || userRole === "admin")
             ? <TextLink tone="brand" size="xs" onClick={() => setPayingBill({ ...u, due: u.due || u.due_date })}>Pay online</TextLink>
             : <span className="text-2xs text-neutral-300 cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Pay online</span>

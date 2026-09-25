@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
-import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest , pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
+import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest, canManage, pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -4543,9 +4543,9 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
       the property flips to occupied on its own the moment the tenant is
       saved; this flag only tells the wizard which steps to show. */}
   {!isReadOnly(p) && p.status === "vacant" && <TextLink tone="positive" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: true, addingTenant: true, tenant: "", rent: 0, isNew: false, startAtStep: "tenant_lease" }); }}>Add Tenant</TextLink>}
-  {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)}>Deactivate</TextLink>}
+  {!isReadOnly(p) && canManage(userRole) && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)}>Deactivate</TextLink>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)}>Reactivate</TextLink>}
-  {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
+  {!isReadOnly(p) && canManage(userRole) && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
   {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)}>Request Delete</TextLink>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>Assign PM</TextLink>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" onClick={() => removePM(p)}>Remove PM</TextLink>}
@@ -4583,9 +4583,9 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
           {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
             {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
             {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
-            {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)} className="mr-2">Deactivate</TextLink>}
+            {!isReadOnly(p) && canManage(userRole) && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)} className="mr-2">Deactivate</TextLink>}
             {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)} className="mr-2">Reactivate</TextLink>}
-            {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
+            {!isReadOnly(p) && canManage(userRole) && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
             {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
             {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" className="mr-2" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>PM</TextLink>}
             {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" className="mr-2" onClick={() => removePM(p)}>-PM</TextLink>}

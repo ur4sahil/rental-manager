@@ -148,6 +148,13 @@ export const CLASS_COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","
 // silently displayed the first item ("Conventional"). Render with the stored
 // value injected first so any legacy/foreign value still shows as itself.
 export const LOAN_TYPES = ["Conventional","FHA","VA","USDA","ARM","DSCR","Interest-Only","Hard Money","HELOC","Commercial","Portfolio","Blanket","Other"];
+// Management tier: who may run destructive / financial actions (Delete, Void,
+// Terminate, Pay, Archive, Disable). Mirrors the DB gate in migration
+// 20260925010000 (is_management_tier). office_assistant and lower are excluded.
+// The DB trigger is the real enforcement; this hides the buttons so those roles
+// never see an action they can't complete.
+export const MANAGEMENT_ROLES = ["admin", "owner", "pm", "manager"];
+export const canManage = (role) => MANAGEMENT_ROLES.includes(role);
 export const loanTypeOptions = (current) => [...new Set([current, ...LOAN_TYPES].filter(Boolean))];
 export const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
 export const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;

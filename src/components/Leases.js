@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue, fmtDate, fmtDateTime } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue, fmtDate, fmtDateTime, canManage } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -369,7 +369,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
   <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn></div>
+  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>{canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}</div>
   </div>
   ); })}
   </div>
@@ -522,7 +522,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</Btn>
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
-  {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
+  {l.status === "active" && canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
   <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
   <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (

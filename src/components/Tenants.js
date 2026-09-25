@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import TenantPage from "./TenantPage";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel, fmtDate, fmtDateTime, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1926,7 +1926,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Btn variant="notice" size="sm" onClick={() => setBulkAction("notice")}>Send Notice</Btn>
   <Btn variant="info" size="sm" onClick={() => setBulkAction("charge")}>Add Charge</Btn>
   <Btn variant="purple" size="sm" onClick={() => setBulkAction("status")}>Change Status</Btn>
-  <Btn variant="danger" size="sm" onClick={() => setBulkAction("archive")}>Delete</Btn>
+  {canManage(userRole) && <Btn variant="danger" size="sm" onClick={() => setBulkAction("archive")}>Delete</Btn>}
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTenants(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</TextLink>
   </div>
   </div>

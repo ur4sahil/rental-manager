@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -912,7 +912,7 @@ export function AcctStatusBadge({ status }) {
 // user has everything entered they typically reclassify OBE into
 // Owner's Equity / Retained Earnings via a second JE; the
 // post-state view surfaces that next step.
-function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, showToast, showConfirm, onPosted }) {
+function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, userRole, showToast, showConfirm, onPosted }) {
   const [openingDate, setOpeningDate] = useState(() => {
     const d = new Date(new Date().getFullYear() - 1, 11, 31);
     return formatLocalDate(d);
@@ -1062,7 +1062,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
         </div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={() => { /* nav handled by parent tab */ }} title="Opens the Journal Entries tab via the usual sidebar click">View journal entry →</Btn>
-          <Btn variant="danger" onClick={handleVoid}>Void</Btn>
+          {canManage(userRole) && <Btn variant="danger" onClick={handleVoid}>Void</Btn>}
         </div>
       </div>
     );
@@ -1156,7 +1156,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
 }
 
 // --- Chart of Accounts Sub-Page ---
-export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger, showToast, companyId }) {
+export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger, showToast, companyId, userRole }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
@@ -1308,7 +1308,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
         render: a => (<>
           <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openEdit(a); }}  title="Edit account"><span className="material-icons-outlined text-sm">edit</span></TextLink>
             <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }}  title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</TextLink>
-            {onDelete && a.computedBalance === 0 && <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onDelete(a.id); }}  title="Delete account"><span className="material-icons-outlined text-sm">delete</span></TextLink>}
+            {onDelete && canManage(userRole) && a.computedBalance === 0 && <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onDelete(a.id); }}  title="Delete account"><span className="material-icons-outlined text-sm">delete</span></TextLink>}
         </>) },
     ]}
     rows={accts}
@@ -1611,7 +1611,7 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   );
 }
 
-export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, onReverse, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
+export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, onReverse, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail, userRole }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -1681,7 +1681,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   return (
   <div className="space-y-4">
   <PageHeader size="section" title="Journal Entries" subtitle="Record and manage financial transactions">
-  <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>
+  {canManage(userRole) && <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>}
   </PageHeader>
   {/* Filter row — flex-wrap so mobile can stack the property Select +
       date pickers below the status pills instead of overlapping them.
@@ -1744,8 +1744,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
         render: je => (<>
           <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
             {je.status === "draft" && <Btn onClick={() => onPost(je.id)} variant="success" size="sm">Post</Btn>}
-            {je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
-            {je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => onReverse(je.id)}>Reverse</Btn>}
+            {je.status === "posted" && canManage(userRole) && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
+            {je.status === "posted" && onReverse && canManage(userRole) && <Btn variant="slate" size="sm" onClick={() => onReverse(je.id)}>Reverse</Btn>}
             {je.status !== "voided" && <TextLink tone="brand" size="xs" onClick={() => openEdit(je)}>Edit</TextLink>}
             <TextLink tone="neutral" size="xs" onClick={() => openDuplicate(je)}>Duplicate</TextLink>
             </div>
@@ -1845,8 +1845,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
       dumped the user on the journal list instead of the ledger they
       came from. */}
   {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Post</Btn>}
-  {modal.je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Void</Btn>}
-  {modal.je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Reverse</Btn>}
+  {modal.je.status === "posted" && canManage(userRole) && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Void</Btn>}
+  {modal.je.status === "posted" && onReverse && canManage(userRole) && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Reverse</Btn>}
   {modal.je.status !== "voided" && <Btn variant="slate" size="sm" onClick={() => openEdit(modal.je)}>Edit</Btn>}
   <Btn variant="slate" size="sm" onClick={() => { openDuplicate(modal.je); }}>Duplicate</Btn>
   </div>
@@ -6194,10 +6194,10 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   )}
 
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
-  {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
+  {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
-  {activeTab === "coa" && <AcctChartOfAccounts companyId={companyId} accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} />}
+  {activeTab === "coa" && <AcctChartOfAccounts companyId={companyId} accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} userRole={userRole} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} userRole={userRole} />}
   {activeTab === "bankimport" && <BankTransactions onOpenRegister={openLedger} linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={openLedger} />}

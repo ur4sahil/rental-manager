@@ -1,6 +1,6 @@
 import React from "react";
 import { Btn, TextLink, DetailPanel, DetailRow, DetailCard, DetailAlert } from "../ui";
-import { safeNum, formatCurrency, fmtDate, parseLocalDate } from "../utils/helpers";
+import { safeNum, formatCurrency, fmtDate, parseLocalDate, canManage } from "../utils/helpers";
 
 // The property detail PAGE.
 //
@@ -182,10 +182,10 @@ export default function PropertyPage({
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onAddTenant?.(p)}>Add tenant</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onWorkOrder?.(p)}>Work order</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onUploadDoc?.(p)}>Upload doc</Btn>
-              {!readOnly && userRole === "admin" && p.status !== "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-warn-600" onClick={() => onDeactivate?.(p)}>Deactivate</Btn>}
-              {!readOnly && userRole === "admin" && p.status === "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-positive-600" onClick={() => onReactivate?.(p)}>Reactivate</Btn>}
-              {!readOnly && userRole === "admin" && <Btn variant="secondary" size="sm" className="w-full justify-center text-danger-600" onClick={() => onDelete?.(p)}>Delete</Btn>}
-              {!readOnly && userRole !== "admin" && <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onRequestDelete?.(p)}>Request Delete</Btn>}
+              {!readOnly && canManage(userRole) && p.status !== "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-warn-600" onClick={() => onDeactivate?.(p)}>Deactivate</Btn>}
+              {!readOnly && canManage(userRole) && p.status === "inactive" && <Btn variant="secondary" size="sm" className="w-full justify-center text-positive-600" onClick={() => onReactivate?.(p)}>Reactivate</Btn>}
+              {!readOnly && canManage(userRole) && <Btn variant="secondary" size="sm" className="w-full justify-center text-danger-600" onClick={() => onDelete?.(p)}>Delete</Btn>}
+              {!readOnly && !canManage(userRole) && <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onRequestDelete?.(p)}>Request Delete</Btn>}
             </div>
           </DetailPanel>
         </div>

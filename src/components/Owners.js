@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -370,8 +370,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(owner)}>Edit</Btn>
   <Btn variant="secondary" size="xs" onClick={() => setShowStatementGen(owner)}>Generate Statement</Btn>
-  <Btn variant="secondary" size="xs" onClick={() => { setShowDistForm(owner); setDistForm({ amount: "", method: owner.payment_method || "check", reference: "", notes: "" }); }}>Pay Owner</Btn>
-  <Btn variant="danger" size="xs" onClick={() => archiveOwner(owner)}>Archive</Btn>
+  {canManage(userRole) && <Btn variant="secondary" size="xs" onClick={() => { setShowDistForm(owner); setDistForm({ amount: "", method: owner.payment_method || "check", reference: "", notes: "" }); }}>Pay Owner</Btn>}
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => archiveOwner(owner)}>Archive</Btn>}
   </div>
   </div>
   );
@@ -409,7 +409,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   <div><label className="text-xs text-neutral-400 block mb-1">Reference #</label><Input value={distForm.reference} onChange={e => setDistForm({...distForm, reference: e.target.value})} placeholder="Check # or ACH ref" /></div>
   <div><label className="text-xs text-neutral-400 block mb-1">Notes</label><Input value={distForm.notes} onChange={e => setDistForm({...distForm, notes: e.target.value})} /></div>
-  <Btn onClick={() => payOwner(showDistForm)} className="w-full">Process Distribution</Btn>
+  {canManage(userRole) && <Btn onClick={() => payOwner(showDistForm)} className="w-full">Process Distribution</Btn>}
   </div>
   </Modal>
   )}

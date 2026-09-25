@@ -2,7 +2,7 @@ import React from "react";
 import { Btn, TextLink, Select, DetailPanel, DetailRow, DetailCard, DetailAlert } from "../ui";
 import {
   safeNum, formatCurrency, fmtDate, splitParties, sharedContacts, initialsFor,
-  REQUIRED_TENANT_DOCS, DOC_TYPES, isRequiredDocMet, parseLocalDate,
+  REQUIRED_TENANT_DOCS, DOC_TYPES, isRequiredDocMet, parseLocalDate, canManage,
 } from "../utils/helpers";
 
 // The tenant detail PAGE.
@@ -198,7 +198,7 @@ export default function TenantPage({
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onInvite?.(tenant)}>Send invite</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onMoveOut?.(tenant)}>Move-out</Btn>
               <Btn variant="secondary" size="sm" className="w-full justify-center" onClick={() => onAddEntry?.(tenant)}>Add entry</Btn>
-              <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onArchive?.(tenant)}>Archive tenant</Btn>
+              {canManage(userRole) && <Btn variant="secondary" size="sm" className="w-full justify-center col-span-2 text-danger-600" onClick={() => onArchive?.(tenant)}>Archive tenant</Btn>}
             </div>
           </DetailPanel>
         </div>
