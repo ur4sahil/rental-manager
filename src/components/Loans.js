@@ -25,8 +25,24 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const [editingPortfolio, setEditingPortfolio] = useState(null);
   const [portfolioForm, setPortfolioForm] = useState(emptyPortfolioForm);
   const [pfPropToAdd, setPfPropToAdd] = useState("");
+  // Attach the loan form's property to a portfolio (blanket) loan.
+  const [loanPortfolioId, setLoanPortfolioId] = useState("");
+  const [origLoanPortfolioId, setOrigLoanPortfolioId] = useState("");
 
   useEffect(() => { fetchLoans(); fetchPortfolioLoans(); }, [companyId]);
+
+  // Load the current portfolio attachment for whichever property the loan form
+  // is on, so the dropdown reflects reality and save can detach/attach.
+  useEffect(() => {
+    if (!showForm || !form.property) { setLoanPortfolioId(""); setOrigLoanPortfolioId(""); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("portfolio_loan_properties").select("portfolio_loan_id")
+        .eq("company_id", companyId).eq("property", form.property).maybeSingle();
+      if (!cancelled) { const id = data?.portfolio_loan_id || ""; setLoanPortfolioId(id); setOrigLoanPortfolioId(id); }
+    })();
+    return () => { cancelled = true; };
+  }, [showForm, form.property, companyId]);
 
   async function fetchLoans() {
   const { data } = await supabase.from("property_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
@@ -86,8 +102,19 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   addNotification("🏦", `Loan added: ${form.lender_name} — ${formatCurrency(form.original_amount)}`);
   logAudit("create", "loans", `Loan added: ${form.lender_name} ${formatCurrency(form.original_amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
   }
+  // Attach/detach this property to the chosen portfolio (blanket) loan.
+  if (loanPortfolioId !== origLoanPortfolioId && form.property) {
+    if (origLoanPortfolioId) {
+      await supabase.from("portfolio_loan_properties").delete().eq("company_id", companyId).eq("portfolio_loan_id", origLoanPortfolioId).eq("property", form.property);
+    }
+    if (loanPortfolioId) {
+      await supabase.from("portfolio_loan_properties").upsert({ company_id: companyId, portfolio_loan_id: loanPortfolioId, property: form.property }, { onConflict: "portfolio_loan_id,property" });
+    }
+    fetchPortfolioLoans();
+  }
   setShowForm(false);
   setEditingLoan(null);
+  setLoanPortfolioId(""); setOrigLoanPortfolioId("");
   setForm({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active", website: "", username: "", password: "" });
   fetchLoans();
   } finally { guardRelease("saveLoan"); }
@@ -260,6 +287,15 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
   </>
   )}
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1">
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Covered by a portfolio loan?</label>
+  <Select value={loanPortfolioId} onChange={e => { if (e.target.value === "__new__") { setShowForm(false); setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); } else setLoanPortfolioId(e.target.value); }}>
+  <option value="">No — its own loan (or none)</option>
+  {portfolioLoans.map(pl => <option key={pl.id} value={pl.id}>{pl.lender_name} — {formatCurrency(pl.current_balance)}</option>)}
+  <option value="__new__">+ New portfolio loan…</option>
+  </Select>
+  <p className="text-xs text-neutral-400 mt-1">A portfolio (blanket) loan spans several properties. Attach this property to one, or create a new one.</p>
+  </div>
   <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" autoComplete="off" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>

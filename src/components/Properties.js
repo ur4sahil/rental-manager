@@ -334,6 +334,32 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const [portfolioLoans, setPortfolioLoans] = useState([]);
   const [portfolioLoanId, setPortfolioLoanId] = useState("");
   const [origPortfolioLoanId, setOrigPortfolioLoanId] = useState("");
+  // Inline "create a new portfolio loan" without leaving the wizard.
+  const [newPortfolio, setNewPortfolio] = useState({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "" });
+  const [showNewPortfolio, setShowNewPortfolio] = useState(false);
+  const [savingPortfolio, setSavingPortfolio] = useState(false);
+  async function createPortfolioLoan() {
+    if (savingPortfolio) return;
+    if (!newPortfolio.lender_name.trim() || !newPortfolio.original_amount) { showToast("Portfolio loan needs a lender name and original amount.", "error"); return; }
+    setSavingPortfolio(true);
+    try {
+      const { data, error } = await supabase.from("portfolio_loans").insert([{
+        company_id: companyId,
+        lender_name: newPortfolio.lender_name.trim(),
+        original_amount: Number(newPortfolio.original_amount) || 0,
+        current_balance: Number(newPortfolio.current_balance || newPortfolio.original_amount) || 0,
+        interest_rate: Number(newPortfolio.interest_rate || 0),
+        monthly_payment: Number(newPortfolio.monthly_payment || 0),
+        status: "active",
+      }]).select("id, lender_name, current_balance").single();
+      if (error) { showToast("Couldn't create portfolio loan: " + error.message, "error"); return; }
+      setPortfolioLoans(prev => [...prev, data].sort((a, b) => (a.lender_name || "").localeCompare(b.lender_name || "")));
+      setPortfolioLoanId(data.id);
+      setShowNewPortfolio(false);
+      setNewPortfolio({ lender_name: "", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "" });
+      showToast("Portfolio loan created and selected.", "success");
+    } finally { setSavingPortfolio(false); }
+  }
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
@@ -2138,16 +2164,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
-              {portfolioLoans.length > 0 && (
-                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
-                  <label className="text-xs font-medium text-neutral-500 block mb-1">Covered by a portfolio loan?</label>
-                  <Select value={portfolioLoanId} onChange={e => setPortfolioLoanId(e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
-                    <option value="">No — its own loan (or none)</option>
-                    {portfolioLoans.map(pl => <option key={pl.id} value={pl.id}>{pl.lender_name} — {formatCurrency(pl.current_balance)}</option>)}
-                  </Select>
-                  <p className="text-xs text-neutral-400 mt-1">A portfolio loan spans several properties. Its details live in the Loans page; here you just attach this property to it.</p>
-                </div>
-              )}
+              <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Covered by a portfolio loan?</label>
+                <Select value={portfolioLoanId} onChange={e => { if (e.target.value === "__new__") { setShowNewPortfolio(true); } else { setPortfolioLoanId(e.target.value); setShowNewPortfolio(false); } }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                  <option value="">No — its own loan (or none)</option>
+                  {portfolioLoans.map(pl => <option key={pl.id} value={pl.id}>{pl.lender_name} — {formatCurrency(pl.current_balance)}</option>)}
+                  <option value="__new__">+ Create a new portfolio loan…</option>
+                </Select>
+                <p className="text-xs text-neutral-400 mt-1">A portfolio (blanket) loan spans several properties. Pick one to attach this property to it, or create one right here.</p>
+                {showNewPortfolio && (
+                  <div className="mt-3 pt-3 border-t border-neutral-200 grid grid-cols-2 gap-2">
+                    <div className="col-span-2"><label className="text-xs font-medium text-neutral-500 block mb-1">Lender Name *</label><Input type="text" value={newPortfolio.lender_name} onChange={e => setNewPortfolio({ ...newPortfolio, lender_name: e.target.value })} placeholder="e.g. Kiavi Portfolio" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Original Amount ($) *</label><MoneyInput value={newPortfolio.original_amount} onChange={v => setNewPortfolio({ ...newPortfolio, original_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Current Balance ($)</label><MoneyInput value={newPortfolio.current_balance} onChange={v => setNewPortfolio({ ...newPortfolio, current_balance: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Interest Rate (%)</label><Input type="number" step="0.01" value={newPortfolio.interest_rate} onChange={e => setNewPortfolio({ ...newPortfolio, interest_rate: e.target.value })} placeholder="7.25" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Payment ($)</label><MoneyInput value={newPortfolio.monthly_payment} onChange={v => setNewPortfolio({ ...newPortfolio, monthly_payment: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div className="col-span-2 flex gap-2"><Btn size="sm" variant="success-fill" onClick={createPortfolioLoan} disabled={savingPortfolio}>{savingPortfolio ? "Creating…" : "Create portfolio loan"}</Btn><Btn size="sm" variant="secondary" onClick={() => { setShowNewPortfolio(false); }}>Cancel</Btn></div>
+                  </div>
+                )}
+              </div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!loan.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLoan({ ...loan, enabled: !loan.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
