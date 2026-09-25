@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
+import { Input, MoneyInput, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -356,7 +356,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   )}
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($)</label>
-  <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+  <MoneyInput value={amount} onChange={v => setAmount(v)} />
   </div>
   <div className="grid grid-cols-2 gap-3">
   <div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
+import { Input, MoneyInput, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -135,11 +135,11 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider *</label><Input placeholder="e.g. State Farm" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Policy Number</label><Input placeholder="Policy #" value={form.policy_number} onChange={e => setForm({ ...form, policy_number: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Premium Amount ($) *</label><Input placeholder="1200" type="number" value={form.premium_amount} onChange={e => setForm({ ...form, premium_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Premium Amount ($) *</label><MoneyInput placeholder="1200" value={form.premium_amount} onChange={v => setForm({ ...form, premium_amount: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Premium Frequency</label><Select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })}>
   <option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Annual">Annual</option>
   </Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Coverage Amount ($)</label><MoneyInput placeholder="300000" value={form.coverage_amount} onChange={v => setForm({ ...form, coverage_amount: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Insurance Portal Login (encrypted)</p>

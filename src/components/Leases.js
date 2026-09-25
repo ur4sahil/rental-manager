@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
+import { Btn, Checkbox, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue, fmtDate, fmtDateTime, canManage } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
@@ -408,7 +408,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
   <div className="space-y-3">
   <div className="bg-highlight-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
-  <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
+  <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><MoneyInput value={depositForm.amount_returned} onChange={v => setDepositForm({...depositForm, amount_returned: v})} placeholder={String(showDepositModal.security_deposit)} /></div>
   <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} /></div>
   <div><label className="text-xs text-neutral-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
@@ -464,8 +464,8 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div><label className="text-xs text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Lease Start *</label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Lease End *</label><Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Security Deposit ($)</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Monthly Rent ($) *</label><MoneyInput min="0" placeholder="1500.00" value={form.rent_amount} onChange={v => setForm({...form, rent_amount: v})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Security Deposit ($)</label><MoneyInput min="0" placeholder="1500.00" value={form.security_deposit} onChange={v => setForm({...form, security_deposit: v})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Lease Type</label>
@@ -478,7 +478,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div className="grid grid-cols-3 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-warn-200 bg-white" /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-warn-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-warn-200 bg-white" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><MoneyInput min="0" placeholder="50.00" value={form.late_fee_amount} onChange={v => setForm({...form, late_fee_amount: v})} className="border-warn-200 bg-white" /></div>
   </div>
   <p className="text-xs text-warn-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
@@ -543,7 +543,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div className="flex justify-between"><span className="text-neutral-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
   <div className="flex justify-between"><span className="text-neutral-400">Property:</span><span>{showRentIncrease.property}</span></div>
   </div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">New Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">New Monthly Rent ($) *</label><MoneyInput min="0" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={v => setRentIncreaseForm({...rentIncreaseForm, new_amount: v})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
   {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (

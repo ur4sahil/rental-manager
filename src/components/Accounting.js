@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
+import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
@@ -269,7 +269,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><MoneyInput value={form.amount} onChange={v => setForm({...form, amount: v})} /></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="31" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /><div className="text-2xs text-subtle-400 mt-1">In months with fewer days (e.g. Feb), posts on the last available day.</div></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {propertyLabel(t.property)}</option>)}</Select></div>
   <div><label className="text-xs text-subtle-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
@@ -283,7 +283,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   {form.late_fee_enabled && (
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs text-subtle-500 mb-1 block">Grace Period (days)</label><Input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Late Fee ($)</label><Input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Late Fee ($)</label><MoneyInput value={form.late_fee_amount} onChange={v => setForm({...form, late_fee_amount: v})} /></div>
   </div>
   )}
   </div>
@@ -6810,7 +6810,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       )}
     </div>
   </div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><MoneyInput value={bankBalance} onChange={v => setBankBalance(v)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><Btn className="w-full whitespace-nowrap" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
   </div>
   </div>

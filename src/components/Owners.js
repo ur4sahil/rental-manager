@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
+import { Input, MoneyInput, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -485,7 +485,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {showDistForm && (
   <Modal title={"Pay Owner — " + showDistForm.name} onClose={() => setShowDistForm(null)}>
   <div className="space-y-3">
-  <div><label className="text-xs text-neutral-400 block mb-1">Amount ($) *</label><Input type="number" value={distForm.amount} onChange={e => setDistForm({...distForm, amount: e.target.value})} placeholder="0.00" /></div>
+  <div><label className="text-xs text-neutral-400 block mb-1">Amount ($) *</label><MoneyInput value={distForm.amount} onChange={v => setDistForm({...distForm, amount: v})} placeholder="0.00" /></div>
   <div><label className="text-xs text-neutral-400 block mb-1">Method</label>
   <Select value={distForm.method} onChange={e => setDistForm({...distForm, method: e.target.value})}>
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>

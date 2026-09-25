@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, FileInput, Input, PageHeader, Select, Textarea, EmptyState} from "../ui";
+import { Btn, FileInput, Input, MoneyInput, PageHeader, Select, Textarea, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue, escapeFilterValue, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -812,7 +812,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <label className="text-xs text-neutral-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-neutral-400">$</span>
-  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-lg pl-7 pr-3 py-2.5 text-lg tnum" placeholder="0.00" min="0" max="999999.99" step="0.01" />
+  <MoneyInput value={paymentAmount} onChange={v => setPaymentAmount(v)} className="w-full border border-brand-100 rounded-lg pl-7 pr-3 py-2.5 text-lg tnum" placeholder="0.00" />
   </div>
   <div className="flex gap-2 mt-2">
   <Btn variant="slate" size="xs" onClick={() => setPaymentAmount(String(tenantData.rent || 0))}>Full Rent (${safeNum(tenantData.rent)})</Btn>

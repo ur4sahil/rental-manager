@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
+import { Input, MoneyInput, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, formatPhoneInput} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -232,7 +232,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><MoneyInput placeholder="250.00" value={form.amount} onChange={v => setForm({ ...form, amount: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>

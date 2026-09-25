@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
+import { Btn, Checkbox, Input, MoneyInput, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanTypeOptions} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -240,10 +240,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })}>
   {loanTypeOptions(form.loan_type).map(t => <option key={t} value={t}>{t}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><MoneyInput placeholder="250000" value={form.original_amount} onChange={v => setForm({ ...form, original_amount: v })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><MoneyInput placeholder="230000" value={form.current_balance} onChange={v => setForm({ ...form, current_balance: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Interest Rate (%)</label><Input placeholder="6.5" type="number" step="0.01" value={form.interest_rate} onChange={e => setForm({ ...form, interest_rate: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="1800" type="number" value={form.monthly_payment} onChange={e => setForm({ ...form, monthly_payment: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><MoneyInput placeholder="1800" value={form.monthly_payment} onChange={v => setForm({ ...form, monthly_payment: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Start Date</label><Input type="date" value={form.loan_start_date} onChange={e => setForm({ ...form, loan_start_date: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Maturity Date</label><Input type="date" value={form.maturity_date} onChange={e => setForm({ ...form, maturity_date: e.target.value })} /></div>
@@ -256,7 +256,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </div>
   {form.escrow_included && (
   <>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="350" type="number" value={form.escrow_amount} onChange={e => setForm({ ...form, escrow_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><MoneyInput placeholder="350" value={form.escrow_amount} onChange={v => setForm({ ...form, escrow_amount: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
   </>
   )}
@@ -351,10 +351,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={portfolioForm.loan_type} onChange={e => setPortfolioForm({ ...portfolioForm, loan_type: e.target.value })}>
   {loanTypeOptions(portfolioForm.loan_type).map(t => <option key={t} value={t}>{t}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="1000000" type="number" value={portfolioForm.original_amount} onChange={e => setPortfolioForm({ ...portfolioForm, original_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="950000" type="number" value={portfolioForm.current_balance} onChange={e => setPortfolioForm({ ...portfolioForm, current_balance: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><MoneyInput placeholder="1000000" value={portfolioForm.original_amount} onChange={v => setPortfolioForm({ ...portfolioForm, original_amount: v })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><MoneyInput placeholder="950000" value={portfolioForm.current_balance} onChange={v => setPortfolioForm({ ...portfolioForm, current_balance: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Interest Rate (%)</label><Input placeholder="7.25" type="number" step="0.01" value={portfolioForm.interest_rate} onChange={e => setPortfolioForm({ ...portfolioForm, interest_rate: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="6800" type="number" value={portfolioForm.monthly_payment} onChange={e => setPortfolioForm({ ...portfolioForm, monthly_payment: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><MoneyInput placeholder="6800" value={portfolioForm.monthly_payment} onChange={v => setPortfolioForm({ ...portfolioForm, monthly_payment: v })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={portfolioForm.account_number} onChange={e => setPortfolioForm({ ...portfolioForm, account_number: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status</label><Select value={portfolioForm.status} onChange={e => setPortfolioForm({ ...portfolioForm, status: e.target.value })}><option value="active">Active</option><option value="paid_off">Paid Off</option></Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Start Date</label><Input type="date" value={portfolioForm.loan_start_date} onChange={e => setPortfolioForm({ ...portfolioForm, loan_start_date: e.target.value })} /></div>
@@ -369,7 +369,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={portfolioForm.notes} onChange={e => setPortfolioForm({ ...portfolioForm, notes: e.target.value })} /></div>
   <div className="col-span-2"><label className="flex items-center gap-2 cursor-pointer"><Checkbox checked={portfolioForm.escrow_included} onChange={e => setPortfolioForm({ ...portfolioForm, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-neutral-600">Escrow Included</span></label></div>
-  {portfolioForm.escrow_included && <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="1200" type="number" value={portfolioForm.escrow_amount} onChange={e => setPortfolioForm({ ...portfolioForm, escrow_amount: e.target.value })} /></div>}
+  {portfolioForm.escrow_included && <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><MoneyInput placeholder="1200" value={portfolioForm.escrow_amount} onChange={v => setPortfolioForm({ ...portfolioForm, escrow_amount: v })} /></div>}
   <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={portfolioForm.website || ""} onChange={e => setPortfolioForm({ ...portfolioForm, website: e.target.value })} placeholder="https://..." /></div>

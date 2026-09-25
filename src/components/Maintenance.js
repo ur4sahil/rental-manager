@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
+import { Btn, Checkbox, FilterPill, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue, ACTIVE_LEASE, fmtDate, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1035,7 +1035,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </Select>
   </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Amount ($) *</label><Input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Amount ($) *</label><MoneyInput placeholder="500.00" value={invoiceForm.amount} onChange={v => setInvoiceForm({...invoiceForm, amount: v})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Invoice #</label><Input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Invoice Date</label><Input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} /></div>

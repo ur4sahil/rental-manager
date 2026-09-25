@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
+import { Input, MoneyInput, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1223,8 +1223,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     {/* Editable: a part payment is a real thing, and recording the billed
         figure when a different one left the bank is how the books and the
         statement quietly diverge. */}
-    <Input type="number" step="0.01" value={payForm.amount}
-      onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} />
+    <MoneyInput value={payForm.amount}
+      onChange={v => setPayForm(f => ({ ...f, amount: v }))} />
   </div>
   <div>
     <label className="text-xs font-medium text-neutral-500 block mb-1">Date paid</label>

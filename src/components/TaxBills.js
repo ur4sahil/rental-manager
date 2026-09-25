@@ -3,7 +3,7 @@
 // page lives under Properties in the sidebar nav.
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink, DataTable} from "../ui";
+import { Input, MoneyInput, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink, DataTable} from "../ui";
 import { formatLocalDate, formatCurrency, parseLocalDate, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -321,7 +321,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
               </div>
               <div>
                 <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Amount paid</label>
-                <Input size="sm" type="number" step="0.01" value={markPaidBill.paidAmount} onChange={e => setMarkPaidBill({ ...markPaidBill, paidAmount: e.target.value })} placeholder="0.00" />
+                <MoneyInput size="sm" value={markPaidBill.paidAmount} onChange={v => setMarkPaidBill({ ...markPaidBill, paidAmount: v })} placeholder="0.00" />
                 <p className="text-2xs text-neutral-400 mt-0.5">Expected {markPaidBill.bill.expected_amount ? formatCurrency(markPaidBill.bill.expected_amount) : "not set"}</p>
               </div>
               <div>
@@ -355,7 +355,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
               </div>
               <div>
                 <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Expected amount</label>
-                <Input size="sm" type="number" step="0.01" value={editBill.expected_amount} onChange={e => setEditBill({ ...editBill, expected_amount: e.target.value })} />
+                <MoneyInput size="sm" value={editBill.expected_amount} onChange={v => setEditBill({ ...editBill, expected_amount: v })} />
               </div>
               {editBill.bill.auto_generated && <p className="text-2xs text-warn-600 border-t border-neutral-100 pt-2">Editing this row detaches it from the auto-generation schedule — future regenerations won't overwrite your changes.</p>}
             </div>

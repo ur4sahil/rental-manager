@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
+import { Input, MoneyInput, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, ACTIVE_LEASE} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -242,7 +242,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days) <span className="text-neutral-300">· suggested</span></label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })}><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"} <span className="text-neutral-300">· suggested</span></label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"} <span className="text-neutral-300">· suggested</span></label><MoneyInput min="0" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={v => setForm({ ...form, fee_amount: v })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveRule}>Save Rule</Btn>

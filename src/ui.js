@@ -308,6 +308,36 @@ export function Input({ className = "", size = "md", ...props }) {
   return <input className={`${base} ${className}`} {...defaults} {...props} />;
 }
 
+// Currency field shown in accounting format (thousands separators + 2 decimals)
+// when idle, and as the plain editable number while focused — so formatting
+// never fights the caret mid-type. Stores/returns the RAW numeric string
+// (no commas); onChange receives that string, not an event. Use for money
+// amounts; NOT for rates/percentages/counts.
+export function MoneyInput({ className = "", size = "md", value, onChange, ...props }) {
+  const [focused, setFocused] = useState(false);
+  const raw = (value === null || value === undefined) ? "" : String(value);
+  const stripped = raw.replace(/,/g, "");
+  const display = (focused || stripped === "" || isNaN(Number(stripped)))
+    ? raw
+    : Number(stripped).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (
+    <Input
+      {...props}
+      type="text"
+      inputMode="decimal"
+      size={size}
+      className={className}
+      value={display}
+      onFocus={(e) => { setFocused(true); props.onFocus && props.onFocus(e); }}
+      onBlur={(e) => { setFocused(false); props.onBlur && props.onBlur(e); }}
+      onChange={(e) => {
+        const v = e.target.value.replace(/,/g, "");
+        if (v === "" || /^\d*\.?\d*$/.test(v)) onChange(v);
+      }}
+    />
+  );
+}
+
 // SELECT_HEIGHT, not padding. A <select> on mobile is drawn by the
 // platform, and mobile Chrome does not honour vertical padding on one the
 // way it does on an <input> -- the filter selects measured ~22px tall on

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
-import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
 import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest, canManage, pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -130,7 +130,7 @@ function LicenseFormModal({ license, propertyId, propertyAddress, companyId, use
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-neutral-400 block mb-1">Fee Paid</label>
-            <Input type="number" step="0.01" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="e.g. 150.00" />
+            <MoneyInput value={form.fee_amount} onChange={v => setForm({ ...form, fee_amount: v })} placeholder="e.g. 150.00" />
           </div>
           <div>
             <label className="text-xs font-medium text-neutral-400 block mb-1">Status</label>
@@ -1882,11 +1882,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent ($) *</label>
-                  <Input type="number" value={tenantForm.rent} onChange={e => setTenantForm({ ...tenantForm, rent: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                  <MoneyInput value={tenantForm.rent} onChange={v => setTenantForm({ ...tenantForm, rent: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Security Deposit ($)</label>
-                  <Input type="number" value={tenantForm.security_deposit} onChange={e => setTenantForm({ ...tenantForm, security_deposit: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                  <MoneyInput value={tenantForm.security_deposit} onChange={v => setTenantForm({ ...tenantForm, security_deposit: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2055,7 +2055,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <Input type="text" value={h.hoa_name} onChange={e => updateHoa(idx, "hoa_name", e.target.value)} placeholder="e.g. Riverside HOA" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="text-xs font-medium text-neutral-500 block mb-1">Amount ($) *</label>
-                  <Input type="number" value={h.amount} onChange={e => updateHoa(idx, "amount", e.target.value)} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  <MoneyInput value={h.amount} onChange={v => updateHoa(idx, "amount", v)} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                   <div><label className="text-xs font-medium text-neutral-500 block mb-1">Due Date (day)</label>
                   <Input type="number" min="1" max="28" value={h.due_date} onChange={e => updateHoa(idx, "due_date", Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                 </div>
@@ -2181,11 +2181,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Original Amount ($)</label>
-                      <Input type="number" value={loan.original_amount} onChange={e => setLoan({ ...loan, original_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput value={loan.original_amount} onChange={v => setLoan({ ...loan, original_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Current Balance ($)</label>
-                      <Input type="number" value={loan.current_balance} onChange={e => setLoan({ ...loan, current_balance: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput value={loan.current_balance} onChange={v => setLoan({ ...loan, current_balance: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -2195,7 +2195,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Payment ($) *</label>
-                      <Input type="number" value={loan.monthly_payment} onChange={e => setLoan({ ...loan, monthly_payment: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput value={loan.monthly_payment} onChange={v => setLoan({ ...loan, monthly_payment: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div className="bg-neutral-50 rounded-xl p-3 space-y-3">
@@ -2207,7 +2207,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                       <div className="space-y-2 pl-6">
                         <div>
                           <label className="text-xs font-medium text-neutral-500 block mb-1">Escrow Amount ($)</label>
-                          <Input type="number" value={loan.escrow_amount} onChange={e => setLoan({ ...loan, escrow_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                          <MoneyInput value={loan.escrow_amount} onChange={v => setLoan({ ...loan, escrow_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
@@ -2385,7 +2385,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
               </div>
               <div>
                 <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($) *</label>
-                <Input type="number" value={recurring.amount} onChange={e => setRecurring({ ...recurring, amount: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                <MoneyInput value={recurring.amount} onChange={v => setRecurring({ ...recurring, amount: v })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -2569,7 +2569,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Premium Amount ($) *</label>
-                      <Input type="number" value={insurance.premium_amount} onChange={e => setInsurance({ ...insurance, premium_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput value={insurance.premium_amount} onChange={v => setInsurance({ ...insurance, premium_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Premium Frequency</label>
@@ -2583,7 +2583,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Coverage Amount ($)</label>
-                      <Input type="number" value={insurance.coverage_amount} onChange={e => setInsurance({ ...insurance, coverage_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput value={insurance.coverage_amount} onChange={v => setInsurance({ ...insurance, coverage_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Expiration Date</label>
@@ -2635,7 +2635,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Annual Tax Amount ($) *</label>
-                      <Input type="number" step="0.01" value={taxes.annual_tax_amount} onChange={e => setTaxes({ ...taxes, annual_tax_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput step="0.01" value={taxes.annual_tax_amount} onChange={v => setTaxes({ ...taxes, annual_tax_amount: v })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Billing Frequency</label>
@@ -2650,7 +2650,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Assessed Value ($)</label>
-                      <Input type="number" step="1" value={taxes.assessed_value} onChange={e => setTaxes({ ...taxes, assessed_value: e.target.value })} placeholder="0" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                      <MoneyInput step="1" value={taxes.assessed_value} onChange={v => setTaxes({ ...taxes, assessed_value: v })} placeholder="0" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Tax Year</label>
