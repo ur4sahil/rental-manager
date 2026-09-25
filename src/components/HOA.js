@@ -267,9 +267,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">HOA's own portal login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" autoComplete="off" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input name="hoa_portal_user" autoComplete="off" value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" name="hoa_portal_pass" autoComplete="new-password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">

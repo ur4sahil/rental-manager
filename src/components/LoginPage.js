@@ -275,11 +275,11 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   )}
   <div className="mb-4">
   <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
-  <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+  <Input type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
   </div>
   <div className="mb-4">
   <label className="text-xs font-medium text-neutral-500 block mb-1">Password</label>
-  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
+  <Input type="password" autoComplete={isSignup ? "new-password" : "current-password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
   </div>
 
   {mode === "signup_tenant" && (

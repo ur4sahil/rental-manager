@@ -2043,9 +2043,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1">
                       <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
                       <div className="grid grid-cols-3 gap-2">
-                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" value={u.website||""} onChange={e => updateUtility(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" value={u.username||""} onChange={e => updateUtility(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" value={u.password||""} onChange={e => updateUtility(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" autoComplete="off" value={u.website||""} onChange={e => updateUtility(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" name="wiz_util_user" autoComplete="off" value={u.username||""} onChange={e => updateUtility(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" name="wiz_util_pass" autoComplete="new-password" value={u.password||""} onChange={e => updateUtility(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                       </div>
                     </div>
                   </div>
@@ -2135,9 +2135,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <div className="border-t border-neutral-100 pt-2 mt-1">
                   <p className="text-xs text-neutral-400 mb-2">HOA's own portal login (encrypted)</p>
                   <div className="grid grid-cols-3 gap-2">
-                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" value={h.website||""} onChange={e => updateHoa(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" value={h.username||""} onChange={e => updateHoa(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" value={h.password||""} onChange={e => updateHoa(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><Input type="url" autoComplete="off" value={h.website||""} onChange={e => updateHoa(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><Input type="text" name="wiz_hoa_user" autoComplete="off" value={h.username||""} onChange={e => updateHoa(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><Input type="password" name="wiz_hoa_pass" autoComplete="new-password" value={h.password||""} onChange={e => updateHoa(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                   </div>
                 </div>
               </div>
