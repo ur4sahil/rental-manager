@@ -105,6 +105,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // === Utility Automation ===
   const [utilTab, setUtilTab] = useState("bills"); // bills / automation / jobs
   const [utilAccounts, setUtilAccounts] = useState([]);
+  const [accountSearch, setAccountSearch] = useState("");
   const [autoBills, setAutoBills] = useState([]);
   const [autoJobs, setAutoJobs] = useState([]);
   const [providers, setProviders] = useState([]);
@@ -667,6 +668,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   if (loading) return <Spinner />;
 
+  // Accounts-tab search: match property, provider, account number, or type.
+  const acctQuery = accountSearch.trim().toLowerCase();
+  const filteredAccounts = !acctQuery ? utilAccounts : utilAccounts.filter(a =>
+    [a.property, a.provider_display, a.account_number, a.account_type, a.responsibility]
+      .some(v => (v || "").toString().toLowerCase().includes(acctQuery))
+  );
+
   return (
   <div>
   {showAudit && (
@@ -732,9 +740,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex items-center justify-between mb-4">
   <div>
   <h3 className="font-semibold text-subtle-700">Connected Utility Accounts</h3>
-  <p className="text-xs text-subtle-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
+  <p className="text-xs text-subtle-400 mt-0.5">{acctQuery ? `${filteredAccounts.length} of ${utilAccounts.length}` : utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
   </div>
   <Btn onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" }); setShowAccountForm(true); }}>+ Add Account</Btn>
+  </div>
+
+  <div className="mb-4">
+  <Input value={accountSearch} onChange={e => setAccountSearch(e.target.value)} placeholder="Search accounts by property, provider, or account #…" className="w-full sm:max-w-md" />
   </div>
 
   {showAccountForm && (
@@ -765,9 +777,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="text-subtle-500 font-medium">No utility accounts connected</div>
   <div className="text-xs text-subtle-400 mt-1">Add your first account to start automated bill fetching</div>
   </div>
+  ) : filteredAccounts.length === 0 ? (
+  <div className="text-center py-10 bg-white rounded-xl border border-neutral-200 text-sm text-subtle-400">No accounts match your search.</div>
   ) : (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-  {utilAccounts.map(acct => (
+  {filteredAccounts.map(acct => (
   <div key={acct.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex items-start justify-between mb-2">
   <div><div className="font-semibold text-subtle-800 text-sm">{acct.provider_display}</div><div className="text-xs text-subtle-400">{acct.property}</div></div>
