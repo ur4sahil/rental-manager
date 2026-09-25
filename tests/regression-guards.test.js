@@ -71,12 +71,24 @@ console.log("==============================================");
     const isDefiner = /enforce_management_tier_destructive\(\)[\s\S]{0,120}SECURITY DEFINER/.test(g.text);
     assert("destructive-gate trigger fn is SECURITY INVOKER", isInvoker && !isDefiner,
       isDefiner ? "is SECURITY DEFINER — gate will not enforce" : g.file);
-    const tables = ["properties", "acct_journal_entries", "leases", "autopay_schedules",
-      "owners", "vendors", "tenants", "utility_accounts", "work_orders",
-      "acct_accounts", "owner_distributions"];
-    const missing = tables.filter(t => !new RegExp("CREATE TRIGGER[\\s\\S]{0,80}ON public\\." + t + "\\b").test(g.text));
-    assert("destructive-gate trigger attached to all gated tables", missing.length === 0,
-      missing.length ? "MISSING: " + missing.join(", ") : "all 11");
+    // Trigger presence is the NET of CREATE/DROP across all migrations in order
+    // (utility_accounts was deliberately ungated in a later migration).
+    const triggerPresent = (table) => {
+      let present = false;
+      for (const f of migs) {
+        const t = fs.readFileSync(path.join(migDir, f), "utf8");
+        if (new RegExp("DROP TRIGGER[\\s\\S]{0,80}ON public\\." + table + "\\b").test(t)) present = false;
+        if (new RegExp("CREATE TRIGGER[\\s\\S]{0,120}ON public\\." + table + "\\b").test(t)) present = true;
+      }
+      return present;
+    };
+    const expectedTrigger = ["properties", "acct_journal_entries", "leases", "autopay_schedules",
+      "owners", "vendors", "tenants", "work_orders", "acct_accounts", "owner_distributions"];
+    const missing = expectedTrigger.filter(t => !triggerPresent(t));
+    // utility_accounts is intentionally NOT gated (routine ops), so it must NOT have the trigger.
+    const shouldNotHave = ["utility_accounts"].filter(t => triggerPresent(t));
+    assert("gate trigger attached to exactly the gated tables", missing.length === 0 && shouldNotHave.length === 0,
+      missing.length ? "MISSING: " + missing.join(", ") : shouldNotHave.length ? "UNEXPECTED: " + shouldNotHave.join(", ") : "10 gated, utility_accounts ungated");
   }
 }
 

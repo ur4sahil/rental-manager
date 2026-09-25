@@ -806,7 +806,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     setShowAccountForm(true);
     const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
   }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
-  {canManage(userRole) && <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>}
+  <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>
   ))}
