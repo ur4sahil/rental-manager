@@ -314,9 +314,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     contact_name: "", contact_email: "", contact_phone: "",
   };
   const [hoas, setHoas] = useState([]);
-  const addHoa = () => { if (hoas.length < 5) setHoas([...hoas, { ...EMPTY_HOA }]); };
-  const updateHoa = (idx, field, val) => setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
-  const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
+  const addHoa = () => { hoaTouched.current = true; if (hoas.length < 5) setHoas([...hoas, { ...EMPTY_HOA }]); };
+  const updateHoa = (idx, field, val) => { hoaTouched.current = true; setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h)); };
+  const removeHoa = (idx) => { hoaTouched.current = true; setHoas(prev => prev.filter((_, i) => i !== idx)); };
   const [loan, setLoan] = useState({ enabled: false, id: "", lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
   // A property can carry more than one loan (1st mortgage + HELOC). The wizard
   // loads them all here so the loan step can offer a picker; loan.id says which
@@ -940,6 +940,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // silently deletes someone else's addition.
   const seenHoaNames = useRef([]);
   const seenUtilProviders = useRef([]);
+  // Once the user has edited utilities/HOAs, the async live-load must NOT
+  // overwrite them. The wizard renders the resume step (which can be Utilities)
+  // and awaits loadLiveWizardData; a remove/edit made during that gap was being
+  // clobbered when the load resolved ("removed, then all three come back").
+  const utilTouched = useRef(false);
+  const hoaTouched = useRef(false);
 
   async function loadLiveWizardData(address) {
     if (!address || !companyId) return;
@@ -959,7 +965,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
 
     // Credential boxes stay blank on purpose: only ciphertext comes back, and
     // the RPC carries the stored ciphertext forward when the form sends none.
-    if (hoaRows.length) setHoas(hoaRows.map(h => ({
+    if (hoaRows.length && !hoaTouched.current) setHoas(hoaRows.map(h => ({
       hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: h.due_date || 1,
       frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "",
       username: "", password: "",
@@ -970,7 +976,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       contact_phone: h.contact_phone || "",
     })));
 
-    if (utilRows.length) setUtilities(utilRows.map(u => ({
+    if (utilRows.length && !utilTouched.current) setUtilities(utilRows.map(u => ({
       provider: u.provider || "", type: u.type || "Electric",
       account_number: u.account_number || "", due_date: u.due || u.due_date || 1,
       responsibility: respToForm(u.responsibility),
@@ -1733,12 +1739,15 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
 
   // ---- Utility row helpers ----
   function addUtilityRow() {
+    utilTouched.current = true;
     setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }]);
   }
   function removeUtilityRow(idx) {
+    utilTouched.current = true;
     setUtilities(prev => prev.filter((_, i) => i !== idx));
   }
   function updateUtility(idx, field, value) {
+    utilTouched.current = true;
     setUtilities(prev => prev.map((u, i) => i === idx ? { ...u, [field]: value } : u));
   }
 
