@@ -23,6 +23,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // RecurringJournalEntries) and the form says so explicitly.
   const blankRule = () => ({ name: "", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount || 50), fee_type: companySettings.late_fee_type || "flat" });
   const [form, setForm] = useState(blankRule);
+  const [editingRule, setEditingRule] = useState(null);
 
   useEffect(() => { fetchData(); }, [companyId]);
 
@@ -85,11 +86,20 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   if (!form.grace_days || !form.fee_amount) { showToast("Please fill all fields.", "error"); return; }
   if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { showToast("Grace days must be a valid number.", "error"); return; }
   if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { showToast("Fee amount must be a positive number.", "error"); return; }
-  const { error } = await supabase.from("late_fee_rules").insert([{ ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), company_id: companyId }]);
+  const fields = { name: form.name, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), fee_type: form.fee_type };
+  if (editingRule) {
+  const { error } = await supabase.from("late_fee_rules").update(fields).eq("id", editingRule.id).eq("company_id", companyId);
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
+  addNotification("⚠️", `Late fee rule "${form.name}" updated`);
+  logAudit("update", "late_fees", `Late fee rule "${form.name}" updated`, editingRule.id, userProfile?.email, userRole, companyId);
+  } else {
+  const { error } = await supabase.from("late_fee_rules").insert([{ ...fields, company_id: companyId }]);
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   addNotification("⚠️", `Late fee rule "${form.name}" created`);
+  }
   setShowForm(false);
   setForm(blankRule());
+  setEditingRule(null);
   fetchData();
   } finally { guardRelease("saveRule"); }
   }
@@ -169,8 +179,8 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   }
 
   async function applyAllFees() {
-  const rule = rules[0];
-  if (!rule) { showToast("Create a late fee rule first.", "error"); return; }
+  const rule = rules.find(r => r.is_active !== false);
+  if (!rule) { showToast("Create an active late fee rule first.", "error"); return; }
   if (!await showConfirm({ message: `Apply late fees to all ${flagged.filter(p => p.daysLate > rule.grace_days).length} overdue tenants?` })) return;
   for (const p of flagged.filter(p => p.daysLate > rule.grace_days)) await applyLateFee(p, rule);
   }
@@ -190,7 +200,9 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   }
 
   if (loading) return <Spinner />;
-  const afterGrace = flagged.filter(p => rules.length > 0 && p.daysLate > rules[0]?.grace_days);
+  // Only ENABLED rules drive the apply UI; disabled rules stay listed but inert.
+  const activeRules = rules.filter(r => r.is_active !== false);
+  const afterGrace = flagged.filter(p => activeRules.length > 0 && p.daysLate > activeRules[0]?.grace_days);
 
   return (
   <div>
@@ -201,26 +213,30 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   <div className="flex gap-2">
   {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-danger-500 hover:bg-danger-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
-  <Btn onClick={() => { if (!showForm) setForm(blankRule()); setShowForm(!showForm); }}>+ New Rule</Btn>
+  <Btn onClick={() => { if (!showForm) { setForm(blankRule()); setEditingRule(null); } setShowForm(!showForm); }}>+ New Rule</Btn>
   </div>
   </div>
   {rules.length > 0 && (
   <div className="mb-5 space-y-2">
   <h3 className="font-semibold text-neutral-700 text-sm">Active Rules</h3>
   {rules.map(r => (
-  <div key={r.id} className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex justify-between items-center">
+  <div key={r.id} className={`bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex justify-between items-center ${r.is_active === false ? "opacity-50" : ""}`}>
   <div>
-  <div className="font-semibold text-brand-800 text-sm">{r.name}</div>
+  <div className="font-semibold text-brand-800 text-sm flex items-center gap-2">{r.name}{r.is_active === false && <span className="text-[10px] font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">Disabled</span>}</div>
   <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
+  <div className="flex gap-3 items-center">
+  <TextLink size="xs" underline={false} onClick={() => { setEditingRule(r); setForm({ name: r.name || "", grace_days: String(r.grace_days ?? ""), fee_amount: String(r.fee_amount ?? ""), fee_type: r.fee_type || "flat" }); setShowForm(true); }}>Edit</TextLink>
+  <TextLink size="xs" underline={false} onClick={async () => { if(!guardSubmit("toggleLateFee",r.id))return; try{ const { error } = await supabase.from("late_fee_rules").update({ is_active: !r.is_active }).eq("id", r.id).eq("company_id", companyId); if(error){ showToast("Failed to update rule.", "error"); return; } showToast(r.is_active ? "Rule disabled." : "Rule enabled.", "success"); fetchData(); }finally{guardRelease("toggleLateFee",r.id);} }}>{r.is_active === false ? "Enable" : "Disable"}</TextLink>
   <TextLink tone="danger" size="xs" underline={false} onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }}>Delete</TextLink>
+  </div>
   </div>
   ))}
   </div>
   )}
   {showForm && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
-  <h3 className="font-semibold text-neutral-700 mb-1">New Late Fee Rule</h3>
+  <h3 className="font-semibold text-neutral-700 mb-1">{editingRule ? "Edit Late Fee Rule" : "New Late Fee Rule"}</h3>
   <p className="text-xs text-neutral-400 mb-3">Grace period, fee type and amount are pre-filled as suggested defaults from your company settings — adjust them as needed. Give the rule a name to save it.</p>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
@@ -230,7 +246,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveRule}>Save Rule</Btn>
-  <Btn variant="secondary" onClick={() => { setShowForm(false); setForm(blankRule()); }}>Cancel</Btn>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setForm(blankRule()); setEditingRule(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -241,7 +257,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   </div>
   <div className="space-y-3">
   {flagged.map(p => {
-  const pastGrace = rules.length > 0 && p.daysLate > rules[0]?.grace_days;
+  const pastGrace = activeRules.length > 0 && p.daysLate > activeRules[0]?.grace_days;
   return (
   <div key={p.id} className={`bg-white rounded-xl border shadow-card p-4 ${pastGrace ? "border-danger-200" : "border-notice-100"}`}>
   <div className="flex justify-between items-start">
@@ -249,7 +265,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   <div className="text-right"><div className="font-bold text-danger-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-danger-500" : "text-notice-500"}`}>{p.daysLate} days late</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {pastGrace && rules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, rules[0])}>Apply ${previewFee(p, rules[0])} Late Fee</Btn>}
+  {pastGrace && activeRules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, activeRules[0])}>Apply ${previewFee(p, activeRules[0])} Late Fee</Btn>}
   {!pastGrace && <span className="text-xs text-notice-500 bg-notice-50 px-3 py-1 rounded-lg">Within grace period</span>}
   </div>
   </div>

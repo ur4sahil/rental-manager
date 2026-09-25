@@ -237,6 +237,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   setShowForm(true);
   }
 
+  async function archiveWorkOrder(w) {
+  if (!guardSubmit("archiveWorkOrder", w.id)) return;
+  try {
+  if (!await showConfirm({ message: "Archive this work order?\n\n" + w.issue + (w.property ? " · " + w.property : ""), variant: "danger", confirmText: "Archive" })) return;
+  const { error } = await supabase.from("work_orders").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", w.id).eq("company_id", companyId);
+  if (error) { pmError("PM-7005", { raw: error, context: "archiving work order" }); return; }
+  showToast("Work order archived.", "success");
+  addNotification("🗑️", `Work order archived: ${w.issue}`);
+  logAudit("delete", "maintenance", `Archived work order: ${w.issue}${w.property ? " at " + w.property : ""}`, w.id, userProfile?.email, userRole, companyId);
+  fetchWorkOrders();
+  } finally { guardRelease("archiveWorkOrder", w.id); }
+  }
+
   async function openPhotos(wo) {
   setViewingPhotos(wo);
   const { data } = await supabase.from("work_order_photos").select("*").eq("company_id", companyId).eq("work_order_id", wo.id).order("created_at", { ascending: false });
@@ -498,6 +511,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {w.tenant && canManage(userRole) && <TextLink tone="danger" size="xs" underline={false} onClick={() => billTenantForWO(w)} className="border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</TextLink>}
   <Btn variant="purple" size="xs" onClick={() => openPhotos(w)}>📸 Photos</Btn>
   <Btn variant="secondary" size="xs" onClick={() => startEdit(w)}>✏️ Edit</Btn>
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => archiveWorkOrder(w)}>🗑️ Archive</Btn>}
   </div>
   </div>
   ))}
@@ -522,6 +536,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
+  const [editingInspection, setEditingInspection] = useState(null);
   const [form, setForm] = useState({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
 
   const checklistTemplates = {
@@ -551,14 +566,47 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   try {
   if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
   if (!form.date) { showToast("Inspection date is required.", "error"); return; }
-  const { error } = await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist), company_id: companyId }]);
+  const { error } = editingInspection
+    ? await supabase.from("inspections").update({ property: form.property, type: form.type, inspector: form.inspector, date: form.date, status: form.status, notes: form.notes, checklist: JSON.stringify(checklist) }).eq("id", editingInspection.id).eq("company_id", companyId)
+    : await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist), company_id: companyId }]);
   if (error) { pmError("PM-7006", { raw: error, context: "save inspection" }); return; }
-  addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
+  addNotification("🔍", editingInspection ? `Inspection updated: ${form.type} at ${form.property}` : `Inspection scheduled: ${form.type} at ${form.property}`);
+  logAudit(editingInspection ? "update" : "create", "maintenance", (editingInspection ? "Updated" : "Scheduled") + ` ${form.type} inspection at ${form.property}`, editingInspection?.id || "", userProfile?.email, userRole, companyId);
   setShowForm(false);
+  setEditingInspection(null);
   setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
   setChecklist({});
   fetchInspections();
   } finally { guardRelease("saveInspection"); }
+  }
+
+  function startEditInspection(insp) {
+  setEditingInspection(insp);
+  setForm({ property: insp.property || "", type: insp.type || "Move-In", inspector: insp.inspector || "", date: insp.date || formatLocalDate(new Date()), status: insp.status || "scheduled", notes: insp.notes || "" });
+  // checklist is jsonb (object) on newer rows, a JSON string on older ones.
+  const cl = (() => {
+    const raw = insp.checklist;
+    if (!raw) return {};
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(raw); } catch { return {}; }
+  })();
+  setChecklist(cl);
+  setSelectedInspection(null);
+  setShowForm(true);
+  }
+
+  async function archiveInspection(insp) {
+  if (!guardSubmit("archiveInspection", insp.id)) return;
+  try {
+  if (!await showConfirm({ message: "Delete this inspection?\n\n" + (insp.type || "") + " · " + (insp.property || ""), variant: "danger", confirmText: "Delete" })) return;
+  const { error } = await supabase.from("inspections").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", insp.id).eq("company_id", companyId);
+  if (error) { pmError("PM-7006", { raw: error, context: "archiving inspection" }); return; }
+  showToast("Inspection deleted.", "success");
+  addNotification("🗑️", `Inspection deleted: ${insp.type} at ${insp.property}`);
+  logAudit("delete", "maintenance", `Deleted ${insp.type} inspection at ${insp.property}`, insp.id, userProfile?.email, userRole, companyId);
+  setSelectedInspection(null);
+  fetchInspections();
+  } finally { guardRelease("archiveInspection", insp.id); }
   }
 
   async function updateStatus(id, status) {
@@ -639,6 +687,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-brand-50">
   {selectedInspection.status === "scheduled" && <Btn variant="success-fill" size="xs" onClick={() => { updateStatus(selectedInspection.id, "completed"); setSelectedInspection(null); }}>✓ Mark Complete</Btn>}
   {selectedInspection.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={() => createWOFromInspection(selectedInspection)}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
+  {selectedInspection.status === "completed" && <Btn variant="slate" size="xs" onClick={() => { updateStatus(selectedInspection.id, "scheduled"); setSelectedInspection(null); }}>↩ Revert to Scheduled</Btn>}
+  <Btn variant="secondary" size="xs" onClick={() => startEditInspection(selectedInspection)}>✏️ Edit</Btn>
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => archiveInspection(selectedInspection)}>🗑️ Delete</Btn>}
   </div>
   </Modal>
   )}
@@ -647,13 +698,13 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <PageHeader title="Inspections" />
   <div className="flex gap-2">
   <Btn variant="secondary" onClick={exportInspections}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
-  <Btn onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }}>+ New Inspection</Btn>
+  <Btn onClick={() => { const opening = !showForm; setShowForm(opening); if (opening) { setEditingInspection(null); setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" }); initChecklist("Move-In"); } }}>+ New Inspection</Btn>
   </div>
   </div>
 
   {showForm && (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
-  <h3 className="font-semibold text-neutral-700 mb-3">New Inspection</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">{editingInspection ? "Edit Inspection" : "New Inspection"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Inspection Type</label><Select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }}>
@@ -678,8 +729,8 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </div>
 
   <div className="flex gap-2">
-  <Btn onClick={saveInspection}>Save Inspection</Btn>
-  <Btn variant="slate" onClick={() => setShowForm(false)}>Cancel</Btn>
+  <Btn onClick={saveInspection}>{editingInspection ? "Update Inspection" : "Save Inspection"}</Btn>
+  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingInspection(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -702,6 +753,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <Btn variant="secondary" size="xs" onClick={() => setSelectedInspection(insp)}>📋 View Checklist</Btn>
   {insp.status === "scheduled" && <Btn variant="success-fill" size="xs" onClick={() => updateStatus(insp.id, "completed")}>✓ Mark Complete</Btn>}
   {insp.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={() => createWOFromInspection(insp)}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
+  {insp.status === "completed" && <Btn variant="slate" size="xs" onClick={() => updateStatus(insp.id, "scheduled")}>↩ Revert to Scheduled</Btn>}
+  <Btn variant="secondary" size="xs" onClick={() => startEditInspection(insp)}>✏️ Edit</Btn>
+  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => archiveInspection(insp)}>🗑️ Delete</Btn>}
   </div>
   </div>
   ))}

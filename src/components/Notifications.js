@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar, Switch, EmptyState} from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill, TabBar, Switch, EmptyState, TextLink} from "../ui";
 import { normalizeEmail, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Spinner } from "./shared";
@@ -344,21 +344,60 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
     // recipient_email. Without filtering, the tab would leak each
     // user's inbox to every admin.
     const myEmail = userProfile?.email || "";
-    const [s, l, inbox] = await Promise.all([
+    const [s, l, inbox, st] = await Promise.all([
       supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
       supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
       supabase.from("notification_inbox").select("*").eq("company_id", companyId)
         .or("recipient_email.ilike." + escapeFilterValue(myEmail || "none") + ",recipient_email.is.null")
         .order("created_at", { ascending: false }).limit(200),
+      // Per-user read/dismiss state. Inbox rows are shared (recipient_email may
+      // be null = everyone), so read/dismissed lives here per viewer, not on
+      // the row. RLS already restricts these to the current user's rows.
+      supabase.from("notification_inbox_state").select("*").eq("company_id", companyId),
     ]);
+    const stateMap = {};
+    (st.data || []).forEach(x => { stateMap[x.inbox_id] = x; });
+    const merged = (inbox.data || []).map(n => {
+      const stt = stateMap[n.id] || null;
+      return { ...n, _state: stt, _read: !!(stt && stt.read_at), _dismissed: !!(stt && stt.dismissed_at) };
+    }).filter(n => !n._dismissed);
     setSettings(s.data || []);
     setLogs(l.data || []);
-    setActivity(inbox.data || []);
+    setActivity(merged);
     setLoading(false);
   }, [companyId, userProfile?.email]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchQueueFailed(); }, [fetchQueueFailed]);
+
+  // Per-user read/dismiss. Upserts the whole state row (merged with what the
+  // feed already loaded) so setting read_at never clobbers dismissed_at.
+  const myEmail = userProfile?.email || "";
+  async function setInboxState(n, patch) {
+    const ex = n._state || {};
+    const row = {
+      company_id: companyId, inbox_id: n.id, user_email: myEmail,
+      read_at: ex.read_at || null, dismissed_at: ex.dismissed_at || null,
+      ...patch, updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("notification_inbox_state").upsert(row, { onConflict: "inbox_id,user_email" });
+    if (error) { showToast?.("Couldn't update notification: " + error.message, "error"); return; }
+    fetchData();
+  }
+  const markRead = (n) => setInboxState(n, { read_at: new Date().toISOString() });
+  const dismissNote = (n) => setInboxState(n, { dismissed_at: new Date().toISOString() });
+  async function markAllRead() {
+    const now = new Date().toISOString();
+    const unread = activity.filter(a => !a._read);
+    if (!unread.length) return;
+    const rows = unread.map(n => ({
+      company_id: companyId, inbox_id: n.id, user_email: myEmail,
+      read_at: now, dismissed_at: (n._state && n._state.dismissed_at) || null, updated_at: now,
+    }));
+    const { error } = await supabase.from("notification_inbox_state").upsert(rows, { onConflict: "inbox_id,user_email" });
+    if (error) { showToast?.("Couldn't mark all read: " + error.message, "error"); return; }
+    fetchData();
+  }
 
   async function toggleSetting(setting) {
     const { error } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
@@ -427,7 +466,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   if (loading) return <Spinner />;
 
   // Activity filter (All / Unread)
-  const filteredActivity = activityFilter === "unread" ? activity.filter(a => !a.read) : activity;
+  const filteredActivity = activityFilter === "unread" ? activity.filter(a => !a._read) : activity;
+  const unreadCount = activity.filter(a => !a._read).length;
   const activityGroups = groupByDay(filteredActivity);
   const logGroups = groupByDay(logs);
 
@@ -453,13 +493,14 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
       {/* ─── ACTIVITY ─── */}
       {activeTab === "activity" && (
         <div>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-4 items-center">
             <FilterPill active={activityFilter === "all"} onClick={() => setActivityFilter("all")}>
               All ({activity.length})
             </FilterPill>
             <FilterPill active={activityFilter === "unread"} onClick={() => setActivityFilter("unread")}>
-              Unread ({activity.filter(a => !a.read).length})
+              Unread ({unreadCount})
             </FilterPill>
+            {unreadCount > 0 && <TextLink tone="brand" size="xs" className="ml-auto" onClick={markAllRead}>Mark all read</TextLink>}
           </div>
 
           {filteredActivity.length === 0 ? (
@@ -473,7 +514,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
                   <div className="text-xs uppercase tracking-wide text-neutral-400 font-semibold mb-2 px-1">{bucket}</div>
                   <div className="space-y-2">
                     {activityGroups[bucket].map(n => (
-                      <Card key={n.id} padding="px-4 py-3" className="flex items-center gap-3">
+                      <Card key={n.id} padding="px-4 py-3" className={"flex items-center gap-3" + (n._read ? " opacity-60" : "")}>
                         <span className="text-xl">{n.icon || "🔔"}</span>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm text-neutral-800 truncate">{n.message}</div>
@@ -482,7 +523,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
                             {n.notification_type && n.notification_type !== "general" ? " · " + n.notification_type : ""}
                           </div>
                         </div>
-                        {!n.read && <Badge color="indigo" label="New" />}
+                        {!n._read && <Badge color="indigo" label="New" />}
+                        {!n._read && <TextLink tone="brand" size="xs" onClick={() => markRead(n)}>Mark read</TextLink>}
+                        <TextLink tone="neutral" size="xs" onClick={() => dismissNote(n)} aria-label="Dismiss">Dismiss</TextLink>
                       </Card>
                     ))}
                   </div>

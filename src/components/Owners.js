@@ -9,6 +9,93 @@ import { queueNotification } from "../utils/notifications";
 import { autoPostJournalEntry, autoOwnerDistribution, getPropertyClassId, atomicPostJEAndLedger, safeLedgerInsert, resolveAccountId } from "../utils/accounting";
 import { Spinner, Modal, StatCard, Badge } from "./shared";
 
+// Build a formatted, printable HTML document for an owner statement.
+// Replaces the old raw-JSON dump. Shared by the admin print button and
+// the owner-portal print button so both render the same layout.
+// All dynamic text is escaped via escapeHtml/sanitizeForPrint; currency
+// uses formatCurrency. Every field is read defensively (0 or "—" when
+// missing) since it does not change how statements are generated.
+function buildStatementHtml(statement, companyId) {
+  const s = statement || {};
+  let cats = [];
+  try { cats = JSON.parse(s.line_items || "[]"); } catch (_e) { cats = []; }
+  if (!Array.isArray(cats)) cats = [];
+
+  const esc = escapeHtml;
+  const company = esc(companyId) || "—";
+  const ownerName = esc(s.owner_name) || "—";
+  const period = esc(s.period) || "—";
+  const range = (s.start_date || s.end_date)
+    ? `${esc(fmtDate(s.start_date)) || "—"} – ${esc(fmtDate(s.end_date)) || "—"}`
+    : "";
+
+  const sections = cats.map(cat => {
+    const rows = (Array.isArray(cat.items) ? cat.items : []).map(it => `
+      <tr>
+        <td class="dt">${esc(fmtDate(it.date)) || "—"}</td>
+        <td>${esc(it.description) || "—"}</td>
+        <td class="amt">${formatCurrency(Math.abs(safeNum(it.amount)))}</td>
+      </tr>`).join("");
+    return `
+      <h2>${esc(cat.category) || "—"}</h2>
+      <table class="lines">
+        <thead><tr><th>Date</th><th>Description</th><th class="amt">Amount</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="empty">No items</td></tr>'}</tbody>
+      </table>`;
+  }).join("");
+
+  const summary = `
+    <table class="summary"><tbody>
+      <tr><td>Total Income</td><td class="amt">${formatCurrency(safeNum(s.total_income))}</td></tr>
+      <tr><td>Total Expenses</td><td class="amt">(${formatCurrency(safeNum(s.total_expenses))})</td></tr>
+      <tr><td>Management Fee</td><td class="amt">(${formatCurrency(safeNum(s.management_fee))})</td></tr>
+      <tr class="net"><td>Net Distribution to Owner</td><td class="amt">${formatCurrency(safeNum(s.net_to_owner))}</td></tr>
+    </tbody></table>`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Statement ${sanitizeForPrint(s.period)}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:24px;font-size:13px;line-height:1.4}
+    h1{font-size:20px;margin:0 0 2px}
+    h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#555;margin:20px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px}
+    .head{border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:12px}
+    .muted{color:#666;font-size:12px}
+    .meta{margin-bottom:8px}
+    table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;padding:5px 8px;border:1px solid #ddd}
+    th{background:#f4f4f4;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#555}
+    .amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    td.dt{white-space:nowrap;width:90px;color:#555}
+    .empty{text-align:center;color:#999}
+    table.summary{margin-top:22px;width:340px;margin-left:auto}
+    table.summary td{border:none;border-top:1px solid #eee;padding:6px 8px}
+    table.summary tr.net td{border-top:2px solid #333;font-weight:700;font-size:15px}
+    @media print{body{margin:0}}
+  </style></head>
+  <body>
+    <div class="head">
+      <h1>Owner Statement</h1>
+      <div class="muted">${company}</div>
+    </div>
+    <div class="meta muted">
+      <strong>Owner:</strong> ${ownerName}<br>
+      <strong>Period:</strong> ${period}${range ? ` (${range})` : ""}
+    </div>
+    ${sections || '<p class="muted">No line items recorded for this statement.</p>'}
+    ${summary}
+  </body></html>`;
+}
+
+// Open a new window and print the formatted statement. Mirrors the
+// original open/write/print flow (no document.close, 300ms print delay).
+function openStatementPrint(statement, companyId) {
+  const w = window.open("", "_blank", "noopener,noreferrer");
+  if (!w) return;
+  w.document.write(buildStatementHtml(statement, companyId));
+  w.document.title = "Statement " + sanitizeForPrint((statement && statement.period) || "");
+  setTimeout(() => w.print(), 300);
+}
+
 function OwnerManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [owners, setOwners] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -217,13 +304,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   } finally { guardRelease("sendStatement"); }
   }
 
-  // NOTE: Print currently dumps raw JSON.stringify of the statement — it is
-  // NOT a real print template. Flagged for a future templated layout.
+  // Renders a formatted, printable HTML statement via the shared
+  // buildStatementHtml/openStatementPrint helpers (was a raw JSON dump).
   function printStatement(statement) {
-  const w = window.open("", "_blank", "noopener,noreferrer");
-  w.document.write("<pre>" + escapeHtml(JSON.stringify(statement, null, 2)) + "</pre>");
-  w.document.title = "Statement " + sanitizeForPrint(statement.period);
-  setTimeout(() => w.print(), 300);
+  openStatementPrint(statement, companyId);
   }
 
   async function payOwner(owner) {
@@ -697,7 +781,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {fmtDate(viewStatement.created_at)}</div>
   </div>
   <div className="flex items-center gap-2">
-  <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
+  <Btn onClick={() => openStatementPrint(viewStatement, companyId)} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{viewStatement.status}</span>
   </div>
   </div>
