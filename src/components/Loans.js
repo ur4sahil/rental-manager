@@ -230,6 +230,21 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   (propertyFilter === "all" || l.property === propertyFilter) &&
   (statusFilter === "all" || l.status === statusFilter)
   );
+  // "Both views": also surface each property covered by a portfolio (blanket)
+  // loan in this per-property list, marked as portfolio-covered. The blanket
+  // loan's monthly/balance is not split per property, so those show "—" here;
+  // the totals live in the Portfolio Loans section below.
+  const portfolioRows = portfolioProps.map(pp => {
+    const pl = portfolioLoans.find(x => x.id === pp.portfolio_loan_id);
+    if (!pl) return null;
+    return { id: "pf-" + pp.id, property: pp.property, lender_name: pl.lender_name,
+      loan_type: "Portfolio", interest_rate: pl.interest_rate, maturity_date: pl.maturity_date,
+      website: pl.website, status: pl.status, _portfolio: true };
+  }).filter(Boolean).filter(l =>
+    (propertyFilter === "all" || l.property === propertyFilter) &&
+    (statusFilter === "all" || l.status === statusFilter)
+  );
+  const allLoanRows = [...filtered, ...portfolioRows];
 
   const activeLoans = loans.filter(l => l.status === "active");
   const totalMonthly = activeLoans.reduce((s, l) => s + safeNum(l.monthly_payment), 0);
@@ -322,9 +337,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "rate", label: "Rate", align: "right", className: "text-neutral-600",
         render: l => (<>{safeNum(l.interest_rate).toFixed(2)}%</>) },
       { key: "monthly", label: "Monthly", align: "right", className: "font-semibold",
-        render: l => (<>{formatCurrency(l.monthly_payment)}</>) },
+        render: l => (<>{l._portfolio ? <span className="text-neutral-300 font-normal">—</span> : formatCurrency(l.monthly_payment)}</>) },
       { key: "balance", label: "Balance", align: "right", className: "font-semibold",
-        render: l => (<>{formatCurrency(l.current_balance)}</>) },
+        render: l => (<>{l._portfolio ? <span className="text-neutral-300 font-normal">—</span> : formatCurrency(l.current_balance)}</>) },
       { key: "maturity", label: "Maturity", className: "text-neutral-400",
         render: l => (<>{fmtDate(l.maturity_date) || "—"}</>) },
       { key: "portal", label: "Portal", className: "text-xs",
@@ -334,17 +349,17 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
             {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
         </>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
-        render: l => (<>
+        render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : (<>
           {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
             <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
         </>) },
     ]}
-    rows={filtered}
+    rows={allLoanRows}
     rowKey={l => l.id}
     empty="Nothing to show"
   />
-  {filtered.length === 0 && <EmptyState size="compact" title={"No loans found"} />}
+  {allLoanRows.length === 0 && <EmptyState size="compact" title={"No loans found"} />}
   </div>
 
   {/* ---- Portfolio Loans: one loan across many properties, tracked only ---- */}
@@ -361,7 +376,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "type", label: "Type", className: "text-neutral-500", render: l => (<>{l.loan_type}</>) },
       { key: "props", label: "Properties", className: "text-neutral-600 text-xs",
         render: l => { const ps = portfolioProps.filter(p => p.portfolio_loan_id === l.id); return ps.length
-          ? <span title={ps.map(p => p.property).join(", ")}>{ps.length} propert{ps.length === 1 ? "y" : "ies"}</span>
+          ? <div className="space-y-0.5">{ps.map(p => <div key={p.id}>{propertyLabel(p.property)}</div>)}</div>
           : <span className="text-neutral-300">none</span>; } },
       { key: "rate", label: "Rate", align: "right", className: "text-neutral-600", render: l => (<>{safeNum(l.interest_rate).toFixed(2)}%</>) },
       { key: "monthly", label: "Monthly", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.monthly_payment)}</>) },

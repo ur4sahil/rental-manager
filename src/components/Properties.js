@@ -2167,7 +2167,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100">
                 <label className="text-xs font-medium text-neutral-500 block mb-1">Covered by a portfolio loan?</label>
-                <Select value={portfolioLoanId} onChange={e => { if (e.target.value === "__new__") { setShowNewPortfolio(true); } else { setPortfolioLoanId(e.target.value); setShowNewPortfolio(false); } }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                <Select value={portfolioLoanId} onChange={e => { if (e.target.value === "__new__") { setShowNewPortfolio(true); } else { setPortfolioLoanId(e.target.value); setShowNewPortfolio(false); if (e.target.value) setLoan(l => ({ ...l, enabled: false })); } }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                   <option value="">No — its own loan (or none)</option>
                   {portfolioLoans.map(pl => <option key={pl.id} value={pl.id}>{pl.lender_name} — {formatCurrency(pl.current_balance)}</option>)}
                   <option value="__new__">+ Create a new portfolio loan…</option>
@@ -2185,13 +2185,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   </div>
                 )}
               </div>
+              {portfolioLoanId ? (
+                <p className="text-sm text-neutral-500 pt-1">This property is financed by the <span className="font-medium text-neutral-700">portfolio loan</span> selected above — no separate per-property loan is needed here.</p>
+              ) : (
               <label className="flex items-center gap-3 cursor-pointer">
                 <div role="switch" tabIndex={0} aria-checked={!!loan.enabled} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLoan({ ...loan, enabled: !loan.enabled }); } }} className={`w-10 h-6 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have a loan?</span>
               </label>
-              {loan.enabled && (
+              )}
+              {!portfolioLoanId && loan.enabled && (
                 <div className="space-y-3 pt-2">
                   {loanChoices.length >= 1 && (
                     <div>
@@ -2855,7 +2859,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                       {loan.setup_recurring && <div className="text-positive-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
                   ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
-                  {portfolioLoanId && (() => { const pl = portfolioLoans.find(x => x.id === portfolioLoanId); return <div className="text-xs text-neutral-500 mt-1">Part of portfolio loan: <span className="font-medium text-neutral-700">{pl ? pl.lender_name : "\u2014"}</span></div>; })()}
+                  {portfolioLoanId && (() => { const pl = portfolioLoans.find(x => x.id === portfolioLoanId); return <div className="text-xs text-neutral-500 mt-1">Part of portfolio loan: <span className="font-medium text-neutral-700">{pl ? pl.lender_name : "\u2014"}</span>{pl && pl.current_balance ? ` \u2014 ${formatCurrency(pl.current_balance)} balance` : ""}</div>; })()}
                 </div>
               )}
 
