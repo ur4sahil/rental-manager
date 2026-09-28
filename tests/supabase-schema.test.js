@@ -206,9 +206,11 @@ async function testRPCExistence() {
   const { error: e7 } = await supabase.rpc('find_unbalanced_jes', { p_company_id: 'test' });
   assert(!e7 || !e7.message.includes('does not exist'), 'RPC find_unbalanced_jes exists');
 
-  // apply_late_fee_atomic
-  const { error: e7b } = await supabase.rpc('apply_late_fee_atomic', { p_company_id: 'test', p_tenant_id: '00000000-0000-0000-0000-000000000000', p_tenant_name: 'test', p_property: 'test', p_fee_amount: 0, p_je_number: 'TEST', p_je_date: '2026-01-01', p_description: 'test', p_reference: 'test', p_late_fee_account_id: '00000000-0000-0000-0000-000000000000', p_ar_account_id: '00000000-0000-0000-0000-000000000000' });
-  assert(!e7b || !e7b.message.includes('does not exist'), 'RPC apply_late_fee_atomic exists');
+  // batch_post_late_fees (the nightly late-fee job). apply_late_fee_atomic,
+  // checked here before, had no caller and was dropped by migration
+  // 20260928050000. A company with no rule posts nothing, so this is safe.
+  const { error: e7b } = await supabase.rpc('batch_post_late_fees', { p_company_id: 'rpc-test-no-such-company' });
+  assert(!e7b || !e7b.message.includes('does not exist'), 'RPC batch_post_late_fees exists');
 
   // handle_membership_request
   const { error: e8 } = await supabase.rpc('handle_membership_request', {

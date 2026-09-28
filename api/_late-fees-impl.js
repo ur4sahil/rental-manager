@@ -6,9 +6,13 @@
 // and the manual "Apply late fee" button from drifting: neither owns the
 // rules, the database does.
 //
-// The function is idempotent on reference LATEFEE-<tenant>-<YYYY-MM>, so
-// a retry, a double-trigger or a manual charge already made cannot
-// produce a second fee.
+// The function applies the same one-late-fee-per-tenant-per-month rule as
+// the two manual paths (public.late_fee_already_posted, mirrored by
+// src/utils/lateFeeRules.js) and writes the same reference,
+// LATEFEE-<tenant>-YYYYMM, to the tenant's own AR account -- so a retry, a
+// double-trigger or a fee already charged from the app cannot produce a
+// second one. Tenants whose AR account could not be established come back
+// in each result's skipped_no_ar_account.
 const { createClient } = require("@supabase/supabase-js");
 
 module.exports = async (req, res) => {

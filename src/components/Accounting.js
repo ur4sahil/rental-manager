@@ -106,6 +106,11 @@ export function refLabelFull(reference) {
     const m = Number(ymd[2]);
     return `${label} \u00b7 ${MONTHS[m - 1] || ymd[2]} ${Number(ymd[3])}, ${ymd[1]}`;
   }
+  // Trailing -YYYYMM (exactly six digits), e.g. LATEFEE-41-202609.
+  const ym6 = /-(\d{4})(\d{2})$/.exec(r);
+  if (ym6 && Number(ym6[2]) >= 1 && Number(ym6[2]) <= 12) {
+    return `${label} \u00b7 ${MONTHS[Number(ym6[2]) - 1]} ${ym6[1]}`;
+  }
   return label;
 }
 

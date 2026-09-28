@@ -6,7 +6,8 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
+import { getPropertyClassId } from "../utils/accounting";
+import { postTenantLateFee, lateFeeFailureReason } from "../utils/lateFees";
 import { Spinner } from "./shared";
 
 function LateFees({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -105,16 +106,14 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   }
 
   async function applyLateFee(payment, rule) {
-  // Duplicate guard: check if late fee already applied for this tenant this month
-  const thisMonth = formatLocalDate(new Date()).slice(0, 7);
-  const { data: existingFee } = await supabase.from("ledger_entries").select("id")
-  .eq("company_id", companyId).eq("tenant", payment.tenant)
-  .eq("property", payment.property).eq("type", "late_fee").gte("date", thisMonth + "-01").limit(1);
-  if (existingFee && existingFee.length > 0) {
-  pmError("PM-9005", { raw: { message: "Late fee already applied for " + payment.tenant + " this month" }, context: "late fee duplicate check", silent: true });
-  return;
+  // By id: the overdue row is built from the tenant row, and two tenants
+  // can share a name.
+  const tenant = tenants.find(t => payment.tenant_id != null && String(t.id) === String(payment.tenant_id))
+    || tenants.find(t => t.name === payment.tenant && t.property === payment.property);
+  if (!tenant?.id) {
+    pmError("PM-6003", { raw: { message: "Late fee not applied: no tenant record for " + payment.tenant }, context: "applyLateFee", silent: true });
+    return;
   }
-  const tenant = tenants.find(t => t.name === payment.tenant);
   // Percent fees need a known rent base. payment.amount is whatever was paid
   // (partial / overpayment / mis-keyed), not the lease rent — relying on it
   // silently produces the wrong fee. Skip + log if rent isn't set.
@@ -137,38 +136,25 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   }
   const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(payment.property, companyId);
-  // The AR leg below is the SHARED 1100 account, whose tenant_id is NULL,
-  // so the sync_tenant_balance_lines trigger never fires for it and the
-  // balanceUpdate passed to atomicPostJEAndLedger is what actually moves
-  // tenants.balance. post_je_and_ledger applies p_balance_change only
-  // when no line landed on a per-tenant AR sub-account, precisely so the
-  // two mechanisms cannot both fire and double-count. Keep this leg on
-  // 1100, or move it to getOrCreateTenantAR and drop balanceUpdate — but
-  // not one without the other. Covered by spec 93.
-  // Unified: JE first → ledger → balance (all gated on JE success)
-  if (feeAmount > 0) {
-  // Deterministic reference so a cron re-run can't double-charge.
-  // tenant_id + YYYYMM aligns with the one-per-tenant-per-month policy
-  // already enforced by the SELECT check above.
-  const refKey = tenant?.id ? String(tenant.id) : (payment.tenant || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
-  const result = await atomicPostJEAndLedger({ companyId,
-  date: today,
-  description: "Late fee - " + payment.tenant + " - " + payment.property,
-  reference: "LATE-" + refKey + "-" + thisMonth.replace("-", ""),
-  property: payment.property,
-  lines: [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },
-  { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
-  ],
-  // tenant_id is load-bearing, not decoration: atomicPostJEAndLedger
-  // forwards it as p_ledger_tenant_id, and post_je_and_ledger applies
-  // p_balance_change only WHERE id = p_ledger_tenant_id. Without it the
-  // fee posts to the GL and the tenant's balance never moves. Every
-  // ledgerEntry in Lifecycle.js carries it; this one did not.
-  ledgerEntry: { tenant: payment.tenant, tenant_id: tenant?.id, property: payment.property, date: today, description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 },
-  balanceUpdate: tenant ? { tenantId: tenant.id, amount: feeAmount } : null,
+  // One routine for every manual late fee (utils/lateFees.js): the shared
+  // one-per-month rule — which also sees the nightly job's fees, the tenant
+  // page's fees and hand-entered ones — reference LATEFEE-<tenant_id>-YYYYMM,
+  // and the debit on the tenant's OWN AR account. No balanceUpdate — the
+  // balance-sync trigger recomputes tenants.balance from the GL.
+  const res = await postTenantLateFee({ companyId, tenant, amount: feeAmount, date: today, classId,
+    description: "Late fee - " + payment.tenant + " - " + payment.property,
+    arMemo: "Late fee: " + payment.tenant,
+    incomeMemo: payment.daysLate + " days overdue",
+    ledgerDescription: `Late fee — ${payment.daysLate} days overdue`,
   });
-  if (!result.jeId) { fetchData(); return; } // toast already shown
+  if (res.status === "duplicate") {
+    pmError("PM-9005", { raw: { message: "Late fee already applied for " + payment.tenant + " this month" }, context: "late fee duplicate check", silent: true });
+    return;
+  }
+  if (res.status !== "posted") {
+    pmError("PM-4002", { raw: { message: "Late fee not applied for " + payment.tenant + ": " + lateFeeFailureReason(res) }, context: "applyLateFee" });
+    fetchData();
+    return;
   }
   addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
   // Tenant-facing copy — they'll see this in their portal inbox.
@@ -193,7 +179,8 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   function previewFee(row, rule) {
   if (!rule) return "0.00";
   if (rule.fee_type === "flat") return safeNum(rule.fee_amount).toFixed(2);
-  const tenant = tenants.find(t => t.name === row.tenant);
+  const tenant = tenants.find(t => row.tenant_id != null && String(t.id) === String(row.tenant_id))
+    || tenants.find(t => t.name === row.tenant && t.property === row.property);
   const rentBase = safeNum(tenant?.rent);
   if (rentBase <= 0) return "—";
   return (Math.round(rentBase * safeNum(rule.fee_amount)) / 100).toFixed(2);
