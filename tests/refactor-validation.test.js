@@ -77,7 +77,7 @@ function testFileStructure() {
   // notificationTemplates all came out of files that were doing two jobs.
   // The bound is here to stop a util drawer becoming a second monolith, and
   // splitting a concern into its own named module is the opposite of that.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 22, `src/utils/ has 8..22 files (found ${actualUtilFiles.length})`);
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 23, `src/utils/ has 8..23 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -231,7 +231,11 @@ function testFileStructure() {
   // correctness -- the new pure src/utils/recurringRules.js (tested directly
   // by recurring-rent-rules.test.mjs), the shared deactivate/sync helpers in
   // accounting.js, and the teardown call sites that now stop rent.
-  assert(totalLines <= 51250, `Total src lines <= 51250 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51450 on 2026-09-28 (payments/autopay/Stripe fixes): +~155 for the new
+  // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
+  // tested directly by payments-autopay-stripe.test.mjs) and the corrected
+  // rent-receipt / accrual / move-out lookups that use it.
+  assert(totalLines <= 51450, `Total src lines <= 51450 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

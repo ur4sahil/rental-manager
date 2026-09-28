@@ -6,7 +6,8 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { atomicPostJEAndLedger, checkAccrualExists, getPropertyClassId, autoOwnerDistribution } from "../utils/accounting";
+import { atomicPostJEAndLedger, getPropertyClassId, autoOwnerDistribution, getOrCreateTenantAR } from "../utils/accounting";
+import { pickRentReceiptCredit, matchAutopayTenant, isStripeSchedule } from "../utils/paymentRules";
 import { StatCard, Spinner, PropertySelect, generatePaymentReceipt } from "./shared";
 
 function Payments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, setPage }) {
@@ -40,6 +41,9 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   // Transform JEs into payment-like rows
   const paymentRows = (data || []).map(je => {
     const debitTotal = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
+    // Refund / dispute reversals (api/stripe.js webhook) are money going
+    // back out: shown as negative so the total nets them.
+    const isReversal = /^STRIPE-(REFUND|DISPUTE)-/.test(je.reference || "") && !/^STRIPE-DISPUTE-WON-/.test(je.reference || "");
     // Extract tenant from description: "Payment received — TenantName — Property"
     const descParts = (je.description || "").split("—").map(s => s.trim());
     const tenant = descParts.length >= 2 ? descParts[1] : "";
@@ -69,15 +73,18 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
     else if (je.reference?.startsWith("PAY-") || je.reference?.startsWith("APAY-")) method = "Manual";
     // Determine type
     let type = "payment";
-    if ((je.description || "").toLowerCase().includes("deposit")) type = "deposit";
+    if (/^STRIPE-REFUND-/.test(je.reference || "")) type = "refund";
+    else if (/^STRIPE-DISPUTE-WON-/.test(je.reference || "")) type = "dispute_won";
+    else if (/^STRIPE-DISPUTE-/.test(je.reference || "")) type = "dispute";
+    else if ((je.description || "").toLowerCase().includes("deposit")) type = "deposit";
     else if ((je.description || "").toLowerCase().includes("late fee")) type = "late_fee";
     else if ((je.description || "").toLowerCase().includes("rent")) type = "rent";
     return {
-      id: je.id, tenant, property: je.property || "", amount: debitTotal,
+      id: je.id, tenant, property: je.property || "", amount: isReversal ? -debitTotal : debitTotal,
       date: je.date, type, method, status: "posted",
       description: je.description, reference: je.reference, number: je.number,
     };
-  }).filter(p => p.amount > 0);
+  }).filter(p => p.amount !== 0);
   setPayments(paymentRows);
   setLoading(false);
   }
@@ -168,7 +175,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
+  const [form, setForm] = useState({ tenant: "", tenant_id: null, property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
 
   useEffect(() => { fetchData(); }, [companyId]);
 
@@ -191,16 +198,18 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   async function saveSchedule() {
   if (!guardSubmit("saveSchedule")) return;
   try {
-  if (!form.tenant) { showToast("Please select a tenant.", "error"); return; }
+  if (!form.tenant || !form.tenant_id) { showToast("Please select a tenant.", "error"); return; }
   if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid positive amount.", "error"); return; }
   if (!form.start_date) { showToast("Start date is required.", "error"); return; }
   if (!form.day_of_month || Number(form.day_of_month) < 1 || Number(form.day_of_month) > 31 || isNaN(Number(form.day_of_month))) { showToast("Day of month must be between 1 and 31.", "error"); return; }
-  const { error } = await supabase.from("autopay_schedules").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
+  // tenant_id is stored so Run Now matches the tenant by id, not by a name
+  // that can be shared or later renamed.
+  const { error } = await supabase.from("autopay_schedules").insert([{ ...form, tenant_id: Number(form.tenant_id), amount: Number(form.amount), company_id: companyId }]);
   if (error) { pmError("PM-6001", { raw: error, context: "save autopay schedule" }); return; }
   addNotification("🔄", `Autopay schedule created for ${form.tenant}`);
   logAudit("create", "autopay", `Autopay created: ${form.tenant} $${form.amount}/mo at ${form.property}`, "", userProfile?.email, userRole, companyId);
   setShowForm(false);
-  setForm({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
+  setForm({ tenant: "", tenant_id: null, property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
   fetchData();
   } finally { guardRelease("saveSchedule"); }
   }
@@ -228,30 +237,31 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   }
 
   async function runNow(s) {
+  // Stripe schedules are charged by the Stripe cron (api/stripe.js); the
+  // webhook books the receipt only once Stripe has actually collected it.
+  // Booking one here recorded money that was never collected.
+  if (isStripeSchedule(s)) { showToast("This is a Stripe autopay. It is charged automatically on its due date, and the payment is recorded when Stripe confirms it.", "info"); return; }
   if (!guardSubmit("runNow", s.id)) return;
   try {
   if (!s.amount || safeNum(s.amount) <= 0) { showToast("Invalid autopay amount.", "error"); return; }
   const today = formatLocalDate(new Date());
   const amt = safeNum(s.amount);
-  // Look up tenant FIRST — we need tenant_id for the deterministic JE
-  // reference so the unique index on (company_id, reference) catches
-  // double-posts. Scoping by (name, property) avoids the same-name
-  // collision bug that sent autopay to the wrong tenant before. Uses
-  // ilike for case-insensitive matching — the schedule row stored
-  // whatever casing the user typed, which may have drifted from the
-  // tenant row if the tenant was later renamed ("alice johnson" vs
-  // "Alice Johnson" otherwise silently produces tenantRow=null).
-  const { data: tenantRow } = await supabase.from("tenants")
-    .select("id, name, balance, email")
-    .ilike("name", escapeFilterValue(s.tenant || ""))
-    .eq("company_id", companyId)
-    .eq("property", s.property)
-    .maybeSingle();
+  // Tenant by tenant_id. Only a legacy schedule without one falls back to
+  // (case-insensitive name + property), and only when that is unambiguous.
+  let tenantRow = null;
+  if (s.tenant_id !== null && s.tenant_id !== undefined && s.tenant_id !== "") {
+    const { data } = await supabase.from("tenants").select("id, name, balance, email, property")
+      .eq("company_id", companyId).eq("id", s.tenant_id).maybeSingle();
+    tenantRow = data || null;
+  } else {
+    const { data } = await supabase.from("tenants").select("id, name, balance, email, property")
+      .eq("company_id", companyId).ilike("name", escapeFilterValue(s.tenant || "")).eq("property", s.property).is("archived_at", null);
+    tenantRow = matchAutopayTenant(data || [], s);
+    // Remember the match so the next run is by id.
+    if (tenantRow?.id) await supabase.from("autopay_schedules").update({ tenant_id: tenantRow.id }).eq("company_id", companyId).eq("id", s.id);
+  }
   // Prefer the tenant row's current name over the schedule's stored
-  // name — the schedule row isn't kept in sync when a tenant is
-  // renamed, so payments + JE memos used to freeze the old name
-  // forever. Falls back to the schedule value when no tenant row
-  // matched (shouldn't happen after the runNow lookup, but safe).
+  // name — the schedule row isn't kept in sync when a tenant is renamed.
   const tenantDisplayName = tenantRow?.name || s.tenant;
   // Duplicate guard — by tenant_id + date + method when possible, else fall back to name.
   let dupQ = supabase.from("payments").select("id").eq("company_id", companyId).eq("date", today).eq("method", s.method).limit(1);
@@ -260,43 +270,54 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   if (todayPay?.length > 0) {
     if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) return;
   }
-  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: tenantDisplayName, tenant_id: tenantRow?.id || null, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
-  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   const classId = await getPropertyClassId(s.property, companyId);
-  const month = today.slice(0, 7);
-  const hasAccrual = await checkAccrualExists(companyId, month, tenantDisplayName);
+  // A rent receipt settles the tenant's OWN receivable (rent is billed to it
+  // by the recurring engine). Only a tenant with no AR account of their own,
+  // and none can be created, falls back to Rental Income.
+  let tenantAr = null;
+  if (tenantRow?.id) {
+    const arId = await getOrCreateTenantAR(companyId, tenantDisplayName, tenantRow.id);
+    if (arId) {
+      const { data: arRow } = await supabase.from("acct_accounts").select("id, name, tenant_id").eq("company_id", companyId).eq("id", arId).maybeSingle();
+      tenantAr = arRow || null;
+    }
+  }
+  const credit = pickRentReceiptCredit({ tenantAr, tenantId: tenantRow?.id });
   // "via <method>" marker is parsed by fetchPayments to surface the
   // right payment method on the payments page without relying on
   // fuzzy description matches.
   const viaTag = " · via " + s.method;
-  const jeLines = hasAccrual
-  ? [
+  const jeLines = [
   { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + tenantDisplayName + viaTag },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantDisplayName + viaTag },
-  ]
-  : [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + tenantDisplayName + viaTag },
-  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantDisplayName + " — " + s.property + viaTag },
+  { account_id: credit.account_id, account_name: credit.account_name, debit: 0, credit: amt, class_id: classId, memo: (credit.settlesAr ? "AR settlement — " + tenantDisplayName : tenantDisplayName + " — " + s.property) + viaTag },
   ];
-  const jeDesc = hasAccrual ? "Autopay received — " + tenantDisplayName + " — " + s.property + " (settling AR)" : "Autopay — " + tenantDisplayName + " — " + s.property;
+  const jeDesc = credit.settlesAr ? "Autopay received — " + tenantDisplayName + " — " + s.property + " (settling AR)" : "Autopay — " + tenantDisplayName + " — " + s.property;
   // Deterministic reference — the unique index on (company_id, reference)
   // is only useful if refs are predictable. APAY-<tenantId>-<yyyymmdd>
   // collides on double-post, which is exactly what we want.
   const refKey = tenantRow?.id ? String(tenantRow.id) : (s.tenant || "anon").replace(/\s+/g, "_");
   const jeRef = "APAY-" + refKey + "-" + today.replace(/-/g, "");
+  // tenants.balance: the credit on the tenant's own AR fires the
+  // sync_tenant_balance_lines trigger, which recomputes the balance from the
+  // GL. A manual balanceUpdate on top would count the payment twice. The
+  // income fallback does not touch AR, so the balance does not move.
   const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: jeRef, property: s.property,
   lines: jeLines,
   ledgerEntry: { tenant: tenantDisplayName, tenant_id: tenantRow?.id || null, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
-  balanceUpdate: tenantRow ? { tenantId: tenantRow.id, amount: -amt } : null,
+  balanceUpdate: null,
   });
-  if (!result.jeId) { fetchData(); return; } // toast already shown
+  if (!result.jeId) { showToast("The autopay payment could not be posted to the books (it may already be posted today). Nothing was recorded.", "error"); fetchData(); return; }
+  // The payments row only AFTER the journal entry exists: before, a failed
+  // entry left a "paid" payment behind with nothing in the books.
+  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: tenantDisplayName, tenant_id: tenantRow?.id || null, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
+  if (error) { pmError("PM-8006", { raw: error, context: "autopay payments row after JE " + result.jeId }); showToast("The payment was posted to the books (" + jeRef + ") but its payment-history row could not be saved.", "error"); }
   logAudit("create", "payments", "Autopay: $" + s.amount + " from " + tenantDisplayName + " at " + s.property, "", userProfile?.email, userRole, companyId);
   addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + tenantDisplayName);
   if (tenantRow?.email) {
   queueNotification("payment_received", tenantRow.email, { tenant: tenantDisplayName, amount: amt, date: today, property: s.property, method: s.method }, companyId);
   }
-  await autoOwnerDistribution(companyId, s.property, amt, today, tenantDisplayName);
+  await autoOwnerDistribution(companyId, s.property, amt, today, tenantDisplayName, tenantRow?.id || null);
   fetchData();
   } finally {
   guardRelease("runNow", s.id);
@@ -344,9 +365,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-5">
   <h3 className="font-semibold text-neutral-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label><Select value={form.tenant_id ? String(form.tenant_id) : ""} onChange={e => { const t = tenants.find(t => String(t.id) === e.target.value); setForm({ ...form, tenant: t?.name || "", tenant_id: t?.id ?? null, property: t?.property || "", amount: t?.rent || "" }); }}>
   <option value="">Select tenant...</option>
-  {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+  {tenants.map(t => <option key={t.id} value={String(t.id)}>{t.name}{t.property ? " — " + propertyLabel(t.property) : ""}</option>)}
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
@@ -403,7 +424,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="mt-2 flex items-center justify-between">
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
-  {canManage(userRole) && <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>}
+  {canManage(userRole) && (isStripeSchedule(s)
+    ? <span className="text-xs text-neutral-400" title="Stripe autopay is charged automatically on its due date; the payment is recorded when Stripe confirms it.">Charged by Stripe automatically</span>
+    : <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>)}
   {canManage(userRole) && <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</Btn>}
   {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>}
   </div>

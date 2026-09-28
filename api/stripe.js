@@ -26,7 +26,12 @@
 //   ?action=webhook               Stripe → us. Verifies signature,
 //                                 posts JE on payment_intent.succeeded,
 //                                 stamps last_error on
-//                                 payment_intent.payment_failed.
+//                                 payment_intent.payment_failed, and
+//                                 reverses the payment's JE on
+//                                 charge.refunded / charge.dispute.created
+//                                 (re-posting it on charge.dispute.closed
+//                                 when the dispute is won). The Stripe
+//                                 endpoint must have those events enabled.
 //
 // Required env vars (Vercel production):
 //   STRIPE_SECRET_KEY            — sk_test_… or sk_live_…
@@ -42,6 +47,12 @@ const Stripe = require("stripe");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const webpush = require("web-push");
+// Pure rules shared with the browser bundle (CommonJS, no imports).
+const {
+  pickRentReceiptCredit, isTenantOwnArAccount, localBusinessDate,
+  billingPeriodOf, autopayIdempotencyKey, autopayMethodFromPmType, isAchAutopayMethod,
+  refundReference, disputeReference, disputeWonReference, refundDeltaCents, buildReversalLines,
+} = require("../src/utils/paymentRules");
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -252,6 +263,173 @@ async function authTenantOrMember(sb, user, tenant_id, company_id) {
   return { tenant };
 }
 
+// ── Books helpers (server side) ──────────────────────────────────
+// Shared by the payment_intent.succeeded post and the refund / dispute
+// reversals so all three number, date and class their entries the same way
+// the app does (src/utils/accounting.js autoPostJournalEntry).
+
+// The property's cost-center class, as getPropertyClassId resolves it:
+// properties.class_id when it points at a live class, else the class named
+// by the address (stored back on the property), else a new one.
+async function resolvePropertyClassId(sb, companyId, property) {
+  if (!companyId || !property) return null;
+  try {
+    const { data: prop } = await sb.from("properties").select("id, class_id")
+      .eq("company_id", companyId).eq("address", property).maybeSingle();
+    if (prop?.class_id) {
+      const { data: cls } = await sb.from("acct_classes").select("id").eq("id", prop.class_id).eq("company_id", companyId).maybeSingle();
+      if (cls?.id) return cls.id;
+    }
+    const { data: byName } = await sb.from("acct_classes").select("id").eq("company_id", companyId).eq("name", property).maybeSingle();
+    let classId = byName?.id || null;
+    if (!classId) {
+      // No id in the payload: the column default supplies it.
+      const { data: created } = await sb.from("acct_classes").insert({
+        company_id: companyId, name: property, description: "Auto-created for " + String(property).split(",")[0].trim(),
+        is_active: true,
+      }).select("id").maybeSingle();
+      classId = created?.id || null;
+    }
+    if (classId && prop?.id) await sb.from("properties").update({ class_id: classId }).eq("id", prop.id).eq("company_id", companyId);
+    return classId;
+  } catch (e) {
+    console.warn("[stripe] class lookup failed (non-fatal):", e.message);
+    return null;
+  }
+}
+
+// Post a balanced journal entry: header numbered by the next_je_number RPC
+// (retried on a number collision, re-calling the RPC each time), then lines.
+// Returns { id } on success, { idempotent: true } when the reference already
+// exists (the dedup index did its job), or { error }.
+async function postJournalEntry(sb, { companyId, date, description, reference, property, lines, extra }) {
+  const dr = lines.reduce((a, l) => a + (Number(l.debit) || 0), 0);
+  const cr = lines.reduce((a, l) => a + (Number(l.credit) || 0), 0);
+  if (!lines.length || Math.abs(dr - cr) > 0.005) return { error: "JE would be unbalanced — refused to post" };
+  let je = null, jeErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: jeNumber, error: numErr } = await sb.rpc("next_je_number", { p_company_id: companyId });
+    if (numErr || !jeNumber) return { error: "next_je_number failed: " + (numErr?.message || "null") };
+    const ins = await sb.from("acct_journal_entries").insert({
+      company_id: companyId, number: jeNumber, date,
+      description: String(description || "").slice(0, 500), reference,
+      property: property || "", status: "posted", ...(extra || {}),
+    }).select("id").maybeSingle();
+    je = ins.data; jeErr = ins.error;
+    if (!jeErr && je) break;
+    const msg = (jeErr?.message || "") + " " + (jeErr?.details || "");
+    if (/\b(reference)\b|idx_je_company_reference_unique/i.test(msg)) return { idempotent: true };
+    if (!/\b(number)\b|acct_journal_entries_number|unique_je_number_per_company/i.test(msg)) break;
+  }
+  if (jeErr || !je) return { error: "JE insert failed: " + (jeErr?.message || "unknown") };
+  const { error: linesErr } = await sb.from("acct_journal_lines").insert(lines.map(l => ({
+    company_id: companyId, journal_entry_id: je.id,
+    account_id: l.account_id, account_name: l.account_name || "",
+    debit: Number(l.debit) || 0, credit: Number(l.credit) || 0,
+    class_id: l.class_id || null, memo: l.memo || "",
+  })));
+  if (linesErr) {
+    await sb.from("acct_journal_entries").update({ status: "voided", description: "[ORPHANED — lines failed] " + description }).eq("id", je.id);
+    return { error: "JE lines insert failed: " + linesErr.message };
+  }
+  return { id: je.id };
+}
+
+// The tenant's OWN AR account, created the way getOrCreateTenantAR creates
+// it (1100-NNN under the 1100 parent, tenant_id set) when the tenant has
+// none. Legacy "AR - <name>" rows are adopted when the name is unambiguous.
+// Returns the acct_accounts row or null.
+async function getOrCreateTenantArServer(sb, companyId, tenantId, tenantName) {
+  const { data: rows } = await sb.from("acct_accounts")
+    .select("id, name, code, tenant_id, is_active").eq("company_id", companyId)
+    .eq("tenant_id", tenantId).eq("type", "Asset");
+  const mine = (rows || []).filter(r => isTenantOwnArAccount(r, tenantId));
+  if (mine.length) {
+    const active = mine.filter(r => r.is_active !== false).sort((a, b) => String(a.code || "").localeCompare(String(b.code || "")));
+    return active[0] || mine[0];
+  }
+  if (tenantName) {
+    const { data: byName } = await sb.from("acct_accounts")
+      .select("id, name, tenant_id").eq("company_id", companyId)
+      .eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+    if (byName?.id && !byName.tenant_id) {
+      const { data: sameName } = await sb.from("tenants").select("id")
+        .eq("company_id", companyId).eq("name", tenantName).is("archived_at", null);
+      if ((sameName || []).length <= 1) {
+        await sb.from("acct_accounts").update({ tenant_id: tenantId }).eq("id", byName.id);
+        return { ...byName, tenant_id: tenantId };
+      }
+    }
+  }
+  // Create it.
+  const { data: parent } = await sb.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+  const { data: last } = await sb.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
+  const lastSeq = last?.[0]?.code ? parseInt(last[0].code.split("-")[1], 10) || 0 : 0;
+  const code = "1100-" + String(lastSeq + 1).padStart(3, "0");
+  const { data: tRow } = await sb.from("tenants").select("name, property").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
+  const nm = tRow?.name || tenantName || "Tenant";
+  const shortProp = String(tRow?.property || "").split(",")[0].trim();
+  const { data: created, error } = await sb.from("acct_accounts").insert({
+    company_id: companyId, code, name: "AR - " + nm + (shortProp ? " (" + shortProp + ")" : ""),
+    type: "Asset", is_active: true, old_text_id: companyId + "-" + code,
+    parent_id: parent?.id || null, tenant_id: tenantId,
+  }).select("id, name, tenant_id").maybeSingle();
+  if (error || !created) {
+    console.error("[stripe] could not create tenant AR:", error?.message);
+    return null;
+  }
+  return created;
+}
+
+// The posted STRIPE-<pi> entry and its lines (webhook-global lookup: the PI
+// id is unique across companies, and a webhook has no current company).
+async function findStripePaymentEntry(sb, paymentIntentId) {
+  if (!paymentIntentId) return null;
+  // company-scope-exempt: keyed on a globally unique Stripe id; the row found
+  // is what tells us the company.
+  const { data: je } = await sb.from("acct_journal_entries")
+    .select("id, company_id, property, description, status, lines:acct_journal_lines(account_id, account_name, debit, credit, class_id, memo)")
+    .eq("reference", "STRIPE-" + paymentIntentId).neq("status", "voided").maybeSingle();
+  return je || null;
+}
+
+// Is this PaymentIntent one of ours (created by this app, so it carries our
+// metadata)? Used to decide between "retry later" (ours, the succeeded post
+// has not landed yet) and "ignore" (not a rent payment).
+async function isOurPaymentIntent(paymentIntentId) {
+  if (!paymentIntentId || !stripe) return false;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return !!(pi?.metadata?.company_id && pi?.metadata?.tenant_id);
+  } catch (_e) { return false; }
+}
+
+// "Rent payment — Name — Property" -> "<label> — Name — Property", so the
+// Payments page (which reads the tenant from the second " — " part) still
+// shows the tenant on a reversal.
+function reversalDescription(label, original, piId) {
+  const d = String(original?.description || "");
+  return /^Rent payment\s—/.test(d) ? d.replace(/^Rent payment/, label) : label + " — " + (d || piId);
+}
+
+async function setPaymentStatus(sb, companyId, paymentIntentId, status) {
+  const { error } = await sb.from("payments").update({ status })
+    .eq("company_id", companyId).eq("stripe_session_id", paymentIntentId);
+  if (error) console.warn("[stripe webhook] payments status update (non-fatal):", error.message);
+}
+
+// Reverse `amountCents` of a posted Stripe payment entry. Returns an object
+// for the webhook response.
+async function reverseStripePayment(sb, original, { amountCents, reference, description, memo }) {
+  const lines = buildReversalLines(original.lines || [], amountCents, memo);
+  if (!lines.length) return { skipped: "nothing to reverse" };
+  const r = await postJournalEntry(sb, {
+    companyId: original.company_id, date: localBusinessDate(), description,
+    reference, property: original.property || "", lines,
+  });
+  return r;
+}
+
 // ── Action: create-intent ─────────────────────────────────────────
 async function handleCreateIntent(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -437,7 +615,9 @@ async function handleSavePaymentMethod(req, res) {
       amount: amount || tenant.rent || 0,
       frequency: "monthly", day_of_month: Math.min(day_of_month, 28),
       provider: "stripe",
-      method: "stripe_card",
+      // From the PaymentMethod's real type: a bank account saved here was
+      // stored as "stripe_card" and then charged the card fee by the cron.
+      method: autopayMethodFromPmType(pm.type),
       enabled: true, active: true,
       stripe_customer_id: customerId,
       stripe_payment_method_id: paymentMethodId,
@@ -531,7 +711,7 @@ async function handleChargeAutopayDue(req, res) {
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: due, error: dueErr } = await sb.from("autopay_schedules")
-    .select("id, company_id, tenant_id, tenant, property, amount, day_of_month, stripe_customer_id, stripe_payment_method_id, method")
+    .select("id, company_id, tenant_id, tenant, property, amount, day_of_month, next_charge_date, stripe_customer_id, stripe_payment_method_id, method")
     .eq("provider", "stripe").eq("enabled", true).is("archived_at", null)
     .lte("next_charge_date", today);
   if (dueErr) {
@@ -541,9 +721,46 @@ async function handleChargeAutopayDue(req, res) {
 
   const results = [];
   for (const row of (due || [])) {
-    const isAch = row.method === "stripe_us_bank_account";
-    const fees = isAch ? grossUpForAchFee(row.amount) : grossUpForCardFee(row.amount);
+    // Which billing period this charge is for: the month of the due date the
+    // row carried when we read it. Same period -> same idempotency key.
+    const claimedDate = String(row.next_charge_date || "").slice(0, 10);
+    const period = billingPeriodOf(claimedDate);
+    if (!period) { results.push({ autopay_id: row.id, skipped: "no next_charge_date" }); continue; }
+
+    // Next date: unchanged rule — one month on, clamped to day_of_month.
+    const next = new Date();
+    next.setMonth(next.getMonth() + 1);
+    next.setDate(Math.min(row.day_of_month || 1, 28));
+    const nextDate = next.toISOString().slice(0, 10);
+
+    // CLAIM the period atomically before charging: move next_charge_date
+    // forward only if it still holds the value we read. Two overlapping runs
+    // both read the row, but only one UPDATE matches; the other skips it.
+    const { data: claimed, error: claimErr } = await sb.from("autopay_schedules")
+      .update({ next_charge_date: nextDate, last_charge_at: new Date().toISOString() })
+      .eq("id", row.id).eq("next_charge_date", claimedDate)
+      .eq("enabled", true).is("archived_at", null)
+      .select("id");
+    if (claimErr) { results.push({ autopay_id: row.id, error: "claim failed: " + claimErr.message }); continue; }
+    if (!claimed || claimed.length === 0) { results.push({ autopay_id: row.id, skipped: "claimed by another run" }); continue; }
+
     try {
+      // Fee by the PaymentMethod's actual type. Rows saved before the
+      // save-payment-method fix say "stripe_card" even for a bank account;
+      // read the type from Stripe and correct the row so it stays right.
+      let method = row.method;
+      try {
+        const pm = await stripe.paymentMethods.retrieve(row.stripe_payment_method_id);
+        const actual = autopayMethodFromPmType(pm?.type);
+        if (pm?.type && actual !== method) {
+          method = actual;
+          await sb.from("autopay_schedules").update({ method: actual }).eq("id", row.id);
+        }
+      } catch (pmErr) {
+        console.warn("[stripe charge-autopay-due] PM type lookup failed, using stored method:", pmErr.message);
+      }
+      const isAch = isAchAutopayMethod(method);
+      const fees = isAch ? grossUpForAchFee(row.amount) : grossUpForCardFee(row.amount);
       const intent = await stripe.paymentIntents.create({
         amount: fees.totalCents,
         currency: "usd",
@@ -559,27 +776,28 @@ async function handleChargeAutopayDue(req, res) {
           rent_cents: String(fees.rentCents),
           fee_cents: String(fees.feeCents),
           autopay_id: String(row.id),
+          billing_period: period,
           payment_method_kind: isAch ? "us_bank_account" : "card",
         },
+      }, {
+        // One charge per schedule per billing period, even if this request
+        // is retried or a second run gets this far.
+        idempotencyKey: autopayIdempotencyKey(row.id, period),
       });
-      // Bump next_charge_date forward one month (clamped to day_of_month).
-      const next = new Date();
-      next.setMonth(next.getMonth() + 1);
-      next.setDate(Math.min(row.day_of_month || 1, 28));
       await sb.from("autopay_schedules").update({
-        next_charge_date: next.toISOString().slice(0, 10),
-        last_charge_at: new Date().toISOString(),
         last_error: null, last_error_at: null,
       }).eq("id", row.id);
-      results.push({ autopay_id: row.id, intent: intent.id, status: intent.status });
+      results.push({ autopay_id: row.id, intent: intent.id, status: intent.status, period });
     } catch (e) {
-      // Off-session failure (declined, requires_action, etc.) — stamp
+      // Off-session failure (declined, requires_action, etc.). Release the
+      // claim so the period is retried on the next run, as before, and stamp
       // last_error so the Autopay tab can surface it.
       await sb.from("autopay_schedules").update({
+        next_charge_date: claimedDate,
         last_error: e.message?.slice(0, 500) || "unknown",
         last_error_at: new Date().toISOString(),
-      }).eq("id", row.id);
-      results.push({ autopay_id: row.id, error: e.message });
+      }).eq("id", row.id).eq("next_charge_date", nextDate);
+      results.push({ autopay_id: row.id, error: e.message, period });
     }
   }
 
@@ -638,51 +856,28 @@ async function handleWebhook(req, res) {
       return res.status(500).json({ error: "missing rent_cents metadata" });
     }
 
-    // Resolve accounts. Two strict requirements + one auto-create:
-    //   1. Tenant's per-tenant AR sub-account MUST exist (created at
-    //      tenant creation time by the property wizard). NO bare-AR
-    //      fallback — falling through silently aggregates per-lease
-    //      AR into a single consolidated account and breaks tenant
-    //      ledger views. Legacy "AR - <name>" rows (from before the
-    //      tenant_id migration) get adopted by populating tenant_id.
-    //   2. "Stripe Receivable" GL account (code 1015, Asset) MUST
-    //      exist or be auto-created — this is the DR side of the
-    //      charge, NOT Checking. Stripe holds funds 2-5 days before
-    //      payout, so the money isn't in the bank yet. Reconciled
-    //      against Checking when the Stripe payout deposit lands
-    //      (matched in Teller bank rec).
-    let tenantAR = null;
-    {
-      const { data } = await sb.from("acct_accounts")
-        .select("id, name, tenant_id").eq("company_id", companyId)
-        .eq("tenant_id", tenantId).eq("type", "Asset")
-        .maybeSingle();
-      tenantAR = data;
-    }
-    if (!tenantAR && md.tenant_name) {
-      // Legacy adopt: a name-only AR row exists for this tenant but
-      // tenant_id was never populated. Adopt only if exactly one
-      // active tenant at this company shares the name (otherwise
-      // we'd link an unrelated lease's AR).
-      const { data: byName } = await sb.from("acct_accounts")
-        .select("id, name, tenant_id").eq("company_id", companyId)
-        .eq("type", "Asset").eq("name", "AR - " + md.tenant_name)
-        .maybeSingle();
-      if (byName?.id) {
-        const { data: sameName } = await sb.from("tenants")
-          .select("id").eq("company_id", companyId).eq("name", md.tenant_name)
-          .is("archived_at", null);
-        if ((sameName || []).length <= 1 && !byName.tenant_id) {
-          await sb.from("acct_accounts").update({ tenant_id: tenantId }).eq("id", byName.id);
-          tenantAR = { ...byName, tenant_id: tenantId };
-        } else if (byName.tenant_id && String(byName.tenant_id) === String(tenantId)) {
-          tenantAR = byName;
-        }
-      }
-    }
-    if (!tenantAR) {
-      console.error("[stripe webhook] no per-tenant AR for tenant_id=" + tenantId + " name=" + md.tenant_name + " (company=" + companyId + ")");
-      return res.status(500).json({ error: "tenant has no AR sub-account — fix tenant data integrity (the wizard normally creates this on tenant creation)" });
+    // Resolve accounts.
+    //   1. Credit: the tenant's OWN AR sub-account -- the receipt settles
+    //      the rent the recurring engine billed there. Legacy "AR - <name>"
+    //      rows are adopted; a tenant with none gets one created the same
+    //      way getOrCreateTenantAR creates it. Only if that also fails does
+    //      the receipt fall back to Rental Income (paymentRules
+    //      pickRentReceiptCredit), instead of 500-ing forever while Stripe
+    //      retries a payment that has already been collected.
+    //   2. Debit: "Stripe Receivable" (code 1015, Asset), auto-created --
+    //      NOT Checking. Stripe holds funds 2-5 days before payout, so the
+    //      money isn't in the bank yet. Reconciled against Checking when
+    //      the Stripe payout deposit lands (matched in bank rec).
+    const tenantAR = await getOrCreateTenantArServer(sb, companyId, tenantId, md.tenant_name || "");
+    const credit = pickRentReceiptCredit({ tenantAr: tenantAR, tenantId });
+    let creditAccount = null;
+    if (credit.kind === "tenant_ar") {
+      creditAccount = { id: tenantAR.id, name: tenantAR.name };
+    } else {
+      console.error("[stripe webhook] no per-tenant AR for tenant_id=" + tenantId + " (company=" + companyId + "); crediting Rental Income");
+      const { data: income } = await sb.from("acct_accounts").select("id, name").eq("company_id", companyId).eq("code", "4000").maybeSingle();
+      if (!income?.id) return res.status(500).json({ error: "tenant has no AR account and Rental Income (4000) is missing" });
+      creditAccount = income;
     }
 
     let stripeReceivable = null;
@@ -705,76 +900,52 @@ async function handleWebhook(req, res) {
       stripeReceivable = ins.data;
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    // The business's own calendar date, not UTC: an evening payment in
+    // Eastern time is otherwise dated tomorrow (next month on the 31st).
+    const today = localBusinessDate();
     const reference = "STRIPE-" + intent.id;
     const description = "Rent payment — " + (md.tenant_name || "tenant") + " — " + (md.property || "");
     const rentDollars = rentCents / 100;
+    const classId = await resolvePropertyClassId(sb, companyId, md.property || "");
 
-    // Build the lines + assert the JE balances BEFORE inserting the
-    // header. A balance mismatch here means a code bug; refuse to
-    // post and 500. Stripe will retry, giving us a chance to see the
-    // failure in webhook logs instead of producing half-entries.
     const lines = [
-      { company_id: companyId, account_id: stripeReceivable.id, account_name: stripeReceivable.name, debit: rentDollars, credit: 0, memo: "Stripe charge " + intent.id.slice(0, 16) },
-      { company_id: companyId, account_id: tenantAR.id, account_name: tenantAR.name, debit: 0, credit: rentDollars, memo: "AR settlement" },
+      { account_id: stripeReceivable.id, account_name: stripeReceivable.name, debit: rentDollars, credit: 0, class_id: classId, memo: "Stripe charge " + intent.id.slice(0, 16) },
+      { account_id: creditAccount.id, account_name: creditAccount.name, debit: 0, credit: rentDollars, class_id: classId, memo: credit.settlesAr ? "AR settlement" : "Rent received (no tenant AR account)" },
     ];
-    const sumDebit = lines.reduce((a, l) => a + l.debit, 0);
-    const sumCredit = lines.reduce((a, l) => a + l.credit, 0);
-    if (Math.abs(sumDebit - sumCredit) > 0.005) {
-      console.error("[stripe webhook] balance check failed", { sumDebit, sumCredit, lines });
-      return res.status(500).json({ error: "JE would be unbalanced — refused to post" });
+    // Numbered by the next_je_number RPC with collision retry, like every
+    // other posting path. Refuses an unbalanced entry.
+    const posted = await postJournalEntry(sb, {
+      companyId, date: today, description, reference, property: md.property || "",
+      lines, extra: { stripe_payment_intent_id: intent.id },
+    });
+    if (posted.idempotent) return res.status(200).json({ received: true, idempotent: true });
+    if (posted.error) {
+      console.error("[stripe webhook] JE post failed:", posted.error);
+      return res.status(500).json({ error: posted.error });
     }
-
-    // Sequential JE number with retry on collision (created_at ties
-    // make order-by-created_at non-deterministic; bump attempt on
-    // unique-violation). Mirrors src/utils/accounting.js.
-    let je = null, jeErr = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { data: lastJE } = await sb.from("acct_journal_entries")
-        .select("number").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-      const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
-      const jeNumber = "JE-" + String(lastNum + 1 + attempt).padStart(4, "0");
-      const ins = await sb.from("acct_journal_entries").insert({
-        company_id: companyId, number: jeNumber, date: today,
-        description: description.slice(0, 500), reference,
-        stripe_payment_intent_id: intent.id, property: md.property || "",
-        status: "posted",
-      }).select("id").maybeSingle();
-      je = ins.data; jeErr = ins.error;
-      if (!jeErr && je) break;
-      const msg = (jeErr?.message || "") + " " + (jeErr?.details || "");
-      if (/\b(reference)\b|idx_je_company_reference_unique/i.test(msg)) {
-        return res.status(200).json({ received: true, idempotent: true });
-      }
-      if (!/\b(number)\b|acct_journal_entries_number/i.test(msg)) break;
-    }
-    if (jeErr || !je) {
-      console.error("[stripe webhook] JE insert failed:", jeErr?.message);
-      return res.status(500).json({ error: "JE insert failed: " + (jeErr?.message || "unknown") });
-    }
-
-    const linesWithJE = lines.map(l => ({ ...l, journal_entry_id: je.id }));
-    const { error: linesErr } = await sb.from("acct_journal_lines").insert(linesWithJE);
-    if (linesErr) {
-      console.error("[stripe webhook] JE lines insert failed:", linesErr.message);
-      await sb.from("acct_journal_entries").update({ status: "voided", description: "[ORPHANED — lines failed] " + description }).eq("id", je.id);
-      return res.status(500).json({ error: "JE lines insert failed" });
-    }
+    const je = { id: posted.id };
+    const tenantAROrNull = credit.settlesAr ? tenantAR : null;
 
     // payments table is the tenant-portal-side history. Amount is the
-    // rent (what Sheeba's AR was actually credited) — fee is between
-    // tenant and Stripe and doesn't appear on our books.
-    await sb.from("payments").insert({
-      company_id: companyId,
-      tenant: md.tenant_name || "",
-      property: md.property || "",
-      amount: rentDollars,
-      date: today,
-      type: "rent",
-      method: md.payment_method_kind === "us_bank_account" ? "ach" : "stripe",
-      status: "paid",
-      stripe_session_id: intent.id,
-    }).then(() => {}).catch((e) => console.warn("[stripe webhook] payments table insert (non-fatal):", e.message));
+    // rent (what the tenant's AR was actually credited) — fee is between
+    // tenant and Stripe and doesn't appear on our books. tenant_id is
+    // what the tenant portal filters on; without it the payment was
+    // invisible to the tenant.
+    {
+      const { error: payErr } = await sb.from("payments").insert({
+        company_id: companyId,
+        tenant: md.tenant_name || "",
+        tenant_id: Number(tenantId) || null,
+        property: md.property || "",
+        amount: rentDollars,
+        date: today,
+        type: "rent",
+        method: md.payment_method_kind === "us_bank_account" ? "ach" : "stripe",
+        status: "paid",
+        stripe_session_id: intent.id,
+      });
+      if (payErr) console.warn("[stripe webhook] payments table insert (non-fatal):", payErr.message);
+    }
 
     // Resync tenants.balance from the AR sub-account's posted lines.
     // The dashboard "Balance Due" tile reads this column directly (a
@@ -782,7 +953,7 @@ async function handleWebhook(req, res) {
     // is always correct. If we don't update the cache here, the
     // tenant sees a stale balance after a Stripe payment until the
     // next manual edit on the staff side.
-    try {
+    if (tenantAROrNull) try {
       // PAGED. This writes tenants.balance, which the dashboard reads
       // directly as its Balance Due tile, and an unpaged select stops at
       // Supabase's 1000-row cap without any error. A long-running tenant
@@ -793,7 +964,7 @@ async function handleWebhook(req, res) {
       for (let from = 0; ; from += 1000) {
         const { data: page, error: pageErr } = await sb.from("acct_journal_lines")
           .select("debit, credit, acct_journal_entries(status)")
-          .eq("company_id", companyId).eq("account_id", tenantAR.id)
+          .eq("company_id", companyId).eq("account_id", tenantAROrNull.id)
           .order("id").range(from, from + 999);
         if (pageErr) throw pageErr;
         arLines.push(...(page || []));
@@ -876,6 +1047,98 @@ async function handleWebhook(req, res) {
     return res.status(200).json({ received: true, type: event.type, action: autopayId ? "autopay_failed" : "noop" });
   }
 
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object;
+    const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+    const original = await findStripePaymentEntry(sb, piId);
+    if (!original) {
+      // Ours but the succeeded post has not landed yet (events can arrive
+      // out of order): 500 so Stripe retries. Not ours: nothing to do.
+      if (await isOurPaymentIntent(piId)) return res.status(500).json({ error: "original payment not posted yet — retry" });
+      return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "no posted payment for " + piId });
+    }
+    const rentCents = Math.round((original.lines || []).reduce((a, l) => a + (Number(l.debit) || 0), 0) * 100);
+    // Refunds can come in several partial steps; amount_refunded is the
+    // cumulative total. Reverse only what earlier refund entries have not.
+    const { data: prior } = await sb.from("acct_journal_entries")
+      .select("id, lines:acct_journal_lines(debit)").eq("company_id", original.company_id)
+      .like("reference", "STRIPE-REFUND-" + charge.id + "-%").neq("status", "voided").limit(100);
+    const alreadyCents = Math.round((prior || []).reduce((a, je) => a + (je.lines || []).reduce((b, l) => b + (Number(l.debit) || 0), 0), 0) * 100);
+    const delta = refundDeltaCents(rentCents, charge.amount_refunded, alreadyCents);
+    const status = charge.refunded ? "refunded" : "partially_refunded";
+    if (delta <= 0) {
+      await setPaymentStatus(sb, original.company_id, piId, status);
+      return res.status(200).json({ received: true, type: event.type, action: "already_reversed" });
+    }
+    const r = await reverseStripePayment(sb, original, {
+      amountCents: delta,
+      reference: refundReference(charge.id, charge.amount_refunded),
+      description: reversalDescription("Stripe refund", original, piId),
+      memo: "Refund of Stripe charge " + charge.id,
+    });
+    if (r.error) { console.error("[stripe webhook] refund reversal failed:", r.error); return res.status(500).json({ error: r.error }); }
+    await setPaymentStatus(sb, original.company_id, piId, status);
+    return res.status(200).json({ received: true, type: event.type, reversed_je: r.id || null, idempotent: !!r.idempotent });
+  }
+
+  if (event.type === "charge.dispute.created" || event.type === "charge.dispute.closed") {
+    const dispute = event.data.object;
+    let piId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id;
+    if (!piId && dispute.charge) {
+      try {
+        const ch = await stripe.charges.retrieve(typeof dispute.charge === "string" ? dispute.charge : dispute.charge.id);
+        piId = typeof ch.payment_intent === "string" ? ch.payment_intent : ch.payment_intent?.id;
+      } catch (e) { console.warn("[stripe webhook] dispute charge lookup failed:", e.message); }
+    }
+    const original = await findStripePaymentEntry(sb, piId);
+    if (!original) {
+      if (await isOurPaymentIntent(piId)) return res.status(500).json({ error: "original payment not posted yet — retry" });
+      return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "no posted payment for " + piId });
+    }
+    const rentCents = Math.round((original.lines || []).reduce((a, l) => a + (Number(l.debit) || 0), 0) * 100);
+    const amountCents = Math.min(rentCents, Math.round(Number(dispute.amount) || rentCents));
+    const reverse = () => reverseStripePayment(sb, original, {
+      amountCents, reference: disputeReference(dispute.id),
+      description: reversalDescription("Stripe dispute", original, piId),
+      memo: "Disputed Stripe payment " + dispute.id,
+    });
+    if (event.type === "charge.dispute.created") {
+      // Stripe withdraws the disputed funds when the dispute opens.
+      const r = await reverse();
+      if (r.error) { console.error("[stripe webhook] dispute reversal failed:", r.error); return res.status(500).json({ error: r.error }); }
+      await setPaymentStatus(sb, original.company_id, piId, "disputed");
+      return res.status(200).json({ received: true, type: event.type, reversed_je: r.id || null, idempotent: !!r.idempotent });
+    }
+    // closed
+    if (dispute.status === "lost") {
+      // Make sure the reversal exists (idempotent if .created already ran).
+      const r = await reverse();
+      if (r.error) return res.status(500).json({ error: r.error });
+      await setPaymentStatus(sb, original.company_id, piId, "dispute_lost");
+      return res.status(200).json({ received: true, type: event.type, action: "dispute_lost", reversed_je: r.id || null });
+    }
+    if (dispute.status === "won") {
+      // Funds returned: re-post the payment, but only if it was reversed.
+      const { data: rev } = await sb.from("acct_journal_entries")
+        .select("id, lines:acct_journal_lines(account_id, account_name, debit, credit, class_id, memo)")
+        .eq("company_id", original.company_id).eq("reference", disputeReference(dispute.id))
+        .neq("status", "voided").maybeSingle();
+      if (rev) {
+        const revCents = Math.round((rev.lines || []).reduce((a, l) => a + (Number(l.debit) || 0), 0) * 100);
+        const lines = buildReversalLines(rev.lines || [], revCents, "Dispute won — " + dispute.id);
+        const r = await postJournalEntry(sb, {
+          companyId: original.company_id, date: localBusinessDate(),
+          description: reversalDescription("Stripe dispute won", original, piId),
+          reference: disputeWonReference(dispute.id), property: original.property || "", lines,
+        });
+        if (r.error) return res.status(500).json({ error: r.error });
+      }
+      await setPaymentStatus(sb, original.company_id, piId, "paid");
+      return res.status(200).json({ received: true, type: event.type, action: "dispute_won" });
+    }
+    return res.status(200).json({ received: true, type: event.type, action: "noop", status: dispute.status });
+  }
+
   return res.status(200).json({ received: true, type: event.type, action: "noop" });
 }
 
@@ -893,6 +1156,10 @@ module.exports = async (req, res) => {
   if (action === "webhook") return handleWebhook(req, res);
   return res.status(404).json({ error: "unknown action" });
 };
+
+// Exposed for tests (tests/payments-autopay-stripe.test.mjs), which drive the
+// handlers with a mocked Stripe client and Supabase client.
+module.exports._internals = { postJournalEntry, resolvePropertyClassId, getOrCreateTenantArServer, grossUpForCardFee, grossUpForAchFee };
 
 module.exports.config = {
   api: { bodyParser: false },
