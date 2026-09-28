@@ -66,6 +66,12 @@ const NEEDS_A_PERSON = {
 // these auto-logins; every other box keeps refusing exactly as before.
 const RECAPTCHA_SCORED = { washington_gas: true };
 const IS_RESIDENTIAL = /^(1|true|yes)$/i.test(process.env.HOUSY_RESIDENTIAL || "");
+// ENROLLMENT MODE: for portals that mail a one-time code (BGE), set HOUSY_CODE_FILE
+// to a path. Sign-in fills the creds, the code screen appears, and the script polls
+// that file for the code a person reads from the account inbox, enters it, and saves
+// the session. The code is single-use and bound to THIS open session, so it must be
+// supplied while the run is live -- hence the file poll rather than a later handoff.
+const CODE_FILE = (process.env.HOUSY_CODE_FILE || "").trim();
 
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR
   || path.join(require("os").homedir(), ".housy-sessions");
@@ -295,6 +301,8 @@ async function signedIn(page, book) {
   if (NEEDS_A_PERSON[portal]) {
     if (IS_RESIDENTIAL && RECAPTCHA_SCORED[portal]) {
       console.log(`  ${portal}: reCAPTCHA-scored login — attempting from residential IP (HOUSY_RESIDENTIAL set)`);
+    } else if (CODE_FILE && book.mfa === "code-on-signin") {
+      console.log(`  ${portal}: code-on-signin enrollment — will wait for the emailed code in ${CODE_FILE}`);
     } else {
       die(NEEDS_A_PERSON[portal]);
     }
@@ -352,6 +360,20 @@ async function signedIn(page, book) {
       }
       await loc.click();
     };
+    // Step screenshots, only during enrollment (CODE_FILE set), so a person can
+    // watch the run frame by frame and confirm each screen is what it should be.
+    let snapN = 0;
+    const snap = async (label) => {
+      if (!CODE_FILE) return null;
+      try {
+        const dir = "/tmp/housy-shots"; fs.mkdirSync(dir, { recursive: true });
+        const f = `${dir}/bge-step-${String(++snapN).padStart(2, "0")}-${label}.png`;
+        await page.screenshot({ path: f });
+        console.log("  [shot] " + f);
+        return f;
+      } catch { return null; }
+    };
+    await snap("loginpage");
     await humanClick(userBox);
     await userBox.pressSequentially(username, { delay: 70 + Math.random() * 60 });
 
@@ -368,28 +390,69 @@ async function signedIn(page, book) {
         ? page.getByRole("button", { name: submitSig.name }).first()
         : page.getByRole("button", { name: /log ?in|sign ?in/i }).first();
     await humanClick(submit);
+    await page.waitForTimeout(2500);
+    await snap("after-submit");
 
     // Wait for the signed-out signals to go away, which is the only
     // definition of "signed in" that does not depend on guessing a URL.
-    const deadline = Date.now() + 90000;
+    let deadline = Date.now() + 90000;
     let ok = false;
+    let codeHandled = false;
+    // A code screen is detected by the code INPUT itself, not just page text --
+    // BGE's screen text varies, but the one-time-code box is unmistakable. This
+    // must be checked BEFORE signedIn(), because a code screen also lacks the
+    // signed-out signals and would otherwise read as a false "signed in" and save
+    // a useless pre-code session (measured: BGE did exactly that).
+    const codeBoxSel =
+      '#emailVerificationCode, input[autocomplete="one-time-code"], input[name*="otp" i], '
+      + 'input[name*="code" i], input[id*="verification" i], input[id*="otp" i]';
     while (Date.now() < deadline) {
       await page.waitForTimeout(2000);
-      if (await signedIn(page, book)) { ok = true; break; }
 
-      // A code-entry screen means this portal wants a person. Stop rather
-      // than sitting here until the deadline.
-      const codeScreen = page.locator(
-        'text=/verification code|enter the code|one[- ]time (code|passcode)|authenticator/i'
-      ).first();
-      if (await codeScreen.isVisible({ timeout: 500 }).catch(() => false)) {
-        console.error(JSON.stringify({
-          outcome: "needs_a_person",
-          error: `${book.provider} is asking for a verification code. Run `
-               + `\`node worker/portals/enroll.js ${portal}\` and sign in by hand.`,
-        }, null, 2));
-        process.exit(3);
+      const onCodeScreen = !codeHandled && await page.locator(codeBoxSel).first()
+        .isVisible({ timeout: 500 }).catch(() => false);
+      if (onCodeScreen) {
+        if (!(CODE_FILE && book.mfa === "code-on-signin")) {
+          console.error(JSON.stringify({
+            outcome: "needs_a_person",
+            error: `${book.provider} is asking for a verification code. Run `
+                 + `\`node worker/portals/enroll.js ${portal}\` and sign in by hand.`,
+          }, null, 2));
+          process.exit(3);
+        }
+        // Enrollment: the account holder reads the emailed code and drops it in
+        // CODE_FILE. Poll for it (up to 8 min) WITHOUT closing the session, since
+        // the code is single-use and bound to THIS open session.
+        await snap("code-screen");
+        try { fs.writeFileSync(CODE_FILE, "", { mode: 0o600 }); } catch {}
+        console.log(`\n>>> ${book.provider} emailed a one-time code. Put ONLY the digits in ${CODE_FILE} `
+          + `(e.g.  echo 123456 > ${CODE_FILE}). Waiting up to 8 minutes...\n`);
+        let code = "";
+        const codeDeadline = Date.now() + 8 * 60 * 1000;
+        while (Date.now() < codeDeadline) {
+          await page.waitForTimeout(3000);
+          try { code = (fs.readFileSync(CODE_FILE, "utf8") || "").replace(/\D/g, ""); } catch {}
+          if (/^\d{4,8}$/.test(code)) break;
+          code = "";
+        }
+        if (!code) die(`no verification code supplied in ${CODE_FILE} within 8 minutes`);
+        const codeBox = page.locator(codeBoxSel).first();
+        await codeBox.waitFor({ state: "visible", timeout: 15000 });
+        await humanClick(codeBox);
+        await codeBox.pressSequentially(code, { delay: 90 + Math.random() * 60 });
+        await page.waitForTimeout(400);
+        const cont = page.getByRole("button", { name: /continue|verify|submit|confirm|next/i }).first();
+        if (await cont.isVisible({ timeout: 5000 }).catch(() => false)) await humanClick(cont);
+        try { fs.writeFileSync(CODE_FILE, "", { mode: 0o600 }); } catch {} // consume: single-use
+        await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+        await snap("after-code");
+        codeHandled = true;
+        deadline = Date.now() + 60000; // fresh window to confirm signed-in after the code
+        console.log("  code entered — confirming sign-in...");
+        continue; // re-evaluate signedIn on the next loop
       }
+
+      if (await signedIn(page, book)) { ok = true; break; }
     }
     if (!ok) {
       // Leave evidence. A blank "signed-out after 90s" told us nothing about
@@ -414,6 +477,7 @@ async function signedIn(page, book) {
       process.exit(3);
     }
 
+    await snap("signed-in");
     fs.writeFileSync(sessionFile, JSON.stringify(await ctx.storageState()), { mode: 0o600 });
     console.log(JSON.stringify({ outcome: "ok", session: "created", portal, file: sessionFile }, null, 2));
   } finally {
