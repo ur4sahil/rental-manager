@@ -162,10 +162,10 @@ assert("no manual tenants.balance increment", !/UPDATE\s+tenants\s+SET\s+balance
 assert("AR leg is the tenant's own account, never the shared 1100",
   /v_ar_id := public\._late_fee_tenant_ar\(/.test(batch) && !/name = 'Accounts Receivable'/.test(code(batch)) && !/code = '1100'/.test(code(batch)));
 assert("a tenant with no AR account is skipped and reported", /skipped_no_ar_account/.test(batch) && /IF v_ar_id IS NULL THEN/.test(batch));
-assert("eligibility unchanged: active/current, balance > 0, not archived",
-  /lease_status IN \('active','current'\) AND coalesce\(balance,0\) > 0/.test(batch) && /archived_at IS NULL/.test(batch));
-assert("fee amount unchanged: flat or round(rent * pct)/100", /v_fee := v_rule\.fee_amount;/.test(batch) && /v_fee := round\(v_t\.rent \* v_rule\.fee_amount\) \/ 100\.0;/.test(batch));
-assert("grace + disabled-rule handling unchanged", /coalesce\(is_active, true\)/.test(batch) && /<= coalesce\(v_rule\.grace_days, 0\)/.test(batch));
+assert("who: active/current/notice, balance > 0, not archived (same as the app)",
+  /lease_status IN \('active','current','notice'\) AND coalesce\(balance,0\) > 0/.test(batch) && /archived_at IS NULL/.test(batch));
+assert("how much: flat rounded to cents, percent = round(rent * pct)/100", /v_fee := round\(v_amount, 2\);/.test(batch) && /v_fee := round\(v_t\.rent \* v_amount\) \/ 100\.0;/.test(batch));
+assert("disabled rules ignored; an active rule is the on/off switch for the job", /coalesce\(is_active, true\)/.test(batch) && /no late fee rule configured/.test(batch));
 
 console.log("\n🗄️  SQL RULE == JS RULE");
 for (const form of ["'LATEFEE-' || p_tenant_id::text || '-' || replace(p_month, '-', '')",
@@ -241,6 +241,49 @@ try {
   assert("missing company fails closed", bad.already === true && !!bad.error);
 } catch (e) {
   assert("live check ran", false, e.message);
+}
+
+
+// ── Same who / when / how much in all three paths ────────────────────────
+{
+  console.log("\n— same who, when and how much everywhere —");
+  const t = { lease_status: "active", balance: 500, rent: 2000 };
+  assert("'fixed' is a dollar fee (was charged as 50% of rent)", R.normalizeLateFeeType("fixed") === "flat" && R.computeLateFeeAmount(R.resolveLateFeeTerms({ tenant: t, rule: { fee_type: "fixed", fee_amount: 50, grace_days: 5 } }), 2000) === 50);
+  assert("'percentage' is a percent of rent", R.computeLateFeeAmount(R.resolveLateFeeTerms({ tenant: t, rule: { fee_type: "percentage", fee_amount: 5, grace_days: 0 } }), 2000) === 100);
+  assert("an unknown fee type is refused, not guessed", !!R.resolveLateFeeTerms({ tenant: t, rule: { fee_type: "weekly", fee_amount: 5 } }).error);
+  assert("the tenant's own setting beats the rule", R.resolveLateFeeTerms({ tenant: { ...t, late_fee_amount: 25, late_fee_type: "flat" }, rule: { fee_type: "flat", fee_amount: 50, grace_days: 3 } }).amount === 25);
+  assert("…and still uses the rule's grace days", R.resolveLateFeeTerms({ tenant: { ...t, late_fee_amount: 25 }, rule: { fee_type: "flat", fee_amount: 50, grace_days: 3 } }).graceDays === 3);
+  assert("no setting and no rule -> refused", !!R.resolveLateFeeTerms({ tenant: t, rule: null }).error);
+  assert("percent with no rent -> no fee", R.computeLateFeeAmount({ type: "percent", amount: 5 }, 0) === null);
+  const e = (o) => R.lateFeeEligibility({ tenant: { ...t, ...(o.t || {}) }, today: o.today, dueDay: o.dueDay, graceDays: o.grace });
+  assert("on notice is charged", e({ t: { lease_status: "notice" }, today: "2026-10-10", dueDay: 1, grace: 5 }).ok);
+  assert("archived is not charged", !e({ t: { archived_at: "2026-10-01" }, today: "2026-10-10", dueDay: 1, grace: 5 }).ok);
+  assert("moved out ('past') is not charged", !e({ t: { lease_status: "past" }, today: "2026-10-10", dueDay: 1, grace: 5 }).ok);
+  assert("owes nothing -> not charged", !e({ t: { balance: 0 }, today: "2026-10-10", dueDay: 1, grace: 5 }).ok);
+  assert("grace counts from the DUE DAY, not the 1st (due 10th, grace 5, on the 14th = not yet)", !e({ today: "2026-10-14", dueDay: 10, grace: 5 }).ok);
+  assert("…and charged on the 16th", e({ today: "2026-10-16", dueDay: 10, grace: 5 }).ok);
+  assert("last grace day is still grace", !e({ today: "2026-10-06", dueDay: 1, grace: 5 }).ok && e({ today: "2026-10-07", dueDay: 1, grace: 5 }).ok);
+  assert("due day 31 clamps to Feb 28", R.lateFeeDueDate("2026-02-10", 31) === "2026-02-28");
+  assert("due day: lease first, then rent schedule, then the 1st", R.lateFeeDueDay({ leases: [{ payment_due_day: 5 }], schedules: [{ day_of_month: 9 }] }) === 5 && R.lateFeeDueDay({ leases: [], schedules: [{ day_of_month: 9 }] }) === 9 && R.lateFeeDueDay({}) === 1);
+  assert("New York day, not UTC (Oct 1 02:00 UTC is Sep 30 in NY)", R.lateFeeBusinessDate(new Date("2026-10-01T02:00:00Z")) === "2026-09-30");
+
+  const lf = src("components/LateFees.js"), tn = src("components/Tenants.js");
+  assert("Late Fees page lists active AND on-notice tenants", /in\("lease_status", LIVE_TENANCY\)/.test(lf));
+  assert("Late Fees page uses the shared terms + eligibility", /resolveLateFeeTerms\(/.test(lf) && /lateFeeEligibility\(/.test(lf) && /computeLateFeeAmount\(/.test(lf) && /lateFeeBusinessDate\(\)/.test(lf));
+  assert("Late Fees page no longer tests fee_type === 'flat' by hand", !/rule\.fee_type === "flat"/.test(lf));
+  assert("Late Fees page saves the canonical fee type", /fee_type: normalizeLateFeeType\(form\.fee_type\)/.test(lf));
+  assert("tenant button uses the shared terms + eligibility with the company rule", /resolveLateFeeTerms\(\{ tenant: t, rule: lfRule \}\)/.test(tn) && /lateFeeEligibility\(/.test(tn) && /lateFeeBusinessDate\(\)/.test(tn));
+  assert("tenant button no longer computes percent/flat by hand", !/late_fee_type === "percent"/.test(tn));
+  assert("tenant button shows whenever the tenant owes money (rule OR own setting)", /lateFeeAction=\{safeNum\(selectedTenant\?\.balance\) > 0 && !selectedTenant\?\.archived_at/.test(tn));
+
+  const sql = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), "../supabase/migrations/20260928050000_late_fees_one_rule_tenant_ar.sql"), "utf8");
+  const job = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.batch_post_late_fees"));
+  assert("job: New York date", /now\(\) AT TIME ZONE 'America\/New_York'/.test(job) && !/CURRENT_DATE/.test(job));
+  assert("job: charges notice tenants", /lease_status IN \('active','current','notice'\)/.test(job));
+  assert("job: 'fixed' = flat, 'percentage' = percent, unknown skipped", /IN \('flat','fixed'\) THEN 'flat'/.test(job) && /IN \('percent','percentage','pct','%'\) THEN 'percent'/.test(job) && /ELSE NULL END/.test(job));
+  assert("job: tenant's own setting first", /IF coalesce\(v_t\.late_fee_amount, 0\) > 0 THEN/.test(job));
+  assert("job: grace counted from the tenant's due day", /payment_due_day/.test(job) && /day_of_month/.test(job) && /\(v_today - v_due_date\) <= v_grace/.test(job));
+  assert("job: no longer stops for everyone on a day-of-month grace check", !/EXTRACT\(DAY FROM v_today\)::int <= coalesce\(v_rule\.grace_days/.test(job));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

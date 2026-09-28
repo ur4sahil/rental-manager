@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Select, Btn, PageHeader, TextLink} from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, ACTIVE_LEASE} from "../utils/helpers";
+import { safeNum, formatCurrency, LIVE_TENANCY} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { getPropertyClassId } from "../utils/accounting";
 import { postTenantLateFee, lateFeeFailureReason } from "../utils/lateFees";
+import { lateFeeBusinessDate, normalizeLateFeeType, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, lateFeeDueDate } from "../utils/lateFeeRules";
 import { Spinner } from "./shared";
 
 function LateFees({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -36,37 +37,43 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // always returned an empty list and this page silently had nothing
   // to act on. AR balance > 0 after the grace period past the lease's
   // due day is the real "overdue rent" signal.
-  const [r, t, lRes] = await Promise.all([
+  const [r, t, lRes, sRes] = await Promise.all([
   // Ordered. applyAllFees and the per-row Apply button both take
   // rules[0], and without an ORDER BY the row Postgres happens to return
   // first decides which fee every overdue tenant is charged. Oldest rule
   // first makes the choice deterministic and explicable.
   supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }),
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ACTIVE_LEASE),
+  // Active AND on-notice tenants: someone on notice still lives there and
+  // still owes rent. Same "who" as the tenant button and the nightly job.
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", LIVE_TENANCY),
   supabase.from("leases").select("tenant_id, tenant_name, payment_due_day, status, property").eq("company_id", companyId).eq("status", "active"),
+  supabase.from("recurring_journal_entries").select("tenant_id, day_of_month").eq("company_id", companyId).eq("status", "active").is("archived_at", null).not("tenant_id", "is", null),
   ]);
   const leases = lRes.data || [];
+  const schedules = sRes.data || [];
   setRules(r.data || []);
   setTenants(t.data || []);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // New York calendar day, the same day the nightly job uses.
+  const today = lateFeeBusinessDate();
   const overdue = (t.data || [])
     .filter(tn => safeNum(tn.balance) > 0)
     .map(tn => {
-      const lease = leases.find(l => (l.tenant_id && tn.id && String(l.tenant_id) === String(tn.id)) || (l.tenant_name === tn.name && l.property === tn.property));
-      const dueDay = lease?.payment_due_day || 1;
-      const thisMonthDays = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      const dueDate = new Date(today.getFullYear(), today.getMonth(), Math.min(dueDay, thisMonthDays));
-      const daysFromDue = Math.floor((today - dueDate) / 86400000);
+      const tLeases = leases.filter(l => (l.tenant_id && tn.id && String(l.tenant_id) === String(tn.id)) || (!l.tenant_id && l.tenant_name === tn.name && l.property === tn.property));
+      const tScheds = schedules.filter(sc => String(sc.tenant_id) === String(tn.id));
+      const dueDay = lateFeeDueDay({ leases: tLeases, schedules: tScheds });
+      const dueDate = lateFeeDueDate(today, dueDay);
+      // Grace 0 here: this is "how many days past due", the list shows it;
+      // the grace period is applied when a fee is charged.
+      const e = lateFeeEligibility({ tenant: tn, today, dueDay, graceDays: 0 });
       return {
         id: tn.id,
         tenant: tn.name,
         tenant_id: tn.id,
         property: tn.property,
         amount: safeNum(tn.balance),
-        date: formatLocalDate(dueDate),
-        _dueDate: dueDate,
-        daysLate: daysFromDue,
+        date: dueDate,
+        dueDay,
+        daysLate: e.daysLate,
       };
     })
     .filter(row => row.daysLate > 0);
@@ -87,7 +94,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   if (!form.grace_days || !form.fee_amount) { showToast("Please fill all fields.", "error"); return; }
   if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { showToast("Grace days must be a valid number.", "error"); return; }
   if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { showToast("Fee amount must be a positive number.", "error"); return; }
-  const fields = { name: form.name, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), fee_type: form.fee_type };
+  const fields = { name: form.name, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), fee_type: normalizeLateFeeType(form.fee_type) || "flat" };
   if (editingRule) {
   const { error } = await supabase.from("late_fee_rules").update(fields).eq("id", editingRule.id).eq("company_id", companyId);
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
@@ -114,27 +121,21 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
     pmError("PM-6003", { raw: { message: "Late fee not applied: no tenant record for " + payment.tenant }, context: "applyLateFee", silent: true });
     return;
   }
-  // Percent fees need a known rent base. payment.amount is whatever was paid
-  // (partial / overpayment / mis-keyed), not the lease rent — relying on it
-  // silently produces the wrong fee. Skip + log if rent isn't set.
-  let feeAmount;
-  if (rule.fee_type === "flat") {
-    feeAmount = safeNum(rule.fee_amount);
-  } else {
-    const rentBase = safeNum(tenant?.rent);
-    if (rentBase <= 0) {
-      pmError("PM-6003", { raw: { message: "Cannot compute percent late fee: tenant.rent is not set for " + payment.tenant }, context: "applyLateFee", silent: true });
-      return;
-    }
-    // Preserve cents. Math.round on the raw product would throw away
-    // sub-dollar precision — $1250 × 5.1% = $63.75 silently became $64.
-    feeAmount = Math.round(rentBase * safeNum(rule.fee_amount)) / 100;
-  }
+  // Same four answers as the tenant button and the nightly job
+  // (utils/lateFeeRules.js): the tenant's own late-fee setting if set, else
+  // this rule; 'fixed' is a dollar amount; only a live tenant who owes money
+  // and is past the due day + grace.
+  const terms = resolveLateFeeTerms({ tenant, rule });
+  if (terms.error) { showToast(`Late fee not applied to ${payment.tenant}: ${terms.error}.`, "error"); return; }
+  const today = lateFeeBusinessDate();
+  const elig = lateFeeEligibility({ tenant, today, dueDay: payment.dueDay, graceDays: terms.graceDays });
+  if (!elig.ok) { showToast(`Late fee not applied to ${payment.tenant}: ${elig.reason}.`, "warning"); return; }
+  const feeAmount = computeLateFeeAmount(terms, tenant?.rent);
   if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
+    showToast(`Late fee not applied to ${payment.tenant}: a percent fee needs the tenant's rent to be set.`, "error");
     pmError("PM-6003", { raw: { message: "Computed late fee is invalid: " + feeAmount }, context: "applyLateFee", silent: true });
     return;
   }
-  const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(payment.property, companyId);
   // One routine for every manual late fee (utils/lateFees.js): the shared
   // one-per-month rule — which also sees the nightly job's fees, the tenant
@@ -177,13 +178,12 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // different number on the button than the one that got posted for any
   // tenant who was not exactly one month behind.
   function previewFee(row, rule) {
-  if (!rule) return "0.00";
-  if (rule.fee_type === "flat") return safeNum(rule.fee_amount).toFixed(2);
   const tenant = tenants.find(t => row.tenant_id != null && String(t.id) === String(row.tenant_id))
     || tenants.find(t => t.name === row.tenant && t.property === row.property);
-  const rentBase = safeNum(tenant?.rent);
-  if (rentBase <= 0) return "—";
-  return (Math.round(rentBase * safeNum(rule.fee_amount)) / 100).toFixed(2);
+  const terms = resolveLateFeeTerms({ tenant, rule });
+  if (terms.error) return "—";
+  const fee = computeLateFeeAmount(terms, tenant?.rent);
+  return fee == null ? "—" : fee.toFixed(2);
   }
 
   if (loading) return <Spinner />;
@@ -210,10 +210,10 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   <div key={r.id} className={`bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex justify-between items-center ${r.is_active === false ? "opacity-50" : ""}`}>
   <div>
   <div className="font-semibold text-brand-800 text-sm flex items-center gap-2">{r.name}{r.is_active === false && <span className="text-2xs font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">Disabled</span>}</div>
-  <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
+  <div className="text-xs text-brand-500">{r.grace_days} day grace · {normalizeLateFeeType(r.fee_type) === "flat" ? `${formatCurrency(r.fee_amount)} flat` : normalizeLateFeeType(r.fee_type) === "percent" ? `${r.fee_amount}% of rent` : `unknown type "${r.fee_type}"`}</div>
   </div>
   <div className="flex gap-3 items-center">
-  <TextLink size="xs" underline={false} onClick={() => { setEditingRule(r); setForm({ name: r.name || "", grace_days: String(r.grace_days ?? ""), fee_amount: String(r.fee_amount ?? ""), fee_type: r.fee_type || "flat" }); setShowForm(true); }}>Edit</TextLink>
+  <TextLink size="xs" underline={false} onClick={() => { setEditingRule(r); setForm({ name: r.name || "", grace_days: String(r.grace_days ?? ""), fee_amount: String(r.fee_amount ?? ""), fee_type: normalizeLateFeeType(r.fee_type) || "flat" }); setShowForm(true); }}>Edit</TextLink>
   <TextLink size="xs" underline={false} onClick={async () => { if(!guardSubmit("toggleLateFee",r.id))return; try{ const { error } = await supabase.from("late_fee_rules").update({ is_active: !r.is_active }).eq("id", r.id).eq("company_id", companyId); if(error){ showToast("Failed to update rule.", "error"); return; } showToast(r.is_active ? "Rule disabled." : "Rule enabled.", "success"); fetchData(); }finally{guardRelease("toggleLateFee",r.id);} }}>{r.is_active === false ? "Enable" : "Disable"}</TextLink>
   <TextLink tone="danger" size="xs" underline={false} onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }}>Delete</TextLink>
   </div>

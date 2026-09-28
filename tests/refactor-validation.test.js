@@ -240,7 +240,8 @@ function testFileStructure() {
   // src/utils/lateFeeRules.js (one-per-month rule, tested directly by
   // late-fees-unified.test.mjs) and the shared posting routine
   // lateFees.js; the two component call sites got shorter.
-  assert(totalLines <= 51400, `Total src lines <= 51400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51600 on 2026-09-28: + shared late-fee who/when/how-much rules (lateFeeRules.js).
+  assert(totalLines <= 51600, `Total src lines <= 51600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

@@ -160,24 +160,36 @@ REVOKE ALL ON FUNCTION public._late_fee_tenant_ar(text, bigint, text, text) FROM
 GRANT EXECUTE ON FUNCTION public._late_fee_tenant_ar(text, bigint, text, text) TO service_role;
 
 -- ── 3. the nightly job ───────────────────────────────────────────────────
--- Unchanged: who is eligible, the rule lookup, grace, the fee amount.
--- Changed: the duplicate check, the reference, the AR leg, no manual balance
--- update, next_je_number with a number-only collision retry.
+-- Same four answers as the Late Fees page and the tenant button
+-- (src/utils/lateFeeRules.js -- change one, change the others):
+--   * type:   'flat'/'fixed' = dollars, 'percent'/'percentage' = % of rent,
+--             anything else is skipped (a "fixed $50" rule used to be charged
+--             as 50% of rent);
+--   * amount: the tenant's own late_fee_amount when set (> 0), else the rule;
+--   * who:    not archived, lease_status active/current/notice, balance > 0;
+--   * when:   today (New York) is past the rent due day + the rule's grace
+--             days; due day = active lease payment_due_day, else the rent
+--             schedule's day_of_month, else 1, clamped to the month's length.
+-- The company's active rule is the on/off switch for this job: with no
+-- active rule it charges nobody, even tenants with their own setting.
+-- Also: one duplicate rule, one reference, the tenant's own AR, no manual
+-- balance update, next_je_number with a number-only collision retry.
 CREATE OR REPLACE FUNCTION public.batch_post_late_fees(p_company_id text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_catalog AS $function$
 DECLARE
   v_t RECORD; v_rule RECORD;
-  v_today DATE := CURRENT_DATE;
-  v_month TEXT := to_char(v_today, 'YYYY-MM');
+  v_today DATE := (now() AT TIME ZONE 'America/New_York')::date;
+  v_month TEXT := to_char((now() AT TIME ZONE 'America/New_York')::date, 'YYYY-MM');
   v_ref TEXT;
   v_fee NUMERIC; v_je_id TEXT; v_je_number TEXT; v_class_id TEXT;
   v_ar_id uuid; v_ar_name text; v_income_id uuid; v_income_name text;
   v_attempt INTEGER; v_count INTEGER := 0; v_skipped INTEGER := 0;
   v_constraint TEXT;
   v_no_ar jsonb := '[]'::jsonb;
+  v_type TEXT; v_amount NUMERIC; v_grace INTEGER;
+  v_due_day INTEGER; v_last_day INTEGER; v_due_date DATE;
 BEGIN
-  -- Company staff OR the scheduled job (service key).
   IF coalesce(auth.role(), '') <> 'service_role' AND NOT EXISTS (
     SELECT 1 FROM company_members
     WHERE company_id = p_company_id AND lower(user_email) = lower(auth.jwt()->>'email')
@@ -189,16 +201,8 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success', true, 'fees_posted', 0, 'reason', 'no late fee rule configured');
   END IF;
-  IF coalesce(v_rule.fee_amount, 0) <= 0 THEN
-    RETURN jsonb_build_object('success', true, 'fees_posted', 0, 'reason', 'late fee rule has no fee amount configured');
-  END IF;
-  IF EXTRACT(DAY FROM v_today)::int <= coalesce(v_rule.grace_days, 0) THEN
-    RETURN jsonb_build_object('success', true, 'fees_posted', 0,
-      'reason', format('within grace period (day %s of %s)', EXTRACT(DAY FROM v_today)::int, v_rule.grace_days));
-  END IF;
+  v_grace := GREATEST(0, floor(coalesce(v_rule.grace_days, 0))::int);
 
-  -- Income account: code 4010 first, then the name -- the order the app's
-  -- resolveAccountId('4010') uses, so both paths credit the same account.
   SELECT id, name INTO v_income_id, v_income_name FROM acct_accounts
    WHERE company_id = p_company_id AND code = '4010' LIMIT 1;
   IF v_income_id IS NULL THEN
@@ -209,24 +213,51 @@ BEGIN
     RAISE EXCEPTION 'Missing required account (Late Fee Income) for company %', p_company_id;
   END IF;
 
+  v_last_day := EXTRACT(DAY FROM (date_trunc('month', v_today) + interval '1 month - 1 day'))::int;
+
   FOR v_t IN
-    SELECT id, name, property, rent, balance FROM tenants
+    SELECT id, name, property, rent, balance, late_fee_amount, late_fee_type FROM tenants
     WHERE company_id = p_company_id AND archived_at IS NULL
-      AND lease_status IN ('active','current') AND coalesce(balance,0) > 0
+      AND lease_status IN ('active','current','notice') AND coalesce(balance,0) > 0
   LOOP
+    -- amount + type: the tenant's own setting, else the rule
+    IF coalesce(v_t.late_fee_amount, 0) > 0 THEN
+      v_type := lower(btrim(coalesce(v_t.late_fee_type, 'flat')));
+      v_amount := v_t.late_fee_amount;
+    ELSE
+      v_type := lower(btrim(coalesce(v_rule.fee_type, '')));
+      v_amount := coalesce(v_rule.fee_amount, 0);
+    END IF;
+    v_type := CASE WHEN v_type IN ('flat','fixed') THEN 'flat'
+                   WHEN v_type IN ('percent','percentage','pct','%') THEN 'percent'
+                   ELSE NULL END;
+    IF v_type IS NULL OR coalesce(v_amount, 0) <= 0 THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
+
+    -- when: past the tenant's due day + grace
+    SELECT l.payment_due_day INTO v_due_day FROM leases l
+     WHERE l.company_id = p_company_id AND l.tenant_id = v_t.id AND l.status = 'active' AND coalesce(l.payment_due_day, 0) > 0
+     ORDER BY l.start_date DESC NULLS LAST LIMIT 1;
+    IF v_due_day IS NULL THEN
+      SELECT r.day_of_month INTO v_due_day FROM recurring_journal_entries r
+       WHERE r.company_id = p_company_id AND r.tenant_id = v_t.id AND r.status = 'active' AND r.archived_at IS NULL
+         AND coalesce(r.day_of_month, 0) > 0
+       LIMIT 1;
+    END IF;
+    v_due_day := LEAST(GREATEST(coalesce(v_due_day, 1), 1), v_last_day);
+    v_due_date := make_date(EXTRACT(YEAR FROM v_today)::int, EXTRACT(MONTH FROM v_today)::int, v_due_day);
+    IF (v_today - v_due_date) <= v_grace THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
+
     IF public.late_fee_already_posted(p_company_id, v_t.id, v_month) THEN
       v_skipped := v_skipped + 1; CONTINUE;
     END IF;
 
-    IF v_rule.fee_type = 'flat' THEN v_fee := v_rule.fee_amount;
+    IF v_type = 'flat' THEN v_fee := round(v_amount, 2);
     ELSE
       IF coalesce(v_t.rent, 0) <= 0 THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
-      v_fee := round(v_t.rent * v_rule.fee_amount) / 100.0;
+      v_fee := round(v_t.rent * v_amount) / 100.0;
     END IF;
     IF v_fee IS NULL OR v_fee <= 0 THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
 
-    -- The tenant's own AR. No fallback to the shared 1100: a tenant whose
-    -- account cannot be established is skipped and reported.
     v_ar_id := public._late_fee_tenant_ar(p_company_id, v_t.id, v_t.name, v_t.property);
     IF v_ar_id IS NULL THEN
       v_skipped := v_skipped + 1;
@@ -251,8 +282,6 @@ BEGIN
         EXIT;
       EXCEPTION WHEN unique_violation THEN
         GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
-        -- The reference is already on the books (a racing path posted it):
-        -- that is the backstop doing its job, not an error. Skip the tenant.
         IF v_constraint = 'idx_je_company_reference_unique' THEN v_je_id := NULL; EXIT; END IF;
         IF v_constraint <> 'unique_je_number_per_company' THEN RAISE; END IF;
         v_attempt := v_attempt + 1;
@@ -264,8 +293,6 @@ BEGIN
 
     IF v_je_id IS NULL THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
 
-    -- DR the tenant's own AR / CR Late Fee Income. The balance-sync
-    -- trigger on acct_journal_lines recomputes tenants.balance from the GL.
     INSERT INTO acct_journal_lines (journal_entry_id, account_id, account_name, debit, credit, class_id, memo, entity_type, entity_id, entity_name, company_id)
     VALUES
       (v_je_id, v_ar_id, coalesce(v_ar_name, 'Accounts Receivable'), v_fee, 0, v_class_id, 'Late fee — ' || v_month, 'customer', v_t.id::text, v_t.name, p_company_id),
