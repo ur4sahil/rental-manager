@@ -7,8 +7,8 @@ import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges, depositReference, depositAlreadyPosted } from "../utils/accounting";
-import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
+import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [leases, setLeases] = useState([]);
@@ -23,6 +23,10 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const [showDepositModal, setShowDepositModal] = useState(null);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [showESign, setShowESign] = useState(null);
+  // Same hand-off as the Tenants create path: a new lease queues the
+  // shared RecurringEntryModal, which creates (or replaces) the tenant's one
+  // recurring rent schedule on their own AR account.
+  const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
 
   const defaultChecklist = ["Keys handed over","Smoke detectors tested","Appliances working","Walls condition documented","Floors condition documented","Plumbing checked","Electrical checked","Windows & doors checked","HVAC filter replaced","Photos taken"];
   const defaultMoveOutChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review"];
@@ -111,7 +115,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   } else {
   ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId }]));
   if (!error && tenant) {
-  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "current", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
+  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
   if (tenantErr) pmError("PM-3002", { raw: tenantErr, context: "tenant status update", silent: true });
   }
   // Skip when this tenant's deposit is already on the books from another path
@@ -138,22 +142,11 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (_err4608) { showToast("Error updating properties: " + _err4608.message, "error"); return; }
   }
   // (property_id auto-filled by DB trigger from property address)
-  // Auto-post rent charges — prompt if backdated
-  if (!editingLease) {
-  const leaseStartDate = parseLocalDate(form.start_date);
-  const today = new Date();
-  const monthsBack = Math.max(0, (today.getFullYear() - leaseStartDate.getFullYear()) * 12 + (today.getMonth() - leaseStartDate.getMonth()));
-  if (monthsBack > 0) {
-  if (await showConfirm({ message: "This lease starts " + monthsBack + " month(s) in the past.\n\nWould you like to post " + monthsBack + " backdated rent accrual entries now?\n\n• Each month will create an Accounts Receivable charge\n• Tenant balance will be updated\n• You can also do this later from the Dashboard" })) {
-  const result = await autoPostRentCharges(companyId);
-  if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " backdated rent charge(s)");
-  if (result?.failed > 0) addNotification("⚠️", result.failed + " charge(s) failed");
-  }
-  } else {
-  const result = await autoPostRentCharges(companyId);
-  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
-  }
-  }
+  // Rent is billed by the tenant's recurring schedule, set up exactly as the
+  // Tenants page does it. This used to offer to "post N backdated rent
+  // accruals" and then call autoPostRentCharges, a stub that posts nothing --
+  // the lease was saved with no rent schedule at all.
+  const _queueRecurring = !editingLease && tenant ? { tenantName: form.tenant_name, tenantId: tenant.id || null, property: form.property, rent: Number(form.rent_amount), leaseStart: form.start_date, leaseEnd: form.end_date } : null;
   logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
   // Queue lease notification
   if (!editingLease) {
@@ -161,6 +154,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (leaseTenant?.email) queueNotification("lease_created", leaseTenant.email, { tenant: form.tenant_name, property: form.property, startDate: form.start_date, endDate: form.end_date, rent: form.rent_amount }, companyId);
   }
   resetForm(); fetchData();
+  if (_queueRecurring) setPendingRecurringEntry(_queueRecurring);
   } finally { guardRelease("saveLease"); }
   }
 
@@ -202,13 +196,18 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   showToast("Error creating renewed lease: " + insertErr.message, "error"); return;
   }
   if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("id", lease.tenant_id);
+  // The recurring schedule is what bills rent; without this the renewal's
+  // escalated rent never reached the books.
+  if (lease.tenant_id) {
+    const recSync = await syncTenantRecurringAmount(companyId, lease.tenant_id, Math.round(escalated * 100) / 100);
+    if (!recSync.ok) showToast("Lease renewed, but the recurring rent entry could not be updated — please update it manually.", "warning");
+  }
   // Sync autopay schedule to new rent amount
   await supabase.from("autopay_schedules").update({ amount: Math.round(escalated * 100) / 100 }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("enabled", true);
   // Update property table to reflect new lease end date
   const { error: _err4655 } = await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
   if (_err4655) { showToast("Error updating properties: " + _err4655.message, "error"); return; }
   logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
-  await autoPostRentCharges(companyId);
   fetchData();
   }
 
@@ -219,8 +218,13 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (lease.tenant_id) {
   const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("id", lease.tenant_id);
   if (_err4666) { showToast("Error updating tenants: " + _err4666.message, "error"); return; }
-  // Deactivate any autopay schedules for this tenant
-  const { error: _err4668 } = await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
+  // Stop the rent schedule, or it bills the departed tenant every month.
+  const recStop = await deactivateTenantRecurring(companyId, lease.tenant_id);
+  if (!recStop.ok) showToast("Lease terminated, but the recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
+  // Deactivate any autopay schedules for this tenant. The Stripe charger
+  // reads `enabled`, not `active` -- writing active:false left autopay
+  // charging. Scoped by tenant_id (this block only runs with one).
+  const { error: _err4668 } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant_id", lease.tenant_id);
   if (_err4668) { showToast("Error updating autopay_schedules: " + _err4668.message, "error"); return; }
   // Update property status back to vacant
   // lease_end is a DATE column: "" is not an empty date, it is a syntax
@@ -236,6 +240,11 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // ledger_entries is GL-derived now (Phase 4) and only carries
   // financial events backed by a journal entry. Termination state
   // changes belong in audit_trail, not the tenant ledger.
+  } else {
+  // No tenant_id on this (legacy) lease: autopay can only be found by name,
+  // so scope by name AND property to spare a same-name tenant elsewhere.
+  const { error: _apErr } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("property", lease.property);
+  if (_apErr) { showToast("Error updating autopay_schedules: " + _apErr.message, "error"); return; }
   }
   logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
   fetchData();
@@ -535,6 +544,8 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {filteredLeases.length === 0 && <EmptyState size="inline" title={"No leases found"} />}
   </div>
 
+  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
+
   {/* Rent Increase Modal */}
   {showRentIncrease && (
   <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
@@ -556,7 +567,13 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const newAmt = Number(rentIncreaseForm.new_amount);
   const { error: _err4960 } = await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
   if (_err4960) { showToast("Error updating leases: " + _err4960.message, "error"); return; }
-  if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
+  if (showRentIncrease.tenant_id) {
+    await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
+    // Same helper the tenant edit uses: the increase must reach the
+    // recurring schedule, or the old rent keeps posting.
+    const recSync = await syncTenantRecurringAmount(companyId, showRentIncrease.tenant_id, newAmt);
+    if (!recSync.ok) showToast("Rent updated, but the recurring rent entry could not be updated — please update it manually.", "warning");
+  }
   addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
   // Tenant-facing copy.
   if (showRentIncrease.tenant_email) addNotification("📈", `Your rent was updated to ${formatCurrency(newAmt)}/mo, effective ${fmtDate(rentIncreaseForm.effective_date)}.`, { recipient: showRentIncrease.tenant_email, type: "rent_increase" });

@@ -227,7 +227,11 @@ function testFileStructure() {
   // +217 -- a new focused component), multi-loan Loans (+206) and the
   // property rename cascade (Properties.js +263). The atomic bank-posting
   // change of the same day REMOVED ~140 lines from Banking.js.
-  assert(totalLines <= 51100, `Total src lines <= 51100 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51250 on 2026-09-28 (later the same day): +~250 for recurring-rent
+  // correctness -- the new pure src/utils/recurringRules.js (tested directly
+  // by recurring-rent-rules.test.mjs), the shared deactivate/sync helpers in
+  // accounting.js, and the teardown call sites that now stop rent.
+  assert(totalLines <= 51250, `Total src lines <= 51250 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

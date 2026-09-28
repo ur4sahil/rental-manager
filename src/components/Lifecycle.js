@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, ACTIVE_LEASE, fmtDate } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, LIVE_TENANCY, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged} from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring} from "../utils/accounting";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
 function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
@@ -41,11 +41,11 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   async function load() {
   setLoading(true);
   const [t, l] = await Promise.all([
-  // Both spellings are in use: the tenant form defaults to "active",
-  // the importer and the Tenants page write "current". Filtering on one
-  // of them left the move-out list empty for every company whose
-  // tenants came in through an import.
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", ACTIVE_LEASE),
+  // Anyone who still lives there can be moved out: active, or on notice.
+  // A tenant who has given notice is exactly who move-out is for -- leaving
+  // "notice" out made them vanish from this list the moment they gave it.
+  // ("current" is still accepted for any stale row; the DB stores "active".)
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", LIVE_TENANCY),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   ]);
   if (t.error) pmError("PM-3004", { raw: t.error, context: "move-out tenants fetch", silent: true });
@@ -773,17 +773,23 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   // #2: Cascade updates based on outcome
   if (outcome === "completed") {
   // Eviction complete — tenant out, property vacant
+  const evictedIds = [];
   if (evCase.tenant_id) {
   await supabase.from("tenants").update({ lease_status: "past" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
+  evictedIds.push(evCase.tenant_id);
   }
-  await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).ilike("name", escapeFilterValue(evCase.tenant_name)).eq("property", evCase.property);
+  const { data: evictedByName } = await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).ilike("name", escapeFilterValue(evCase.tenant_name)).eq("property", evCase.property).select("id");
+  for (const r of evictedByName || []) evictedIds.push(r.id);
+  // Stop their rent -- an evicted tenant's schedule kept billing them.
+  const recStop = await deactivateTenantRecurring(companyId, evictedIds);
+  if (!recStop.ok) showToast("Eviction closed, but the recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
   await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", companyId).eq("address", evCase.property);
   await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("tenant_name", evCase.tenant_name).eq("status", "active");
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", evCase.tenant_name).eq("property", evCase.property);
   } else if (outcome === "tenant_cured") {
   // Tenant cured — restore to active
   if (evCase.tenant_id) {
-  await supabase.from("tenants").update({ lease_status: "current" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
+  await supabase.from("tenants").update({ lease_status: "active" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
   }
   // No lease write here either. Filing never moved the lease off
   // "active", so there is nothing to restore -- and this update could

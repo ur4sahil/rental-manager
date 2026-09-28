@@ -3,6 +3,7 @@ import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFil
 import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
+import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
 // (acct_journal_lines + acct_journal_entries). There is nothing to
@@ -626,6 +627,87 @@ export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
 // This stub exists for backward compatibility — called in handleSelectCompany and wizard completion.
 export async function autoPostRentCharges() { return { posted: 0, failed: 0 }; }
 
+// ============ RECURRING RENT: who may be billed, and where ============
+//
+// A tenant's rent schedule (recurring_journal_entries with tenant_id set)
+// outlived the tenancy it billed. Archiving a tenant, terminating a lease,
+// completing an eviction, deactivating a property and bulk-marking tenants
+// "past" all left the schedule active, so rent kept accruing on people who
+// had left. And a schedule's debit account was captured once at creation,
+// so a tenant whose AR sub-account was later split or re-created kept
+// being billed to the old one -- or to a sibling's -- while two schedules
+// for the same tenant could bill the same AR account twice in one month.
+//
+// The pure rules live in recurringRules.js (no imports, so tests can load
+// them in plain node) and are re-exported here for callers.
+export { BILLABLE_LEASE_STATUSES, isTenantBillable, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth };
+
+// Resolve the AR account a tenant schedule should debit. Falls back to the
+// schedule's stored account (the previous behaviour) whenever the tenant's
+// own account cannot be established -- never to the bare 1100 parent.
+async function resolveScheduleArAccount(cid, entry, tenant) {
+  const stored = { id: entry.debit_account_id, name: entry.debit_account_name || "", changed: false };
+  const { data: accts, error } = await supabase.from("acct_accounts")
+    .select("id, code, name, is_active, tenant_id")
+    .eq("company_id", cid).eq("type", "Asset").eq("tenant_id", entry.tenant_id);
+  if (error) return stored;
+  let pick = pickTenantArAccount(accts, entry.tenant_id, entry.debit_account_id);
+  if (!pick) {
+    // No account yet: create it the same way every other path does.
+    const createdId = await getOrCreateTenantAR(cid, tenant?.name || entry.tenant_name, entry.tenant_id);
+    if (!createdId) return stored;
+    const { data: created } = await supabase.from("acct_accounts")
+      .select("id, code, name, is_active, tenant_id").eq("company_id", cid).eq("id", createdId).maybeSingle();
+    // getOrCreateTenantAR falls back to the 1100 parent on failure; that is
+    // not this tenant's account, so keep the stored one instead.
+    pick = pickTenantArAccount(created ? [created] : [], entry.tenant_id, entry.debit_account_id);
+    if (!pick) return stored;
+  }
+  return { id: pick.id, name: pick.name || stored.name, changed: pick.id !== entry.debit_account_id };
+}
+
+// Stop a tenant's rent. Same shape move_out_commit_state uses: active
+// schedules become status 'inactive' and are archived. Keyed on tenant_id.
+export async function deactivateTenantRecurring(companyId, tenantIds) {
+  const ids = [...new Set([].concat(tenantIds ?? []).filter(v => v !== null && v !== undefined && v !== "").map(Number).filter(Number.isFinite))];
+  if (!companyId || ids.length === 0) return { ok: true, count: 0 };
+  let count = 0;
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { data, error } = await supabase.from("recurring_journal_entries")
+      .update({ status: "inactive", archived_at: new Date().toISOString() })
+      .eq("company_id", companyId).in("tenant_id", chunk)
+      .eq("status", "active").is("archived_at", null).select("id");
+    if (error) {
+      pmError("PM-4008", { raw: error, context: "deactivate recurring rent for tenant(s) " + chunk.join(","), silent: true });
+      return { ok: false, count, error };
+    }
+    count += (data || []).length;
+  }
+  return { ok: true, count };
+}
+
+// Point a tenant's live rent schedule(s) at a new amount. One function for
+// the tenant edit, lease renewal and rent increase. Live = not archived and
+// active or paused (a paused schedule must resume at the new rent).
+export async function syncTenantRecurringAmount(companyId, tenantId, amount) {
+  if (!companyId || tenantId === null || tenantId === undefined || tenantId === "") return { ok: true, count: 0, previousAmount: null };
+  const live = (q) => q.eq("company_id", companyId).eq("tenant_id", Number(tenantId))
+    .in("status", ["active", "paused"]).is("archived_at", null);
+  const { data: rows, error: selErr } = await live(supabase.from("recurring_journal_entries").select("id, amount"));
+  if (selErr) {
+    pmError("PM-4008", { raw: selErr, context: "check recurring amount after rent change", silent: true });
+    return { ok: false, count: 0, previousAmount: null, error: selErr, stage: "check" };
+  }
+  if (!rows || rows.length === 0) return { ok: true, count: 0, previousAmount: null };
+  const { error: upErr } = await live(supabase.from("recurring_journal_entries").update({ amount: safeNum(amount) }));
+  if (upErr) {
+    pmError("PM-4008", { raw: upErr, context: "update recurring amount after rent change", silent: true });
+    return { ok: false, count: 0, previousAmount: rows[0].amount, error: upErr, stage: "update" };
+  }
+  return { ok: true, count: rows.length, previousAmount: rows[0].amount };
+}
+
 // ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
 // Posts recurring JEs for each missed period (catches up if app was down).
 // Respects frequency: monthly, quarterly, semi-annual.
@@ -638,10 +720,27 @@ export async function autoPostRecurringEntries(companyId) {
   const thisMonth = todayStr.slice(0, 7);
   const { data: entries } = await supabase.from("recurring_journal_entries").select("*").eq("company_id", cid).eq("status", "active").is("archived_at", null);
   if (!entries || entries.length === 0) return { posted: 0 };
+  // Load the tenant behind every tenant schedule in one pass. A schedule
+  // whose tenant is archived, gone, or not active/on notice posts nothing.
+  const tenantIds = [...new Set(entries.filter(hasTenantId).map(e => e.tenant_id))];
+  const tenantsById = {};
+  for (let i = 0; i < tenantIds.length; i += 100) {
+    const { data: tRows, error: tErr } = await supabase.from("tenants")
+      .select("id, name, archived_at, lease_status").eq("company_id", cid).in("id", tenantIds.slice(i, i + 100));
+    // Fail closed: without the tenant rows we cannot tell who has left.
+    if (tErr) { pmError("PM-4008", { raw: tErr, context: "load tenants for recurring rent", silent: true }); return { posted: 0 }; }
+    for (const t of tRows || []) tenantsById[String(t.id)] = t;
+  }
   let posted = 0;
   const MAX = 50;
   for (const entry of entries) {
   if (posted >= MAX) break;
+  const isTenantSchedule = hasTenantId(entry);
+  const entryTenant = isTenantSchedule ? tenantsById[String(entry.tenant_id)] : null;
+  if (recurringTenantSkipReason(entry, entryTenant)) continue;
+  // Debit account, resolved lazily (first period actually due) so an
+  // up-to-date schedule costs no extra query.
+  let debitAcct = null;
   // Determine frequency interval in months
   const freqMonths = entry.frequency === "quarterly" ? 3
     : entry.frequency === "semi-annual" ? 6
@@ -716,6 +815,32 @@ export async function autoPostRecurringEntries(companyId) {
   // Skip if this RECUR ref was already posted (idempotent)
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+  // Rent debits the tenant's OWN AR account. A schedule pointing anywhere
+  // else is corrected here and stays corrected.
+  if (!debitAcct) {
+    debitAcct = isTenantSchedule
+      ? await resolveScheduleArAccount(cid, entry, entryTenant)
+      : { id: entry.debit_account_id, name: entry.debit_account_name || "", changed: false };
+    if (debitAcct.changed) {
+      const { error: fixErr } = await supabase.from("recurring_journal_entries")
+        .update({ debit_account_id: debitAcct.id, debit_account_name: debitAcct.name })
+        .eq("id", entry.id).eq("company_id", cid);
+      if (fixErr) pmError("PM-4008", { raw: fixErr, context: "repoint recurring rent to tenant AR " + entry.id, silent: true });
+    }
+  }
+  // Never bill the same AR account twice for one month: another schedule
+  // (a duplicate, or a replaced one) may already have. Fails closed.
+  if (isTenantSchedule) {
+    const { start: mStart, end: mEnd } = monthBounds(monthStr);
+    const { data: billedLines, error: billedErr } = await supabase.from("acct_journal_lines")
+      .select("account_id, debit, acct_journal_entries!inner(reference, date, status)")
+      .eq("company_id", cid).eq("account_id", debitAcct.id).gt("debit", 0)
+      .like("acct_journal_entries.reference", "RECUR-%")
+      .neq("acct_journal_entries.status", "voided")
+      .gte("acct_journal_entries.date", mStart).lte("acct_journal_entries.date", mEnd)
+      .limit(5);
+    if (billedErr || arAlreadyBilledInMonth(billedLines, debitAcct.id, monthStr)) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+  }
 
   // Prorate on both edges of the lease. Previously we only prorated on
   // end_date, so a lease that started mid-month (e.g. Jan 15) got billed
@@ -757,7 +882,7 @@ export async function autoPostRecurringEntries(companyId) {
   reference: ref,
   property: entry.property || "",
   lines: [
-  { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: postAmount, credit: 0, class_id: classId, memo: postDesc },
+  { account_id: debitAcct.id, account_name: debitAcct.name || "", debit: postAmount, credit: 0, class_id: classId, memo: postDesc },
   { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: postAmount, class_id: classId, memo: postDesc },
   ]
   });

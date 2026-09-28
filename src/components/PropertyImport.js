@@ -595,7 +595,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
           voucher_number: r.voucher_number || null,
           tenant_portion: r.tenant_portion, voucher_portion: r.voucher_portion,
         };
-        if (t.status === "Current") patch.lease_status = "current";
+        if (t.status === "Current") patch.lease_status = "active";
         else if (t.status === "Past") patch.lease_status = "past";
         // "Review" used to write nothing at all, so a row the sheet
         // explicitly flagged for a decision vanished into the import
@@ -626,7 +626,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
           move_in: r.move_in, move_out: r.move_out,
           lease_start: r.lease_start, lease_end_date: r.lease_end_date,
           rent: r.rent, balance: 0,
-          lease_status: t.status === "Past" ? "past" : "current",
+          lease_status: t.status === "Past" ? "past" : "active",
           is_voucher: /^y/i.test(r.is_voucher || ""),
           voucher_number: r.voucher_number || "",
           tenant_portion: r.tenant_portion, voucher_portion: r.voucher_portion,

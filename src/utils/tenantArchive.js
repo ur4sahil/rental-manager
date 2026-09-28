@@ -4,6 +4,7 @@ import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import {
   autoPostJournalEntry, resolveAccountId, getOrCreateTenantAR, getPropertyClassId,
+  deactivateTenantRecurring,
 } from "./accounting";
 
 // Archiving a tenant, in ONE place.
@@ -88,6 +89,11 @@ export async function archiveTenant({
   if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name).eq("property", tenantProperty);
+  // Stop the tenant's recurring rent. Without this an archived tenant went on
+  // accruing rent every month (autoPostRecurringEntries also refuses to bill
+  // an archived tenant, but the schedule should not stay live either).
+  const recStop = await deactivateTenantRecurring(companyId, tenantId);
+  if (!recStop.ok) toast("Tenant archived, but their recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
   // NOTE: this block is currently UNREACHABLE. The guard at the top of
   // deleteTenant returns early whenever balance > 0 ("Cannot delete
   // tenant ... with an outstanding balance"), which is the same condition

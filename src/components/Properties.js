@@ -10,7 +10,7 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, deactivateTenantRecurring } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -3269,12 +3269,12 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   }
   let tenantId = existingTenant?.id;
   if (!existingTenant) {
-  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "current", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
+  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
   tenantId = newT?.id;
   // Notify: new tenant move-in
   queueNotification("move_in", (form.tenant_email || "").toLowerCase(), { tenant: form.tenant.trim(), property: compositeAddress, moveInDate: form.lease_start || formatLocalDate(new Date()) }, companyId);
   } else {
-  await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "current", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
+  await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
   }
   // Create tenant AR sub-account (e.g., 1100-001 AR - Alice Johnson)
   await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
@@ -3388,8 +3388,11 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   // Deactivate accounting class
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
-  // Mark tenants as inactive
-  await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+  // Mark tenants as inactive, and stop their rent: a deactivated property's
+  // tenants' recurring schedules used to keep billing.
+  const { data: pastTenants } = await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null).select("id");
+  const recStop = await deactivateTenantRecurring(companyId, (pastTenants || []).map(t => t.id));
+  if (!recStop.ok) showToast("Property deactivated, but a recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
   addNotification("⏸️", `Deactivated property: ${property.address}`);
   logAudit("deactivate", "properties", `Deactivated property: ${property.address}`, property.id, userProfile?.email, userRole, companyId);
   fetchProperties();
@@ -3402,7 +3405,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   if (error) { pmError("PM-2004", { raw: error, context: "reactivate property " + property.address }); return; }
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
-  await supabase.from("tenants").update({ lease_status: "current" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+  await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
   addNotification("▶️", `Reactivated property: ${property.address}`);
   fetchProperties();
   }
