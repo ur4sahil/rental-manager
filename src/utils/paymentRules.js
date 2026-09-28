@@ -118,11 +118,20 @@ function billingPeriodOf(dateStr) {
   return /^\d{4}-\d{2}$/.test(s) ? s : null;
 }
 
-// One key per schedule per billing period. Stripe returns the original
-// PaymentIntent for a repeated key instead of charging again.
-function autopayIdempotencyKey(scheduleId, period) {
+// One key per schedule, billing period and ATTEMPT DAY. Stripe returns the
+// original PaymentIntent for a repeated key instead of charging again, and it
+// remembers a key for 24h. Same-day overlaps therefore cannot double-charge
+// (the atomic period claim is the primary guard; this backs it up). The day is
+// part of the key so a retry on a later day -- after a decline, or after the
+// tenant replaces their card -- is a real new attempt, not a replay of the old
+// decline or a "same key, different parameters" rejection. A successful
+// charge moves next_charge_date to the next period, so later days never
+// re-attempt a period that was paid.
+function autopayIdempotencyKey(scheduleId, period, attemptDate) {
   if (!scheduleId || !billingPeriodOf(period)) throw new Error("autopayIdempotencyKey needs a schedule id and a YYYY-MM period");
-  return "autopay-" + scheduleId + "-" + billingPeriodOf(period);
+  const day = String(attemptDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("autopayIdempotencyKey needs the attempt date (YYYY-MM-DD)");
+  return "autopay-" + scheduleId + "-" + billingPeriodOf(period) + "-" + day;
 }
 
 // PaymentMethod.type -> autopay_schedules.method. Anything that is not a US

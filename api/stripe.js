@@ -782,7 +782,7 @@ async function handleChargeAutopayDue(req, res) {
       }, {
         // One charge per schedule per billing period, even if this request
         // is retried or a second run gets this far.
-        idempotencyKey: autopayIdempotencyKey(row.id, period),
+        idempotencyKey: autopayIdempotencyKey(row.id, period, today),
       });
       await sb.from("autopay_schedules").update({
         last_error: null, last_error_at: null,

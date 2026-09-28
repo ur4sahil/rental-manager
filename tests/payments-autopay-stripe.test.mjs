@@ -85,10 +85,12 @@ console.log("\n🚪 3. MOVE-OUT PRORATION LOOKUP");
 
 console.log("\n🔑 4. IDEMPOTENCY KEY / PERIOD");
 {
-  assert("key = autopay-<id>-<YYYY-MM>", R.autopayIdempotencyKey("sched-1", "2026-10") === "autopay-sched-1-2026-10");
-  assert("key from a full date uses its month", R.autopayIdempotencyKey("s", "2026-10-01") === "autopay-s-2026-10");
-  assert("same schedule + period -> same key (retry-safe)", R.autopayIdempotencyKey("s", "2026-10-01") === R.autopayIdempotencyKey("s", "2026-10-28"));
-  assert("next period -> different key", R.autopayIdempotencyKey("s", "2026-10") !== R.autopayIdempotencyKey("s", "2026-11"));
+  assert("key = autopay-<id>-<YYYY-MM>-<attempt day>", R.autopayIdempotencyKey("sched-1", "2026-10", "2026-10-01") === "autopay-sched-1-2026-10-2026-10-01");
+  assert("key from a full due date uses its month", R.autopayIdempotencyKey("s", "2026-10-01", "2026-10-02") === "autopay-s-2026-10-2026-10-02");
+  assert("same schedule + period + day -> same key (overlapping runs / HTTP retry cannot double-charge)", R.autopayIdempotencyKey("s", "2026-10-01", "2026-10-03") === R.autopayIdempotencyKey("s", "2026-10-28", "2026-10-03"));
+  assert("retry on a LATER day -> new key (a decline is not replayed; a replaced card is not rejected)", R.autopayIdempotencyKey("s", "2026-10", "2026-10-03") !== R.autopayIdempotencyKey("s", "2026-10", "2026-10-04"));
+  assert("next period -> different key", R.autopayIdempotencyKey("s", "2026-10", "2026-10-01") !== R.autopayIdempotencyKey("s", "2026-11", "2026-10-01"));
+  { let t = false; try { R.autopayIdempotencyKey("s", "2026-10"); } catch { t = true; } assert("key without an attempt date throws", t); }
   let threw = false; try { R.autopayIdempotencyKey("s", null); } catch { threw = true; }
   assert("missing period throws (never a key without a period)", threw);
   threw = false; try { R.autopayIdempotencyKey("", "2026-10"); } catch { threw = true; }
@@ -181,7 +183,7 @@ assert("#3 move-out uses recurringRentRefsForMonth + pickMoveOutRentCharge", lif
 assert("#3 proration math unchanged", life.includes("const proratedCents = Math.round(fullRentCents * moveOutDay / daysInMoveOutMonth);") && life.includes("reference: `RENT-PRORATE-${selectedLease.id}-${moveOutMonth}`"));
 // 4
 const cron = api.slice(api.indexOf("async function handleChargeAutopayDue"), api.indexOf("// ── Action: webhook"));
-assert("#4 idempotencyKey passed to paymentIntents.create", /idempotencyKey: autopayIdempotencyKey\(row\.id, period\)/.test(cron));
+assert("#4 idempotencyKey passed to paymentIntents.create", /idempotencyKey: autopayIdempotencyKey\(row\.id, period, today\)/.test(cron));
 assert("#4 claim is a conditional update on the observed next_charge_date", /\.eq\("id", row\.id\)\.eq\("next_charge_date", claimedDate\)/.test(cron) && cron.indexOf("claimed by another run") < cron.indexOf("paymentIntents.create"));
 assert("#4 failure releases the claim (retry next run, as before)", /next_charge_date: claimedDate,[\s\S]*?\.eq\("next_charge_date", nextDate\)/.test(cron));
 assert("#4 next-date rule unchanged", cron.includes("next.setMonth(next.getMonth() + 1);") && cron.includes("next.setDate(Math.min(row.day_of_month || 1, 28));"));
@@ -396,7 +398,7 @@ const baseSeed = () => ({
   const skipped = [...a.body.results, ...b.body.results].filter(r => r.skipped === "claimed by another run").length;
   assert("#4 …the losing run skipped both as 'claimed by another run'", skipped === 2, JSON.stringify([a.body, b.body]));
   const byId = Object.fromEntries(charges.map(c => [c.params.metadata.autopay_id, c]));
-  assert("#4 idempotencyKey = autopay-<id>-<period of the claimed due date>", byId["ap-1"]?.opts?.idempotencyKey === "autopay-ap-1-2026-09" && byId["ap-2"]?.opts?.idempotencyKey === "autopay-ap-2-2026-09");
+  assert("#4 idempotencyKey = autopay-<id>-<period of the claimed due date>-<attempt day>", /^autopay-ap-1-2026-09-\d{4}-\d{2}-\d{2}$/.test(byId["ap-1"]?.opts?.idempotencyKey || "") && /^autopay-ap-2-2026-09-\d{4}-\d{2}-\d{2}$/.test(byId["ap-2"]?.opts?.idempotencyKey || ""));
   const ap2 = currentDb.T.autopay_schedules.find(r => r.id === "ap-2");
   assert("#5 legacy 'stripe_card' row whose PM is a bank account is charged the ACH fee", byId["ap-2"]?.params.metadata.payment_method_kind === "us_bank_account" && byId["ap-2"].params.amount === 100000 + 500);
   assert("#5 …and the row is corrected to stripe_us_bank_account", ap2.method === "stripe_us_bank_account");
