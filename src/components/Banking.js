@@ -1052,6 +1052,39 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   // --- Transaction Actions ---
+  // Post a bank txn's JE + lines + posting decision + link + status in ONE
+  // database transaction (post_bank_transaction RPC). These used to be 5-7
+  // separate writes; a connection dropping between the header and its lines
+  // stranded an empty JE whose reference then blocked every retry with
+  // PM-9005 (prod JE-9492, 2026-09-28). The RPC is also idempotent: a retry
+  // after a lost response returns the entry that already posted.
+  // Returns the RPC result ({ outcome, je_id }) or null after reporting why.
+  async function postBankTxnAtomic(txn, kind, { description, property, lines, decision, decisionLines }) {
+    const { data, error } = await supabase.rpc("post_bank_transaction", {
+      p_company_id: companyId, p_txn_id: txn.id, p_kind: kind,
+      p_description: description || "", p_property: property || "",
+      p_lines: lines.map(l => ({
+        account_id: l.account_id, account_name: l.account_name || "",
+        debit: safeNum(l.debit), credit: safeNum(l.credit),
+        class_id: l.class_id || null, memo: l.memo || "",
+        // entity_id is a TEXT column; tenants.id is an integer.
+        entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null
+      })),
+      p_decision: decision || {},
+      p_decision_lines: decisionLines || []
+    });
+    if (!error) return data;
+    if (error.hint === "already_processed") {
+      showToast("This transaction has already been processed.", "warning");
+      refreshData();
+    } else if (/period is locked/i.test(error.message || "")) {
+      pmError("PM-4004", { raw: error, context: `post_bank_transaction ${kind}` });
+    } else {
+      pmError("PM-4002", { raw: error, context: `post_bank_transaction ${kind}` });
+    }
+    return null;
+  }
+
   async function acceptTransaction(txn, accountId, accountName, memo, classId, entityType, entityId, entityName) {
     if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return; }
     try {
@@ -1080,81 +1113,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     // Resolve property from class if selected
     const classProperty = classId ? (classes.find(c => c.id === classId)?.name || "") : "";
 
-    // Get next JE number via RPC (MAX-based, ignores hash-format).
-    // Retry on 23505 in case of concurrent insert race.
-    let jeRow = null, jeErr = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
-      if (numErr || !jeNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
-      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-        company_id: companyId, number: jeNumber, date: txn.posted_date,
-        description: bankDesc,
-        // Per-txn reference. Was hard-coded "Bank Import" for every row,
-        // which silently worked for the first categorization in a
-        // company and then blocked every subsequent one via
-        // idx_je_company_reference_unique ("duplicate key value"). The
-        // XFER- and SPLIT- paths in this file already use the same
-        // BANK-<txn.id> shape.
-        reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
-      }]).select("id").maybeSingle());
-      if (!jeErr && jeRow) break;
-      if (jeErr?.code !== "23505") break;
-    }
-
-    if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
-
-    const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
-      journal_entry_id: jeRow.id, company_id: companyId,
-      account_id: l.account_id, account_name: l.account_name,
-      debit: safeNum(l.debit), credit: safeNum(l.credit),
-      class_id: l.class_id || null, memo: l.memo || "",
-      // entity_id and class_id are TEXT columns. Passing them through a
-      // uuid-shaped guard silently dropped every tenant reference, because
-      // tenants.id is an integer -- which is why no journal line has ever
-      // carried a tenant.
-      entity_type: entityType || null, entity_id: entityId ? String(entityId) : null, entity_name: entityName || null,
-      bank_feed_transaction_id: txn.id
-    })));
-
-    if (linesErr) {
-      // Clean up orphaned JE header
-      await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
-      pmError("PM-4003", { raw: linesErr, context: "bank transaction JE lines insert" });
-      return;
-    }
-
-    // Create posting decision record
-    const { data: decision, error: decErr } = await supabase.from("bank_posting_decision").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      decision_type: "add", payee: txn.payee_normalized || "", memo: memo || "",
-      header_class_id: classId || null, status: "posted", created_by: userProfile?.email || ""
-    }]).select("id").maybeSingle();
-    if (decErr) { showToast("Error saving posting decision: " + decErr.message, "error"); return; }
-
-    // Create decision line
-    if (decision) {
-      const { error: dlErr } = await supabase.from("bank_posting_decision_line").insert([{
-        company_id: companyId, bank_posting_decision_id: decision.id,
-        gl_account_id: accountId, gl_account_name: accountName,
-        amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || ""
-      }]);
-      if (dlErr) { showToast("Error saving decision line: " + dlErr.message, "error"); return; }
-    }
-
-    // Create link
-    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      linked_object_type: "journal_entry", linked_object_id: jeRow.id,
-      link_role: "created_from"
-    }]);
-    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
-
-    // Update transaction status
-    await supabase.from("bank_feed_transaction").update({
-      status: "categorized", accepted_at: new Date().toISOString(),
-      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
-      posting_decision_id: decision?.id
-    }).eq("id", txn.id).eq("company_id", companyId);
+    const posted = await postBankTxnAtomic(txn, "add", {
+      description: bankDesc, property: classProperty,
+      lines: lines.map(l => ({ ...l, entity_type: entityType, entity_id: entityId, entity_name: entityName })),
+      decision: { payee: txn.payee_normalized || "", memo: memo || "", header_class_id: classId || null },
+      decisionLines: [{ gl_account_id: accountId, gl_account_name: accountName, amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || "" }]
+    });
+    if (!posted) return;
 
     // Audit
     logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
@@ -1279,44 +1244,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       : [{ account_id: toAccountId, account_name: toAccountName, debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
          { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }];
 
-    // Next JE number via RPC + retry on 23505 (see categorize path).
-    let jeRow = null, jeErr = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
-      if (numErr || !jeNumber) { showToast("Error generating JE number: " + (numErr?.message || "no number"), "error"); return; }
-      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-        company_id: companyId, number: jeNumber, date: txn.posted_date,
-        description: memo || `Transfer — ${txn.bank_description_clean}`,
-        reference: `XFER-${txn.id}`, property: "", status: "posted" // transfers don't have a class/property
-      }]).select("id").maybeSingle());
-      if (!jeErr && jeRow) break;
-      if (jeErr?.code !== "23505") break;
-    }
-    if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
-
-    const { error: xlErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
-      journal_entry_id: jeRow.id, company_id: companyId,
-      account_id: l.account_id, account_name: l.account_name,
-      debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: null, memo: l.memo || "",
-      bank_feed_transaction_id: txn.id
-    })));
-    if (xlErr) { showToast("Error saving transfer JE lines: " + xlErr.message, "error"); return; }
-
-    const { error: xdErr } = await supabase.from("bank_posting_decision").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      decision_type: "transfer", memo: memo || "", transfer_gl_account_id: toAccountId,
-      status: "posted", created_by: userProfile?.email || ""
-    }]);
-    if (xdErr) { showToast("Error saving transfer decision: " + xdErr.message, "error"); return; }
-    const { error: xkErr } = await supabase.from("bank_feed_transaction_link").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
-    }]);
-    if (xkErr) { showToast("Error linking transfer: " + xkErr.message, "error"); return; }
-    await supabase.from("bank_feed_transaction").update({
-      status: "categorized", accepted_at: new Date().toISOString(),
-      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id
-    }).eq("id", txn.id).eq("company_id", companyId);
+    const posted = await postBankTxnAtomic(txn, "transfer", {
+      description: memo || `Transfer — ${txn.bank_description_clean}`, property: "", // transfers don't have a class/property
+      lines,
+      decision: { memo: memo || "", transfer_gl_account_id: toAccountId }
+    });
+    if (!posted) return;
     logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transfer posted.", "success");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
@@ -1346,114 +1279,38 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const splitClassId = lines.find(l => l.classId)?.classId;
     const splitProperty = splitClassId ? (classes.find(c => c.id === splitClassId)?.name || "") : "";
 
-    // RECOVER FROM AN INTERRUPTED PRIOR SPLIT. The header and its lines are two
-    // separate, non-atomic writes; a dropped connection between them (measured:
-    // a network blip stranded an empty JE-9492 in prod, no DB error logged)
-    // leaves an empty journal entry whose fixed reference then blocks every
-    // retry with a duplicate-key (surfaced as PM-9005). On a fresh attempt,
-    // reconcile that leftover instead of colliding with it:
-    //   - empty (0 lines)   -> delete it, then post cleanly below
-    //   - balanced lines    -> already posted once; link the txn, never double-post
-    const splitRef = `SPLIT-${txn.id}`;
-    {
-      const { data: priorJE } = await supabase.from("acct_journal_entries")
-        .select("id").eq("company_id", companyId).eq("reference", splitRef).maybeSingle();
-      if (priorJE) {
-        const { count: priorLines } = await supabase.from("acct_journal_lines")
-          .select("id", { count: "exact", head: true })
-          .eq("company_id", companyId).eq("journal_entry_id", priorJE.id);
-        if ((priorLines || 0) === 0) {
-          await supabase.from("acct_journal_entries").delete()
-            .eq("id", priorJE.id).eq("company_id", companyId);
-        } else {
-          // Already fully posted. Reconcile the bank row to the existing entry
-          // rather than posting the amounts a second time.
-          await supabase.from("bank_feed_transaction").update({
-            status: "categorized", journal_entry_id: priorJE.id,
-            accepted_at: new Date().toISOString(), accepted_by: userProfile?.email || ""
-          }).eq("id", txn.id).eq("company_id", companyId);
-          showToast("This transaction was already split and posted — linked it to the existing entry.", "success");
-          setExpandedTxn(null);
-          refreshData(); if (onRefreshAccounting) onRefreshAccounting();
-          return;
-        }
-      }
-    }
-
-    // Next JE number via RPC + retry on a NUMBER collision only (a reference
-    // collision can't be fixed by re-rolling the number, and the recovery above
-    // already cleared any prior reference for this txn).
-    let jeRow = null, jeErr = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
-      if (numErr || !jeNumber) { pmError("PM-4002", { raw: numErr, context: "next_je_number for split" }); return; }
-      ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-        company_id: companyId, number: jeNumber, date: txn.posted_date,
-        description: `Split — ${txn.bank_description_clean}`,
-        reference: splitRef, property: splitProperty, status: "posted"
-      }]).select("id").maybeSingle());
-      if (!jeErr && jeRow) break;
-      // Only a duplicate NUMBER is worth retrying; a duplicate reference means a
-      // concurrent split of this same txn — don't spin, fall through.
-      const dupMsg = (jeErr?.message || "") + " " + (jeErr?.details || "");
-      if (jeErr?.code !== "23505" || /reference|idx_je_company_reference_unique/i.test(dupMsg)) break;
-    }
-    if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
-
-    // Build JE lines: bank side + each split line
-    const jeLines = [];
-    // Bank side (single line for full amount)
-    jeLines.push({
-      journal_entry_id: jeRow.id, company_id: companyId,
+    // Bank side (single line for full amount) + one line per category.
+    // Recovery from an interrupted earlier split (an empty SPLIT- entry, or a
+    // posted one the txn never got linked to) now happens inside the RPC.
+    const jeLines = [{
       account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank",
       debit: isInflow ? abs : 0, credit: isInflow ? 0 : abs,
-      class_id: null, memo: "Split transaction", bank_feed_transaction_id: txn.id
-    });
-    // Category lines
+      class_id: null, memo: "Split transaction"
+    }];
     for (const l of validLines) {
       jeLines.push({
-        journal_entry_id: jeRow.id, company_id: companyId,
         account_id: l.accountId, account_name: l.accountName,
         debit: isInflow ? 0 : safeNum(l.amount), credit: isInflow ? safeNum(l.amount) : 0,
-        class_id: l.classId || null, memo: l.memo || "", bank_feed_transaction_id: txn.id
+        class_id: l.classId || null, memo: l.memo || ""
       });
     }
-    const { error: slErr } = await supabase.from("acct_journal_lines").insert(jeLines);
-    if (slErr) {
-      // Undo the header we just created so it can't strand as an empty JE that
-      // blocks the next attempt (matches the single-category path's cleanup).
-      await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
-      showToast("Error saving split JE lines: " + slErr.message, "error");
-      return;
-    }
-
-    // Decision + lines
-    const { data: decision, error: sdErr } = await supabase.from("bank_posting_decision").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      decision_type: "split", memo: `Split into ${validLines.length} lines`,
-      status: "posted", created_by: userProfile?.email || ""
-    }]).select("id").maybeSingle();
-    if (sdErr) { showToast("Error saving split decision: " + sdErr.message, "error"); return; }
-    if (decision) {
-      const { error: sdlErr } = await supabase.from("bank_posting_decision_line").insert(validLines.map((l, i) => ({
-        company_id: companyId, bank_posting_decision_id: decision.id,
+    const posted = await postBankTxnAtomic(txn, "split", {
+      description: `Split — ${txn.bank_description_clean}`, property: splitProperty,
+      lines: jeLines,
+      decision: { memo: `Split into ${validLines.length} lines` },
+      decisionLines: validLines.map((l, i) => ({
         line_no: i + 1, gl_account_id: l.accountId, gl_account_name: l.accountName,
         amount: safeNum(l.amount), entry_side: isInflow ? "credit" : "debit",
         memo: l.memo || "", class_id: l.classId || null
-      })));
-      if (sdlErr) { showToast("Error saving split lines: " + sdlErr.message, "error"); return; }
+      }))
+    });
+    if (!posted) return;
+    if (posted.outcome !== "posted") {
+      showToast("This transaction was already split and posted — linked it to the existing entry.", "success");
+      setExpandedTxn(null);
+      refreshData(); if (onRefreshAccounting) onRefreshAccounting();
+      return;
     }
-
-    const { error: skErr } = await supabase.from("bank_feed_transaction_link").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
-    }]);
-    if (skErr) { showToast("Error linking split: " + skErr.message, "error"); return; }
-    await supabase.from("bank_feed_transaction").update({
-      status: "categorized", accepted_at: new Date().toISOString(),
-      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
-      posting_decision_id: decision?.id
-    }).eq("id", txn.id).eq("company_id", companyId);
     logAudit("create", "banking", `Split: ${txn.bank_description_clean} → ${validLines.length} lines`, txn.id, userProfile?.email, "", companyId);
     showToast(`Split into ${validLines.length} lines and posted.`, "success");
     setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);

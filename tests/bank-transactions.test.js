@@ -23,6 +23,7 @@ function readAllSrc(dir) {
   return code;
 }
 const APP_CODE = readAllSrc(srcDir);
+const ATOMIC_SQL = fs.readFileSync(path.resolve(__dirname, '../supabase/migrations/20260928010000_post_bank_transaction_atomic.sql'), 'utf8');
 
 let pass = 0, fail = 0, errors = [];
 function assert(ok, name) {
@@ -374,7 +375,8 @@ function testJEDescriptionQuality() {
   // XFER-/SPLIT- convention. The human-readable label still exists
   // — it's just rendered at display time by the BANK- prefix
   // translator below (line 289 asserts that path).
-  assert(APP_CODE.includes('reference: `BANK-${txn.id}`') || APP_CODE.includes('reference: "BANK-"'), 'JE reference is unique per bank txn (BANK-${txn.id})');
+  // The reference is now assigned server-side by post_bank_transaction.
+  assert(ATOMIC_SQL.includes("WHEN 'add' THEN 'BANK-'") && ATOMIC_SQL.includes("|| p_txn_id::text"), 'JE reference is unique per bank txn (BANK-${txn.id})');
 
   // Ledger overlay translates BANK- prefix to a friendly label. This now runs
   // through refLabel()/REF_LABELS (data-driven) instead of an inline
@@ -440,6 +442,51 @@ function testLedgerNavigation() {
   assert(APP_CODE.includes('setJeOrigin'), 'Origin is set on the way in, consumed on the way out');
 }
 
+// ───────────────────────────────────────────
+// ATOMIC BANK POSTING (post_bank_transaction)
+// A dropped connection between the JE header and its lines stranded an
+// empty JE whose reference blocked every retry with PM-9005 (prod JE-9492,
+// 2026-09-28). All three posting flows must go through the one-transaction
+// RPC and never write the pieces separately again.
+// ───────────────────────────────────────────
+function fnBody(name) {
+  const i = APP_CODE.indexOf(`async function ${name}(`);
+  if (i < 0) return '';
+  const j = APP_CODE.indexOf('\n  async function ', i + 10);
+  return APP_CODE.slice(i, j < 0 ? undefined : j);
+}
+async function testAtomicBankPosting() {
+  console.log('\n⚛️  ATOMIC BANK POSTING');
+  const flows = { acceptTransaction: 'add', acceptTransfer: 'transfer', acceptSplit: 'split' };
+  for (const [fn, kind] of Object.entries(flows)) {
+    const body = fnBody(fn);
+    assert(body.length > 0, `${fn} exists`);
+    assert(body.includes(`postBankTxnAtomic(txn, "${kind}"`), `${fn} posts via post_bank_transaction (${kind})`);
+    for (const table of ['acct_journal_entries', 'acct_journal_lines', 'bank_posting_decision', 'bank_feed_transaction_link']) {
+      assert(!body.includes(`from("${table}").insert`), `${fn} does not insert into ${table} directly`);
+    }
+    assert(!body.includes('next_je_number'), `${fn} does not allocate its own JE number`);
+  }
+  assert(/SECURITY INVOKER/.test(ATOMIC_SQL) && !/SECURITY DEFINER/.test(ATOMIC_SQL), 'RPC is SECURITY INVOKER (RLS + triggers still see the caller)');
+  assert(/FOR UPDATE/.test(ATOMIC_SQL), 'RPC locks the bank txn row against concurrent posts');
+  assert(ATOMIC_SQL.includes("'already_posted'") && ATOMIC_SQL.includes("'relinked'"), 'RPC is idempotent (lost response / unlinked prior entry)');
+  assert(/v_prior_lines = 0 THEN\s+DELETE FROM acct_journal_entries/.test(ATOMIC_SQL), 'RPC clears an empty stranded header before posting');
+  assert(/FROM PUBLIC, anon/.test(ATOMIC_SQL), 'RPC is not executable by anon');
+
+  // The function must exist in the database this suite points at, and an
+  // unknown txn must be refused rather than posted.
+  const { error } = await supabase.rpc('post_bank_transaction', {
+    p_company_id: '__no_such_company__', p_txn_id: '00000000-0000-0000-0000-000000000000', p_kind: 'add',
+    p_description: 'x', p_property: '', p_lines: [{}, {}], p_decision: {}, p_decision_lines: []
+  });
+  assert(error && /transaction not found/.test(error.message || ''), 'post_bank_transaction deployed; refuses an unknown txn');
+  const { error: kindErr } = await supabase.rpc('post_bank_transaction', {
+    p_company_id: 'x', p_txn_id: '00000000-0000-0000-0000-000000000000', p_kind: 'bogus',
+    p_description: 'x', p_property: '', p_lines: [{}, {}], p_decision: {}, p_decision_lines: []
+  });
+  assert(kindErr && /unknown kind/.test(kindErr.message || ''), 'post_bank_transaction rejects an unknown kind');
+}
+
 // ═══════════════════════════════════════════
 // RUN ALL TESTS
 // ═══════════════════════════════════════════
@@ -464,6 +511,7 @@ async function main() {
   testPagination();
   testExcelExport();
   testLedgerNavigation();
+  await testAtomicBankPosting();
 
   console.log('\n==========================================');
   console.log(`✅ Passed: ${pass}`);
