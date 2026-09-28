@@ -9,6 +9,7 @@ import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
+import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason } from "../utils/lateFees";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -735,40 +736,30 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         ? Math.round(safeNum(t.rent) * safeNum(t.late_fee_amount) / 100 * 100) / 100
         : safeNum(t.late_fee_amount);
       if (!feeAmount || feeAmount <= 0) { showToast("No late fee configured for this tenant. Edit the tenant to set a late fee amount.", "error"); return; }
-      // Dedup: check if late fee already posted this month
-      const thisMonth = formatLocalDate(new Date()).slice(0, 7);
-      const { data: existing } = await supabase.from("ledger_entries").select("id").eq("company_id", companyId).eq("tenant_id", t.id).eq("type", "late_fee").gte("date", thisMonth + "-01").limit(1);
-      if (existing?.length > 0) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
+      // Dedup: the shared one-per-month rule (utils/lateFeeRules.js), which
+      // also sees the Late Fees page, the nightly job and hand-entered fees.
+      // Checked here so the user is told before the confirm dialog;
+      // postTenantLateFee checks again right before posting.
+      const today = formatLocalDate(new Date());
+      const lfMonth = lateFeeMonth(today);
+      const lfDup = await lateFeeAlreadyPosted(companyId, t.id, lfMonth);
+      if (lfDup.error) { showToast("Could not check for an existing late fee (" + lfDup.error + "). Nothing was posted.", "error"); return; }
+      if (lfDup.already) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
       const monthName = new Date().toLocaleString("default", { month: "long", year: "numeric" });
       const feeLabel = t.late_fee_type === "percent" ? `${t.late_fee_amount}% of $${safeNum(t.rent).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
       if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
-      const today = formatLocalDate(new Date());
       const classId = await getPropertyClassId(t.property, companyId);
-      // Same two fixes as addLedgerEntry: the AR leg goes to the
-      // tenant's own sub-account (bare 1100 is invisible in
-      // ledger_entries), and once it does the balance trigger owns
-      // tenants.balance so balanceUpdate must not also run.
-      const lfArId = await getOrCreateTenantAR(companyId, t.name, t.id) || await resolveAccountId("1100", companyId);
-      if (!lfArId) { showToast("Could not resolve the Accounts Receivable account. Nothing was posted.", "error"); return; }
-      let lfArName = "Accounts Receivable", lfArIsPerTenant = false;
-      { const { data: lfAcct } = await supabase.from("acct_accounts").select("name, tenant_id").eq("company_id", companyId).eq("id", lfArId).maybeSingle();
-        if (lfAcct?.name) lfArName = lfAcct.name;
-        lfArIsPerTenant = !!lfAcct?.tenant_id && String(lfAcct.tenant_id) === String(t.id); }
-      const lfResolved = await resolveJELineAccounts([
-        { account_id: lfArId, account_name: lfArName, debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + t.name },
-        { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: monthName + " late fee" },
-      ], companyId);
-      if (!lfResolved.lines) { showToast("Chart of accounts is missing account " + lfResolved.missing + ". Nothing was posted.", "error"); return; }
-      const result = await atomicPostJEAndLedger({ companyId,
-        date: today,
-        description: "Late fee \u2014 " + t.name + " \u2014 " + t.property,
-        reference: "LATEFEE-" + t.id + "-" + thisMonth.replace("-", ""),
-        property: t.property,
-        lines: lfResolved.lines,
-        ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: today, description: `Late fee \u2014 ${monthName}`, amount: feeAmount, type: "late_fee", balance: 0 },
-        balanceUpdate: lfArIsPerTenant ? null : { tenantId: t.id, amount: feeAmount },
+      // Reference LATEFEE-<tenant_id>-YYYYMM, DR the tenant's own AR (never
+      // the shared 1100), no balanceUpdate — the balance trigger owns
+      // tenants.balance.
+      const res = await postTenantLateFee({ companyId, tenant: t, amount: feeAmount, date: today, classId,
+        description: "Late fee — " + t.name + " — " + t.property,
+        arMemo: "Late fee: " + t.name,
+        incomeMemo: monthName + " late fee",
+        ledgerDescription: `Late fee — ${monthName}`,
       });
-      if (!result.jeId) return;
+      if (res.status === "duplicate") { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
+      if (res.status !== "posted") { showToast("Late fee not applied: " + lateFeeFailureReason(res) + ". Nothing was posted.", "error"); return; }
       showToast(`Late fee ${formatCurrency(feeAmount)} applied to ${t.name}.`, "success");
       addNotification("\u26A0\uFE0F", `Late fee ${formatCurrency(feeAmount)} \u2014 ${t.name}`);
       logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} for ${t.name}`, t.id, userProfile?.email, userRole, companyId);

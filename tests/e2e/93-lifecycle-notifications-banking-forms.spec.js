@@ -84,6 +84,18 @@ function localDatePlusDays(n) {
   return localDate(d);
 }
 function localMonthCompact() { return localDate().slice(0, 7).replace('-', ''); }
+// What tenants.balance must equal once a posting lands on the tenant's own AR
+// account: the sync_tenant_balance_lines trigger recomputes it from the GL
+// (posted lines on accounts whose tenant_id is this tenant).
+async function tenantGlBalance(sb, tenantId) {
+  const { data: accts } = await sb.from('acct_accounts').select('id').eq('tenant_id', tenantId);
+  const ids = (accts || []).map(a => a.id);
+  if (!ids.length) return 0;
+  const { data: lines } = await sb.from('acct_journal_lines')
+    .select('debit, credit, acct_journal_entries!inner(status)')
+    .in('account_id', ids).eq('acct_journal_entries.status', 'posted');
+  return Math.round((lines || []).reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0) * 100) / 100;
+}
 
 // ── UI helpers ────────────────────────────────────────────────────────
 async function openRoute(page, routeId, marker) {
@@ -510,7 +522,7 @@ test.describe('Late fees', () => {
     // The page confirms via the header bell (addNotification), not a
     // toast, so wait on the consequence in the GL instead.
     const month = localMonthCompact();
-    const ref = `LATE-${tenant.id}-${month}`;
+    const ref = `LATEFEE-${tenant.id}-${month}`;
     await expect.poll(async () => {
       const { data } = await sb.from('acct_journal_entries').select('id')
         .eq('company_id', COMPANY).eq('reference', ref);
@@ -550,14 +562,15 @@ test.describe('Late fees', () => {
     expect(rpcFailures, 'the late fee did not post through the atomic RPC:\n' + rpcFailures.join('\n')).toEqual([]);
 
     // ── Tenant balance ──────────────────────────────────────────────
-    // This module debits the SHARED 1100 receivable, whose tenant_id is
-    // NULL, so the sync_tenant_balance_lines trigger cannot move the
-    // balance — post_je_and_ledger's p_balance_change is what does, and
-    // it is applied only because no line hit a per-tenant AR account.
+    // The fee debits the tenant's OWN AR account, so the
+    // sync_tenant_balance_lines trigger recomputes tenants.balance from
+    // the GL. The seeded 1800 had no GL behind it, so the balance becomes
+    // exactly what the GL says: this one fee.
     await expect.poll(async () => {
       const { data } = await sb.from('tenants').select('balance').eq('id', tenant.id).single();
       return Number(data.balance);
-    }, { timeout: 30000, message: 'balance must move by exactly the fee' }).toBe(1800 + 75.25);
+    }, { timeout: 30000, message: 'balance must equal the GL (the fee, once)' }).toBe(75.25);
+    expect(await tenantGlBalance(sb, tenant.id), 'tenant balance == GL').toBe(75.25);
 
     // ── Notification side effect ────────────────────────────────────
     await expect.poll(async () => {
@@ -578,7 +591,7 @@ test.describe('Late fees', () => {
       .eq('company_id', COMPANY).eq('reference', ref);
     expect(jes2, 'a second apply must not post a second fee').toHaveLength(1);
     const { data: t3 } = await sb.from('tenants').select('balance').eq('id', tenant.id).single();
-    expect(Number(t3.balance), 'a second apply must not move the balance again').toBe(1800 + 75.25);
+    expect(Number(t3.balance), 'a second apply must not move the balance again').toBe(75.25);
 
     await archiveMyRules();
   });
@@ -587,9 +600,8 @@ test.describe('Late fees', () => {
   // post_je_and_ledger applies p_balance_change ONLY when no line landed
   // on a per-tenant AR sub-account; where one does, the
   // sync_tenant_balance_lines trigger recomputes the balance from the GL
-  // instead. This module posts to the SHARED 1100 receivable, so the
-  // increment path is the live one — and it has to move the balance
-  // exactly one fee's worth, not two.
+  // instead. Late fees now post to the tenant's OWN AR account and pass no
+  // balance change, so the trigger is the only mover: balance == GL.
   test('applying a late fee moves the tenant balance by exactly one fee, once', async ({ page }) => {
     test.skip(new Date().getDate() === 1, 'nothing can be late on the 1st');
     const sb = await db();
@@ -607,7 +619,7 @@ test.describe('Late fees', () => {
 
     // The fee reaches the general ledger...
     const month = localMonthCompact();
-    const ref = `LATE-${tenant.id}-${month}`;
+    const ref = `LATEFEE-${tenant.id}-${month}`;
     await expect.poll(async () => ((await sb.from('acct_journal_entries').select('id')
       .eq('company_id', COMPANY).eq('reference', ref)).data || []).length,
       { timeout: 45000, message: 'the fee should post to the GL' }).toBe(1);
@@ -616,26 +628,28 @@ test.describe('Late fees', () => {
     await expect.poll(async () => ((await sb.from('acct_journal_lines').select('id')
       .eq('journal_entry_id', je.id)).data || []).length, { timeout: 30000 }).toBe(2);
 
-    // ...and moves the balance by one fee. 1290 here would mean both the
-    // RPC increment and the trigger had fired.
+    // ...and the balance equals the GL: the seeded 1200 had no GL behind
+    // it, so it is exactly one fee. 90 would mean an increment had also
+    // fired on top of the trigger.
     await expect.poll(async () => {
       const { data } = await sb.from('tenants').select('balance').eq('id', tenant.id).single();
       return Number(data.balance);
-    }, { timeout: 30000, message: 'balance must move by exactly one fee' }).toBe(1245);
+    }, { timeout: 30000, message: 'balance must equal the GL (one fee)' }).toBe(45);
     // Settle, then confirm nothing arrived late and doubled it.
     await page.waitForTimeout(5000);
     const { data: t2 } = await sb.from('tenants').select('balance').eq('id', tenant.id).single();
-    expect(Number(t2.balance), 'the fee must not be applied twice').toBe(1245);
+    expect(Number(t2.balance), 'the fee must not be applied twice').toBe(45);
+    expect(await tenantGlBalance(sb, tenant.id), 'tenant balance == GL').toBe(45);
 
-    // The leg it posted to is the shared receivable — which is exactly
-    // why the RPC's increment, rather than the trigger, is the mover.
+    // The leg it posted to is the tenant's own receivable, never the
+    // shared 1100.
     const { data: lines } = await sb.from('acct_journal_lines')
       .select('account_id, debit').eq('journal_entry_id', je.id);
     const arLine = lines.find(l => Number(l.debit) > 0);
     const { data: arAcct } = await sb.from('acct_accounts').select('code, tenant_id')
       .eq('id', arLine.account_id).single();
-    expect(arAcct.code, 'the debit lands on the shared receivable').toBe('1100');
-    expect(arAcct.tenant_id, 'which is not tied to any tenant').toBeNull();
+    expect(arAcct.code, 'the debit lands on a per-tenant AR sub-account').toMatch(/^1100-\d+$/);
+    expect(String(arAcct.tenant_id), 'owned by this tenant').toBe(String(tenant.id));
 
     await sb.from('late_fee_rules').update({ archived_at: new Date().toISOString() }).eq('id', rule.id);
   });
@@ -671,7 +685,7 @@ test.describe('Late fees', () => {
 
     await applyBtn.click();
     const month = localMonthCompact();
-    const ref = `LATE-${tenant.id}-${month}`;
+    const ref = `LATEFEE-${tenant.id}-${month}`;
     await expect.poll(async () => {
       const { data } = await sb.from('acct_journal_entries').select('id')
         .eq('company_id', COMPANY).eq('reference', ref);
@@ -905,7 +919,7 @@ test.describe('Notifications', () => {
     // absence and not just an unfinished request.
     const month = localMonthCompact();
     await expect.poll(async () => (await sb.from('acct_journal_entries').select('id')
-      .eq('company_id', COMPANY).eq('reference', `LATE-${tOff.id}-${month}`)).data.length,
+      .eq('company_id', COMPANY).eq('reference', `LATEFEE-${tOff.id}-${month}`)).data.length,
       { timeout: 45000 }).toBe(1);
     await page.waitForTimeout(3000);
     const { data: none } = await sb.from('notification_queue').select('id')

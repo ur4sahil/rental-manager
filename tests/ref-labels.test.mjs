@@ -9,6 +9,8 @@ const cases = [
   ["RECUR-6a0e0d78-2026-08", "Recurring · Aug 2026"],
   ["RENT1-T307-20260101",    "Rent Charge · Jan 1, 2026"],
   ["LATEFEE-41-2026-09",     "Late Fee · Sep 2026"],
+  ["LATEFEE-41-202609",      "Late Fee · Sep 2026"],
+  ["LATE-41-202609",         "Late Fee · Sep 2026"],
   ["BANK-c6c86a53-016a",     "Bank Import"],
   ["PS 2504 A Kent Village Dr", "PS 2504 A Kent Village Dr"],
   ["", "—"],

@@ -77,7 +77,12 @@ function testFileStructure() {
   // notificationTemplates all came out of files that were doing two jobs.
   // The bound is here to stop a util drawer becoming a second monolith, and
   // splitting a concern into its own named module is the opposite of that.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 22, `src/utils/ has 8..22 files (found ${actualUtilFiles.length})`);
+  // 24 on 2026-09-28: lateFeeRules.js (the one-per-month rule, import-free
+  // so it is tested directly, mirrored in SQL) and lateFees.js (the one
+  // posting routine both manual late-fee paths now share). Two paths that
+  // had each grown their own reference and duplicate check in their
+  // components are the drift this split exists to stop.
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 24, `src/utils/ has 8..24 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -231,7 +236,11 @@ function testFileStructure() {
   // correctness -- the new pure src/utils/recurringRules.js (tested directly
   // by recurring-rent-rules.test.mjs), the shared deactivate/sync helpers in
   // accounting.js, and the teardown call sites that now stop rent.
-  assert(totalLines <= 51250, `Total src lines <= 51250 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51400 on 2026-09-28: +~200 for unified late fees -- the pure
+  // src/utils/lateFeeRules.js (one-per-month rule, tested directly by
+  // late-fees-unified.test.mjs) and the shared posting routine
+  // lateFees.js; the two component call sites got shorter.
+  assert(totalLines <= 51400, `Total src lines <= 51400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
