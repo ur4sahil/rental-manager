@@ -102,5 +102,72 @@ assert("the live read only overrides when live rows exist (new drafts keep their
   /if \(hoaRows\.length(?: && !hoaTouched\.current)?\) setHoas/.test(props),
   "an in-progress draft with nothing committed must keep its snapshot -- nothing else holds that work");
 
+// ---- 5. an address edit in the wizard cascades BEFORE any lookup by it ---
+// commit_property_wizard UPDATEs the address components, sync_addr_upd
+// re-derives properties.address, and every later step keys on the NEW string.
+// Without a cascade first, each lookup (tenants, leases, utilities, HOA, loans,
+// insurance, taxes, acct_classes) missed and INSERTed a duplicate: a second
+// tenant "Jasmine Morgan" at "7919 Mandan Rd, 303, ..." beside the original.
+// A utility with an account number made it worse -- the re-insert hit
+// idx_utilities_company_provider_account and the whole commit aborted.
+{
+  const migDir = path.join(__dirname, "..", "supabase", "migrations");
+  const migs = fs.readdirSync(migDir).filter(f => f.endsWith(".sql")).sort();
+  const latestDefining = (fn) => {
+    const re = new RegExp(`CREATE OR REPLACE FUNCTION public\\.${fn}\\(`);
+    const hits = migs.filter(f => re.test(fs.readFileSync(path.join(migDir, f), "utf8")));
+    return hits.length ? hits[hits.length - 1] : null;
+  };
+
+  const wizFile = latestDefining("commit_property_wizard");
+  const wiz = wizFile ? fs.readFileSync(path.join(migDir, wizFile), "utf8") : "";
+  assert("latest commit_property_wizard is at or after the rename-cascade fix",
+    !!wizFile && wizFile >= "20260928030000", `latest definition: ${wizFile}`);
+  assert("commit_property_wizard stays SECURITY DEFINER",
+    /LANGUAGE plpgsql\s+SECURITY DEFINER/.test(wiz));
+
+  const editStart = wiz.indexOf("IF v_mode = 'edit' AND v_property_id_in IS NOT NULL THEN");
+  const oldRead = wiz.search(/SELECT address INTO v_old_address FROM properties\s+WHERE id = v_property_id_in AND company_id = v_company_id\s+FOR UPDATE;/);
+  const propUpdate = wiz.indexOf("UPDATE properties SET\n      address_line_1", editStart);
+  const cascade = wiz.indexOf("PERFORM public._cascade_property_rename(v_company_id, v_old_address, v_address)");
+  const classUpsert = wiz.indexOf("INSERT INTO acct_classes");
+  const tenantLookup = wiz.indexOf("SELECT id INTO v_existing_tenant_id FROM tenants");
+  const firstAddrLookup = Math.min(...[
+    classUpsert, tenantLookup,
+    wiz.indexOf("FROM leases"), wiz.indexOf("FROM utilities"), wiz.indexOf("FROM hoa_payments"),
+    wiz.indexOf("FROM property_loans"), wiz.indexOf("FROM property_insurance"),
+    wiz.indexOf("FROM property_taxes"), wiz.indexOf("FROM recurring_journal_entries"),
+  ].filter(i => i >= 0));
+
+  assert("edit mode reads the OLD address (row-locked) before the components UPDATE",
+    editStart >= 0 && oldRead > editStart && propUpdate > oldRead,
+    "without the pre-UPDATE read there is nothing to cascade from");
+  assert("the rename cascade runs after the UPDATE and before ANY lookup by address",
+    cascade > propUpdate && cascade < firstAddrLookup,
+    "a lookup that runs first keys on the new address, misses, and inserts a duplicate");
+  assert("the cascade only fires when the derived address actually changed",
+    /v_old_address IS DISTINCT FROM v_address THEN\s+PERFORM public\._cascade_property_rename/.test(wiz));
+
+  // The class upsert after the cascade is ON CONFLICT (company_id, name): it
+  // only reuses the property's class if the cascade renamed that class.
+  const casFile = latestDefining("_cascade_property_rename");
+  const cas = casFile ? fs.readFileSync(path.join(migDir, casFile), "utf8") : "";
+  assert("_cascade_property_rename renames acct_classes.name",
+    /UPDATE acct_classes SET name = p_new\s+WHERE company_id = p_company_id AND name = p_old/.test(cas),
+    `latest definition: ${casFile}; otherwise the wizard's class upsert creates a second class`);
+  for (const t of ["tenants", "leases", "utilities", "hoa_payments", "property_loans",
+                   "property_insurance", "property_taxes", "recurring_journal_entries"]) {
+    assert(`_cascade_property_rename covers ${t}`,
+      new RegExp(`UPDATE ${t}\\s+SET property = p_new WHERE company_id = p_company_id AND property = p_old`).test(cas),
+      `the wizard looks ${t} up by the new address right after the cascade`);
+  }
+
+  // The client must keep sending edit mode with the numeric property id --
+  // that is the only path on which the RPC knows the old address.
+  assert("the wizard commit sends mode 'edit' + property_id_for_edit",
+    /mode: numericPropertyId \? 'edit' : 'fresh'/.test(props) &&
+    /property_id_for_edit: numericPropertyId/.test(props));
+}
+
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

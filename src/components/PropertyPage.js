@@ -1,6 +1,6 @@
 import React from "react";
 import { Btn, TextLink, DetailPanel, DetailRow, DetailCard, DetailAlert } from "../ui";
-import { safeNum, formatCurrency, fmtDate, parseLocalDate, canManage } from "../utils/helpers";
+import { safeNum, formatCurrency, fmtDate, parseLocalDate, canManage, LIVE_TENANCY } from "../utils/helpers";
 
 // The property detail PAGE.
 //
@@ -106,7 +106,10 @@ export default function PropertyPage({
     id: t.id, name: t.name, raw: t,
     start: dateOf(t.lease_start || t.move_in),
     end: dateOf(t.lease_end_date || t.move_out),
-    current: String(t.lease_status || "").toLowerCase() === "current",
+    // Accepted only "current", which the DB no longer stores ('active' is
+    // the canonical word) -- so no tenancy ever read as current. A tenant on
+    // notice still lives there.
+    current: LIVE_TENANCY.includes(String(t.lease_status || "").toLowerCase()),
     balance: safeNum(t.balance),
   }));
   const current = tenancies.filter(t => t.current);

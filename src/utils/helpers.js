@@ -989,6 +989,13 @@ export const priorityColors = {
 // settle on one word and migrate, which is a data decision.
 export const ACTIVE_LEASE = ["active", "current"];
 
+// A tenant who still LIVES at the property: active, or on notice (has given
+// or been served notice but not yet moved out). 'active' is the one canonical
+// word for a live tenancy -- the DB normalises 'current' to it (migration
+// 20260928020000) -- and 'current' stays listed only so a stale row or an
+// old cached bundle is not dropped.
+export const LIVE_TENANCY = [...ACTIVE_LEASE, "notice"];
+
 // Compare two address strings for identity.
 //
 // `properties.address` is DERIVED -- a trigger composes it from the

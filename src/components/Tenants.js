@@ -3,12 +3,12 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import TenantPage from "./TenantPage";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, MoneyInput, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, propertyLabel, fmtDate, fmtDateTime, canManage} from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, LIVE_TENANCY, propertyLabel, fmtDate, fmtDateTime, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -414,31 +414,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Matched on tenant_id (bigint, same as tenants.id), not tenant_name:
   // names are not unique -- production has same-name tenant groups -- and
   // this edit may itself be renaming the tenant.
+  //
+  // One helper for this, the lease renewal and the rent increase on the
+  // Leases page (syncTenantRecurringAmount), so the three cannot drift.
   if (editingTenant && Number(editingTenant.rent) !== _rent) {
-    const { data: recurring, error: recErr } = await supabase
-      .from("recurring_journal_entries")
-      .select("id, amount, description")
-      .eq("company_id", companyId)
-      .eq("tenant_id", editingTenant.id)
-      .neq("status", "cancelled");
-    if (recErr) {
+    const recSync = await syncTenantRecurringAmount(companyId, editingTenant.id, _rent);
+    if (!recSync.ok && recSync.stage === "check") {
       // Non-fatal: the tenant is already saved. Say so plainly rather
       // than leaving the mismatch silent.
       showToast("Rent saved, but the recurring entry could not be checked — please update it manually.", "warning");
-      pmError("PM-4008", { raw: recErr, context: "sync recurring amount after rent change", silent: true });
-    } else if (recurring && recurring.length > 0) {
-      const { error: upErr } = await supabase.from("recurring_journal_entries")
-        .update({ amount: _rent })
-        .eq("company_id", companyId)
-        .eq("tenant_id", editingTenant.id)
-        .neq("status", "cancelled");
-      if (upErr) {
-        showToast("Rent saved, but the recurring entry still bills " + formatCurrency(recurring[0].amount) + " — please update it manually.", "warning");
-        pmError("PM-4008", { raw: upErr, context: "update recurring amount after rent change", silent: true });
-      } else {
-        // Announced, not silent: this changes what the tenant is billed.
-        showToast(`Rent updated to ${formatCurrency(_rent)} — the recurring ${recurring.length === 1 ? "entry" : "entries"} now bill${recurring.length === 1 ? "s" : ""} the new amount.`, "success");
-      }
+    } else if (!recSync.ok) {
+      showToast("Rent saved, but the recurring entry still bills " + formatCurrency(recSync.previousAmount) + " — please update it manually.", "warning");
+    } else if (recSync.count > 0) {
+      // Announced, not silent: this changes what the tenant is billed.
+      showToast(`Rent updated to ${formatCurrency(_rent)} — the recurring ${recSync.count === 1 ? "entry" : "entries"} now bill${recSync.count === 1 ? "s" : ""} the new amount.`, "success");
     }
   }
 
@@ -1146,14 +1135,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const moveOutDate = formatLocalDate(noticeDate);
   const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", selectedTenant.id);
   if (error) { pmError("PM-3006", { raw: error, context: "generate move-out notice" }); return; }
-  // #8: Also update lease status to reflect notice
-  // Unscoped, this flipped a namesake's active lease to "notice" too.
-  let noticeQ = supabase.from("leases").update({ status: "notice" }).eq("company_id", companyId).eq("status", "active");
-  noticeQ = selectedTenant.id
-    ? noticeQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant_name.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
-    : noticeQ.eq("tenant_name", selectedTenant.name).eq("property", selectedTenant.property || "");
-  const { error: leaseErr } = await noticeQ;
-  if (leaseErr) showToast("Lease status update failed: " + leaseErr.message, "error");
+  // The LEASE is deliberately left "active": notice does not end the
+  // tenancy, the move-out does. This used to write status:"notice" to
+  // leases, which leases_status_check forbids (draft|active|expired|
+  // renewed|terminated), so every notice surfaced a "Lease status update
+  // failed" error. Lifecycle.js's eviction filing made the same change.
   addNotification("\u{1F4CB}", `${days}-day move-out notice generated for ${selectedTenant.name}`);
   logAudit("update", "tenants", `${days}-day notice issued for ${selectedTenant.name}`, selectedTenant.id, userProfile?.email, userRole, companyId);
   setLeaseModal(null);
@@ -1269,15 +1255,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Naming them is what let the markup leave this file for TenantPage.js:
   // the writes stay here, beside the data, the guards and the toasts.
 
-  // Only a current tenant has a lease to close. This used to navigate
-  // regardless, so a past tenant landed on the Move-Out wizard, met an error
-  // there, and had lost the panel they were working in. Say it where the
-  // click happened and stay put.
+  // Only a tenant who still lives there (active, or on notice) has a lease
+  // to close. This used to navigate regardless, so a past tenant landed on
+  // the Move-Out wizard, met an error there, and had lost the panel they
+  // were working in. Say it where the click happened and stay put.
   async function pageMoveOut(t) {
     const st = String(t?.lease_status || "").toLowerCase();
-    if (st !== "current" && st !== "active") {
+    if (!LIVE_TENANCY.includes(st)) {
       await showConfirm({
-        message: `${t?.name} is marked "${st || "unknown"}", so there is no active lease to close.\n\nMove-Out applies to a current tenant. If they are still in the property, set them to Current first — Edit tenant, or the Review tab.`,
+        message: `${t?.name} is marked "${st || "unknown"}", so there is no active lease to close.\n\nMove-Out applies to an active tenant or one on notice. If they are still in the property, set them to Active first — Edit tenant, or the Review tab.`,
         title: "No active lease to close",
         confirmText: "Got it", cancelText: "Close", variant: "notice",
       });
@@ -2058,6 +2044,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     .eq("company_id", companyId)
     .in("id", ids);
   if (bulkErr) pmError("PM-3002", { raw: bulkErr, context: "bulk tenant status update" });
+  // A tenant set to "past" has left: stop their recurring rent too.
+  if (!bulkErr && newStatus === "past") {
+    const recStop = await deactivateTenantRecurring(companyId, ids);
+    if (!recStop.ok) showToast("Status updated, but a recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
+  }
   addNotification("\u{1F464}", `Status changed to "${newStatus}" for ${count || 0} tenant(s)`);
   logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count || 0} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();

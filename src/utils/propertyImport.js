@@ -129,7 +129,9 @@ export function inferTenantStatus(t, asOf = new Date()) {
   //
   // Only guess when the app has no answer.
   const known = String(t.lease_status || "").toLowerCase();
-  if (known === "current") return "Current";
+  // 'active' is the canonical word ('current' is the legacy spelling the DB
+  // now normalises away); a tenant on notice still lives there.
+  if (known === "current" || known === "active" || known === "notice") return "Current";
   if (known === "past") return "Past";
   // No AR account and nothing in the ledger: the QuickBooks import turned
   // every customer name into a tenant, including lenders, title companies
