@@ -82,7 +82,9 @@ function testFileStructure() {
   // posting routine both manual late-fee paths now share). Two paths that
   // had each grown their own reference and duplicate check in their
   // components are the drift this split exists to stop.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 24, `src/utils/ has 8..24 files (found ${actualUtilFiles.length})`);
+  // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
+  // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 25, `src/utils/ has 8..25 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -240,7 +242,11 @@ function testFileStructure() {
   // src/utils/lateFeeRules.js (one-per-month rule, tested directly by
   // late-fees-unified.test.mjs) and the shared posting routine
   // lateFees.js; the two component call sites got shorter.
-  assert(totalLines <= 51400, `Total src lines <= 51400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51600 on (with late fees merged); 51450 on 2026-09-28 (payments/autopay/Stripe fixes): +~155 for the new
+  // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
+  // tested directly by payments-autopay-stripe.test.mjs) and the corrected
+  // rent-receipt / accrual / move-out lookups that use it.
+  assert(totalLines <= 51600, `Total src lines <= 51600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

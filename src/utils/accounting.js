@@ -3,6 +3,7 @@ import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFil
 import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
+import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth } from "./paymentRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
@@ -251,32 +252,52 @@ export async function autoPostJournalEntry({ date, description, reference, prope
   } catch (e) { pmError("PM-4002", { raw: e, context: "auto-post journal entry" }); return null; }
 }
 
-// Check if an AR accrual (rent charge) exists for a tenant in a given month
-// Used by smart AR settlement: if accrual exists, payment settles AR; else posts direct revenue
-export async function checkAccrualExists(companyId, month, tenantName) {
-  // Look for RENT-AUTO entries for this month that mention the tenant
-  // Paged. One accrual per tenant per month is under the cap for this
-  // company, but "under the cap for this company today" is not a property
-  // the code can rely on, and a short read here answers "no accrual exists"
-  // -- which sends a rent payment to revenue instead of settling the
-  // receivable.
+// Does the tenant have a RENT CHARGE (accrual) dated in `month` ("YYYY-MM")?
+//
+// This used to look only for references "RENT-AUTO-%" / "ACCR-%", which
+// nothing produces any more -- real rent is RECUR-<schedule id8>-YYYY-MM
+// (autoPostRecurringEntries) and RENT1-/PRORENT- (the property wizard). It
+// therefore answered "no" for every tenant, which is why autoOwnerDistribution
+// always bailed. Now: with a tenantId, the question is answered from the
+// tenant's OWN AR account(s) -- any debit of a rent-charge family
+// (paymentRules.RENT_CHARGE_PREFIXES) dated in the month. Without a tenantId
+// the legacy name-in-memo match is kept, widened to every rent family.
+//
+// A failed read answers TRUE ("could not tell"), as before: the caller must
+// not mistake a broken query for "no rent was billed".
+export async function checkAccrualExists(companyId, month, tenantName, tenantId) {
+  if (tenantId !== null && tenantId !== undefined && tenantId !== "") {
+    const { data: arAccts, error: arErr } = await supabase.from("acct_accounts")
+      .select("id").eq("company_id", companyId).eq("tenant_id", tenantId);
+    if (arErr) return true;
+    const arIds = (arAccts || []).map(a => a.id);
+    if (arIds.length === 0) return false;
+    const { start, end } = monthBounds(month);
+    const { data: lines, error: lErr } = await supabase.from("acct_journal_lines")
+      .select("account_id, debit, acct_journal_entries!inner(reference, date, status)")
+      .eq("company_id", companyId).in("account_id", arIds.slice(0, 100)).gt("debit", 0)
+      .neq("acct_journal_entries.status", "voided")
+      .gte("acct_journal_entries.date", start).lte("acct_journal_entries.date", end)
+      .limit(1000);
+    if (lErr) return true;
+    return hasRentChargeInMonth(lines, arIds, month);
+  }
+  // Legacy: no tenant id. Match rent-family entries in the month whose lines
+  // mention the tenant by name. Paged, chunked at 100 for .in().
+  const { start, end } = monthBounds(month);
+  const orFilter = RENT_CHARGE_PREFIXES.map(p => `reference.like.${escapeFilterValue(p)}%`).join(",");
   const { rows: rentJEs, failed: rentFailed } = await fetchAllPaged(
     () => supabase.from("acct_journal_entries")
       .select("id, reference").eq("company_id", companyId)
-      .or(`reference.like.RENT-AUTO-%${escapeFilterValue(month)}%,reference.like.ACCR-${escapeFilterValue(month)}%`)
+      .or(orFilter).gte("date", start).lte("date", end)
       .neq("status", "voided").order("id"),
     "rent accrual entries",
   );
-  // A failed read must not read as "no accrual". Saying we could not tell is
-  // the honest answer, and the caller treats it the same as found.
   if (rentFailed) return true;
   if (!rentJEs || rentJEs.length === 0) return false;
   const jeIds = rentJEs.map(je => je.id);
-  // Chunked at 100: .in() is a URL parameter, and a company with more than a
-  // hundred rent accruals in one month would have produced an invalid request
-  // rather than a short answer. A false "no accrual exists" here sends a rent
-  // payment to revenue instead of settling the receivable.
-  const needle = tenantName.toLowerCase();
+  const needle = String(tenantName || "").toLowerCase();
+  if (!needle) return false;
   for (let i = 0; i < jeIds.length; i += 100) {
     const { data: lines } = await supabase.from("acct_journal_lines")
       .select("journal_entry_id, memo").in("journal_entry_id", jeIds.slice(i, i + 100));
@@ -288,7 +309,7 @@ export async function checkAccrualExists(companyId, month, tenantName) {
 // ============ OWNER DISTRIBUTION AUTOMATION ============
 // Auto-calculates management fee + owner net when rent is received.
 // Posts GL entry: DR Rental Income / CR Mgmt Fee Income + CR Owner Dist Payable
-export async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName) {
+export async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName, tenantId) {
   try {
   const { data: prop } = await supabase.from("properties")
   .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
@@ -300,7 +321,7 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
   // If payment was posted as direct revenue (no accrual), the DR 4000 reversal would create
   // a negative revenue balance — effectively double-counting income.
   const month = paymentDate.slice(0, 7);
-  const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
+  const hasAccrual = await checkAccrualExists(companyId, month, tenantName, tenantId);
   if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
   // Null/missing management_fee_pct means self-managed — 0% fee, 100%
   // passthrough to owner. Previous code silently substituted 10%, which

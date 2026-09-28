@@ -9,6 +9,7 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring} from "../utils/accounting";
+import { recurringRentRefsForMonth, pickMoveOutRentCharge } from "../utils/paymentRules";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
 function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
@@ -269,9 +270,22 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const moveOutMonth = moveOutDate.slice(0, 7);
   const daysInMoveOutMonth = new Date(parseInt(moveOutDate.split("-")[0]), parseInt(moveOutDate.split("-")[1]), 0).getDate();
   if (moveOutDay < daysInMoveOutMonth && selectedLease.rent_amount > 0) {
-  // Check if full rent was already posted for this month
-  const fullRef = "RENT-AUTO-" + selectedLease.id + "-" + moveOutMonth;
-  const { data: existingCharge } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", fullRef).neq("status", "voided").maybeSingle();
+  // Was the move-out month's rent already charged? Rent is billed by the
+  // recurring engine as RECUR-<schedule id8>-YYYY-MM, one per rent schedule
+  // of this tenant (by tenant_id). move_out_commit_state has just archived
+  // those schedules, so they are looked up regardless of status. The old
+  // lookup, RENT-AUTO-<lease id>-<month>, is a reference nothing produces,
+  // so proration never fired; it is kept last only for legacy books.
+  const { data: rentScheds } = await supabase.from("recurring_journal_entries")
+    .select("id").eq("company_id", cid).eq("tenant_id", selectedTenant.id);
+  const moveOutRentRefs = [
+    ...recurringRentRefsForMonth((rentScheds || []).map(r => r.id), moveOutMonth),
+    "RENT-AUTO-" + selectedLease.id + "-" + moveOutMonth,
+  ];
+  const { data: rentCharges } = await supabase.from("acct_journal_entries")
+    .select("id, reference, status").eq("company_id", cid)
+    .in("reference", moveOutRentRefs).neq("status", "voided").limit(100);
+  const existingCharge = pickMoveOutRentCharge(rentCharges, moveOutRentRefs);
   if (existingCharge) {
   // Full rent was posted — credit back the prorated difference
   const fullRentCents = Math.round(safeNum(selectedLease.rent_amount) * 100);
