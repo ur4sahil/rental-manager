@@ -249,18 +249,26 @@ function runFetch(portal, account, opts = {}) {
       // File the statement against the bill the reading landed on. Best
       // effort: the reading is already recorded and a bill without its PDF
       // is still a bill, so nothing here can turn a good read into a failure.
-      if (r.outcome === "ok" && rec?.billId && r.statement_pdf) {
-        try {
-          const fsx = require("fs");
-          if (fsx.existsSync(r.statement_pdf)) {
+      if (r.outcome === "ok" && rec?.billId) {
+        const fsx = require("fs");
+        if (r.statement_pdf && fsx.existsSync(r.statement_pdf)) {
+          try {
             await api("attach-bill-document", {
               companyId: COMPANY, billId: rec.billId,
               pdfBase64: fsx.readFileSync(r.statement_pdf).toString("base64"),
               filename: `${provider}-${account || r.property || "statement"}`,
             });
             fsx.unlinkSync(r.statement_pdf);
+            console.log(`     ↳ statement PDF attached to bill ${rec.billId}`);
+          } catch (e) {
+            // The figure is the job; the document is evidence -- a failed attach
+            // must not fail the reading. But make it VISIBLE, not silent, so a
+            // missing PDF is noticed instead of assumed present.
+            console.log(`     ↳ PDF attach FAILED for bill ${rec.billId}: ${String(e.message || e).slice(0, 90)}`);
           }
-        } catch (e) { /* the figure is the job; the document is evidence */ }
+        } else {
+          console.log(`     ↳ no statement PDF downloaded for this account`);
+        }
       }
 
       const who = r.property || account || "?";
