@@ -157,3 +157,100 @@ export async function lateFeeAlreadyPostedWith(client, companyId, tenantId, mont
     return { already: true, error: e?.message || String(e) };
   }
 }
+
+// ─── Who is charged, when, and how much ─────────────────────────────────
+// The same four answers for every path (Late Fees page, tenant button, and
+// the nightly batch_post_late_fees SQL job -- change one, change the others):
+//
+//   * Fee type:  'flat' or 'fixed' is a dollar amount; 'percent' or
+//                'percentage' is a percent of the tenant's monthly rent. Any
+//                other word is refused rather than guessed (a "fixed $50" rule
+//                used to be charged as 50% of rent).
+//   * Amount:    the tenant's own late-fee setting when it is set (> 0),
+//                otherwise the company rule.
+//   * Who:       a tenant who still lives there (lease_status active or
+//                notice, not archived) and owes money (balance > 0).
+//   * When:      only once today is past the rent due day PLUS the grace days.
+//                Due day = the tenant's active lease payment_due_day, else the
+//                rent schedule's day_of_month, else the 1st (clamped to the
+//                month's length). Grace = the company rule's grace_days, else 0.
+//   * Month/day: the New York calendar day, never UTC.
+
+export const LATE_FEE_TIME_ZONE = "America/New_York";
+const LIVE = ["active", "current", "notice"];
+
+// "YYYY-MM-DD" in New York for a Date (default: now).
+export function lateFeeBusinessDate(now = new Date()) {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: LATE_FEE_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const g = (t) => (p.find(x => x.type === t) || {}).value;
+  return g("year") + "-" + g("month") + "-" + g("day");
+}
+
+// 'flat' | 'percent' | null (unknown word -> null, never guessed).
+export function normalizeLateFeeType(t) {
+  const s = String(t || "").trim().toLowerCase();
+  if (s === "flat" || s === "fixed") return "flat";
+  if (s === "percent" || s === "percentage" || s === "pct" || s === "%") return "percent";
+  return null;
+}
+
+// { type, amount, graceDays, source } or { error }.
+// tenant: { late_fee_amount, late_fee_type }; rule: { fee_type, fee_amount, grace_days } | null
+export function resolveLateFeeTerms({ tenant, rule }) {
+  const graceDays = Math.max(0, Math.floor(num(rule?.grace_days)));
+  if (num(tenant?.late_fee_amount) > 0) {
+    const type = normalizeLateFeeType(tenant.late_fee_type || "flat");
+    if (!type) return { error: `unknown late fee type "${tenant.late_fee_type}" on the tenant` };
+    return { type, amount: num(tenant.late_fee_amount), graceDays, source: "tenant" };
+  }
+  if (rule && num(rule.fee_amount) > 0) {
+    const type = normalizeLateFeeType(rule.fee_type);
+    if (!type) return { error: `unknown late fee type "${rule.fee_type}" on the late fee rule` };
+    return { type, amount: num(rule.fee_amount), graceDays, source: "rule" };
+  }
+  return { error: "no late fee is set for this tenant and no late fee rule is active" };
+}
+
+// Dollar fee for the terms, rounded to cents. null when a percent fee has no rent to apply to.
+export function computeLateFeeAmount(terms, rent) {
+  if (!terms || terms.error) return null;
+  if (terms.type === "flat") return Math.round(num(terms.amount) * 100) / 100;
+  const base = num(rent);
+  if (base <= 0) return null;
+  return Math.round(base * num(terms.amount)) / 100;
+}
+
+// Rent due date ("YYYY-MM-DD") in the month of `today` for a due day, clamped
+// to the month's length (due day 31 -> Feb 28/29).
+export function lateFeeDueDate(today, dueDay) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(today || ""));
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]);
+  const last = new Date(y, mo, 0).getDate();
+  const d = Math.min(Math.max(1, Math.floor(num(dueDay)) || 1), last);
+  return m[1] + "-" + m[2] + "-" + String(d).padStart(2, "0");
+}
+
+// { ok, reason, daysLate }. today is a "YYYY-MM-DD" New York date.
+export function lateFeeEligibility({ tenant, today, dueDay, graceDays }) {
+  if (!tenant) return { ok: false, reason: "no tenant record", daysLate: 0 };
+  if (tenant.archived_at) return { ok: false, reason: "the tenant is archived", daysLate: 0 };
+  if (!LIVE.includes(String(tenant.lease_status || "").toLowerCase())) return { ok: false, reason: "the tenant is not active or on notice", daysLate: 0 };
+  if (!(num(tenant.balance) > 0)) return { ok: false, reason: "the tenant owes nothing", daysLate: 0 };
+  const due = lateFeeDueDate(today, dueDay);
+  if (!due) return { ok: false, reason: "invalid date", daysLate: 0 };
+  const daysLate = Math.round((Date.parse(today + "T00:00:00Z") - Date.parse(due + "T00:00:00Z")) / 86400000);
+  const grace = Math.max(0, Math.floor(num(graceDays)));
+  if (daysLate <= grace) return { ok: false, reason: daysLate <= 0 ? "rent is not due yet this month" : `still within the ${grace}-day grace period`, daysLate };
+  return { ok: true, reason: null, daysLate };
+}
+
+// Rent due day for a tenant: active lease payment_due_day, else rent
+// schedule day_of_month, else 1. leases/schedules are rows for this tenant.
+export function lateFeeDueDay({ leases, schedules }) {
+  const l = (leases || []).find(x => num(x?.payment_due_day) > 0);
+  if (l) return Math.floor(num(l.payment_due_day));
+  const s = (schedules || []).find(x => num(x?.day_of_month) > 0);
+  if (s) return Math.floor(num(s.day_of_month));
+  return 1;
+}

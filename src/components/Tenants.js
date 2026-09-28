@@ -10,6 +10,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason } from "../utils/lateFees";
+import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -732,21 +733,37 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function applyLateFeeForTenant(t) {
     if (!guardSubmit("lateFee", t.id)) return;
     try {
-      const feeAmount = t.late_fee_type === "percent"
-        ? Math.round(safeNum(t.rent) * safeNum(t.late_fee_amount) / 100 * 100) / 100
-        : safeNum(t.late_fee_amount);
-      if (!feeAmount || feeAmount <= 0) { showToast("No late fee configured for this tenant. Edit the tenant to set a late fee amount.", "error"); return; }
+      // Same four answers as the Late Fees page and the nightly job
+      // (utils/lateFeeRules.js): the tenant's own late-fee setting if set,
+      // else the company's active rule; only a live tenant who owes money and
+      // is past the rent due day + the rule's grace days.
+      const [ruleRes, leaseRes, schedRes] = await Promise.all([
+        supabase.from("late_fee_rules").select("fee_type, fee_amount, grace_days, is_active").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }).limit(20),
+        supabase.from("leases").select("payment_due_day").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").limit(5),
+        supabase.from("recurring_journal_entries").select("day_of_month").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").is("archived_at", null).limit(5),
+      ]);
+      const lfErr = ruleRes.error || leaseRes.error || schedRes.error;
+      if (lfErr) { showToast("Could not load the late fee settings (" + lfErr.message + "). Nothing was posted.", "error"); return; }
+      const lfRule = (ruleRes.data || []).find(r => r.is_active !== false) || null;
+      const lfTerms = resolveLateFeeTerms({ tenant: t, rule: lfRule });
+      if (lfTerms.error) { showToast("Late fee not applied: " + lfTerms.error + ".", "error"); return; }
+      const lfToday = lateFeeBusinessDate();
+      const lfDueDay = lateFeeDueDay({ leases: leaseRes.data, schedules: schedRes.data });
+      const lfElig = lateFeeEligibility({ tenant: t, today: lfToday, dueDay: lfDueDay, graceDays: lfTerms.graceDays });
+      if (!lfElig.ok) { showToast("Late fee not applied to " + t.name + ": " + lfElig.reason + ".", "warning"); return; }
+      const feeAmount = computeLateFeeAmount(lfTerms, t.rent);
+      if (!feeAmount || feeAmount <= 0) { showToast("Late fee not applied: a percent fee needs the tenant's rent to be set.", "error"); return; }
       // Dedup: the shared one-per-month rule (utils/lateFeeRules.js), which
       // also sees the Late Fees page, the nightly job and hand-entered fees.
       // Checked here so the user is told before the confirm dialog;
       // postTenantLateFee checks again right before posting.
-      const today = formatLocalDate(new Date());
+      const today = lfToday;
       const lfMonth = lateFeeMonth(today);
       const lfDup = await lateFeeAlreadyPosted(companyId, t.id, lfMonth);
       if (lfDup.error) { showToast("Could not check for an existing late fee (" + lfDup.error + "). Nothing was posted.", "error"); return; }
       if (lfDup.already) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
-      const monthName = new Date().toLocaleString("default", { month: "long", year: "numeric" });
-      const feeLabel = t.late_fee_type === "percent" ? `${t.late_fee_amount}% of $${safeNum(t.rent).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
+      const monthName = new Date(lfToday + "T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
+      const feeLabel = lfTerms.type === "percent" ? `${lfTerms.amount}% of $${safeNum(t.rent).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
       if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
       const classId = await getPropertyClassId(t.property, companyId);
       // Reference LATEFEE-<tenant_id>-YYYYMM, DR the tenant's own AR (never
@@ -1468,8 +1485,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         onRequestException={pageRequestException}
         ledgerShowAll={ledgerShowAll}
         onToggleLedgerAll={() => setLedgerShowAll(v => !v)}
-        lateFeeAction={safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0
-          ? <Btn variant="danger" size="sm" className="w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
+        lateFeeAction={safeNum(selectedTenant?.balance) > 0 && !selectedTenant?.archived_at
+          // Shown whenever the tenant owes money: the fee comes from the
+          // tenant's own setting OR the company rule (lateFeeRules.js), and
+          // applyLateFeeForTenant explains any refusal (not late yet, grace,
+          // no fee set, already charged this month).
+          ? <Btn variant="danger" size="sm" className="w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee{safeNum(selectedTenant.late_fee_amount) > 0 ? ` (${normalizeLateFeeType(selectedTenant.late_fee_type || "flat") === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})` : ""}</Btn>
           : null}
         addEntryForm={showAddTxn ? (
           <div className="bg-brand-50/30 rounded-xl p-3">
