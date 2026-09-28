@@ -1346,7 +1346,43 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const splitClassId = lines.find(l => l.classId)?.classId;
     const splitProperty = splitClassId ? (classes.find(c => c.id === splitClassId)?.name || "") : "";
 
-    // Next JE number via RPC + retry on 23505 (see categorize path).
+    // RECOVER FROM AN INTERRUPTED PRIOR SPLIT. The header and its lines are two
+    // separate, non-atomic writes; a dropped connection between them (measured:
+    // a network blip stranded an empty JE-9492 in prod, no DB error logged)
+    // leaves an empty journal entry whose fixed reference then blocks every
+    // retry with a duplicate-key (surfaced as PM-9005). On a fresh attempt,
+    // reconcile that leftover instead of colliding with it:
+    //   - empty (0 lines)   -> delete it, then post cleanly below
+    //   - balanced lines    -> already posted once; link the txn, never double-post
+    const splitRef = `SPLIT-${txn.id}`;
+    {
+      const { data: priorJE } = await supabase.from("acct_journal_entries")
+        .select("id").eq("company_id", companyId).eq("reference", splitRef).maybeSingle();
+      if (priorJE) {
+        const { count: priorLines } = await supabase.from("acct_journal_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", companyId).eq("journal_entry_id", priorJE.id);
+        if ((priorLines || 0) === 0) {
+          await supabase.from("acct_journal_entries").delete()
+            .eq("id", priorJE.id).eq("company_id", companyId);
+        } else {
+          // Already fully posted. Reconcile the bank row to the existing entry
+          // rather than posting the amounts a second time.
+          await supabase.from("bank_feed_transaction").update({
+            status: "categorized", journal_entry_id: priorJE.id,
+            accepted_at: new Date().toISOString(), accepted_by: userProfile?.email || ""
+          }).eq("id", txn.id).eq("company_id", companyId);
+          showToast("This transaction was already split and posted — linked it to the existing entry.", "success");
+          setExpandedTxn(null);
+          refreshData(); if (onRefreshAccounting) onRefreshAccounting();
+          return;
+        }
+      }
+    }
+
+    // Next JE number via RPC + retry on a NUMBER collision only (a reference
+    // collision can't be fixed by re-rolling the number, and the recovery above
+    // already cleared any prior reference for this txn).
     let jeRow = null, jeErr = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data: jeNumber, error: numErr } = await supabase.rpc("next_je_number", { p_company_id: companyId });
@@ -1354,10 +1390,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
         company_id: companyId, number: jeNumber, date: txn.posted_date,
         description: `Split — ${txn.bank_description_clean}`,
-        reference: `SPLIT-${txn.id}`, property: splitProperty, status: "posted"
+        reference: splitRef, property: splitProperty, status: "posted"
       }]).select("id").maybeSingle());
       if (!jeErr && jeRow) break;
-      if (jeErr?.code !== "23505") break;
+      // Only a duplicate NUMBER is worth retrying; a duplicate reference means a
+      // concurrent split of this same txn — don't spin, fall through.
+      const dupMsg = (jeErr?.message || "") + " " + (jeErr?.details || "");
+      if (jeErr?.code !== "23505" || /reference|idx_je_company_reference_unique/i.test(dupMsg)) break;
     }
     if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
 
@@ -1380,7 +1419,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       });
     }
     const { error: slErr } = await supabase.from("acct_journal_lines").insert(jeLines);
-    if (slErr) { showToast("Error saving split JE lines: " + slErr.message, "error"); return; }
+    if (slErr) {
+      // Undo the header we just created so it can't strand as an empty JE that
+      // blocks the next attempt (matches the single-category path's cleanup).
+      await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
+      showToast("Error saving split JE lines: " + slErr.message, "error");
+      return;
+    }
 
     // Decision + lines
     const { data: decision, error: sdErr } = await supabase.from("bank_posting_decision").insert([{
