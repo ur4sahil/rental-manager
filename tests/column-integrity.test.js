@@ -31,6 +31,7 @@ function assert(name, cond, detail) {
 }
 
 // Top-level keys of the object literal starting at `start` (index of "{").
+const KEY_RE = /([A-Za-z_][A-Za-z0-9_]*)\s*:/y;
 function topLevelKeys(src, start) {
   const keys = [];
   let depth = 0, i = start, inStr = null, lastSig = null;
@@ -46,7 +47,10 @@ function topLevelKeys(src, start) {
       // like a key: `error_message: messageId ? x : null` reported a
       // `messageId` column that does not exist. Track the last
       // significant character instead.
-      const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*:/.exec(src.slice(i));
+      // Sticky regex at i, not exec(src.slice(i)): slicing copied the rest
+      // of the file at every character, O(n^2) on a large component.
+      KEY_RE.lastIndex = i;
+      const m = KEY_RE.exec(src);
       if (m && (lastSig === "{" || lastSig === ",")) { keys.push(m[1]); i += m[0].length - 1; lastSig = ":"; continue; }
     }
     if (!/\s/.test(c)) lastSig = c;
@@ -58,10 +62,55 @@ function topLevelKeys(src, start) {
 // read "created_by is what authorises the membership insert below:" and
 // reported a companies.below column. A guard that invents findings is
 // worse than no guard.
+//
+// String-aware, not two regexes. A regex pass took `accept="image/*"`
+// (Maintenance.js) for the start of a block comment and blanked the ~125
+// lines up to the next real `*/` -- hiding every write site in them. The
+// resulting run of thousands of spaces then made fromRe backtrack
+// catastrophically, and the suite hung at 100% CPU instead of failing.
+// Strings, template literals and regex literals are copied through
+// untouched; only real comments become spaces (newlines kept, so line
+// numbers still line up).
 function stripComments(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "))
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, " "));
+  let out = "", i = 0, lastSig = "";
+  const n = src.length;
+  const blank = t => t.replace(/[^\n]/g, " ");
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === "/" && d === "/") {
+      let j = src.indexOf("\n", i); if (j < 0) j = n;
+      out += blank(src.slice(i, j)); i = j; continue;
+    }
+    if (c === "/" && d === "*") {
+      let j = src.indexOf("*/", i + 2); j = j < 0 ? n : j + 2;
+      out += blank(src.slice(i, j)); i = j; continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < n && src[j] !== c) {
+        if (src[j] === "\\") j++;
+        else if (c !== "`" && src[j] === "\n") break;
+        j++;
+      }
+      out += src.slice(i, j + 1); i = j + 1; lastSig = c; continue;
+    }
+    // A "/" where an expression can start is a regex literal, e.g.
+    // /\/\*/ -- copy it through so its contents can't open a comment.
+    if (c === "/" && (lastSig === "" || "(,=:[!&|?{};+-*%<>~^".includes(lastSig))) {
+      let j = i + 1, inClass = false;
+      while (j < n && src[j] !== "\n") {
+        if (src[j] === "\\") { j += 2; continue; }
+        if (src[j] === "[") inClass = true;
+        else if (src[j] === "]") inClass = false;
+        else if (src[j] === "/" && !inClass) break;
+        j++;
+      }
+      if (src[j] === "/") { out += src.slice(i, j + 1); i = j + 1; lastSig = "/"; continue; }
+    }
+    if (!/\s/.test(c)) lastSig = c;
+    out += c; i++;
+  }
+  return out;
 }
 
 function scanFile(file) {
@@ -74,7 +123,10 @@ function scanFile(file) {
   // genuine write site was then never seen, which is how the guard came
   // to report "clean" while a deliberately injected bad column sat in
   // the file. Verified by injection afterwards; see the self-test.
-  const fromRe = /(^|[^\w.])(?:supabase|sb|admin|client)?\s*\.?\s*(storage\s*\.\s*)?from\(\s*["'`]([a-z_]+)["'`]\s*\)/g;
+  // Whitespace may only follow a receiver name or the dot, never float
+  // free: `\s*\.?\s*` could split one whitespace run two ways at every
+  // position, which is what made a long blank stretch backtrack forever.
+  const fromRe = /(^|[^\w.])(?:(?:supabase|sb|admin|client)\s*)?(?:\.\s*)?(storage\s*\.\s*)?from\(\s*["'`]([a-z_]+)["'`]\s*\)/g;
   let f;
   while ((f = fromRe.exec(src)) !== null) {
     if (f[2]) continue;                       // storage.from(bucket)
@@ -133,9 +185,29 @@ function scanFile(file) {
     pairs.get(id).sites.push(`${path.relative(srcDir, w.file)}:${w.line} (${w.op})`);
   }
 
+  // One probe per TABLE first, selecting every written column at once: a
+  // clean table (nearly all of them) then costs one round trip instead of
+  // one per column. Only a table whose combined select errors is probed
+  // column by column to name the culprit. At ~5s per request on a slow
+  // link, per-column probing alone ran for many minutes.
+  const byTable = new Map();
+  for (const p of pairs.values()) {
+    if (!byTable.has(p.table)) byTable.set(p.table, []);
+    byTable.get(p.table).push(p);
+  }
+  const suspect = [];
+  const tableList = [...byTable.keys()];
+  for (let i = 0; i < tableList.length; i += 5) {
+    await Promise.all(tableList.slice(i, i + 5).map(async table => {
+      const cols = byTable.get(table).map(p => p.col).join(",");
+      const r = await sb.from(table).select(cols).limit(1);
+      if (r.error) suspect.push(...byTable.get(table));
+    }));
+  }
+
   const problems = [];
   const badTables = new Set();
-  for (const { table, col, sites } of pairs.values()) {
+  for (const { table, col, sites } of suspect) {
     if (badTables.has(table)) continue;
     const r = await sb.from(table).select(col).limit(1);
     if (!r.error) continue;

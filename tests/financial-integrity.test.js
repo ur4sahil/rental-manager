@@ -297,7 +297,11 @@ async function testAutopaySafety() {
   assert(lifecycleJs.includes('.eq("tenant", evCase.tenant_name).eq("property", evCase.property)'), 'Lifecycle eviction disables autopay scoped by tenant AND property');
 
   // Tenant archive autopay disable scopes by property
-  assert(tenantsJs.includes('.eq("tenant", name).eq("property", tenantProperty)'), 'Tenant archive disables autopay scoped by tenant AND property');
+  // The archive flow moved out of Tenants.js into utils/tenantArchive.js
+  // (e876a01) so staff archive requests share it; assert it there.
+  const tenantArchiveJs = fs.readFileSync(path.resolve(__dirname, '../src/utils/tenantArchive.js'), 'utf8');
+  assert(/from\("autopay_schedules"\)\.update\(\{ enabled: false \}\)\.eq\("company_id", companyId\)\.eq\("tenant", name\)\.eq\("property", tenantProperty\)/.test(tenantArchiveJs),
+    'Tenant archive disables autopay scoped by tenant AND property');
 
   // Property delete disables all autopay for that property
   assert(propertiesJs.includes('autopay_schedules').includes || propertiesJs.includes('.eq("property", address)'), 'Property delete disables autopay for all tenants at property');

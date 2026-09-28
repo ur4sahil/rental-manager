@@ -96,7 +96,10 @@ assert("the commit reports what the form was holding",
 // committed nowhere else -- has no live rows, so its snapshot is left untouched.
 // That guard is the guarantee, not the absence of the call.
 assert("the live read only overrides when live rows exist (new drafts keep their snapshot)",
-  /if \(utilRows\.length\) setUtilities/.test(props) && /if \(hoaRows\.length\) setHoas/.test(props),
+  // 4dbc3d8 added `&& !xTouched.current` so the async load can't clobber an
+  // edit made while it was in flight; the rows-exist guard is still first.
+  /if \(utilRows\.length(?: && !utilTouched\.current)?\) setUtilities/.test(props) &&
+  /if \(hoaRows\.length(?: && !hoaTouched\.current)?\) setHoas/.test(props),
   "an in-progress draft with nothing committed must keep its snapshot -- nothing else holds that work");
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);

@@ -219,7 +219,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   async function deletePortfolioLoan(id) {
   if (!await showConfirm({ message: "Archive this portfolio loan? Its property links are removed.", confirmText: "Archive" })) return;
   const { error } = await supabase.from("portfolio_loans").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || null }).eq("id", id).eq("company_id", companyId);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "archive portfolio loan" }); return; }
   logAudit("delete", "loans", "Portfolio loan archived", id, userProfile?.email, userRole, companyId);
   fetchPortfolioLoans();
   }

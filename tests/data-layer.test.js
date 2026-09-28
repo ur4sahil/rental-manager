@@ -134,14 +134,18 @@ async function testLeases() {
 async function testLeaseUpdatesStatus() {
   console.log('\n📝 LEASE → TENANT STATUS');
   // Create a temp tenant
-  const { data: tenant, error: te } = await supabase.from('tenants').insert({ name: 'TEMP-LEASE-TEST', email: 'leasetest@test.com', phone: '000', property: '123 Oak St', balance: 0, lease_status: 'pending' }).select().single();
+  // Own property per run: 20260920000000_one_tenant_record added
+  // idx_tenants_one_active_per_property, and the shared '123 Oak St' fixture
+  // already has an active tenant, so activating this one hit a 23505.
+  const { data: tenant, error: te } = await supabase.from('tenants').insert({ name: 'TEMP-LEASE-TEST', email: 'leasetest@test.com', phone: '000', property: 'TEMP-LEASE-PROP-' + Date.now(), balance: 0, lease_status: 'pending' }).select().single();
   assert(!te && tenant, 'Can create temp tenant for lease test');
   if (tenant) {
     // Create a lease for this tenant
     const { data: lease, error: le } = await supabase.from('leases').insert({ tenant_name: tenant.name, property: tenant.property, start_date: '2025-01-01', end_date: '2026-01-01', rent_amount: 1500, security_deposit: 1500, lease_type: 'fixed', status: 'active', move_in_checklist: '[]', move_out_checklist: '[]' }).select().single();
     assert(!le && lease, 'Can create lease for tenant');
     // Update tenant lease_status to active (as the app would)
-    await supabase.from('tenants').update({ lease_status: 'active' }).eq('id', tenant.id);
+    const { error: actErr } = await supabase.from('tenants').update({ lease_status: 'active' }).eq('id', tenant.id);
+    if (actErr) console.log('   activate error: ' + actErr.message);
     const { data: updated } = await supabase.from('tenants').select('lease_status').eq('id', tenant.id).single();
     assert(updated && updated.lease_status === 'active', 'Tenant lease_status updated to active');
     // Cleanup

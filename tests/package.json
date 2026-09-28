@@ -79,7 +79,7 @@
     "test:rewrite": "node vercel-rewrite.test.mjs",
     "test:county": "node county-schedule.test.mjs",
     "test:lead": "node lead-paint.test.mjs",
-    "test:roundtrip": "node export-roundtrip.test.mjs",
+    "test:roundtrip": "node --import ./esm-extensionless.mjs export-roundtrip.test.mjs",
     "test:ai": "node ai-pipeline.test.mjs",
     "test:paths": "node page-paths.test.mjs",
     "utility:login": "node ../worker/portals/enroll.js",

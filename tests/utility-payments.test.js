@@ -133,8 +133,14 @@ assert("the worker falls back to the ACCOUNT when the bill does not say",
   /if \(!responsibility && bill\?\.utility_account_id\)/.test(runner),
   "responsibility can be set on either row");
 
-assert("the sweep does not even read a tenant's utility",
-  /responsibility\.not\.in\.\(tenant,condo_fee\)/.test(ai),
+// 1f1672c moved the tenant exclusion out of sweep-targets and into the
+// sweep, per playbook: WSSC opts in (sweepTenant) so the owner keeps a tenant
+// unit's statement on file; every other portal still skips tenant rows.
+// Reading never pays -- that stays admin-gated in api/encrypt.js.
+const sweep = read("worker/portals/sweep.js");
+assert("the sweep does not read a tenant's utility unless the portal opts in",
+  /\.or\("responsibility\.is\.null,responsibility\.neq\.condo_fee"\)/.test(ai)
+  && /if \(resp === "tenant" && !book\.sweepTenant\) return false;/.test(sweep),
   "logging into a portal for a statement we cannot act on is work with no outcome");
 
 // ---- 4. the statement and the receipt are FILED, not just uploaded ---
