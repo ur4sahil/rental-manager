@@ -81,7 +81,10 @@ assert("the amount paid is recorded separately from the amount billed",
   /amount_paid: amt/.test(util),
   "a part payment recorded as the billed figure is how the books and the statement diverge");
 
+// 6c1ab3b moved the field to MoneyInput, whose onChange hands over the
+// value itself rather than an event -- still an editable input.
 assert("the amount is editable at payment time",
+  /<MoneyInput value=\{payForm\.amount\}\s*onChange=\{v => setPayForm\(f => \(\{ \.\.\.f, amount: v \}\)\)\}/.test(util) ||
   /setPayForm\(f => \(\{ \.\.\.f, amount: e\.target\.value \}\)\)/.test(util),
   "if it cannot be changed, amount_paid can never differ from amount");
 
