@@ -1771,7 +1771,7 @@ function FitToWidth({ children, minScale = 0.45 }) {
 export function DetailPanel({ title, children }) {
   return (
     <section className="p-3 border-r border-brand-50 last:border-r-0 max-md:border-r-0 max-md:border-b">
-      <h3 className="text-[10.5px] font-semibold tracking-[0.07em] uppercase text-neutral-400 mb-1.5">{title}</h3>
+      <h3 className="text-2xs font-semibold tracking-[0.07em] uppercase text-neutral-400 mb-1.5">{title}</h3>
       {children}
     </section>
   );
@@ -1779,7 +1779,7 @@ export function DetailPanel({ title, children }) {
 
 export function DetailRow({ label, children, tone }) {
   return (
-    <div className="flex justify-between gap-3 text-[13px] py-0.5">
+    <div className="flex justify-between gap-3 text-sm py-0.5">
       <span className="text-neutral-400">{label}</span>
       <span className={tone === "warn" ? "text-warn-700 font-semibold" : "text-neutral-700"}>{children}</span>
     </div>
@@ -1803,7 +1803,7 @@ export function DetailCard({ title, sub, action, children, flush }) {
 // collected on a dashboard nobody opens.
 export function DetailAlert({ children, fix, onFix }) {
   return (
-    <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-[13.5px] text-neutral-600">
+    <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-sm text-neutral-600">
       <span className="material-icons-outlined text-base text-warn-600">warning_amber</span>
       <div className="flex-1">{children}</div>
       {fix && <TextLink tone="brand" size="xs" onClick={onFix} className="whitespace-nowrap">{fix}</TextLink>}

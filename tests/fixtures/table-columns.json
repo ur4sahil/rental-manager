@@ -77,7 +77,9 @@
         "footer": null,
         "groups": false,
         "sortable": [],
-        "behaviour": []
+        "behaviour": [
+          "onRowClick"
+        ]
       },
       {
         "keys": [
@@ -515,6 +517,19 @@
       },
       {
         "keys": [
+          "date",
+          "number",
+          "description",
+          "reference",
+          "amount"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": []
+      },
+      {
+        "keys": [
           "account",
           "actual",
           "budget",
@@ -656,6 +671,37 @@
     ],
     "printTables": []
   },
+  "src/components/Housy.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "kind",
+          "about",
+          "filled",
+          "status",
+          "when"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": [
+          "onRowClick"
+        ]
+      },
+      {
+        "keys": [
+          "field",
+          "proposed",
+          "applied"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": []
+      }
+    ],
+    "printTables": []
+  },
   "src/components/Insurance.js": {
     "dataTables": [
       {
@@ -707,6 +753,22 @@
           "balance",
           "maturity",
           "portal",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": []
+      },
+      {
+        "keys": [
+          "lender",
+          "type",
+          "props",
+          "rate",
+          "monthly",
+          "balance",
+          "maturity",
           "actions"
         ],
         "footer": null,
@@ -880,6 +942,32 @@
           "responsibility",
           "login",
           "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [
+          "provider",
+          "property",
+          "amount",
+          "due",
+          "status",
+          "responsibility",
+          "login"
+        ],
+        "behaviour": [
+          "onSort"
+        ]
+      },
+      {
+        "keys": [
+          "statement_period",
+          "amount",
+          "amount_paid",
+          "due_date",
+          "status",
+          "payment_confirmation",
+          "pdf_storage_path",
+          "receipt_path"
         ],
         "footer": null,
         "groups": false,

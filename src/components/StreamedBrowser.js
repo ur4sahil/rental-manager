@@ -153,7 +153,7 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
   const interactive = status === "ready";
   return (
     <div className="fixed inset-0 z-[3000] bg-black/70 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-neutral-900 rounded-2xl shadow-2xl w-full max-w-[1000px] overflow-hidden flex flex-col" style={{ maxHeight: "95vh" }}>
+      <div className="bg-neutral-900 rounded-2xl shadow-pop w-full max-w-[1000px] overflow-hidden flex flex-col" style={{ maxHeight: "95vh" }}>
         <div className="flex items-center justify-between px-4 py-2 bg-neutral-800 text-neutral-200 text-sm">
           <span className="font-medium">Pay {provider ? provider.toUpperCase() : ""} — secure browser</span>
           <button onClick={onClose} className="text-neutral-400 hover:text-white">✕</button>
@@ -208,7 +208,7 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
               placeholder="Tap a field above, then type here…"
               className="w-full rounded-lg px-3 py-2.5 text-base bg-white text-neutral-900 placeholder-neutral-400 outline-none"
             />
-            <div className="text-[11px] text-neutral-400 mt-1 text-center">Goes to the field you tapped · swipe the page to scroll · Enter to submit</div>
+            <div className="text-2xs text-neutral-400 mt-1 text-center">Goes to the field you tapped · swipe the page to scroll · Enter to submit</div>
           </div>
         )}
       </div>

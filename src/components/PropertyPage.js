@@ -60,29 +60,29 @@ function Occupancy({ tenancies }) {
             style={{ left: `calc(9.25rem + (100% - 11.25rem) * ${pct(overlap.s) / 100})`, width: `calc((100% - 11.25rem) * ${(pct(overlap.e) - pct(overlap.s)) / 100})` }} />
         )}
         <div className="absolute top-8 bottom-1 w-px bg-danger-500 z-10" style={{ left: `calc(9.25rem + (100% - 11.25rem) * ${pct(now) / 100})` }}>
-          <span className="absolute -top-4 -right-1 text-[10px] font-bold text-danger-600 bg-white px-1">today</span>
+          <span className="absolute -top-4 -right-1 text-2xs font-bold text-danger-600 bg-white px-1">today</span>
         </div>
         <div className="h-4" />
         {tenancies.map((t, i) => (
           <div key={t.id || i} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2.5 items-center py-1">
-            <span className="text-[12.5px] truncate text-neutral-600" title={t.name}>{t.name}</span>
+            <span className="text-xs truncate text-neutral-600" title={t.name}>{t.name}</span>
             <div className="relative h-[19px] bg-neutral-100 rounded-md">
               {t.start ? (
                 <div title={`${fmtDate(t.start)} – ${t.end ? fmtDate(t.end) : "open"}`}
-                  className={"absolute top-0 h-[19px] rounded-md flex items-center px-1.5 text-[10.5px] font-semibold overflow-hidden whitespace-nowrap "
+                  className={"absolute top-0 h-[19px] rounded-md flex items-center px-1.5 text-2xs font-semibold overflow-hidden whitespace-nowrap "
                     + (t.current ? "bg-brand-50 text-brand-700 border border-brand-200" : "bg-neutral-50 text-neutral-400 border border-dashed border-neutral-200")}
                   style={{ left: pct(t.start.getTime()) + "%", width: Math.max(pct((t.end || new Date()).getTime()) - pct(t.start.getTime()), 2) + "%" }}>
                   {fmtDate(t.start)} – {t.end ? fmtDate(t.end) : "open"}
                 </div>
               ) : (
-                <span className="absolute inset-0 flex items-center px-1.5 text-[10.5px] italic text-neutral-400">no lease dates recorded</span>
+                <span className="absolute inset-0 flex items-center px-1.5 text-2xs italic text-neutral-400">no lease dates recorded</span>
               )}
             </div>
           </div>
         ))}
       </div>
       {overlap && months > 0 && (
-        <p className="text-[11.5px] text-neutral-400 px-4 py-2.5 border-t border-dashed border-brand-50">
+        <p className="text-xs text-neutral-400 px-4 py-2.5 border-t border-dashed border-brand-50">
           Shaded: {months === 1 ? "1 month" : months + " months"} with more than one tenancy live on this property.
         </p>
       )}
@@ -118,7 +118,7 @@ export default function PropertyPage({
   return (
     <div className="max-w-[1180px] mx-auto pb-16">
 
-      <div className="text-[13px] text-neutral-400 mb-2.5">
+      <div className="text-sm text-neutral-400 mb-2.5">
         <TextLink tone="neutral" size="xs" onClick={onBack}>Properties</TextLink>
         <span className="mx-1.5">›</span>
         <span>{p.short_name || p.address_line_1 || p.address}</span>
@@ -131,23 +131,23 @@ export default function PropertyPage({
           </div>
 
           <div className="flex-1 min-w-[220px]">
-            <h1 className="text-[22px] font-bold text-neutral-800 leading-tight">{p.short_name || p.address_line_1 || p.address}</h1>
-            <div className="text-[13.5px] text-neutral-400 mt-0.5">
+            <h1 className="text-2xl font-bold text-neutral-800 leading-tight">{p.short_name || p.address_line_1 || p.address}</h1>
+            <div className="text-sm text-neutral-400 mt-0.5">
               {[p.address_line_2, p.city, p.state, p.zip].filter(Boolean).join(", ")}
               {p.county ? " · " + p.county : ""}
             </div>
             <div className="flex gap-1.5 flex-wrap mt-2">
-              {p.type && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{p.type}</span>}
-              {(p.bedrooms || p.bathrooms) && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{safeNum(p.bedrooms)} bd · {safeNum(p.bathrooms)} ba</span>}
-              {p.sqft ? <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{safeNum(p.sqft).toLocaleString()} sqft</span> : null}
-              {p.year_built ? <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">Built {p.year_built}</span> : null}
-              <span className={"text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full capitalize "
+              {p.type && <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{p.type}</span>}
+              {(p.bedrooms || p.bathrooms) && <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{safeNum(p.bedrooms)} bd · {safeNum(p.bathrooms)} ba</span>}
+              {p.sqft ? <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{safeNum(p.sqft).toLocaleString()} sqft</span> : null}
+              {p.year_built ? <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">Built {p.year_built}</span> : null}
+              <span className={"text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize "
                 + (p.status === "occupied" ? "bg-positive-50 text-positive-700" : p.status === "vacant" ? "bg-warn-50 text-warn-700" : "bg-neutral-100 text-neutral-500")}>{p.status || "no status"}</span>
             </div>
           </div>
 
           <div className="text-right shrink-0 max-[620px]:text-left">
-            <span className="block text-[11px] font-semibold tracking-[0.06em] uppercase text-neutral-400">
+            <span className="block text-2xs font-semibold tracking-[0.06em] uppercase text-neutral-400">
               {owed > 0 ? "Owed on this property" : "Monthly rent"}
             </span>
             <span className={"block text-3xl font-semibold tabular-nums tracking-tight mt-0.5 " + (owed > 0 ? "text-danger-600" : "text-neutral-700")}>
@@ -192,13 +192,13 @@ export default function PropertyPage({
       </div>
 
       {current.length > 1 && (
-        <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-[13.5px] text-neutral-600">
+        <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-sm text-neutral-600">
           <span className="material-icons-outlined text-base text-warn-600">warning_amber</span>
           <div className="flex-1"><b className="text-neutral-800">{current.length} tenants are marked Current on this property.</b> If they are not sharing the unit, all but one need to be moved out or corrected.</div>
         </div>
       )}
       {staleCurrent.length > 0 && (
-        <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-[13.5px] text-neutral-600">
+        <div className="flex gap-2.5 items-start bg-warn-50 border border-warn-200 border-l-[3px] border-l-warn-500 rounded-r-xl px-3.5 py-2.5 mb-2.5 text-sm text-neutral-600">
           <span className="material-icons-outlined text-base text-warn-600">warning_amber</span>
           <div className="flex-1">
             <b className="text-neutral-800">{staleCurrent.length === 1 ? "A lease has expired" : `${staleCurrent.length} leases have expired`}</b> while the tenancy still reads Current: {staleCurrent.map(t => `${t.name} (ended ${fmtDate(t.end)})`).join(", ")}.
@@ -213,12 +213,12 @@ export default function PropertyPage({
           <DetailCard title="Tenants" sub={`${tenancies.length} on record${current.length ? ` · ${current.length} current` : ""}`} flush
             action={<Btn variant="secondary" size="sm" onClick={() => onAddTenant?.(p)}>Add</Btn>}>
             {tenancies.length === 0 ? (
-              <p className="px-4 py-8 text-center text-[13px] text-neutral-400">No tenant has ever been recorded against this property.</p>
+              <p className="px-4 py-8 text-center text-sm text-neutral-400">No tenant has ever been recorded against this property.</p>
             ) : tenancies.map((t, i) => (
               <div key={t.id || i} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1 items-center px-4 py-3 border-t border-brand-50 hover:bg-neutral-50">
                 <div className="text-sm font-semibold text-neutral-800 truncate">
                   {t.name}
-                  <span className={"text-[10.5px] font-bold tracking-wider uppercase px-1.5 py-px rounded ml-2 align-[1px] "
+                  <span className={"text-2xs font-bold tracking-wider uppercase px-1.5 py-px rounded ml-2 align-[1px] "
                     + (t.current ? "bg-positive-50 text-positive-700" : "bg-neutral-100 text-neutral-500")}>{t.current ? "Current" : "Past"}</span>
                 </div>
                 <div className="col-start-1 text-xs text-neutral-400">
@@ -241,15 +241,15 @@ export default function PropertyPage({
           {tenancies.length > 0 && (
             <DetailCard title="Rent roll" sub="what this unit bills">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2 border-b border-brand-50">
-                <span className="text-[13px] text-neutral-700">Property market rent</span>
-                <span className="row-span-2 self-center text-[13px] tabular-nums text-neutral-700">{formatCurrency(p.rent)}</span>
-                <span className="text-[11.5px] text-neutral-400">set on the property record</span>
+                <span className="text-sm text-neutral-700">Property market rent</span>
+                <span className="row-span-2 self-center text-sm tabular-nums text-neutral-700">{formatCurrency(p.rent)}</span>
+                <span className="text-xs text-neutral-400">set on the property record</span>
               </div>
               {current.map((t, i) => (
                 <div key={t.id || i} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2 border-b border-brand-50 last:border-b-0">
-                  <span className="text-[13px] text-neutral-700 truncate">{t.name}</span>
-                  <span className={"row-span-2 self-center text-[13px] tabular-nums " + (safeNum(t.raw.rent) > 0 ? "text-neutral-700" : "text-warn-700")}>{formatCurrency(t.raw.rent)}</span>
-                  <span className={"text-[11.5px] " + (safeNum(t.raw.rent) > 0 ? "text-neutral-400" : "text-warn-700")}>
+                  <span className="text-sm text-neutral-700 truncate">{t.name}</span>
+                  <span className={"row-span-2 self-center text-sm tabular-nums " + (safeNum(t.raw.rent) > 0 ? "text-neutral-700" : "text-warn-700")}>{formatCurrency(t.raw.rent)}</span>
+                  <span className={"text-xs " + (safeNum(t.raw.rent) > 0 ? "text-neutral-400" : "text-warn-700")}>
                     {safeNum(t.raw.rent) > 0 ? "on the tenancy" : "rent not set — nothing bills automatically"}
                   </span>
                 </div>
@@ -261,14 +261,14 @@ export default function PropertyPage({
         <div className="space-y-3.5">
           <DetailCard title="Utilities" sub={utilities.length ? `${utilities.length} account${utilities.length === 1 ? "" : "s"}` : null}>
             {utilities.length === 0 ? (
-              <p className="text-[13px] text-neutral-400">No utilities configured for this property.</p>
+              <p className="text-sm text-neutral-400">No utilities configured for this property.</p>
             ) : utilities.map((u, i) => (
               <div key={u.id || i} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2 border-b border-brand-50 last:border-b-0">
-                <span className="text-[13px] text-neutral-700 truncate">{u.provider || "Unnamed provider"}</span>
-                <span className="row-span-2 self-center text-[11.5px] text-neutral-400 whitespace-nowrap">
+                <span className="text-sm text-neutral-700 truncate">{u.provider || "Unnamed provider"}</span>
+                <span className="row-span-2 self-center text-xs text-neutral-400 whitespace-nowrap">
                   {u.username_encrypted ? "credentials saved" : u.due_date ? "due " + fmtDate(u.due_date) : ""}
                 </span>
-                <span className="text-[11.5px] text-neutral-400 tabular-nums truncate">{u.account_number || "no account number"}</span>
+                <span className="text-xs text-neutral-400 tabular-nums truncate">{u.account_number || "no account number"}</span>
               </div>
             ))}
           </DetailCard>
@@ -276,7 +276,7 @@ export default function PropertyPage({
           {hoas.length > 0 && (
             <DetailCard title="HOA">
               {hoas.map((h, i) => (
-                <div key={h.id || i} className="flex justify-between gap-3 text-[13px] py-1">
+                <div key={h.id || i} className="flex justify-between gap-3 text-sm py-1">
                   <span className="text-neutral-700 truncate">{h.hoa_name || h.name}</span>
                   <span className="text-neutral-400 whitespace-nowrap">{formatCurrency(h.amount)} · {h.frequency || "Monthly"}</span>
                 </div>
@@ -290,11 +290,11 @@ export default function PropertyPage({
             <DetailCard title="Loan / mortgage">
               {loans.map((l, i) => (
                 <div key={l.id || i} className="py-1 border-b border-brand-50 last:border-b-0">
-                  <div className="flex justify-between gap-3 text-[13px]">
+                  <div className="flex justify-between gap-3 text-sm">
                     <span className="text-neutral-700 truncate">{l.lender_name}</span>
-                    <span className="text-[11px] bg-neutral-100 text-neutral-500 px-2 py-px rounded-full whitespace-nowrap">{l.loan_type || "Conventional"}</span>
+                    <span className="text-2xs bg-neutral-100 text-neutral-500 px-2 py-px rounded-full whitespace-nowrap">{l.loan_type || "Conventional"}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-1 text-[11.5px] text-neutral-500">
+                  <div className="grid grid-cols-3 gap-2 mt-1 text-xs text-neutral-500">
                     <div><span className="block text-neutral-400">Payment</span>{l.monthly_payment ? formatCurrency(l.monthly_payment) : "—"}</div>
                     <div><span className="block text-neutral-400">Balance</span>{l.current_balance ? formatCurrency(l.current_balance) : "—"}</div>
                     <div><span className="block text-neutral-400">Rate</span>{l.interest_rate ? l.interest_rate + "%" : "—"}</div>
@@ -306,16 +306,16 @@ export default function PropertyPage({
 
           <DetailCard title="Insurance" sub={insurance.length ? null : "none on file"}>
             {insurance.length === 0 ? (
-              <p className="text-[13px] text-warn-700">No policy is recorded against this property.</p>
+              <p className="text-sm text-warn-700">No policy is recorded against this property.</p>
             ) : insurance.map((ins, i) => {
               const expired = ins.expiration_date && dateOf(ins.expiration_date) && dateOf(ins.expiration_date).getTime() < Date.now();
               return (
                 <div key={ins.id || i} className="flex justify-between gap-3 py-1 border-b border-brand-50 last:border-b-0">
                   <div className="min-w-0">
-                    <span className="text-[13px] text-neutral-700 truncate block">{ins.provider}</span>
-                    {ins.policy_number && <span className="text-[11.5px] text-neutral-400">#{ins.policy_number}</span>}
+                    <span className="text-sm text-neutral-700 truncate block">{ins.provider}</span>
+                    {ins.policy_number && <span className="text-xs text-neutral-400">#{ins.policy_number}</span>}
                   </div>
-                  <div className="text-right text-[11.5px] text-neutral-500 whitespace-nowrap">
+                  <div className="text-right text-xs text-neutral-500 whitespace-nowrap">
                     {ins.premium_amount ? formatCurrency(ins.premium_amount) + "/" + String(ins.premium_frequency || "year").toLowerCase().slice(0, 3) : "—"}
                     {ins.expiration_date && <div className={expired ? "text-danger-600 font-medium" : ""}>{expired ? "Expired " : "Exp "}{fmtDate(ins.expiration_date)}</div>}
                   </div>
@@ -327,7 +327,7 @@ export default function PropertyPage({
           {(p.pm_company_name || p.notes) && (
             <DetailCard title="Notes">
               {p.pm_company_name && <DetailRow label="Property manager">{p.pm_company_name}</DetailRow>}
-              {p.notes && <p className="text-[13px] text-neutral-500 mt-1">{p.notes}</p>}
+              {p.notes && <p className="text-sm text-neutral-500 mt-1">{p.notes}</p>}
             </DetailCard>
           )}
         </div>

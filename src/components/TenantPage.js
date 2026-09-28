@@ -93,7 +93,7 @@ export default function TenantPage({
   return (
     <div className="max-w-[1180px] mx-auto pb-16">
 
-      <div className="text-[13px] text-neutral-400 mb-2.5">
+      <div className="text-sm text-neutral-400 mb-2.5">
         <TextLink tone="neutral" size="xs" onClick={onBack}>Tenants</TextLink>
         <span className="mx-1.5">›</span>
         <span>{tenant.name}</span>
@@ -105,7 +105,7 @@ export default function TenantPage({
           <div className="flex shrink-0">
             {parties.slice(0, 3).map((p, i) => (
               <div key={p.name + i}
-                className={"w-11 h-11 rounded-xl bg-brand-50 text-brand-700 grid place-items-center font-bold text-[15px] shrink-0"
+                className={"w-11 h-11 rounded-xl bg-brand-50 text-brand-700 grid place-items-center font-bold text-base shrink-0"
                   + (i ? " -ml-3.5 border-2 border-white" : "")}>
                 {initialsFor(p.name)}
               </div>
@@ -113,24 +113,24 @@ export default function TenantPage({
           </div>
 
           <div className="flex-1 min-w-[220px]">
-            <h1 className="text-[22px] font-bold text-neutral-800 leading-tight">{tenant.name}</h1>
-            <div className="text-[13.5px] text-neutral-400 mt-0.5">
+            <h1 className="text-2xl font-bold text-neutral-800 leading-tight">{tenant.name}</h1>
+            <div className="text-sm text-neutral-400 mt-0.5">
               {tenant.property
                 ? <TextLink tone="neutral" size="xs" onClick={() => onOpenProperty?.(tenant)}>{tenant.property}</TextLink>
                 : <span className="text-warn-700">No property assigned</span>}
             </div>
             <div className="flex gap-1.5 flex-wrap mt-2">
-              <span className={"text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full "
+              <span className={"text-xs font-semibold px-2.5 py-0.5 rounded-full "
                 + (["active","current"].includes(String(tenant.lease_status).toLowerCase()) ? "bg-positive-50 text-positive-700" : "bg-neutral-100 text-neutral-500")}>
                 {tenant.lease_status ? String(tenant.lease_status)[0].toUpperCase() + String(tenant.lease_status).slice(1) : "No status"} tenant
               </span>
-              {parties.length > 1 && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{parties.length} on the lease</span>}
-              {tenant.is_voucher && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-highlight-50 text-highlight-700">Voucher{tenant.voucher_number ? " " + tenant.voucher_number : ""}</span>}
+              {parties.length > 1 && <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{parties.length} on the lease</span>}
+              {tenant.is_voucher && <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-highlight-50 text-highlight-700">Voucher{tenant.voucher_number ? " " + tenant.voucher_number : ""}</span>}
             </div>
           </div>
 
           <div className="text-right shrink-0 max-[620px]:text-left">
-            <span className="block text-[11px] font-semibold tracking-[0.06em] uppercase text-neutral-400">
+            <span className="block text-2xs font-semibold tracking-[0.06em] uppercase text-neutral-400">
               {balance < 0 ? "Credit held" : "Balance owed"}
             </span>
             <span className={"block text-3xl font-semibold tabular-nums tracking-tight mt-0.5 "
@@ -164,8 +164,8 @@ export default function TenantPage({
               <>
                 {parties.map((p, i) => (
                   <div key={p.name + i} className={"py-0.5" + (i ? " border-t border-dashed border-brand-50 mt-1 pt-1.5" : "")}>
-                    <b className="block text-[12.5px] font-semibold text-neutral-700">{p.name}</b>
-                    <span className="text-[12.5px] text-neutral-400">
+                    <b className="block text-xs font-semibold text-neutral-700">{p.name}</b>
+                    <span className="text-xs text-neutral-400">
                       {p.phone ? <a className="text-brand-600 hover:underline" href={"tel:" + p.phone}>{p.phone}</a> : <span className="text-warn-700">no phone</span>}
                       {" · "}
                       {p.email ? <a className="text-brand-600 hover:underline break-all" href={"mailto:" + p.email}>{p.email}</a> : <span className="text-warn-700">no email</span>}
@@ -173,7 +173,7 @@ export default function TenantPage({
                   </div>
                 ))}
                 {(shared.phones.length > 0 || shared.emails.length > 0) && (
-                  <div className="text-[11.5px] text-neutral-400 mt-1.5 pt-1.5 border-t border-dashed border-brand-50">
+                  <div className="text-xs text-neutral-400 mt-1.5 pt-1.5 border-t border-dashed border-brand-50">
                     On the tenancy, not attributed: {[...shared.phones, ...shared.emails].join(", ")}
                   </div>
                 )}
@@ -230,18 +230,18 @@ export default function TenantPage({
             {addEntryForm && <div className="px-4 pt-3.5">{addEntryForm}</div>}
             {lateFeeAction && <div className="px-4 pt-3.5">{lateFeeAction}</div>}
             {ledger.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-neutral-400">
+              <div className="px-4 py-8 text-center text-sm text-neutral-400">
                 No ledger entries have been posted for this tenant.
                 {balance !== 0 && <div className="mt-1">The {formatCurrency(Math.abs(balance))} balance came from an opening import rather than from posted charges.</div>}
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <div className="flex gap-4 px-3 py-2 bg-neutral-50/60 border-b border-brand-50 text-[12px] text-neutral-400">
+                <div className="flex gap-4 px-3 py-2 bg-neutral-50/60 border-b border-brand-50 text-xs text-neutral-400">
                   <span>Charged <b className="text-neutral-700 tabular-nums font-semibold">{formatCurrency(charged)}</b></span>
                   <span>Paid <b className="text-positive-700 tabular-nums font-semibold">{formatCurrency(paid)}</b></span>
                   <span className="ml-auto">Balance <b className={"tabular-nums font-semibold " + (balance > 0 ? "text-danger-600" : "text-neutral-700")}>{formatCurrency(balance)}</b></span>
                 </div>
-                <table className="w-full table-fixed border-collapse text-[13.5px] min-w-[440px]">
+                <table className="w-full table-fixed border-collapse text-sm min-w-[440px]">
                   <thead>
                     {/* Type used to be a column of its own. It cost ~90px to
                         repeat what the Charge/Paid split already shows, on a
@@ -249,7 +249,7 @@ export default function TenantPage({
                         moved under the description, where "late fee" vs
                         "charge" is the only part that adds anything. */}
                     <tr>{["Date", "Description", "Charge", "Paid", "Balance"].map((h, i) => (
-                      <th key={h} className={"text-[10.5px] font-semibold tracking-[0.06em] uppercase text-neutral-400 px-3 py-2 bg-neutral-50 border-b border-brand-50 whitespace-nowrap " + (i > 1 ? "text-right" : "text-left")}>{h}</th>
+                      <th key={h} className={"text-2xs font-semibold tracking-[0.06em] uppercase text-neutral-400 px-3 py-2 bg-neutral-50 border-b border-brand-50 whitespace-nowrap " + (i > 1 ? "text-right" : "text-left")}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
@@ -269,20 +269,20 @@ export default function TenantPage({
                               flex, so the figures stay in fixed lanes. */}
                           <td className="px-3 py-2.5 align-top w-full max-w-0">
                             <div className="truncate" title={e.description || ""}>{label}</div>
-                            <div className="text-[11.5px] text-neutral-400 truncate">
+                            <div className="text-xs text-neutral-400 truncate">
                               {String(e.type || "").replace(/_/g, " ")}{m ? ` · JE #${m[1]}` : ""}
                             </div>
                           </td>
                           <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-danger-600">{credit ? "—" : formatCurrency(amount)}</td>
                           <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-positive-600">{credit ? formatCurrency(amount) : "—"}</td>
-                          <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-neutral-400 text-[12.5px]">{e.balance != null ? formatCurrency(e.balance) : "—"}</td>
+                          <td className="px-3 py-2.5 align-top text-right tabular-nums whitespace-nowrap text-neutral-400 text-xs">{e.balance != null ? formatCurrency(e.balance) : "—"}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
                 {ledger.length > 20 && (
-                  <div className="flex items-center gap-2.5 px-4 py-2.5 border-t border-brand-50 bg-neutral-50 text-[12.5px] text-neutral-400">
+                  <div className="flex items-center gap-2.5 px-4 py-2.5 border-t border-brand-50 bg-neutral-50 text-xs text-neutral-400">
                     <span className="flex-1">{ledgerShowAll ? `All ${ledger.length} entries.` : `Showing the 20 most recent of ${ledger.length}.`}</span>
                     <TextLink tone="brand" size="xs" onClick={onToggleLedgerAll}>{ledgerShowAll ? "Show 20 only" : "Show all"}</TextLink>
                   </div>
@@ -299,7 +299,7 @@ export default function TenantPage({
 
           {balance > 0 && (
             <DetailCard title="Arrears" sub="for a filing">
-              <div className="flex justify-between text-[13px] py-0.5"><span className="text-neutral-400">Outstanding</span><span className="tabular-nums">{formatCurrency(balance)}</span></div>
+              <div className="flex justify-between text-sm py-0.5"><span className="text-neutral-400">Outstanding</span><span className="tabular-nums">{formatCurrency(balance)}</span></div>
               <p className="text-xs text-neutral-400 mt-2.5 mb-3">
                 {parties.length > 1
                   ? <>A filing names <b className="text-neutral-600">all {parties.length} tenants</b> as defendants for the full amount — neither can be served for half.</>
@@ -314,15 +314,15 @@ export default function TenantPage({
           <DetailCard title="Documents" sub={`${metCount} of ${reqs.length} required`}
             action={<Btn variant="secondary" size="sm" onClick={() => onUploadDoc?.(tenant)}>Upload</Btn>}>
             {reqs.map(r => (
-              <div key={r.label} className="grid grid-cols-[15px_minmax(0,1fr)_auto] gap-2.5 items-center py-1.5 border-b border-brand-50 last:border-b-0 text-[13.5px]">
-                <span className={"w-[15px] h-[15px] rounded-full grid place-items-center text-[9px] font-bold leading-none "
+              <div key={r.label} className="grid grid-cols-[15px_minmax(0,1fr)_auto] gap-2.5 items-center py-1.5 border-b border-brand-50 last:border-b-0 text-sm">
+                <span className={"w-[15px] h-[15px] rounded-full grid place-items-center text-2xs font-bold leading-none "
                   + (r.satisfied ? "bg-positive-600 text-white" : "border-[1.5px] border-dashed border-brand-100 text-transparent")}>✓</span>
                 <span className={r.satisfied ? "text-neutral-700" : "text-neutral-600"}>{r.label}</span>
                 {r.uploaded ? <span className="text-xs text-neutral-400 truncate max-w-[140px]" title={r.met?.name}>{r.met?.name || "on file"}</span>
                   : r.waived ? <span className="text-xs text-info-600">Waived</span>
                   : r.pending ? <span className="text-xs text-warn-700">Review pending</span>
                   : <button type="button" onClick={() => (canWaive ? onWaiveDoc : onRequestException)?.(tenant, r.label)}
-                      className="text-[11.5px] font-semibold text-neutral-400 border border-brand-50 rounded-md px-2 py-px hover:text-brand-600 hover:border-brand-600">
+                      className="text-xs font-semibold text-neutral-400 border border-brand-50 rounded-md px-2 py-px hover:text-brand-600 hover:border-brand-600">
                       {canWaive ? "Waive" : "Request"}
                     </button>}
               </div>
@@ -331,16 +331,16 @@ export default function TenantPage({
             {docs.length > 0 && (
               <>
                 <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-dashed border-brand-50">
-                  <h3 className="text-[10.5px] font-semibold tracking-[0.07em] uppercase text-neutral-400 flex-1">On file · {docs.length}</h3>
+                  <h3 className="text-2xs font-semibold tracking-[0.07em] uppercase text-neutral-400 flex-1">On file · {docs.length}</h3>
                 </div>
                 {docs.map(d => (
                   <div key={d.id} className="grid grid-cols-[17px_minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2 border-b border-brand-50 last:border-b-0 items-center">
-                    <span className="row-span-2 self-start mt-0.5 w-[17px] h-[17px] rounded bg-neutral-100 text-neutral-400 grid place-items-center text-[8.5px] font-bold">
+                    <span className="row-span-2 self-start mt-0.5 w-[17px] h-[17px] rounded bg-neutral-100 text-neutral-400 grid place-items-center text-2xs font-bold">
                       {(d.name || "").split(".").pop().slice(0, 3).toUpperCase() || "DOC"}
                     </span>
-                    <span className="text-[13px] truncate" title={d.name}>{d.name}</span>
+                    <span className="text-sm truncate" title={d.name}>{d.name}</span>
                     <TextLink tone="brand" size="xs" onClick={() => onViewDoc?.(d)} className="whitespace-nowrap">View</TextLink>
-                    <Select size="sm" className="col-span-2 justify-self-start max-w-full text-[11.5px]"
+                    <Select size="sm" className="col-span-2 justify-self-start max-w-full text-xs"
                       value={d.type || "Other"} onChange={e => onSetDocType?.(d, e.target.value)}>
                       {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </Select>

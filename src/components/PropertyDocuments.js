@@ -86,7 +86,7 @@ function folderForType(type) {
 function VisibilityChip({ visible }) {
   if (!visible) return null;
   return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning-50 text-warning-700 border border-warning-200 whitespace-nowrap">
+    <span className="text-2xs px-1.5 py-0.5 rounded bg-warning-50 text-warning-700 border border-warning-200 whitespace-nowrap">
       tenant can see
     </span>
   );
@@ -328,7 +328,7 @@ export default function PropertyDocuments({
         <div className="min-w-0">
           <div className="text-sm font-medium text-neutral-700 truncate flex items-center gap-2">
             {d.name}
-            {d.badge && <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">{d.badge}</span>}
+            {d.badge && <span className="text-2xs px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-100 whitespace-nowrap">{d.badge}</span>}
             <VisibilityChip visible={d.tenantVisible} />
           </div>
           <div className="text-xs text-neutral-400 truncate">

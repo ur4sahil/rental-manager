@@ -85,8 +85,15 @@ assert("Match has no keyboard default (no safe candidate to guess)",
   /\/\/ Match needs a chosen candidate; there is no safe default\.\s*\n\s*return;/.test(banking));
 assert("posting advances the cursor to the next row",
   /const next = paginatedTxns\[idx \+ 1\];/.test(banking));
+// openPanel became a component-scope useCallback in 3e5a7a2 so a row click
+// re-seeds the panel too (it used to show the previous row's memo). Check
+// the suggestion is read INSIDE openPanel, and that the keyboard uses it.
+const openPanelBody = (() => {
+  const i = banking.search(/const openPanel = (useCallback\()?\(txn\) =>/);
+  return i < 0 ? "" : banking.slice(i, banking.indexOf("\n  }", i));
+})();
 assert("keyboard open seeds the panel from the rule suggestion",
-  banking.includes("const openPanel = (txn)") && banking.includes("_suggestion"));
+  openPanelBody.includes("_suggestion") && /openPanel\(current\)/.test(banking));
 assert("the cursor row is visibly marked", /ring-2 ring-inset ring-brand-400/.test(banking));
 // The attribute now comes from DataTable's rowAttrs rather than a literal
 // <tr aria-selected>, so accept either -- what matters is that the row
@@ -95,7 +102,7 @@ assert("the cursor row is announced to assistive tech",
   /aria-selected=\{selectedTxn === txn\.id\}/.test(banking) || /"aria-selected": selectedTxn === txn\.id/.test(banking));
 assert("clicking a row also moves the cursor",
   /onClick=\{\(\) => \{ setSelectedTxn\(txn\.id\); setExpandedTxn/.test(banking)
-  || /onRowClick=\{txn => \{ setSelectedTxn\(txn\.id\); setExpandedTxn/.test(banking));
+  || /onRowClick=\{txn => \{ setSelectedTxn\(txn\.id\); (setExpandedTxn|if \(expandedTxn === txn\.id\) setExpandedTxn\(null\); else openPanel\(txn\))/.test(banking));
 assert("handler stands down for a modal or the palette",
   /document\.querySelector\('\[role="dialog"\]'\)\) return;/.test(banking));
 

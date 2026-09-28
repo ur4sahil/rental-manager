@@ -222,7 +222,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   {rules.map(r => (
   <div key={r.id} className={`bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex justify-between items-center ${r.is_active === false ? "opacity-50" : ""}`}>
   <div>
-  <div className="font-semibold text-brand-800 text-sm flex items-center gap-2">{r.name}{r.is_active === false && <span className="text-[10px] font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">Disabled</span>}</div>
+  <div className="font-semibold text-brand-800 text-sm flex items-center gap-2">{r.name}{r.is_active === false && <span className="text-2xs font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">Disabled</span>}</div>
   <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
   <div className="flex gap-3 items-center">

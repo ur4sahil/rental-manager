@@ -6928,7 +6928,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
         className={"flex items-center gap-1 hover:text-neutral-700 uppercase tracking-wide "
           + (ci >= 3 ? "justify-end" : "")}>
         {label}
-        {reconSort.key === k && label && <span className="text-[9px]">{reconSort.dir === "asc" ? "▲" : "▼"}</span>}
+        {reconSort.key === k && label && <span className="text-2xs">{reconSort.dir === "asc" ? "▲" : "▼"}</span>}
       </button>
     ))}
   </div>
@@ -6948,7 +6948,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div key={i} onClick={() => toggleReconItem(i)}
     className="grid grid-cols-[34px_86px_minmax(0,1fr)_110px_110px] gap-2 px-3 py-2 items-center cursor-pointer
       border-b border-brand-50 last:border-b-0 hover:bg-neutral-50 text-sm">
-    <span className={"w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center text-[11px] font-bold "
+    <span className={"w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center text-2xs font-bold "
       + (item.reconciled ? "bg-brand-600 border-brand-600 text-white" : "border-neutral-300 bg-white text-transparent")}>✓</span>
     <span className="tnum text-neutral-500 text-xs whitespace-nowrap">{fmtDate(item.date)}</span>
     <span className="min-w-0">
