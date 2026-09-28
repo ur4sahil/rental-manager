@@ -58,6 +58,15 @@ const NEEDS_A_PERSON = {
      + "through the streamed browser; that session is saved and reused here.",
 };
 
+// The reason a portal is in NEEDS_A_PERSON matters. A MAILED CODE (BGE) can
+// never be read here, so those need a person on any machine. But reCAPTCHA v3
+// (Washington Gas) is an IP-REPUTATION score, not a puzzle: it fails from the
+// datacenter box yet passes cleanly from a residential IP — proven live. So a
+// residential agent box (which sets HOUSY_RESIDENTIAL) is allowed to attempt
+// these auto-logins; every other box keeps refusing exactly as before.
+const RECAPTCHA_SCORED = { washington_gas: true };
+const IS_RESIDENTIAL = /^(1|true|yes)$/i.test(process.env.HOUSY_RESIDENTIAL || "");
+
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR
   || path.join(require("os").homedir(), ".housy-sessions");
 
@@ -175,30 +184,51 @@ async function credentialsFor(portal, book) {
   }
 
   const aliases = (book.aliases || []).map(a => a.toLowerCase());
-  const match = (rows || []).find(r => {
+  const matches = (rows || []).filter(r => {
     const p = String(r.provider || "").trim().toLowerCase();
     return aliases.some(a => p === a || p.includes(a));
   });
-  if (!match) die(`no stored credentials for ${book.provider} on this company`);
+  if (!matches.length) die(`no stored credentials for ${book.provider} on this company`);
 
   const fpNow = crypto.createHash("sha256").update(master).digest("hex").slice(0, 12);
-  if (match.credential_key_fp && match.credential_key_fp !== fpNow) {
-    // Say which, rather than "decryption failed". The key was rotated once
-    // with nothing migrating the ciphertext and every credential silently
-    // stopped opening; the fingerprint exists to make that legible.
-    die(`these credentials were encrypted under key ${match.credential_key_fp}, `
-      + `but ENCRYPTION_KEY here is ${fpNow}. Re-enter them in the app, or use the matching key.`);
-  }
 
-  let username, password;
-  try {
-    username = decryptValue(master, match.username_encrypted, match.encryption_iv_username, match.encryption_salt);
-    password = decryptValue(master, match.password_encrypted, match.encryption_iv, match.encryption_salt);
-  } catch (e) {
-    die(`could not decrypt the stored credentials: ${String(e.message || e)}`);
+  // PICK THE MOST COMMON (username, password) among the matching rows, not the
+  // first one. Each utility account stores its own copy of the portal login, so
+  // the CURRENT credential is repeated across dozens of rows while stale or
+  // mis-typed ones are the minority. Taking the first row blindly logged WSSC in
+  // under a wrong account (sanyahousify@ appeared once, ahead of the real
+  // investhome365@ that 60 rows carry). Majority-wins self-heals to whatever is
+  // actually in use. HOUSY_PREFER_USER pins a specific login when majority is
+  // ambiguous (e.g. a just-rotated password not yet saved on most accounts).
+  const preferUser = (process.env.HOUSY_PREFER_USER || "").trim().toLowerCase();
+  const groups = new Map();
+  let sawForeignKey = false;
+  for (const r of matches) {
+    if (r.credential_key_fp && r.credential_key_fp !== fpNow) { sawForeignKey = true; continue; }
+    let u, p;
+    try {
+      u = decryptValue(master, r.username_encrypted, r.encryption_iv_username, r.encryption_salt);
+      p = decryptValue(master, r.password_encrypted, r.encryption_iv, r.encryption_salt);
+    } catch { continue; }
+    if (!u || !p) continue;
+    if (preferUser && u.trim().toLowerCase() !== preferUser) continue;
+    const key = u + "\x00" + p;
+    const g = groups.get(key) || { count: 0, username: u, password: p };
+    g.count++; groups.set(key, g);
   }
-  if (!username || !password) die("the stored credentials decrypted to an empty value");
-  return { username, password };
+  if (!groups.size) {
+    if (sawForeignKey) {
+      // The fingerprint exists to make a key-rotation legible rather than
+      // surfacing as a bare "decryption failed".
+      die(`the stored ${book.provider} credentials were encrypted under a different key `
+        + `than ENCRYPTION_KEY here (${fpNow}). Re-enter them in the app, or use the matching key.`);
+    }
+    die(preferUser
+      ? `no decryptable ${book.provider} credentials for user ${preferUser}`
+      : `could not decrypt any stored ${book.provider} credentials`);
+  }
+  const best = [...groups.values()].sort((a, b) => b.count - a.count)[0];
+  return { username: best.username, password: best.password };
 }
 
 // Is this session signed in? Asks the page, using the playbook's own
@@ -262,7 +292,13 @@ async function signedIn(page, book) {
   // Reached only when there was no live session to reuse. A portal that mails
   // a code cannot be signed into here, so it stops with a clear instruction
   // rather than parking a browser on a code screen.
-  if (NEEDS_A_PERSON[portal]) die(NEEDS_A_PERSON[portal]);
+  if (NEEDS_A_PERSON[portal]) {
+    if (IS_RESIDENTIAL && RECAPTCHA_SCORED[portal]) {
+      console.log(`  ${portal}: reCAPTCHA-scored login — attempting from residential IP (HOUSY_RESIDENTIAL set)`);
+    } else {
+      die(NEEDS_A_PERSON[portal]);
+    }
+  }
   const { username, password } = await credentialsFor(portal, book);
 
   // slowMo, because this is a real form being filled by what should look
