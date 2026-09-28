@@ -51,7 +51,10 @@ function testFileStructure() {
   const appPath = path.join(SRC, 'App.js');
   assert(fs.existsSync(appPath), 'src/App.js exists');
   const appLines = lineCount(appPath);
-  assert(appLines < 1560, `src/App.js is under 1560 lines (${appLines} lines)`);
+  // 1560 -> 1575 on 2026-09-28: +8 lines, the scroll-to-top-on-page-change
+  // effect (82ab99c). It keys on `page`, which only the router owns, so it
+  // belongs here rather than in a component. Small headroom, not a blank cheque.
+  assert(appLines < 1575, `src/App.js is under 1575 lines (${appLines} lines)`);
 
   // Utils directory: required files must exist; count bound is a
   // ceiling, not an exact number. new utilities (native.js for
@@ -218,7 +221,13 @@ function testFileStructure() {
   // module resolution. Fixing that resolution is what surfaced this. So this
   // raise pays that debt as well as covering the new module; it is not a
   // claim that 456 lines needed 3,900.
-  assert(totalLines <= 49700, `Total src lines <= 49700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 51100 on 2026-09-28: src grew ~1,190 net since the 09-17 raise, all
+  // feature work that landed without moving this bound: the in-app utility
+  // payment flow (Utilities.js +365, PayBillModal.js +168, StreamedBrowser.js
+  // +217 -- a new focused component), multi-loan Loans (+206) and the
+  // property rename cascade (Properties.js +263). The atomic bank-posting
+  // change of the same day REMOVED ~140 lines from Banking.js.
+  assert(totalLines <= 51100, `Total src lines <= 51100 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

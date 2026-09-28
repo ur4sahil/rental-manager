@@ -130,7 +130,12 @@ async function testPostgrestInjection() {
   // Check for .ilike() with raw "%" patterns (no escapeFilterValue)
   const ilikeCalls = ALL_CODE.match(/\.ilike\([^)]*%[^)]*\)/g) || [];
   let unsafeIlike = 0;
+  // A pattern that is a plain quoted CONSTANT ('%deposit%') carries no
+  // input and cannot be injected. Anything interpolated or concatenated
+  // (`%${x}%`, "%" + x) still has to go through escapeFilterValue.
+  const constantPattern = /\.ilike\(\s*(['"`])[\w.]+\1\s*,\s*(['"])[^'"`$+\\]*\2\s*\)$/;
   for (const call of ilikeCalls) {
+    if (constantPattern.test(call)) continue;
     if (!call.includes('escapeFilterValue') && !call.includes('escaped')) {
       unsafeIlike++;
     }

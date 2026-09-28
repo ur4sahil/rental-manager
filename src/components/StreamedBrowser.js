@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { pmError } from "../utils/errors";
 
 // A real browser, running on the VPS, rendered here on a canvas. The person sees
 // the utility's own card page and types their card into it; the keystrokes travel
@@ -75,7 +76,7 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
         setStatus("expired");
       }
     };
-    return () => { alive = false; try { ws.close(); } catch {} };
+    return () => { alive = false; try { ws.close(); } catch (_e) { pmError("PM-8006", { raw: _e, context: "streamed browser socket close", silent: true }); } };
   }, [streamBase, provider, url, token, onPaid]);
 
   // ---- DESKTOP: relay the physical keyboard straight through ----------------
