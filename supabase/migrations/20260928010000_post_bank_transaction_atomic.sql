@@ -67,12 +67,24 @@ DECLARE
   v_ord          bigint;
   v_email        text := COALESCE(auth.jwt() ->> 'email', '');
   v_constraint   text;
+  v_dr           numeric;
+  v_cr           numeric;
 BEGIN
   IF p_kind NOT IN ('add', 'transfer', 'split') THEN
     RAISE EXCEPTION 'post_bank_transaction: unknown kind %', p_kind;
   END IF;
   IF jsonb_typeof(p_lines) <> 'array' OR jsonb_array_length(p_lines) < 2 THEN
     RAISE EXCEPTION 'post_bank_transaction: a journal entry needs at least 2 lines';
+  END IF;
+
+  -- DR must equal CR. The split path used to allow 2c/10c of slack, which
+  -- posted the bank line at the full amount and the category lines short:
+  -- an unbalanced entry. Refused here so no caller can post one.
+  SELECT COALESCE(sum((l ->> 'debit')::numeric), 0), COALESCE(sum((l ->> 'credit')::numeric), 0)
+    INTO v_dr, v_cr FROM jsonb_array_elements(p_lines) l;
+  IF abs(v_dr - v_cr) > 0.005 THEN
+    RAISE EXCEPTION 'post_bank_transaction: entry out of balance (DR % vs CR %)', v_dr, v_cr
+      USING ERRCODE = 'P0001', HINT = 'unbalanced';
   END IF;
 
   -- Serialises concurrent posts of the same txn (two tabs, a double click

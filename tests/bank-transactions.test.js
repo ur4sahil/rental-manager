@@ -472,6 +472,9 @@ async function testAtomicBankPosting() {
   assert(ATOMIC_SQL.includes("'already_posted'") && ATOMIC_SQL.includes("'relinked'"), 'RPC is idempotent (lost response / unlinked prior entry)');
   assert(/v_prior_lines = 0 THEN\s+DELETE FROM acct_journal_entries/.test(ATOMIC_SQL), 'RPC clears an empty stranded header before posting');
   assert(/FROM PUBLIC, anon/.test(ATOMIC_SQL), 'RPC is not executable by anon');
+  assert(/abs\(v_dr - v_cr\) > 0\.005/.test(ATOMIC_SQL) && ATOMIC_SQL.includes("HINT = 'unbalanced'"), 'RPC refuses an entry where DR != CR');
+  const split = fnBody('acceptSplit');
+  assert(!/splitTolerance|0\.10 : 0\.02/.test(split) && split.includes('Math.abs(total - abs) > 0.005'), 'Split must equal the bank amount to the cent (no 2c/10c slack)');
 
   // The function must exist in the database this suite points at, and an
   // unknown txn must be refused rather than posted.
@@ -485,6 +488,11 @@ async function testAtomicBankPosting() {
     p_description: 'x', p_property: '', p_lines: [{}, {}], p_decision: {}, p_decision_lines: []
   });
   assert(kindErr && /unknown kind/.test(kindErr.message || ''), 'post_bank_transaction rejects an unknown kind');
+  const { error: balErr } = await supabase.rpc('post_bank_transaction', {
+    p_company_id: 'x', p_txn_id: '00000000-0000-0000-0000-000000000000', p_kind: 'split',
+    p_description: 'x', p_property: '', p_lines: [{ debit: 100 }, { credit: 99.95 }], p_decision: {}, p_decision_lines: []
+  });
+  assert(balErr && balErr.hint === 'unbalanced', 'post_bank_transaction refuses a 5-cent-short split before touching any row');
 }
 
 // ═══════════════════════════════════════════

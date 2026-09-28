@@ -1077,6 +1077,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (error.hint === "already_processed") {
       showToast("This transaction has already been processed.", "warning");
       refreshData();
+    } else if (error.hint === "unbalanced") {
+      showToast("This entry doesn't balance — debits and credits must be equal.", "error");
     } else if (/period is locked/i.test(error.message || "")) {
       pmError("PM-4004", { raw: error, context: `post_bank_transaction ${kind}` });
     } else {
@@ -1269,8 +1271,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     if (validLines.length < 2) { showToast("Split requires at least 2 lines.", "error"); return; }
     const total = validLines.reduce((s, l) => s + safeNum(l.amount), 0);
     const abs = Math.abs(txn.amount);
-    const splitTolerance = validLines.length > 2 ? 0.10 : 0.02;
-    if (Math.abs(total - abs) > splitTolerance) { showToast(`Split total ($${total.toFixed(2)}) must equal transaction amount ($${abs.toFixed(2)}).`, "error"); return; }
+    // Exact to the cent. A 2c/10c tolerance used to let the split post with
+    // the bank line at the full amount and the category lines short or
+    // over -- an unbalanced journal entry. post_bank_transaction also
+    // refuses DR != CR, so this is the friendly message, not the guard.
+    if (Math.abs(total - abs) > 0.005) { showToast(`Split total ($${total.toFixed(2)}) must equal the transaction amount ($${abs.toFixed(2)}) exactly.`, "error"); return; }
 
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
     const isInflow = txn.direction === "inflow";
