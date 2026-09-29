@@ -139,10 +139,17 @@ export async function rpcAllPaged(fn, args, pageSize = 1000) {
   return rows;
 }
 
+// A period is locked THROUGH lock_date, inclusive -- the DB triggers
+// (trg_acct_enforce_period_lock*) refuse `date <= lock_date`. This used to
+// test `<`, so an entry dated exactly on the lock date passed the client
+// check and then failed at the database with a generic error.
+// Compares the YYYY-MM-DD part only, so a timestamp can't slip past a
+// lexical comparison ("2026-01-31T.." > "2026-01-31").
 export async function checkPeriodLock(companyId, date) {
   if (!date || !companyId) return false;
   const { data } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
-  return data?.lock_date && date < data.lock_date;
+  if (!data?.lock_date) return false;
+  return String(date).slice(0, 10) <= String(data.lock_date).slice(0, 10);
 }
 
 export async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {

@@ -79,6 +79,16 @@ export function refLabel(reference) {
   return r; // user-typed reference — already readable
 }
 
+// References that tie an entry to ANOTHER record -- a bank transaction, a
+// Stripe payment, a deposit, a distribution, a recurring charge. Editing
+// such an entry changes the books but not the record it came from, so the
+// editor asks first. Opening balances and bulk/manual imports are system
+// references too but stand alone, so they don't warn.
+const RECORD_LINKED_REF = /^(BANK|XFER|SPLIT|STRIPE|UTIL|DIST|ODIST|LATEFEE|LATE|DEP|DEPRET|DEPDED|DEPFORF|RECUR|APAY|PAY|RENT|RENT1|PRORENT|MOVEOUT|WO|WOFF|VINV|HOA|LOAN|EVICT)-/;
+export function isRecordLinkedReference(reference) {
+  return RECORD_LINKED_REF.test((reference || "").trim());
+}
+
 // A system reference is an IDEMPOTENCY KEY, not a note. It is what
 // idx_je_company_reference_unique matches on to stop the same charge
 // posting twice, and it is generated -- e.g.
@@ -1470,7 +1480,12 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
         setForm(f => {
           const lines = [...f.lines];
           const src = lines[i];
-          lines.splice(i + 1, 0, { ...src, debit: "", credit: "", memo: src.memo || "" });
+          // A copy is a NEW line: drop the source's id and its bank /
+          // reconciliation stamps, or the save would treat it as the
+          // original line.
+          const coding = { ...src };
+          delete coding.id; delete coding.bank_feed_transaction_id; delete coding.reconciled; delete coding.reconciled_date;
+          lines.splice(i + 1, 0, { ...coding, debit: "", credit: "", memo: src.memo || "" });
           return { ...f, lines };
         });
         focusRow(i + 1);
@@ -5728,42 +5743,73 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   return true;
   } finally { guardRelease("addJournalEntry"); }
   }
+  // Saves through update_journal_entry: ONE database transaction that
+  // locks the entry, checks DR = CR, and updates kept lines in place (so
+  // each keeps its id, bank_feed_transaction_id, reconciled and
+  // reconciled_date), deletes removed lines and inserts new ones -- or
+  // changes nothing. The old path updated the header without checking the
+  // error, deleted every line and re-inserted them: a dropped connection
+  // left a half-saved entry, and every save wiped the bank and
+  // reconciliation stamps.
   async function updateJournalEntry(data) {
+  if (!guardSubmit("updateJournalEntry", data?.id)) return false;
+  try {
   const { id, lines, ...header } = data;
-  delete header.created_at;
-  // Period lock check
-  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot edit a journal entry in a locked period.", "error"); return false; }
-  // Validate debit/credit balance before saving
-  if (lines?.length > 0) {
+  const orig = journalEntries.find(j => j.id === id) || {};
+  // Period lock: the entry's current date and the new one both count --
+  // moving an entry out of a closed period rewrites that period too.
+  if (await checkPeriodLock(companyId, header.date) || (orig.date && await checkPeriodLock(companyId, orig.date))) { showToast("Cannot edit a journal entry in a locked period.", "error"); return false; }
+  if (!lines || lines.length < 2) { showToast("A journal entry needs at least two lines.", "error"); return false; }
   const v = validateJE(lines);
   if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return false; }
+  // Entries the system generated for another record (a bank transaction,
+  // a Stripe payment, a deposit, a recurring charge ...). Editing is
+  // allowed -- mistakes need fixing -- but only knowingly: the record it
+  // came from is not updated along with it.
+  // A line the editor never saw (the lines fetch was incomplete, or
+  // someone changed the entry since it loaded) would be deleted by the
+  // save. Refuse instead of guessing.
+  const { data: dbLines, error: dbErr } = await supabase.from("acct_journal_lines").select("id").eq("company_id", companyId).eq("journal_entry_id", id);
+  if (dbErr) { pmError("PM-4013", { raw: dbErr, context: "update_journal_entry pre-check" }); return false; }
+  const seen = new Set((orig.lines || []).map(l => String(l.id)));
+  if ((dbLines || []).some(l => !seen.has(String(l.id)))) {
+    showToast("This entry has changed or didn't fully load. Reload the page and edit it again.", "error");
+    fetchAll({ quiet: true });
+    return false;
   }
-  delete header.number;
-  // Save old lines before deleting so we can restore on failure
-  const { data: oldLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
-  await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
-  // Replace lines
-  const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
-  if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll({ quiet: true }); return false; }
-  if (lines?.length > 0) {
-  // class_id and entity_id are uuid columns. Legacy rows sometimes
-  // carry bigint-stringified values (e.g. entity_id="306" for a
-  // tenant from the old integer-id schema). Coerce anything that
-  // isn't a real UUID to null — same guard addJournalEntry uses.
-  // Without this, editing a JE loaded from a legacy row 500s with
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "", entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null })));
-  if (linesErr) {
-  pmError("PM-4003", { raw: linesErr, context: "update journal lines failed, restoring" });
-  if (oldLines?.length > 0) {
-  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id || null, memo: l.memo, entity_type: l.entity_type, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name })));
+  const ref = orig.reference || header.reference || "";
+  if (isRecordLinkedReference(ref)) {
+    const ok = await showConfirm({
+      message: `This entry was created automatically (${refLabelFull(ref)}) and is tied to that record. Editing it changes the books only — the ${refLabel(ref).toLowerCase()} record itself is not updated, and its reference stays as it is. Continue?`,
+      confirmText: "Edit anyway",
+    });
+    if (!ok) return false;
   }
-  showToast("Error updating journal lines: " + linesErr.message, "error");
-  fetchAll({ quiet: true });
-  return false;
+  const { error } = await supabase.rpc("update_journal_entry", {
+    p_company_id: companyId,
+    p_je_id: id,
+    p_header: { date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status },
+    // The line id is how the server recognises a kept line (and keeps its
+    // stamps). Stamps themselves are never sent -- the server owns them.
+    p_lines: lines.map(l => ({
+      id: l.id != null && /^\d+$/.test(String(l.id)) ? Number(l.id) : null,
+      account_id: l.account_id, account_name: l.account_name || "",
+      debit: safeNum(l.debit), credit: safeNum(l.credit),
+      class_id: l.class_id || null, memo: l.memo || "",
+      entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null,
+    })),
+  });
+  if (error) {
+    if (/period is locked/i.test(error.message || "")) pmError("PM-4004", { raw: error, context: "update_journal_entry" });
+    else if (["reconciled_line", "bank_line", "system_reference", "unbalanced", "voided", "too_few_lines", "no_account", "bad_status", "not_found"].includes(error.hint)) showToast(error.message, "error");
+    else pmError("PM-4003", { raw: error, context: "update_journal_entry" });
+    fetchAll({ quiet: true });
+    return false;
   }
-  }
+  logAudit("update", "accounting", `Edited journal entry ${orig.number || id}${ref ? ` (${ref})` : ""}`, String(id), userProfile?.email, userRole, companyId);
   fetchAll({ quiet: true });
   return true;
+  } finally { guardRelease("updateJournalEntry", data?.id); }
   }
   async function postJournalEntry(id) {
   if (!guardSubmit("postJE", id)) return;

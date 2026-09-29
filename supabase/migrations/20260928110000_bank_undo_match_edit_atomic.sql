@@ -1,0 +1,581 @@
+-- Undo, match, exclude and journal-entry edit: one database transaction each.
+--
+-- Audit theme G ("undo and void"). Four client flows were a chain of
+-- separate REST writes whose errors were mostly not checked:
+--
+--   * Undo (Banking.js undoTransaction) voided txn.journal_entry_id no
+--     matter how the transaction got it. For a MATCHED transaction that id
+--     is an entry created elsewhere -- a tenant payment, a bill -- so Undo
+--     voided the payment itself and moved the tenant's balance. It also
+--     carried on after a failed void (period lock, trg_mgmt_gate for an
+--     office assistant) and returned the transaction to For Review while
+--     its entry was still posted, inviting a second posting.
+--   * Match (confirmMatch) was three writes with no for_review lock, no
+--     period-lock check, and accepted any entry whose DEBITS summed to the
+--     bank amount, whether or not it touched the bank account at all.
+--   * Exclude never recorded posting_decision_id, so a later Restore could
+--     not mark the decision undone, and did not check that the transaction
+--     was still For Review.
+--   * Editing a journal entry (Accounting.js updateJournalEntry) updated
+--     the header without checking the error, deleted every line and
+--     re-inserted them. A dropped connection left a half-saved entry, and
+--     every save silently wiped each line's bank_feed_transaction_id and
+--     reconciled / reconciled_date -- un-reconciling the bank account.
+--
+-- All four functions are SECURITY INVOKER, like post_bank_transaction:
+-- RLS, the period-lock triggers and the management gate (trg_mgmt_gate,
+-- which reads current_user = 'authenticated') all still apply to the
+-- caller. Because a function body is one transaction, any failure --
+-- including one raised by those triggers -- rolls back everything.
+--
+-- Deliberately NOT changed (owner decision, audit item G3): voiding an
+-- entry does not touch the payments row, bill status, owner distribution
+-- or deposit status it came from.
+
+-- A caller must be staff of the company. bank_feed_transaction's RLS lets
+-- any active member (tenants included) read and write it, and the journal
+-- tables' RLS would silently hide rows from a non-staff caller -- an
+-- UPDATE that matches 0 rows is not an error. Checked up front instead.
+-- The service role (no JWT) is trusted, as everywhere else.
+CREATE OR REPLACE FUNCTION public._bank_require_staff(p_company_id text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  IF current_user = 'authenticated'
+     AND NOT EXISTS (SELECT 1 FROM public.get_staff_company_ids() s WHERE s = p_company_id) THEN
+    RAISE EXCEPTION 'Only staff of this company can change its books.'
+      USING ERRCODE = '42501', HINT = 'not_staff';
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public._bank_require_staff(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public._bank_require_staff(text) TO authenticated, service_role;
+
+-- References that tie an entry to another record (a bank transaction, a
+-- Stripe payment, a deposit, a recurring schedule ...). Their reference is
+-- an idempotency key; the JE form already shows it read-only, and
+-- update_journal_entry refuses to change it. Mirrors REF_LABELS in
+-- Accounting.js (every prefix the app generates).
+CREATE OR REPLACE FUNCTION public.je_reference_is_system(p_reference text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT COALESCE(btrim(p_reference), '') ~ '^(OPENING|PRORENT|RENT|RENT1|LATEFEE|LATE|DEPDED|DEPRET|DEPFORF|DEP|WOFF|WO|VINV|BANK|XFER|SPLIT|APAY|PAY|STRIPE|RECUR|MOVEOUT|ODIST|DIST|HOA|UTIL|LOAN|EVICT|BULK|MANUAL)-';
+$function$;
+REVOKE ALL ON FUNCTION public.je_reference_is_system(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.je_reference_is_system(text) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- undo_bank_transaction
+-- ---------------------------------------------------------------------------
+-- Returns the transaction to For Review. Three shapes:
+--   excluded               -> restore: decision undone, status reset
+--   matched (link_role 'matched_to' / matched_target_*)
+--                          -> UNLINK ONLY: delete the link, release this
+--                             txn's stamp on the entry's lines, decision
+--                             undone, status reset. The matched entry is
+--                             someone else's record and is NEVER voided.
+--   created by the bank flow (BANK-/XFER-/SPLIT- reference or a
+--   'created_from' link)   -> void that entry, release its stamps,
+--                             decision undone, status reset.
+-- An entry the bank flow can't be shown to have created is unlinked, not
+-- voided (outcome 'unlinked') -- when in doubt, leave the books alone.
+CREATE OR REPLACE FUNCTION public.undo_bank_transaction(
+  p_company_id text,
+  p_txn_id     uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_txn      bank_feed_transaction%ROWTYPE;
+  v_lock     date;
+  v_je       acct_journal_entries%ROWTYPE;
+  v_je_id    text;
+  v_mode     text;
+  v_n        int;
+BEGIN
+  PERFORM public._bank_require_staff(p_company_id);
+
+  SELECT * INTO v_txn FROM bank_feed_transaction
+   WHERE id = p_txn_id AND company_id = p_company_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'undo_bank_transaction: transaction not found' USING HINT = 'not_found';
+  END IF;
+
+  -- A retry after a lost response: already undone.
+  IF v_txn.status = 'for_review' THEN
+    RETURN jsonb_build_object('outcome', 'already_for_review');
+  END IF;
+  IF v_txn.status = 'locked' THEN
+    RAISE EXCEPTION 'This transaction is reconciled and locked; it cannot be undone.'
+      USING ERRCODE = 'P0001', HINT = 'locked';
+  END IF;
+  IF v_txn.status NOT IN ('categorized', 'matched', 'posted', 'excluded') THEN
+    RAISE EXCEPTION 'This transaction cannot be undone (status %).', v_txn.status
+      USING ERRCODE = 'P0001', HINT = 'bad_status';
+  END IF;
+
+  SELECT lock_date INTO v_lock FROM accounting_period_lock WHERE company_id = p_company_id;
+  IF v_lock IS NOT NULL AND v_txn.posted_date <= v_lock THEN
+    RAISE EXCEPTION 'Accounting period is locked through %. This transaction (%) cannot be undone.', v_lock, v_txn.posted_date
+      USING ERRCODE = 'check_violation', HINT = 'period_locked';
+  END IF;
+
+  v_je_id := v_txn.journal_entry_id::text;
+  IF v_je_id IS NOT NULL THEN
+    SELECT * INTO v_je FROM acct_journal_entries
+     WHERE id = v_je_id AND company_id = p_company_id
+     FOR UPDATE;
+  END IF;
+
+  IF v_txn.status = 'excluded' THEN
+    v_mode := 'restored';
+  ELSIF v_txn.status = 'matched'
+     OR v_txn.matched_target_id IS NOT NULL
+     OR EXISTS (SELECT 1 FROM bank_feed_transaction_link
+                 WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+                   AND link_role = 'matched_to') THEN
+    v_mode := 'unmatched';
+  ELSIF v_je.id IS NULL OR v_je.status = 'voided' THEN
+    v_mode := 'reset';        -- nothing live on the books to undo
+  ELSIF v_je.reference ~ '^(BANK|XFER|SPLIT)-'
+     OR EXISTS (SELECT 1 FROM bank_feed_transaction_link
+                 WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+                   AND link_role = 'created_from' AND linked_object_id::text = v_je.id) THEN
+    v_mode := 'voided';
+  ELSE
+    v_mode := 'unlinked';     -- points at an entry we can't prove we created
+  END IF;
+
+  IF v_mode = 'voided' THEN
+    -- Voiding a reconciled line would silently break a finished
+    -- reconciliation. Make the user unreconcile first.
+    IF EXISTS (SELECT 1 FROM acct_journal_lines
+                WHERE journal_entry_id = v_je.id AND COALESCE(reconciled, false)) THEN
+      RAISE EXCEPTION 'Entry % has reconciled lines. Unreconcile them before undoing this transaction.', v_je.number
+        USING ERRCODE = 'P0001', HINT = 'reconciled';
+    END IF;
+    -- trg_mgmt_gate and the period-lock trigger fire here; either raises
+    -- and rolls back the whole undo.
+    UPDATE acct_journal_entries SET status = 'voided'
+     WHERE id = v_je.id AND company_id = p_company_id AND status <> 'voided';
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION 'undo_bank_transaction: could not void entry %', v_je.number;
+    END IF;
+  END IF;
+
+  IF v_mode IN ('voided', 'unmatched', 'unlinked', 'reset') AND v_je_id IS NOT NULL THEN
+    -- Release only THIS transaction's claim on the entry's lines; any other
+    -- stamp on the same entry belongs to someone else.
+    UPDATE acct_journal_lines SET bank_feed_transaction_id = NULL
+     WHERE journal_entry_id = v_je_id AND company_id = p_company_id
+       AND bank_feed_transaction_id = p_txn_id;
+  END IF;
+
+  IF v_mode IN ('unmatched', 'unlinked') THEN
+    DELETE FROM bank_feed_transaction_link
+     WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+       AND link_role = 'matched_to';
+  END IF;
+
+  IF v_txn.posting_decision_id IS NOT NULL THEN
+    UPDATE bank_posting_decision SET status = 'undone', updated_at = now()
+     WHERE id = v_txn.posting_decision_id AND company_id = p_company_id;
+  ELSE
+    -- Older rows never recorded the decision id (exclude and match did not).
+    UPDATE bank_posting_decision SET status = 'undone', updated_at = now()
+     WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+       AND status = 'posted';
+  END IF;
+
+  UPDATE bank_feed_transaction
+     SET status = 'for_review', accepted_at = NULL, accepted_by = NULL,
+         excluded_at = NULL, excluded_by = NULL, exclusion_reason = NULL,
+         journal_entry_id = NULL, posting_decision_id = NULL,
+         matched_target_type = NULL, matched_target_id = NULL
+   WHERE id = p_txn_id AND company_id = p_company_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'undo_bank_transaction: could not reset the transaction';
+  END IF;
+
+  RETURN jsonb_build_object('outcome', v_mode, 'je_id', v_je_id, 'je_number', v_je.number);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.undo_bank_transaction(text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.undo_bank_transaction(text, uuid) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- exclude_bank_transaction
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.exclude_bank_transaction(
+  p_company_id text,
+  p_txn_id     uuid,
+  p_reason     text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_txn         bank_feed_transaction%ROWTYPE;
+  v_decision_id uuid;
+  v_email       text := COALESCE(auth.jwt() ->> 'email', '');
+BEGIN
+  PERFORM public._bank_require_staff(p_company_id);
+  IF COALESCE(btrim(p_reason), '') = '' THEN
+    RAISE EXCEPTION 'exclude_bank_transaction: a reason is required' USING HINT = 'no_reason';
+  END IF;
+
+  SELECT * INTO v_txn FROM bank_feed_transaction
+   WHERE id = p_txn_id AND company_id = p_company_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'exclude_bank_transaction: transaction not found' USING HINT = 'not_found';
+  END IF;
+  IF v_txn.status = 'excluded' AND v_txn.exclusion_reason IS NOT DISTINCT FROM p_reason THEN
+    RETURN jsonb_build_object('outcome', 'already_excluded', 'decision_id', v_txn.posting_decision_id);
+  END IF;
+  IF v_txn.status <> 'for_review' THEN
+    RAISE EXCEPTION 'exclude_bank_transaction: transaction already processed (status %)', v_txn.status
+      USING ERRCODE = 'P0001', HINT = 'already_processed';
+  END IF;
+
+  INSERT INTO bank_posting_decision
+    (company_id, bank_feed_transaction_id, decision_type, memo, status, created_by)
+  VALUES (p_company_id, p_txn_id, 'exclude', p_reason, 'posted', v_email)
+  RETURNING id INTO v_decision_id;
+
+  UPDATE bank_feed_transaction
+     SET status = 'excluded', exclusion_reason = p_reason,
+         excluded_at = now(), excluded_by = v_email,
+         posting_decision_id = v_decision_id
+   WHERE id = p_txn_id AND company_id = p_company_id;
+
+  RETURN jsonb_build_object('outcome', 'excluded', 'decision_id', v_decision_id);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.exclude_bank_transaction(text, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.exclude_bank_transaction(text, uuid, text) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- match_bank_transaction
+-- ---------------------------------------------------------------------------
+-- Links a For Review bank transaction to an EXISTING posted entry. The
+-- entry must carry a line on the feed's GL account, on the bank's side
+-- (inflow = debit, outflow = credit), for exactly the bank amount, not
+-- already claimed by another bank transaction. That line gets this txn's
+-- stamp. No amounts are written.
+CREATE OR REPLACE FUNCTION public.match_bank_transaction(
+  p_company_id text,
+  p_txn_id     uuid,
+  p_je_id      text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_txn         bank_feed_transaction%ROWTYPE;
+  v_je          acct_journal_entries%ROWTYPE;
+  v_gl          uuid;
+  v_abs         numeric;
+  v_line_id     int;
+  v_lock        date;
+  v_decision_id uuid;
+  v_email       text := COALESCE(auth.jwt() ->> 'email', '');
+BEGIN
+  PERFORM public._bank_require_staff(p_company_id);
+  IF p_je_id IS NULL OR p_je_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    RAISE EXCEPTION 'This entry cannot be matched (legacy id).' USING HINT = 'bad_entry';
+  END IF;
+
+  SELECT * INTO v_txn FROM bank_feed_transaction
+   WHERE id = p_txn_id AND company_id = p_company_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'match_bank_transaction: transaction not found' USING HINT = 'not_found';
+  END IF;
+  IF v_txn.status <> 'for_review' THEN
+    IF v_txn.status = 'matched' AND v_txn.journal_entry_id::text = p_je_id THEN
+      RETURN jsonb_build_object('outcome', 'already_matched', 'je_id', p_je_id);
+    END IF;
+    RAISE EXCEPTION 'match_bank_transaction: transaction already processed (status %)', v_txn.status
+      USING ERRCODE = 'P0001', HINT = 'already_processed';
+  END IF;
+
+  -- Locking the entry serialises two DIFFERENT bank transactions racing to
+  -- claim it; the loser re-reads the link below after the winner commits.
+  SELECT * INTO v_je FROM acct_journal_entries
+   WHERE id = p_je_id AND company_id = p_company_id
+   FOR UPDATE;
+  IF NOT FOUND OR v_je.status <> 'posted' THEN
+    RAISE EXCEPTION 'Only a posted journal entry can be matched.' USING HINT = 'bad_entry';
+  END IF;
+
+  SELECT lock_date INTO v_lock FROM accounting_period_lock WHERE company_id = p_company_id;
+  IF v_lock IS NOT NULL AND (v_txn.posted_date <= v_lock OR v_je.date <= v_lock) THEN
+    RAISE EXCEPTION 'Accounting period is locked through %. This match cannot be recorded.', v_lock
+      USING ERRCODE = 'check_violation', HINT = 'period_locked';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM bank_feed_transaction_link
+              WHERE company_id = p_company_id AND linked_object_type = 'journal_entry'
+                AND linked_object_id::text = p_je_id) THEN
+    RAISE EXCEPTION 'Entry % is already linked to another bank transaction.', v_je.number
+      USING ERRCODE = 'P0001', HINT = 'already_linked';
+  END IF;
+
+  SELECT gl_account_id INTO v_gl FROM bank_account_feed
+   WHERE id = v_txn.bank_account_feed_id AND company_id = p_company_id;
+  IF v_gl IS NULL THEN
+    RAISE EXCEPTION 'This bank account is not linked to a GL account.' USING HINT = 'no_gl';
+  END IF;
+
+  v_abs := round(abs(v_txn.amount), 2);
+  SELECT id INTO v_line_id FROM acct_journal_lines
+   WHERE journal_entry_id = p_je_id AND company_id = p_company_id
+     AND account_id = v_gl
+     AND (bank_feed_transaction_id IS NULL OR bank_feed_transaction_id = p_txn_id)
+     AND CASE WHEN v_txn.direction = 'inflow'
+              THEN round(COALESCE(debit, 0), 2) = v_abs AND COALESCE(credit, 0) = 0
+              ELSE round(COALESCE(credit, 0), 2) = v_abs AND COALESCE(debit, 0) = 0 END
+   ORDER BY id
+   LIMIT 1
+   FOR UPDATE;
+  IF v_line_id IS NULL THEN
+    RAISE EXCEPTION 'Entry % has no % of % on this bank account, so it is not this transaction.',
+      v_je.number, CASE WHEN v_txn.direction = 'inflow' THEN 'debit' ELSE 'credit' END, v_abs
+      USING ERRCODE = 'P0001', HINT = 'no_matching_line';
+  END IF;
+
+  INSERT INTO bank_feed_transaction_link
+    (company_id, bank_feed_transaction_id, linked_object_type, linked_object_id, link_role)
+  VALUES (p_company_id, p_txn_id, 'journal_entry', p_je_id::uuid, 'matched_to');
+
+  INSERT INTO bank_posting_decision
+    (company_id, bank_feed_transaction_id, decision_type, memo, status, created_by)
+  VALUES (p_company_id, p_txn_id, 'match', 'Matched to ' || COALESCE(v_je.number, p_je_id), 'posted', v_email)
+  RETURNING id INTO v_decision_id;
+
+  UPDATE acct_journal_lines SET bank_feed_transaction_id = p_txn_id
+   WHERE id = v_line_id;
+
+  UPDATE bank_feed_transaction
+     SET status = 'matched', accepted_at = now(), accepted_by = v_email,
+         journal_entry_id = p_je_id::uuid, posting_decision_id = v_decision_id,
+         matched_target_type = 'journal_entry', matched_target_id = p_je_id::uuid
+   WHERE id = p_txn_id AND company_id = p_company_id;
+
+  RETURN jsonb_build_object('outcome', 'matched', 'je_id', p_je_id, 'je_number', v_je.number,
+                            'line_id', v_line_id, 'decision_id', v_decision_id);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.match_bank_transaction(text, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_bank_transaction(text, uuid, text) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- update_journal_entry
+-- ---------------------------------------------------------------------------
+-- Saves an edited entry in one transaction. Lines are matched to the
+-- existing ones by id (the editor carries each line's id), falling back to
+-- same account + debit + credit for a line sent without one. A matched
+-- line is UPDATED IN PLACE, so it keeps its id, bank_feed_transaction_id,
+-- reconciled and reconciled_date; unmatched old lines are deleted; new
+-- lines are inserted clean.
+--
+-- Refused (nothing written):
+--   * DR <> CR (0.005 tolerance, as post_bank_transaction), fewer than 2 lines
+--   * a voided entry, or a status other than draft/posted
+--   * changing a system reference (it is an idempotency key)
+--   * changing the account or amount of a RECONCILED line, removing one,
+--     or moving the date of an entry that has one -- unreconcile first
+--   * removing a line stamped with a bank transaction -- undo it in Banking
+CREATE OR REPLACE FUNCTION public.update_journal_entry(
+  p_company_id text,
+  p_je_id      text,
+  p_header     jsonb,
+  p_lines      jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_je        acct_journal_entries%ROWTYPE;
+  v_old       acct_journal_lines%ROWTYPE;
+  v_line      jsonb;
+  v_ord       bigint;
+  v_id        int;
+  v_map       jsonb := '{}'::jsonb;   -- ordinality -> old line id
+  v_used      int[] := '{}';
+  v_dr        numeric;
+  v_cr        numeric;
+  v_new_date  date;
+  v_new_ref   text;
+  v_status    text;
+  v_n         int;
+  v_kept      int := 0;
+  v_inserted  int := 0;
+  v_deleted   int := 0;
+BEGIN
+  PERFORM public._bank_require_staff(p_company_id);
+
+  IF jsonb_typeof(p_lines) <> 'array' OR jsonb_array_length(p_lines) < 2 THEN
+    RAISE EXCEPTION 'A journal entry needs at least 2 lines.' USING HINT = 'too_few_lines';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_lines) l WHERE COALESCE(l ->> 'account_id', '') = '') THEN
+    RAISE EXCEPTION 'Every line needs an account.' USING HINT = 'no_account';
+  END IF;
+  SELECT COALESCE(sum(COALESCE((l ->> 'debit')::numeric, 0)), 0), COALESCE(sum(COALESCE((l ->> 'credit')::numeric, 0)), 0)
+    INTO v_dr, v_cr FROM jsonb_array_elements(p_lines) l;
+  IF abs(v_dr - v_cr) > 0.005 THEN
+    RAISE EXCEPTION 'update_journal_entry: entry out of balance (DR % vs CR %)', v_dr, v_cr
+      USING ERRCODE = 'P0001', HINT = 'unbalanced';
+  END IF;
+
+  SELECT * INTO v_je FROM acct_journal_entries
+   WHERE id = p_je_id AND company_id = p_company_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'update_journal_entry: entry not found' USING HINT = 'not_found';
+  END IF;
+  IF v_je.status = 'voided' THEN
+    RAISE EXCEPTION 'A voided entry cannot be edited.' USING HINT = 'voided';
+  END IF;
+
+  v_new_date := COALESCE(NULLIF(p_header ->> 'date', '')::date, v_je.date);
+  v_new_ref  := COALESCE(p_header ->> 'reference', v_je.reference, '');
+  v_status   := COALESCE(NULLIF(p_header ->> 'status', ''), v_je.status);
+  IF v_status NOT IN ('draft', 'posted') THEN
+    RAISE EXCEPTION 'update_journal_entry: status % is not allowed here', v_status USING HINT = 'bad_status';
+  END IF;
+  IF public.je_reference_is_system(v_je.reference) AND v_new_ref IS DISTINCT FROM v_je.reference THEN
+    RAISE EXCEPTION 'The reference % links this entry to another record and cannot be changed.', v_je.reference
+      USING HINT = 'system_reference';
+  END IF;
+  IF v_new_date IS DISTINCT FROM v_je.date AND EXISTS (
+       SELECT 1 FROM acct_journal_lines WHERE journal_entry_id = p_je_id AND COALESCE(reconciled, false)) THEN
+    RAISE EXCEPTION 'This entry has reconciled lines, so its date cannot change. Unreconcile them first.'
+      USING HINT = 'reconciled_line';
+  END IF;
+
+  -- Pass 1: lines that carry the id of one of this entry's lines.
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+    IF COALESCE(v_line ->> 'id', '') ~ '^[0-9]+$' THEN
+      SELECT id INTO v_id FROM acct_journal_lines
+       WHERE id = (v_line ->> 'id')::int AND journal_entry_id = p_je_id
+         AND NOT (id = ANY (v_used));
+      IF v_id IS NOT NULL THEN
+        v_map := v_map || jsonb_build_object(v_ord::text, v_id);
+        v_used := v_used || v_id;
+      END IF;
+      v_id := NULL;
+    END IF;
+  END LOOP;
+  -- Pass 2: lines sent without an id -- same account, debit and credit.
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+    IF NOT (v_map ? v_ord::text) AND COALESCE(v_line ->> 'id', '') = '' THEN
+      SELECT id INTO v_id FROM acct_journal_lines
+       WHERE journal_entry_id = p_je_id AND NOT (id = ANY (v_used))
+         AND account_id = (v_line ->> 'account_id')::uuid
+         AND COALESCE(debit, 0)  = COALESCE((v_line ->> 'debit')::numeric, 0)
+         AND COALESCE(credit, 0) = COALESCE((v_line ->> 'credit')::numeric, 0)
+       ORDER BY id LIMIT 1;
+      IF v_id IS NOT NULL THEN
+        v_map := v_map || jsonb_build_object(v_ord::text, v_id);
+        v_used := v_used || v_id;
+      END IF;
+      v_id := NULL;
+    END IF;
+  END LOOP;
+
+  -- Old lines nobody kept.
+  FOR v_old IN SELECT * FROM acct_journal_lines
+                WHERE journal_entry_id = p_je_id AND NOT (id = ANY (v_used)) LOOP
+    IF COALESCE(v_old.reconciled, false) THEN
+      RAISE EXCEPTION 'A reconciled line (% %) cannot be removed. Unreconcile it first.',
+        COALESCE(NULLIF(v_old.account_name, ''), 'account'), CASE WHEN COALESCE(v_old.debit, 0) <> 0 THEN 'DR ' || v_old.debit ELSE 'CR ' || v_old.credit END
+        USING HINT = 'reconciled_line';
+    END IF;
+    IF v_old.bank_feed_transaction_id IS NOT NULL THEN
+      RAISE EXCEPTION 'The % line is linked to a bank transaction and cannot be removed here. Undo that transaction in Banking instead.',
+        COALESCE(NULLIF(v_old.account_name, ''), 'bank-linked')
+        USING HINT = 'bank_line';
+    END IF;
+  END LOOP;
+
+  UPDATE acct_journal_entries
+     SET date = v_new_date,
+         description = COALESCE(p_header ->> 'description', v_je.description),
+         reference = v_new_ref,
+         property = COALESCE(p_header ->> 'property', v_je.property, ''),
+         status = v_status
+   WHERE id = p_je_id AND company_id = p_company_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'update_journal_entry: could not update the entry header';
+  END IF;
+
+  DELETE FROM acct_journal_lines
+   WHERE journal_entry_id = p_je_id AND company_id = p_company_id AND NOT (id = ANY (v_used));
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+    IF v_map ? v_ord::text THEN
+      SELECT * INTO v_old FROM acct_journal_lines WHERE id = (v_map ->> v_ord::text)::int;
+      IF COALESCE(v_old.reconciled, false) AND (
+           v_old.account_id IS DISTINCT FROM (v_line ->> 'account_id')::uuid
+        OR COALESCE(v_old.debit, 0)  <> COALESCE((v_line ->> 'debit')::numeric, 0)
+        OR COALESCE(v_old.credit, 0) <> COALESCE((v_line ->> 'credit')::numeric, 0)) THEN
+        RAISE EXCEPTION 'A reconciled line (% %) cannot change account or amount. Unreconcile it first.',
+          COALESCE(NULLIF(v_old.account_name, ''), 'account'), CASE WHEN COALESCE(v_old.debit, 0) <> 0 THEN 'DR ' || v_old.debit ELSE 'CR ' || v_old.credit END
+          USING HINT = 'reconciled_line';
+      END IF;
+      -- Stamps (bank_feed_transaction_id, reconciled, reconciled_date) are
+      -- left exactly as they are.
+      UPDATE acct_journal_lines
+         SET account_id   = (v_line ->> 'account_id')::uuid,
+             account_name = COALESCE(v_line ->> 'account_name', ''),
+             debit        = COALESCE((v_line ->> 'debit')::numeric, 0),
+             credit       = COALESCE((v_line ->> 'credit')::numeric, 0),
+             class_id     = NULLIF(v_line ->> 'class_id', ''),
+             memo         = COALESCE(v_line ->> 'memo', ''),
+             entity_type  = NULLIF(v_line ->> 'entity_type', ''),
+             entity_id    = NULLIF(v_line ->> 'entity_id', ''),
+             entity_name  = NULLIF(v_line ->> 'entity_name', '')
+       WHERE id = v_old.id AND company_id = p_company_id;
+      GET DIAGNOSTICS v_n = ROW_COUNT;
+      IF v_n <> 1 THEN
+        RAISE EXCEPTION 'update_journal_entry: could not update line %', v_old.id;
+      END IF;
+      v_kept := v_kept + 1;
+    ELSE
+      INSERT INTO acct_journal_lines
+        (journal_entry_id, company_id, account_id, account_name, debit, credit, class_id, memo,
+         entity_type, entity_id, entity_name)
+      VALUES
+        (p_je_id, p_company_id, (v_line ->> 'account_id')::uuid, COALESCE(v_line ->> 'account_name', ''),
+         COALESCE((v_line ->> 'debit')::numeric, 0), COALESCE((v_line ->> 'credit')::numeric, 0),
+         NULLIF(v_line ->> 'class_id', ''), COALESCE(v_line ->> 'memo', ''),
+         NULLIF(v_line ->> 'entity_type', ''), NULLIF(v_line ->> 'entity_id', ''),
+         NULLIF(v_line ->> 'entity_name', ''));
+      v_inserted := v_inserted + 1;
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object('outcome', 'updated', 'je_id', p_je_id,
+                            'kept', v_kept, 'inserted', v_inserted, 'deleted', v_deleted);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb) TO authenticated, service_role;

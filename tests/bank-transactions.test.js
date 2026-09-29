@@ -495,6 +495,38 @@ async function testAtomicBankPosting() {
   assert(balErr && balErr.hint === 'unbalanced', 'post_bank_transaction refuses a 5-cent-short split before touching any row');
 }
 
+// ───────────────────────────────────────────
+// UNDO / MATCH / EXCLUDE ARE ATOMIC TOO (audit theme G)
+// Undo used to void txn.journal_entry_id even when the txn was MATCHED to
+// an entry created elsewhere (a tenant payment), and carried on after a
+// failed void. Match and exclude were chains of unchecked writes. Full
+// coverage (incl. live TEST checks) is in undo-void-edit.test.mjs.
+// ───────────────────────────────────────────
+const UNDO_SQL = fs.readFileSync(path.resolve(__dirname, '../supabase/migrations/20260928110000_bank_undo_match_edit_atomic.sql'), 'utf8');
+async function testUndoMatchAtomic() {
+  console.log('\n↩️  UNDO / MATCH / EXCLUDE (atomic)');
+  const rpcFor = { undoTransaction: 'undo_bank_transaction', confirmMatch: 'match_bank_transaction', excludeTransaction: 'exclude_bank_transaction' };
+  for (const [fn, rpc] of Object.entries(rpcFor)) {
+    const body = fnBody(fn);
+    assert(body.includes(`supabase.rpc("${rpc}"`), `${fn} goes through ${rpc}`);
+    for (const table of ['acct_journal_entries', 'bank_posting_decision', 'bank_feed_transaction_link', 'bank_feed_transaction']) {
+      assert(!new RegExp(`from\\("${table}"\\)\\.(insert|update|delete)`).test(body), `${fn} does not write ${table} directly`);
+    }
+  }
+  assert(/IF v_mode = 'voided' THEN/.test(UNDO_SQL) && /v_mode := 'unmatched'/.test(UNDO_SQL), 'undo_bank_transaction voids only bank-created entries; matched ones are unlinked');
+  assert(fnBody('bulkAmend').includes('matched to an existing entry'), 'bulk re-categorise skips matched transactions');
+  for (const rpc of ['undo_bank_transaction', 'match_bank_transaction', 'exclude_bank_transaction', 'update_journal_entry']) {
+    const { error } = rpc === 'update_journal_entry'
+      ? await supabase.rpc(rpc, { p_company_id: '__none__', p_je_id: '__none__', p_header: {}, p_lines: [{ account_id: '00000000-0000-0000-0000-000000000000', debit: 1 }, { account_id: '00000000-0000-0000-0000-000000000000', credit: 1 }] })
+      : await supabase.rpc(rpc, rpc === 'undo_bank_transaction'
+          ? { p_company_id: '__none__', p_txn_id: '00000000-0000-0000-0000-000000000000' }
+          : rpc === 'match_bank_transaction'
+            ? { p_company_id: '__none__', p_txn_id: '00000000-0000-0000-0000-000000000000', p_je_id: '00000000-0000-0000-0000-000000000000' }
+            : { p_company_id: '__none__', p_txn_id: '00000000-0000-0000-0000-000000000000', p_reason: 'x' });
+    assert(error && error.hint === 'not_found', `${rpc} deployed on TEST; refuses an unknown row`);
+  }
+}
+
 // ═══════════════════════════════════════════
 // RUN ALL TESTS
 // ═══════════════════════════════════════════
@@ -520,6 +552,7 @@ async function main() {
   testExcelExport();
   testLedgerNavigation();
   await testAtomicBankPosting();
+  await testUndoMatchAtomic();
 
   console.log('\n==========================================');
   console.log(`✅ Passed: ${pass}`);
