@@ -57,6 +57,17 @@ const NAV_CHILD_IDS = new Set(ALL_NAV.flatMap(n => (n.children || []).map(c => c
 
 
 // ============ REUSABLE ARCHIVED ITEMS COMPONENT ============
+// A work order with accounting entries or vendor invoices cannot be
+// permanently deleted (DB trigger + FK RESTRICT): deleting it used to unlink
+// its invoice, so paying the invoice expensed the repair a second time.
+function bookedDeleteMessage(table, error) {
+  if (table !== "work_orders" || !error) return null;
+  if (error.hint === "work_order_booked" || error.code === "23503") {
+    return "This work order has accounting entries or vendor invoices, so it can't be permanently deleted. It stays archived; its history is kept for the books.";
+  }
+  return null;
+}
+
 function ArchivedItems({ tableName, label, fields, companyId, addNotification, onRestore, showConfirm, userProfile, userRole }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +93,8 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   async function permanentDelete(item) {
   if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
+  const booked = bookedDeleteMessage(tableName, error);
+  if (booked) { addNotification("⚠️", booked); return; }
   if (error) { pmError("PM-8006", { raw: error, context: "permanently deleting " + label.toLowerCase() }); return; }
   logAudit("delete", tableName, "Permanently deleted " + label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", "Deleted " + label);
@@ -602,6 +615,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   async function permanentDelete(item) {
   if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
+  const booked = bookedDeleteMessage(item._table, error);
+  if (booked) { showToast(booked, "error"); return; }
   if (error) { pmError("PM-8006", { raw: error, context: "permanent delete" }); return; }
   logAudit("delete", item._table, "Permanently deleted " + item._label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", `Permanently deleted ${item._label}`);

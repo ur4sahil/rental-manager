@@ -131,7 +131,63 @@ function resolveDueDates(schedule, startingYear) {
   return out;
 }
 
-async function rollforwardNextYear(supabase, todayIso) {
+// Escrow: MIRRORS src/utils/expenseRules.js -> escrowCoversTaxes /
+// taxesEscrowed; tests/no-double-expense.test.mjs asserts the two agree.
+// Taxes are escrowed when the tax record says the lender pays them, or an
+// active loan on the property includes escrow that covers taxes.
+// Read CONSERVATIVELY: unclear or negated text counts as NOT escrowed.
+const escNorm = (v) => String(v ?? "").toLowerCase().replace(/[_\-./]+/g, " ").replace(/\s+/g, " ").trim();
+const ESC_TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes"]);
+const escIsTaxToken = (v) => ESC_TAX_TOKENS.has(escNorm(v));
+const ESC_TRUTHY = new Set(["true", "yes", "y", "1", "included", "x"]);
+const escIsTruthy = (v) => v === true || v === 1 || ESC_TRUTHY.has(escNorm(v));
+const ESC_NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*)\b/;
+function escTextCoversTaxes(text) {
+  const t = escNorm(text);
+  if (!t || ESC_NEGATION.test(t)) return false;
+  if (!/\b(taxes|tax|property tax(es)?|real estate tax(es)?)\b/.test(t)) return false;
+  const only = t.match(/^(.*?)\bonly\b/);
+  if (only && !/\btax(es)?\b/.test(only[1])) return false;
+  return true;
+}
+function escrowCoversTaxes(covers) {
+  if (covers == null || covers === false) return false;
+  if (typeof covers === "string") return escTextCoversTaxes(covers);
+  if (Array.isArray(covers)) return covers.some(c => escIsTaxToken(c));
+  if (typeof covers === "object") return Object.entries(covers).some(([k, v]) => escIsTaxToken(k) && escIsTruthy(v));
+  return false;
+}
+function loanEscrowsTaxes(l) {
+  return !!l && !l.archived_at && l.status !== "paid_off" && l.escrow_included === true && escrowCoversTaxes(l.escrow_covers);
+}
+
+// Every escrowed property, keyed "company_id|address". Returns null when a
+// read fails: the caller then generates and reminds NOTHING this run rather
+// than bill something the lender has already paid.
+async function loadEscrowedProperties(supabase) {
+  const out = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("property_taxes")
+      .select("company_id, property, escrow_paid_by_lender")
+      .is("archived_at", null).eq("escrow_paid_by_lender", true)
+      .order("id").range(from, from + 999);
+    if (error) return null;
+    (data || []).forEach(t => out.add(t.company_id + "|" + t.property));
+    if (!data || data.length < 1000) break;
+  }
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("property_loans")
+      .select("company_id, property, escrow_included, escrow_covers, status, archived_at")
+      .is("archived_at", null).eq("escrow_included", true)
+      .order("id").range(from, from + 999);
+    if (error) return null;
+    (data || []).forEach(l => { if (loanEscrowsTaxes(l)) out.add(l.company_id + "|" + l.property); });
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+async function rollforwardNextYear(supabase, todayIso, escrowedSet) {
   // For each property with a county + state, check if next year's bills
   // exist. If not AND we're within 60 days of next year's first
   // installment, generate them.
@@ -163,6 +219,7 @@ async function rollforwardNextYear(supabase, todayIso) {
     const { data: taxRows, error: taxErr } = await supabase
       .from("property_taxes")
       .select("property_id, escrow_paid_by_lender, annual_tax_amount, billing_frequency")
+      .is("archived_at", null)
       .range(from, from + 999);
     if (taxErr) break;
     (taxRows || []).forEach(t => { if (t.property_id) taxByProperty.set(t.property_id, t); });
@@ -184,7 +241,7 @@ async function rollforwardNextYear(supabase, todayIso) {
     }
 
     const taxRec = taxByProperty.get(p.id);
-    if (taxRec && taxRec.escrow_paid_by_lender) { escrowed++; continue; }
+    if ((taxRec && taxRec.escrow_paid_by_lender) || escrowedSet.has(p.company_id + "|" + p.address)) { escrowed++; continue; }
 
     // TWO years are considered, not just the next one.
     //
@@ -271,8 +328,15 @@ module.exports = async function handler(req, res) {
     const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
     const todayIso = new Date().toISOString().slice(0, 10);
 
+    // Escrowed properties get neither generated bills nor reminders.
+    const escrowedSet = await loadEscrowedProperties(supabase);
+    if (!escrowedSet) {
+      console.error("tax-bill-reminders: escrow lookup failed; nothing generated or reminded this run");
+      return res.status(500).json({ error: "Escrow lookup failed" });
+    }
+
     // ─── 1. Year-rollforward ────────────────────────────────────────────
-    const roll = await rollforwardNextYear(supabase, todayIso);
+    const roll = await rollforwardNextYear(supabase, todayIso, escrowedSet);
 
     // ─── 2. Bill-due reminders ─────────────────────────────────────────
     const lookbackIso = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
@@ -294,6 +358,7 @@ module.exports = async function handler(req, res) {
     let skippedAlreadySent = 0;
     let skippedOutOfWindow = 0;
     let skippedNoRecipients = 0;
+    let skippedEscrowed = 0;
     let errors = 0;
     // Pre-fetch members for every company that has a bill in one query
     // instead of N lookups in the loop. At 50 companies × 500 bills that's
@@ -315,6 +380,9 @@ module.exports = async function handler(req, res) {
     }
 
     for (const b of bills) {
+      // The lender pays escrowed taxes; reminding the owner to pay is a
+      // prompt to pay twice. Bills that already exist are left as they are.
+      if (escrowedSet.has(b.company_id + "|" + b.property)) { skippedEscrowed++; continue; }
       const d = daysBetween(todayIso, b.due_date);
       const bucket = chooseBucket(d);
       if (bucket === null) { skippedOutOfWindow++; continue; }
@@ -372,6 +440,7 @@ module.exports = async function handler(req, res) {
       skipped_already_sent: skippedAlreadySent,
       skipped_out_of_window: skippedOutOfWindow,
       skipped_no_recipients: skippedNoRecipients,
+      skipped_escrowed: skippedEscrowed,
       errors,
     });
   } catch (e) {
@@ -379,3 +448,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "Reminder scan failed" });
   }
 };
+
+module.exports._escrow = { escrowCoversTaxes, loanEscrowsTaxes, loadEscrowedProperties };

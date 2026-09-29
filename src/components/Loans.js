@@ -7,7 +7,6 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
-import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
 function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
@@ -166,35 +165,22 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   } finally { guardRelease("deleteLoan"); }
   }
 
+  // Record payment only TRACKS the loan (reduces the balance). It posts no
+  // journal entry: the books are cash basis, and the payment is booked when
+  // its bank transaction is categorized or matched in Banking. Posting here
+  // as well is how the same mortgage payment used to be expensed twice
+  // (owner decision, 2026-09-28; see utils/expenseRules.js).
   async function recordPayment(loan) {
   if (!guardSubmit("recordLoanPayment")) return;
   try {
-  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(loan.monthly_payment)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
-  const today = formatLocalDate(new Date());
-  const classId = await getPropertyClassId(loan.property, companyId);
   const amt = safeNum(loan.monthly_payment);
   if (amt <= 0) { showToast("Monthly payment amount must be greater than zero.", "error"); return; }
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: today,
-  description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
-  // Date-qualified: idx_je_company_reference_unique made `LOAN-<id>`
-  // single-use, so a loan could only ever have ONE payment recorded.
-  // Every subsequent month 409'd and the balance was never updated.
-  reference: `LOAN-${loan.id}-${today}`,
-  property: loan.property,
-  lines: [
-  { account_id: "5600", account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
-  // Update current balance only if JE succeeded
+  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(amt)} for ${loan.lender_name}?\n\nThis reduces the loan balance only. No accounting entry is posted — the payment is booked when its bank transaction is categorized in Banking.`, confirmText: "Record Payment" })) return;
   const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
   const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
   if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); return; }
-  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}`);
-  logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
+  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} (balance only)`);
+  logAudit("update", "loans", `Loan payment recorded (balance only, no journal entry): ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}; balance ${formatCurrency(safeNum(loan.current_balance))} -> ${formatCurrency(newBalance)}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("recordLoanPayment"); }
   }

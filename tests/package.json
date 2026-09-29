@@ -97,6 +97,7 @@
     "test:depositsonce": "node deposits-owed-once.test.mjs",
     "test:rentrules": "node recurring-rent-rules.test.mjs",
     "test:latefees": "node late-fees-unified.test.mjs",
+    "test:nodouble": "node no-double-expense.test.mjs",
     "test:payauto": "node payments-autopay-stripe.test.mjs",
     "test:loginmissing": "node login-missing.test.mjs",
     "test:undovoid": "node undo-void-edit.test.mjs",

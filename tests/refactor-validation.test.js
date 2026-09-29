@@ -87,7 +87,13 @@ function testFileStructure() {
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
   // 27 on 2026-09-28: + loginMissing.js (import-free "login missing" to-do rules for
   // Tasks & Approvals, run directly in node by login-missing.test.mjs).
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 27, `src/utils/ has 8..27 files (found ${actualUtilFiles.length})`);
+  // 28 on 2026-09-28 (theme K, one expense booked once): + expenseRules.js
+  // (import-free WO/invoice, mortgage-month and escrow rules, tested directly
+  // and mirrored by the tax cron) and expensePosting.js (the ledger reads and
+  // postings WO completion, invoice payment, Record payment, the recurring
+  // engine and tax-bill generation now share -- no-double-expense.test.mjs).
+  // 29 on 2026-09-29: theme I (loginMissing.js) merged with theme K (two files).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 29, `src/utils/ has 8..29 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -253,10 +259,13 @@ function testFileStructure() {
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
   // 53350 on 2026-09-29: +~150 for "login missing" to-dos (src/utils/loginMissing.js incl.
   // portfolio loans) and the edit deep links on Utilities/Insurance/Loans/HOA.
-  // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f) — both branches' lines together.
   // 53450 on 2026-09-29: +~65 for theme-I round 2 (named-account utility save, half-login refusals,
   // allowedPages-filtered to-dos, unavailable-record toasts, account-first Fetched Bills).
-  assert(totalLines <= 53600, `Total src lines <= 53600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53500 on 2026-09-28 (theme K): +~210 for expenseRules.js / expensePosting.js and the
+  // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
+  // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
+  // 54200 on 2026-09-29: theme I round 3 merged with theme K (staging df90dcd) -- both branches' lines together.
+  assert(totalLines <= 54200, `Total src lines <= 54200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

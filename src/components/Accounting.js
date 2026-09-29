@@ -52,6 +52,7 @@ const REF_LABELS = [
   ["WOFF-", "Work Order Write-Off"],
   ["WO-", "Work Order"],
   ["VINV-", "Vendor Invoice"],
+  ["VPAY-", "Vendor Payment"],
   ["BANK-", "Bank Import"],
   ["XFER-", "Bank Transfer"],
   ["SPLIT-", "Bank Split"],
@@ -2750,17 +2751,32 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     return { summary, byVendor };
   }
 
+  // Unpaid bills come from the vendor invoices themselves, AS OF the report
+  // date: dated on or before it and not paid by then (never paid, or paid
+  // later -- an invoice dated Aug 1 and paid Sep 15 is unpaid "as of Aug 31").
+  // Pending, approved and disputed all count; withdrawn (archived) invoices do
+  // not. This used to scan journal entries whose reference began "VINV-", but
+  // those were the PAYMENTS of invoices, so the report listed paid bills.
+  const [openVendorBills, setOpenVendorBills] = useState([]);
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    // Only a plain YYYY-MM-DD goes into the or() filter grammar.
+    const asOf = /^\d{4}-\d{2}-\d{2}$/.test(asOfDate || "") ? asOfDate : acctToday();
+    supabase.from("vendor_invoices").select("id, vendor_name, description, invoice_number, invoice_date, amount, status, paid_date")
+      .eq("company_id", companyId).is("archived_at", null).lte("invoice_date", asOf)
+      .or(`status.neq.paid,paid_date.gt.${asOf}`)
+      .order("invoice_date", { ascending: true }).limit(1000)
+      .then(({ data, error }) => {
+        if (error) { pmError("PM-8006", { raw: error, context: "load unpaid vendor bills", silent: true }); return; }
+        if (!cancelled) setOpenVendorBills(data || []);
+      });
+    return () => { cancelled = true; };
+  }, [companyId, asOfDate]);
   function getUnpaidBills() {
-    // Derive from vendor_invoices if available, otherwise from AP JE lines
-    const bills = [];
-    journalEntries.filter(je => je.status === "posted" && ((je.reference||"").startsWith("VINV-") || (je.description||"").toLowerCase().includes("invoice"))).forEach(je => {
-      const total = (je.lines||[]).reduce((s,l) => s + safeNum(l.credit), 0);
-      if (total > 0) {
-        const vendor = je.description?.split(" — ")[0]?.trim() || "Unknown";
-        bills.push({ vendor, date: je.date, description: je.description, amount: total, reference: je.reference, jeNumber: je.number });
-      }
-    });
-    return bills.sort((a,b) => a.date.localeCompare(b.date));
+    return openVendorBills
+      .map(b => ({ vendor: b.vendor_name || "Unknown", date: b.invoice_date || "", description: (b.description || "") + (b.status === "disputed" ? " (disputed)" : ""), amount: safeNum(b.amount), reference: b.invoice_number || "", jeNumber: b.invoice_number || "" }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   function getVendorBalanceSummary(asOfDate) {
