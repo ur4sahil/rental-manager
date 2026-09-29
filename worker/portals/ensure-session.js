@@ -231,7 +231,10 @@ const { readCodeFromMail } = require("./mail-code");
 
 (async () => {
   const portal = (process.argv[2] || "").toLowerCase();
-  const headed = process.argv.includes("--headed");
+  // Visible Chrome: --headed, or HOUSY_HEADED=1 (set by the residential
+  // agent's run-utilities.sh -- the Sheeba Mac exists to sign in with a real,
+  // visible browser from a home IP, which reCAPTCHA scores like a person).
+  const headed = process.argv.includes("--headed") || process.env.HOUSY_HEADED === "1";
   const book = PLAYBOOKS[portal];
   if (!book) die(`usage: ensure-session.js <${Object.keys(PLAYBOOKS).join("|")}> [--headed]`);
 
@@ -291,11 +294,27 @@ const { readCodeFromMail } = require("./mail-code");
 
   // slowMo, because this is a real form being filled by what should look
   // like a person using it, not a script racing the page.
-  const browser = await launchBrowser(chromium, { headless: !headed, slowMo: 120 });
+  //
+  // A playbook with persistentProfile signs in from ONE saved Chrome profile
+  // per portal (SESSION_DIR/profiles/<portal>), reused every day, so it carries
+  // its own cookies and history like a regular person's browser instead of a
+  // blank one each time -- a blank profile is what reCAPTCHA v3 scores lowest.
+  // The resulting session is still exported to <portal>.json for the sweep.
+  const ctxOpts = { viewport: { width: 1280, height: 900 }, userAgent: DESKTOP_UA,
+    ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}) };
+  let browser = null, ctx;
+  if (book.persistentProfile) {
+    const profileDir = path.join(SESSION_DIR, "profiles", portal);
+    fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 });
+    const popts = { headless: !headed, slowMo: 120, ...ctxOpts };
+    try { ctx = await chromium.launchPersistentContext(profileDir, { channel: "chrome", ...popts }); }
+    catch { ctx = await chromium.launchPersistentContext(profileDir, popts); }
+  } else {
+    browser = await launchBrowser(chromium, { headless: !headed, slowMo: 120 });
+  }
   try {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: DESKTOP_UA,
-      ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}) });
-    const page = await ctx.newPage();
+    if (!ctx) ctx = await browser.newContext(ctxOpts);
+    const page = ctx.pages()[0] || await ctx.newPage();
     await page.goto(book.entry, { waitUntil: "domcontentloaded", timeout: 60000 });
     // Let the page SETTLE before typing. WSSC's login is JSF/PrimeFaces: the
     // submit handler is wired up by script that runs after domcontentloaded, so
@@ -369,6 +388,15 @@ const { readCodeFromMail } = require("./mail-code");
       : submitSig
         ? page.getByRole("button", { name: submitSig.name }).first()
         : page.getByRole("button", { name: /log ?in|sign ?in/i }).first();
+    // "Remember Me" (Washington Gas: #rmbrme) keeps the session alive for
+    // weeks instead of a day, so sign-in -- and its robot check -- is rare.
+    if (book.rememberMe) {
+      const rm = page.locator(book.rememberMe).first();
+      if (await rm.isVisible({ timeout: 3000 }).catch(() => false) && !(await rm.isChecked().catch(() => true))) {
+        await humanClick(rm).catch(() => {});
+        await page.waitForTimeout(300 + Math.random() * 300);
+      }
+    }
     await humanClick(submit);
     await page.waitForTimeout(2500);
     await snap("after-submit");
@@ -468,6 +496,7 @@ const { readCodeFromMail } = require("./mail-code");
     fs.writeFileSync(sessionFile, JSON.stringify(await ctx.storageState()), { mode: 0o600 });
     console.log(JSON.stringify({ outcome: "ok", session: "created", portal, file: sessionFile }, null, 2));
   } finally {
-    await browser.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
+    else await ctx?.close().catch(() => {});
   }
 })().catch(e => die(String(e?.message || e)));

@@ -219,6 +219,11 @@ const PLAYBOOKS = {
     entry: "https://my.washingtongas.com/portal/",
     // The login inputs carry no accessible name, so target them by id.
     loginFields: { user: "#txtLogin", pass: "#txtpwd", submit: "#btnlogin" },
+    // Tick "Remember Me" and sign in from one saved Chrome profile, so the
+    // session lasts and reCAPTCHA v3 sees a regular browser (2026-09-29: a
+    // blank headless profile with Remember Me off was silently refused).
+    rememberMe: "#rmbrme",
+    persistentProfile: true,
     signedOutSignals: ["#txtLogin", "#btnlogin"],
     amount: [
       { role: "heading", name: /amount due|current charges|balance/i },
