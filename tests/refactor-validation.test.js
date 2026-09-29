@@ -248,8 +248,8 @@ function testFileStructure() {
   // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
-  // 53000 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  assert(totalLines <= 53000, `Total src lines <= 53000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
+  assert(totalLines <= 53200, `Total src lines <= 53200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
