@@ -25,6 +25,10 @@ const mig = fs.readFileSync(path.join(root, MIG), "utf8");
 // a tidy-scale percent fee) by the parity migration; it is the live definition.
 const MIG_BATCH = "supabase/migrations/20260928080000_late_fee_parity.sql";
 const migBatch = fs.readFileSync(path.join(root, MIG_BATCH), "utf8");
+// _late_fee_tenant_ar was re-created with a non-truncating lpad (codes past
+// 1100-999); that migration holds the live definition.
+const MIG_AR = "supabase/migrations/20260928160000_bank_undo_qa_fixes.sql";
+const migAr = fs.readFileSync(path.join(root, MIG_AR), "utf8");
 
 let pass = 0, fail = 0;
 function assert(name, cond, detail) {
@@ -148,19 +152,26 @@ const latest = (fn) => {
   return found;
 };
 assert("the parity migration is the latest definition of batch_post_late_fees", latest("batch_post_late_fees") === path.basename(MIG_BATCH), latest("batch_post_late_fees"));
-assert("…and 050000 is still the latest late_fee_already_posted / _late_fee_tenant_ar",
-  latest("late_fee_already_posted") === path.basename(MIG) && latest("_late_fee_tenant_ar") === path.basename(MIG));
-const sqlFn = (name) => {
-  const i = mig.indexOf("CREATE OR REPLACE FUNCTION public." + name + "(");
-  return i < 0 ? "" : mig.slice(i, mig.indexOf("$function$;", i));
+assert("…050000 is still the latest late_fee_already_posted, 160000 the latest _late_fee_tenant_ar",
+  latest("late_fee_already_posted") === path.basename(MIG) && latest("_late_fee_tenant_ar") === path.basename(MIG_AR), latest("_late_fee_tenant_ar"));
+const sqlFn = (name, text = mig) => {
+  const i = text.indexOf("CREATE OR REPLACE FUNCTION public." + name + "(");
+  return i < 0 ? "" : text.slice(i, text.indexOf("$function$;", i));
 };
 const batch = (() => {
   const i = migBatch.indexOf("CREATE OR REPLACE FUNCTION public.batch_post_late_fees(");
   return i < 0 ? "" : migBatch.slice(i, migBatch.indexOf("$function$;", i));
 })();
 const dupSql = sqlFn("late_fee_already_posted");
-const arSql = sqlFn("_late_fee_tenant_ar");
+const arSql = sqlFn("_late_fee_tenant_ar", migAr);
 const code = (s) => s.split("\n").map(l => l.replace(/--.*$/, "")).join("\n");  // strip comments
+{
+  // 160000 changed only the lpad width: everything else is 050000's body.
+  const norm = (s) => code(s).replace(/lpad\(v_seq::text, .*?, '0'\)/, "LPAD").replace(/\s+/g, " ").trim();
+  assert("160000's _late_fee_tenant_ar is 050000's body except the lpad width",
+    norm(arSql) === norm(sqlFn("_late_fee_tenant_ar")) && /REVOKE ALL ON FUNCTION public\._late_fee_tenant_ar\(text, bigint, text, text\) FROM PUBLIC, anon, authenticated;/.test(migAr)
+    && /GRANT EXECUTE ON FUNCTION public\._late_fee_tenant_ar\(text, bigint, text, text\) TO service_role;/.test(migAr));
+}
 assert("uses next_je_number", /next_je_number\(p_company_id\)/.test(batch));
 assert("does not use next_journal_number", !/next_journal_number/.test(code(batch)));
 assert("retries only a JE-number collision", /GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME/.test(batch) && /v_constraint <> 'unique_je_number_per_company' THEN RAISE/.test(batch));
@@ -192,8 +203,8 @@ assert("JS income constants match SQL", R.LATE_FEE_INCOME_CODE === "4010" && R.L
 console.log("\n🗄️  TENANT AR CREATION MIRRORS getOrCreateTenantAR");
 assert("looks up by tenant_id first (Asset)", /type = 'Asset' AND tenant_id = p_tenant_id/.test(arSql));
 assert("legacy 'AR - <name>' adoption only when unique and unlinked", /name = 'AR - ' \|\| p_tenant_name/.test(arSql) && /tenant_id IS NULL/.test(arSql));
-assert("creates 1100-NNN (3-digit pad) named 'AR - <name> (<street>)' under 1100",
-  /'1100-' \|\| lpad\(v_seq::text, 3, '0'\)/.test(arSql) && /split_part\(coalesce\(p_property, ''\), ',', 1\)/.test(arSql) && /parent_id, tenant_id/.test(arSql));
+assert("creates 1100-NNN (at least 3 digits, never truncated past 999 -- like padStart) named 'AR - <name> (<street>)' under 1100",
+  /'1100-' \|\| lpad\(v_seq::text, greatest\(3, length\(v_seq::text\)\), '0'\)/.test(arSql) && !/lpad\(v_seq::text, 3, '0'\)/.test(code(arSql)) && /split_part\(coalesce\(p_property, ''\), ',', 1\)/.test(arSql) && /parent_id, tenant_id/.test(arSql));
 assert("old_text_id = company-code, as the app writes it", /p_company_id \|\| '-' \|\| v_code/.test(arSql));
 const acct = src("utils/accounting.js");
 assert("…and the app still names them that way", /"AR - " \+ tenantName \+ " \(" \+ shortProp \+ "\)"/.test(acct) && /padStart\(3, "0"\)/.test(acct) && /companyId \+ "-" \+ newCode/.test(acct));
@@ -479,6 +490,18 @@ try {
     const { data: drLine } = await sb.from("acct_journal_lines").select("account_id, debit").eq("journal_entry_id", onBooks?.[0]?.id).gt("debit", 0);
     assert("…debited to the tenant's own AR", drLine?.[0]?.account_id === dAr.id);
     assert("duplicate reads as 'already on the books'", /already on the books/.test(F.lateFeeFailureReason({ status: "duplicate" })));
+
+    // Codes past 1100-999: lpad('1009', 3) used to cut it to '1100-100',
+    // which collided, so this tenant (and every later one) got no account.
+    await acct("1100-1008", "AR - LFT Seq (existing)");
+    const e = await ten("LFT Seq");
+    const r1009 = await sb.rpc("_late_fee_tenant_ar", { p_company_id: CO, p_tenant_id: e.id, p_tenant_name: e.name, p_property: e.property });
+    const a1009 = r1009.data ? ok(await sb.from("acct_accounts").select("code, tenant_id").eq("id", r1009.data).single(), "acct 1009") : null;
+    assert("seq >= 1000: the next tenant AR is 1100-1009, linked to the tenant", a1009?.code === "1100-1009" && a1009?.tenant_id === e.id, r1009.error?.message || JSON.stringify(a1009));
+    const e2 = await ten("LFT Seq Two");
+    const r1010 = await sb.rpc("_late_fee_tenant_ar", { p_company_id: CO, p_tenant_id: e2.id, p_tenant_name: e2.name, p_property: e2.property });
+    const a1010 = r1010.data ? ok(await sb.from("acct_accounts").select("code").eq("id", r1010.data).single(), "acct 1010") : null;
+    assert("…and the one after is 1100-1010 (not NULL)", a1010?.code === "1100-1010", r1010.error?.message || JSON.stringify(a1010));
   } catch (e) {
     assert("tenant AR / race checks ran", false, e.message);
   } finally {

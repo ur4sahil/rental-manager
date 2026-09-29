@@ -73,18 +73,28 @@ GRANT EXECUTE ON FUNCTION public.je_reference_is_system(text) TO authenticated, 
 -- ---------------------------------------------------------------------------
 -- undo_bank_transaction
 -- ---------------------------------------------------------------------------
--- Returns the transaction to For Review. Three shapes:
+-- Returns the transaction to For Review. Decided in this order:
 --   excluded               -> restore: decision undone, status reset
---   matched (link_role 'matched_to' / matched_target_*)
---                          -> UNLINK ONLY: delete the link, release this
---                             txn's stamp on the entry's lines, decision
---                             undone, status reset. The matched entry is
---                             someone else's record and is NEVER voided.
---   created by the bank flow (BANK-/XFER-/SPLIT- reference or a
---   'created_from' link)   -> void that entry, release its stamps,
---                             decision undone, status reset.
--- An entry the bank flow can't be shown to have created is unlinked, not
--- voided (outcome 'unlinked') -- when in doubt, leave the books alone.
+--   created by Banking     -> the entry's reference is EXACTLY
+--                             BANK-/XFER-/SPLIT- followed by THIS txn's id:
+--                             void it, release its stamps.
+--   matched                -> status 'matched', or a 'matched_to' link whose
+--                             entry IS the txn's journal_entry_id: UNLINK
+--                             ONLY. The matched entry is someone else's
+--                             record (a tenant payment, a bill) and is NEVER
+--                             voided.
+--   nothing live           -> no entry, or it is already voided: reset.
+--   anything else          -> 'unlinked': the entry is left posted -- when
+--                             in doubt, leave the books alone.
+-- "Created by Banking" is tested first and on the reference alone. A stale
+-- matched_to link (left behind when the matched entry was voided in
+-- Accounting) used to win over it, so Undo of a later BANK- posting
+-- returned 'unmatched' and left that posting on the books. A created_from
+-- link alone is not proof either: it follows a relink onto whatever entry
+-- carries the BANK- reference, and that reference used to be editable.
+-- In every case the txn ends up claiming nothing: all its matched_to links,
+-- its created_from links to voided entries, its stamps on the entries it
+-- pointed at, and every one of its still-'posted' decisions are released.
 CREATE OR REPLACE FUNCTION public.undo_bank_transaction(
   p_company_id text,
   p_txn_id     uuid
@@ -100,6 +110,7 @@ DECLARE
   v_je_id    text;
   v_mode     text;
   v_n        int;
+  v_linked   text[];
 BEGIN
   PERFORM public._bank_require_staff(p_company_id);
 
@@ -138,19 +149,17 @@ BEGIN
 
   IF v_txn.status = 'excluded' THEN
     v_mode := 'restored';
+  ELSIF v_je.id IS NOT NULL AND v_je.status <> 'voided'
+     AND v_je.reference IN ('BANK-' || p_txn_id::text, 'XFER-' || p_txn_id::text, 'SPLIT-' || p_txn_id::text) THEN
+    v_mode := 'voided';
   ELSIF v_txn.status = 'matched'
-     OR v_txn.matched_target_id IS NOT NULL
-     OR EXISTS (SELECT 1 FROM bank_feed_transaction_link
-                 WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
-                   AND link_role = 'matched_to') THEN
+     OR (v_je_id IS NOT NULL AND EXISTS (
+           SELECT 1 FROM bank_feed_transaction_link
+            WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+              AND link_role = 'matched_to' AND linked_object_id::text = v_je_id)) THEN
     v_mode := 'unmatched';
   ELSIF v_je.id IS NULL OR v_je.status = 'voided' THEN
     v_mode := 'reset';        -- nothing live on the books to undo
-  ELSIF v_je.reference ~ '^(BANK|XFER|SPLIT)-'
-     OR EXISTS (SELECT 1 FROM bank_feed_transaction_link
-                 WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
-                   AND link_role = 'created_from' AND linked_object_id::text = v_je.id) THEN
-    v_mode := 'voided';
   ELSE
     v_mode := 'unlinked';     -- points at an entry we can't prove we created
   END IF;
@@ -173,29 +182,42 @@ BEGIN
     END IF;
   END IF;
 
-  IF v_mode IN ('voided', 'unmatched', 'unlinked', 'reset') AND v_je_id IS NOT NULL THEN
-    -- Release only THIS transaction's claim on the entry's lines; any other
+  IF v_mode <> 'restored' THEN
+    -- Entries this txn points at: its journal_entry_id plus anything a
+    -- matched_to link names (a stale link included).
+    SELECT array_agg(DISTINCT x) INTO v_linked FROM (
+      SELECT v_je_id AS x WHERE v_je_id IS NOT NULL
+      UNION
+      SELECT linked_object_id::text FROM bank_feed_transaction_link
+       WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
+         AND link_role = 'matched_to' AND linked_object_type = 'journal_entry') s;
+
+    -- Release only THIS transaction's claim on those lines; any other
     -- stamp on the same entry belongs to someone else.
-    UPDATE acct_journal_lines SET bank_feed_transaction_id = NULL
-     WHERE journal_entry_id = v_je_id AND company_id = p_company_id
-       AND bank_feed_transaction_id = p_txn_id;
+    IF v_linked IS NOT NULL THEN
+      UPDATE acct_journal_lines SET bank_feed_transaction_id = NULL
+       WHERE journal_entry_id = ANY (v_linked) AND company_id = p_company_id
+         AND bank_feed_transaction_id = p_txn_id;
+    END IF;
+
+    -- Every matched_to link goes (the txn is For Review again), and so does
+    -- a created_from link to an entry that is now voided (or gone). A
+    -- created_from link to a still-posted entry is kept.
+    DELETE FROM bank_feed_transaction_link k
+     WHERE k.bank_feed_transaction_id = p_txn_id AND k.company_id = p_company_id
+       AND (k.link_role = 'matched_to'
+            OR (k.link_role = 'created_from' AND k.linked_object_type = 'journal_entry'
+                AND NOT EXISTS (SELECT 1 FROM acct_journal_entries e
+                                 WHERE e.id = k.linked_object_id::text AND e.status <> 'voided')));
   END IF;
 
-  IF v_mode IN ('unmatched', 'unlinked') THEN
-    DELETE FROM bank_feed_transaction_link
-     WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
-       AND link_role = 'matched_to';
-  END IF;
-
-  IF v_txn.posting_decision_id IS NOT NULL THEN
-    UPDATE bank_posting_decision SET status = 'undone', updated_at = now()
-     WHERE id = v_txn.posting_decision_id AND company_id = p_company_id;
-  ELSE
-    -- Older rows never recorded the decision id (exclude and match did not).
-    UPDATE bank_posting_decision SET status = 'undone', updated_at = now()
-     WHERE bank_feed_transaction_id = p_txn_id AND company_id = p_company_id
-       AND status = 'posted';
-  END IF;
+  -- Nothing about this txn is decided any more: its recorded decision and
+  -- any other decision still marked 'posted' (older rows never recorded the
+  -- id; a match left over from an entry voided in Accounting) are undone.
+  UPDATE bank_posting_decision SET status = 'undone', updated_at = now()
+   WHERE company_id = p_company_id AND bank_feed_transaction_id = p_txn_id
+     AND (id = v_txn.posting_decision_id OR status = 'posted')
+     AND status IS DISTINCT FROM 'undone';
 
   UPDATE bank_feed_transaction
      SET status = 'for_review', accepted_at = NULL, accepted_by = NULL,
@@ -393,18 +415,34 @@ GRANT EXECUTE ON FUNCTION public.match_bank_transaction(text, uuid, text) TO aut
 -- reconciled and reconciled_date; unmatched old lines are deleted; new
 -- lines are inserted clean.
 --
+-- p_expected_line_ids is the set of line ids the editor loaded. It must be
+-- exactly the entry's current lines: otherwise the save would delete a
+-- line the user never saw (an editor that didn't load every line, or an
+-- entry someone changed since it was opened). Required.
+--
 -- Refused (nothing written):
---   * DR <> CR (0.005 tolerance, as post_bank_transaction), fewer than 2 lines
+--   * the editor's lines are not the entry's current lines (stale_lines)
+--   * DR <> CR to the cent (each amount rounded to 2 decimals first), a
+--     negative amount, an entry whose lines are all zero, fewer than 2 lines
 --   * a voided entry, or a status other than draft/posted
---   * changing a system reference (it is an idempotency key)
+--   * changing a system reference (it is an idempotency key), or changing
+--     an ordinary reference INTO a system one (BANK-<txn id> would make
+--     post_bank_transaction relink to this entry and Undo void it)
 --   * changing the account or amount of a RECONCILED line, removing one,
 --     or moving the date of an entry that has one -- unreconcile first
---   * removing a line stamped with a bank transaction -- undo it in Banking
+--   * changing the account or amount of a line stamped with a bank
+--     transaction, or removing it -- undo that transaction in Banking
+--   * posted -> draft while any line is stamped or reconciled
+--
+-- The 4-argument version (no expected ids) is dropped: it was never on
+-- production, and leaving it would let a caller skip the line check.
+DROP FUNCTION IF EXISTS public.update_journal_entry(text, text, jsonb, jsonb);
 CREATE OR REPLACE FUNCTION public.update_journal_entry(
-  p_company_id text,
-  p_je_id      text,
-  p_header     jsonb,
-  p_lines      jsonb
+  p_company_id        text,
+  p_je_id             text,
+  p_header            jsonb,
+  p_lines             jsonb,
+  p_expected_line_ids int[] DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -413,6 +451,7 @@ AS $function$
 DECLARE
   v_je        acct_journal_entries%ROWTYPE;
   v_old       acct_journal_lines%ROWTYPE;
+  v_lines     jsonb;                  -- p_lines with debit/credit rounded to cents
   v_line      jsonb;
   v_ord       bigint;
   v_id        int;
@@ -430,17 +469,31 @@ DECLARE
 BEGIN
   PERFORM public._bank_require_staff(p_company_id);
 
-  IF jsonb_typeof(p_lines) <> 'array' OR jsonb_array_length(p_lines) < 2 THEN
+  IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' OR jsonb_array_length(p_lines) < 2 THEN
     RAISE EXCEPTION 'A journal entry needs at least 2 lines.' USING HINT = 'too_few_lines';
   END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_lines) l WHERE COALESCE(l ->> 'account_id', '') = '') THEN
     RAISE EXCEPTION 'Every line needs an account.' USING HINT = 'no_account';
   END IF;
-  SELECT COALESCE(sum(COALESCE((l ->> 'debit')::numeric, 0)), 0), COALESCE(sum(COALESCE((l ->> 'credit')::numeric, 0)), 0)
-    INTO v_dr, v_cr FROM jsonb_array_elements(p_lines) l;
-  IF abs(v_dr - v_cr) > 0.005 THEN
+  -- Money is cents: round each amount once, here, and use only the rounded
+  -- values from now on (the balance check and the rows written agree).
+  SELECT jsonb_agg(l || jsonb_build_object(
+           'debit',  round(COALESCE(NULLIF(l ->> 'debit', '')::numeric, 0), 2),
+           'credit', round(COALESCE(NULLIF(l ->> 'credit', '')::numeric, 0), 2)) ORDER BY o)
+    INTO v_lines FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l, o);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
+              WHERE (l ->> 'debit')::numeric < 0 OR (l ->> 'credit')::numeric < 0) THEN
+    RAISE EXCEPTION 'Amounts cannot be negative. Put the amount on the other side instead.'
+      USING HINT = 'negative_amount';
+  END IF;
+  SELECT sum((l ->> 'debit')::numeric), sum((l ->> 'credit')::numeric)
+    INTO v_dr, v_cr FROM jsonb_array_elements(v_lines) l;
+  IF v_dr <> v_cr THEN
     RAISE EXCEPTION 'update_journal_entry: entry out of balance (DR % vs CR %)', v_dr, v_cr
       USING ERRCODE = 'P0001', HINT = 'unbalanced';
+  END IF;
+  IF v_dr = 0 THEN
+    RAISE EXCEPTION 'Every line of this entry is zero.' USING HINT = 'zero_entry';
   END IF;
 
   SELECT * INTO v_je FROM acct_journal_entries
@@ -453,6 +506,20 @@ BEGIN
     RAISE EXCEPTION 'A voided entry cannot be edited.' USING HINT = 'voided';
   END IF;
 
+  -- The editor must have loaded exactly the entry's current lines, and may
+  -- only send ids from that set.
+  IF p_expected_line_ids IS NULL
+     OR EXISTS (SELECT id FROM acct_journal_lines WHERE journal_entry_id = p_je_id
+                EXCEPT SELECT unnest(p_expected_line_ids))
+     OR EXISTS (SELECT unnest(p_expected_line_ids)
+                EXCEPT SELECT id FROM acct_journal_lines WHERE journal_entry_id = p_je_id)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
+                 WHERE COALESCE(l ->> 'id', '') <> ''
+                   AND (l ->> 'id' !~ '^[0-9]+$' OR NOT ((l ->> 'id')::int = ANY (p_expected_line_ids)))) THEN
+    RAISE EXCEPTION 'This entry has changed or didn''t fully load. Reload the page and edit it again.'
+      USING HINT = 'stale_lines';
+  END IF;
+
   v_new_date := COALESCE(NULLIF(p_header ->> 'date', '')::date, v_je.date);
   v_new_ref  := COALESCE(p_header ->> 'reference', v_je.reference, '');
   v_status   := COALESCE(NULLIF(p_header ->> 'status', ''), v_je.status);
@@ -463,14 +530,24 @@ BEGIN
     RAISE EXCEPTION 'The reference % links this entry to another record and cannot be changed.', v_je.reference
       USING HINT = 'system_reference';
   END IF;
+  IF v_new_ref IS DISTINCT FROM COALESCE(v_je.reference, '') AND public.je_reference_is_system(v_new_ref) THEN
+    RAISE EXCEPTION 'The reference % is reserved for entries the system creates. Choose another reference.', v_new_ref
+      USING HINT = 'system_reference';
+  END IF;
   IF v_new_date IS DISTINCT FROM v_je.date AND EXISTS (
        SELECT 1 FROM acct_journal_lines WHERE journal_entry_id = p_je_id AND COALESCE(reconciled, false)) THEN
     RAISE EXCEPTION 'This entry has reconciled lines, so its date cannot change. Unreconcile them first.'
       USING HINT = 'reconciled_line';
   END IF;
+  IF v_je.status = 'posted' AND v_status = 'draft' AND EXISTS (
+       SELECT 1 FROM acct_journal_lines WHERE journal_entry_id = p_je_id
+          AND (COALESCE(reconciled, false) OR bank_feed_transaction_id IS NOT NULL)) THEN
+    RAISE EXCEPTION 'This entry has reconciled or bank-linked lines, so it cannot go back to draft. Unreconcile them or undo the bank transaction first.'
+      USING HINT = 'posted_to_draft';
+  END IF;
 
   -- Pass 1: lines that carry the id of one of this entry's lines.
-  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(v_lines) WITH ORDINALITY LOOP
     IF COALESCE(v_line ->> 'id', '') ~ '^[0-9]+$' THEN
       SELECT id INTO v_id FROM acct_journal_lines
        WHERE id = (v_line ->> 'id')::int AND journal_entry_id = p_je_id
@@ -483,13 +560,13 @@ BEGIN
     END IF;
   END LOOP;
   -- Pass 2: lines sent without an id -- same account, debit and credit.
-  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(v_lines) WITH ORDINALITY LOOP
     IF NOT (v_map ? v_ord::text) AND COALESCE(v_line ->> 'id', '') = '' THEN
       SELECT id INTO v_id FROM acct_journal_lines
        WHERE journal_entry_id = p_je_id AND NOT (id = ANY (v_used))
          AND account_id = (v_line ->> 'account_id')::uuid
-         AND COALESCE(debit, 0)  = COALESCE((v_line ->> 'debit')::numeric, 0)
-         AND COALESCE(credit, 0) = COALESCE((v_line ->> 'credit')::numeric, 0)
+         AND COALESCE(debit, 0)  = (v_line ->> 'debit')::numeric
+         AND COALESCE(credit, 0) = (v_line ->> 'credit')::numeric
        ORDER BY id LIMIT 1;
       IF v_id IS NOT NULL THEN
         v_map := v_map || jsonb_build_object(v_ord::text, v_id);
@@ -530,24 +607,33 @@ BEGIN
    WHERE journal_entry_id = p_je_id AND company_id = p_company_id AND NOT (id = ANY (v_used));
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
-  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(p_lines) WITH ORDINALITY LOOP
+  FOR v_line, v_ord IN SELECT value, ordinality FROM jsonb_array_elements(v_lines) WITH ORDINALITY LOOP
     IF v_map ? v_ord::text THEN
       SELECT * INTO v_old FROM acct_journal_lines WHERE id = (v_map ->> v_ord::text)::int;
-      IF COALESCE(v_old.reconciled, false) AND (
-           v_old.account_id IS DISTINCT FROM (v_line ->> 'account_id')::uuid
-        OR COALESCE(v_old.debit, 0)  <> COALESCE((v_line ->> 'debit')::numeric, 0)
-        OR COALESCE(v_old.credit, 0) <> COALESCE((v_line ->> 'credit')::numeric, 0)) THEN
-        RAISE EXCEPTION 'A reconciled line (% %) cannot change account or amount. Unreconcile it first.',
-          COALESCE(NULLIF(v_old.account_name, ''), 'account'), CASE WHEN COALESCE(v_old.debit, 0) <> 0 THEN 'DR ' || v_old.debit ELSE 'CR ' || v_old.credit END
-          USING HINT = 'reconciled_line';
+      IF v_old.account_id IS DISTINCT FROM (v_line ->> 'account_id')::uuid
+         OR COALESCE(v_old.debit, 0)  <> (v_line ->> 'debit')::numeric
+         OR COALESCE(v_old.credit, 0) <> (v_line ->> 'credit')::numeric THEN
+        IF COALESCE(v_old.reconciled, false) THEN
+          RAISE EXCEPTION 'A reconciled line (% %) cannot change account or amount. Unreconcile it first.',
+            COALESCE(NULLIF(v_old.account_name, ''), 'account'), CASE WHEN COALESCE(v_old.debit, 0) <> 0 THEN 'DR ' || v_old.debit ELSE 'CR ' || v_old.credit END
+            USING HINT = 'reconciled_line';
+        END IF;
+        -- The stamp says "this line IS that bank transaction". Moving it to
+        -- another account or amount would carry the claim onto a line that
+        -- no longer is (the bank line quietly becoming Income).
+        IF v_old.bank_feed_transaction_id IS NOT NULL THEN
+          RAISE EXCEPTION 'The % line is linked to a bank transaction, so its account and amount cannot change here. Undo that transaction in Banking first.',
+            COALESCE(NULLIF(v_old.account_name, ''), 'bank-linked')
+            USING HINT = 'bank_line';
+        END IF;
       END IF;
       -- Stamps (bank_feed_transaction_id, reconciled, reconciled_date) are
       -- left exactly as they are.
       UPDATE acct_journal_lines
          SET account_id   = (v_line ->> 'account_id')::uuid,
              account_name = COALESCE(v_line ->> 'account_name', ''),
-             debit        = COALESCE((v_line ->> 'debit')::numeric, 0),
-             credit       = COALESCE((v_line ->> 'credit')::numeric, 0),
+             debit        = (v_line ->> 'debit')::numeric,
+             credit       = (v_line ->> 'credit')::numeric,
              class_id     = NULLIF(v_line ->> 'class_id', ''),
              memo         = COALESCE(v_line ->> 'memo', ''),
              entity_type  = NULLIF(v_line ->> 'entity_type', ''),
@@ -565,7 +651,7 @@ BEGIN
          entity_type, entity_id, entity_name)
       VALUES
         (p_je_id, p_company_id, (v_line ->> 'account_id')::uuid, COALESCE(v_line ->> 'account_name', ''),
-         COALESCE((v_line ->> 'debit')::numeric, 0), COALESCE((v_line ->> 'credit')::numeric, 0),
+         (v_line ->> 'debit')::numeric, (v_line ->> 'credit')::numeric,
          NULLIF(v_line ->> 'class_id', ''), COALESCE(v_line ->> 'memo', ''),
          NULLIF(v_line ->> 'entity_type', ''), NULLIF(v_line ->> 'entity_id', ''),
          NULLIF(v_line ->> 'entity_name', ''));
@@ -577,5 +663,5 @@ BEGIN
                             'kept', v_kept, 'inserted', v_inserted, 'deleted', v_deleted);
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[]) TO authenticated, service_role;

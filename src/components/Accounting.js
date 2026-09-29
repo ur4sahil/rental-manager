@@ -5760,7 +5760,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // moving an entry out of a closed period rewrites that period too.
   if (await checkPeriodLock(companyId, header.date) || (orig.date && await checkPeriodLock(companyId, orig.date))) { showToast("Cannot edit a journal entry in a locked period.", "error"); return false; }
   if (!lines || lines.length < 2) { showToast("A journal entry needs at least two lines.", "error"); return false; }
-  const v = validateJE(lines);
+  // The server rounds every amount to cents and wants DR = CR exactly;
+  // check (and send) the same rounded figures.
+  const toCents = (x) => Math.round(safeNum(x) * 100) / 100;
+  if (lines.some(l => toCents(l.debit) < 0 || toCents(l.credit) < 0)) { showToast("Amounts cannot be negative. Put the amount on the other side instead.", "error"); return false; }
+  const v = validateJE(lines.map(l => ({ debit: toCents(l.debit), credit: toCents(l.credit) })));
   if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return false; }
   // Entries the system generated for another record (a bank transaction,
   // a Stripe payment, a deposit, a recurring charge ...). Editing is
@@ -5768,11 +5772,20 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // came from is not updated along with it.
   // A line the editor never saw (the lines fetch was incomplete, or
   // someone changed the entry since it loaded) would be deleted by the
-  // save. Refuse instead of guessing.
-  const { data: dbLines, error: dbErr } = await supabase.from("acct_journal_lines").select("id").eq("company_id", companyId).eq("journal_entry_id", id);
-  if (dbErr) { pmError("PM-4013", { raw: dbErr, context: "update_journal_entry pre-check" }); return false; }
-  const seen = new Set((orig.lines || []).map(l => String(l.id)));
-  if ((dbLines || []).some(l => !seen.has(String(l.id)))) {
+  // save. The server is the real check: it refuses unless the ids the
+  // editor loaded (p_expected_line_ids below) are exactly the entry's
+  // current lines. This paged pre-check only gives the friendlier message
+  // before the confirm dialog.
+  const expectedLineIds = (orig.lines || []).map(l => String(l.id)).filter(x => /^\d+$/.test(x)).map(Number);
+  const dbLines = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: page, error: dbErr } = await supabase.from("acct_journal_lines").select("id").eq("company_id", companyId).eq("journal_entry_id", id).order("id").range(from, from + 999);
+    if (dbErr) { pmError("PM-4013", { raw: dbErr, context: "update_journal_entry pre-check" }); return false; }
+    dbLines.push(...(page || []));
+    if (!page || page.length < 1000) break;
+  }
+  const seen = new Set(expectedLineIds.map(String));
+  if (dbLines.length !== seen.size || dbLines.some(l => !seen.has(String(l.id)))) {
     showToast("This entry has changed or didn't fully load. Reload the page and edit it again.", "error");
     fetchAll({ quiet: true });
     return false;
@@ -5794,14 +5807,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     p_lines: lines.map(l => ({
       id: l.id != null && /^\d+$/.test(String(l.id)) ? Number(l.id) : null,
       account_id: l.account_id, account_name: l.account_name || "",
-      debit: safeNum(l.debit), credit: safeNum(l.credit),
+      debit: toCents(l.debit), credit: toCents(l.credit),
       class_id: l.class_id || null, memo: l.memo || "",
       entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null,
     })),
+    p_expected_line_ids: expectedLineIds,
   });
   if (error) {
     if (/period is locked/i.test(error.message || "")) pmError("PM-4004", { raw: error, context: "update_journal_entry" });
-    else if (["reconciled_line", "bank_line", "system_reference", "unbalanced", "voided", "too_few_lines", "no_account", "bad_status", "not_found"].includes(error.hint)) showToast(error.message, "error");
+    else if (["reconciled_line", "bank_line", "system_reference", "unbalanced", "voided", "too_few_lines", "no_account", "bad_status", "not_found", "stale_lines", "negative_amount", "zero_entry", "posted_to_draft", "cross_company"].includes(error.hint)) showToast(error.message, "error");
     else pmError("PM-4003", { raw: error, context: "update_journal_entry" });
     fetchAll({ quiet: true });
     return false;
@@ -5832,53 +5846,22 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const je = journalEntries.find(j => j.id === id);
   // Period lock check
   if (je && await checkPeriodLock(companyId, je.date)) { showToast("Cannot void a journal entry in a locked period (" + je.date + ").", "error"); return; }
-  const { error: voidErr } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
-  if (voidErr) { showToast("Error voiding entry: " + voidErr.message, "error"); return; }
-  // Clear reconciled flags on this JE's lines so the next bank
-  // reconciliation sees them as unmatched instead of a ghost match.
-  // Without this, voiding a previously-reconciled JE left its lines
-  // carrying reconciled=true / reconciled_date forever — each future
-  // reconcile would still count them as "already matched."
-  const { error: lineErr } = await supabase.from("acct_journal_lines")
-    .update({ reconciled: false, reconciled_date: null })
-    .eq("journal_entry_id", id);
-  if (lineErr) pmError("PM-4002", { raw: lineErr, context: "clear reconciled flags on void", silent: true });
-
-  // A bank transaction may have created (or been matched to) this entry.
-  // Voiding it means nothing is on the books any more, so leaving that
-  // transaction marked "categorized" makes Bank Transactions claim a
-  // posting that no longer exists. Send it back to For Review and release
-  // its lines, the same way the Undo button does.
-  // bank_feed_transaction.journal_entry_id is a uuid column while JE ids
-  // are text, so a legacy non-uuid id (je-seed-…) would throw 22P02.
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id));
-  const affectedTxnIds = new Set();
-  if (isUUID) {
-  const { data: pointedTxns } = await supabase.from("bank_feed_transaction")
-    .select("id").eq("company_id", companyId).eq("journal_entry_id", id);
-  (pointedTxns || []).forEach(t => affectedTxnIds.add(t.id));
+  // void_journal_entry: ONE database transaction that voids the entry,
+  // clears its lines' reconciled flags and bank stamps, and releases every
+  // bank transaction that claimed it -- back to For Review, its links to
+  // this entry (and any matched_to link) deleted, its decisions marked
+  // undone. The old chain of client writes left the matched_to link and
+  // the 'posted' decision behind; a later Undo then read that stale link as
+  // "matched" and left a new BANK- posting on the books.
+  const { data: voided, error: voidErr } = await supabase.rpc("void_journal_entry", { p_company_id: companyId, p_je_id: String(id) });
+  if (voidErr) {
+    if (/period is locked/i.test(voidErr.message || "")) pmError("PM-4004", { raw: voidErr, context: "void_journal_entry" });
+    else showToast("Error voiding entry: " + voidErr.message, "error");
+    return;
   }
-  // Older postings never set journal_entry_id on the transaction row —
-  // their only link is the stamp on the lines.
-  const { data: stamped } = await supabase.from("acct_journal_lines")
-    .select("bank_feed_transaction_id").eq("company_id", companyId)
-    .eq("journal_entry_id", id).not("bank_feed_transaction_id", "is", null);
-  (stamped || []).forEach(l => l.bank_feed_transaction_id && affectedTxnIds.add(l.bank_feed_transaction_id));
-
-  if (affectedTxnIds.size > 0) {
-  const ids = [...affectedTxnIds];
-  const { error: revertErr } = await supabase.from("bank_feed_transaction").update({
-    status: "for_review", accepted_at: null, accepted_by: null,
-    journal_entry_id: null, posting_decision_id: null,
-    matched_target_type: null, matched_target_id: null,
-  }).eq("company_id", companyId).in("id", ids)
-    .in("status", ["categorized", "matched", "posted"]);
-  if (revertErr) pmError("PM-4005", { raw: revertErr, context: "return bank txn to review on JE void", silent: true });
-  const { error: unstampErr } = await supabase.from("acct_journal_lines")
-    .update({ bank_feed_transaction_id: null })
-    .eq("company_id", companyId).eq("journal_entry_id", id);
-  if (unstampErr) pmError("PM-4005", { raw: unstampErr, context: "release journal lines on JE void", silent: true });
-  showToast(`Journal entry voided. ${ids.length} bank transaction${ids.length === 1 ? "" : "s"} returned to For Review.`, "success");
+  const releasedTxns = Array.isArray(voided?.txn_ids) ? voided.txn_ids.length : 0;
+  if (releasedTxns > 0) {
+  showToast(`Journal entry voided. ${releasedTxns} bank transaction${releasedTxns === 1 ? "" : "s"} returned to For Review.`, "success");
   } else {
   showToast("Journal entry voided.", "success");
   }
