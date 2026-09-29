@@ -19,6 +19,11 @@
 --    then CHECK (NULL or owner/tenant/condo_fee/shared) added NOT VALID and
 --    VALIDATEd on utilities, utility_accounts and utility_bills.
 
+-- owner_loans_readonly reads portfolio_loan_properties.archived_at. That column
+-- arrives with the property-delete work (20260929010000, same IF NOT EXISTS);
+-- added here too so this migration stands alone (production lacked it).
+ALTER TABLE public.portfolio_loan_properties ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+
 -- ─── 2. who may touch utility logins / bills ────────────────────────
 -- Policies are TO authenticated: anon never evaluates them (and so never
 -- needs EXECUTE on these helpers, which are revoked from anon).
