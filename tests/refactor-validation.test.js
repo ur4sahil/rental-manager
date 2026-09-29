@@ -276,7 +276,9 @@ function testFileStructure() {
   // 54700: owner links in the wizard / property page / import, OwnerPicker + owner correction, ledger
   // statements with billed / collected / unpaid, ownership-history reads, the SQL-accrual callers, and
   // the Owners page's background drain).
-  assert(totalLines <= 55000, `Total src lines <= 55000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 55100 on 2026-09-29: + staging 2d75397 (bookkeeping roles / canKeepBooks, balance-sheet
+  // grouping under parent accounts, Chart of Accounts parent picker: +~85).
+  assert(totalLines <= 55100, `Total src lines <= 55100 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
