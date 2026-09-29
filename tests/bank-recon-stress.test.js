@@ -277,16 +277,6 @@ async function acceptAll(txns, feedId) {
   console.log(`\nPosting JEs for ${txns.length} txns…`);
   const rentIncome = await resolveAccount(RENT_INCOME_CODE);
   if (!rentIncome) { logErr("accept", "could not resolve 4000 Rental Income"); return; }
-  // Pre-compute next JE number once and increment locally — chunked
-  // queries against acct_journal_entries.number get slow at 200+ rows
-  // and racy if we re-read each loop.
-  const { data: maxJE } = await sb.from("acct_journal_entries").select("number")
-    .eq("company_id", COMPANY_ID).order("number", { ascending: false }).limit(1).maybeSingle();
-  let nextNum = 1;
-  if (maxJE?.number) {
-    const parsed = parseInt(maxJE.number.replace("JE-",""), 10);
-    if (!isNaN(parsed)) nextNum = parsed + 1;
-  }
   let posted = 0, failed = 0;
   for (const t of txns) {
     const isInflow = t.direction === "inflow";
@@ -303,26 +293,15 @@ async function acceptAll(txns, feedId) {
          { account_id: categoryAcct.id, account_name: categoryAcct.name, debit: 0, credit: abs, memo: t.bank_description_raw }]
       : [{ account_id: categoryAcct.id, account_name: categoryAcct.name, debit: abs, credit: 0, memo: t.bank_description_raw },
          { account_id: CHECKING_ACCT, account_name: "Checking Account", debit: 0, credit: abs, memo: t.bank_description_raw }];
-    const jeNumber = `JE-${String(nextNum).padStart(4,"0")}`;
-    nextNum++;
-    const { data: jeRow, error: jeErr } = await sb.from("acct_journal_entries").insert([{
-      company_id: COMPANY_ID, number: jeNumber, date: t.posted_date,
-      description: `${t.payee_normalized || ""} — ${t.bank_description_raw}`,
-      reference: `BANK-${t.id}`, property: "", status: "posted",
-    }]).select("id").maybeSingle();
-    if (jeErr || !jeRow) { logErr("accept", `JE insert failed for txn ${t.id}`, jeErr); failed++; continue; }
-    const { error: linesErr } = await sb.from("acct_journal_lines").insert(lines.map(l => ({
-      journal_entry_id: jeRow.id, company_id: COMPANY_ID,
-      account_id: l.account_id, account_name: l.account_name,
-      debit: l.debit, credit: l.credit, class_id: null, memo: l.memo,
-      bank_feed_transaction_id: t.id,
-    })));
-    if (linesErr) {
-      await sb.from("acct_journal_entries").delete().eq("id", jeRow.id);
-      logErr("accept", `JE lines insert failed for txn ${t.id}`, linesErr);
-      failed++;
-      continue;
-    }
+    // BANK-<txn> references can only be written by post_bank_transaction
+    // (trg_je_bank_reference_guard), so post through it as the app does.
+    const { error: postErr } = await sb.rpc("post_bank_transaction", {
+      p_company_id: COMPANY_ID, p_txn_id: t.id, p_kind: "add",
+      p_description: `${t.payee_normalized || ""} — ${t.bank_description_raw}`, p_property: "",
+      p_lines: lines.map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, memo: l.memo })),
+      p_decision: {}, p_decision_lines: [],
+    });
+    if (postErr) { logErr("accept", `post_bank_transaction failed for txn ${t.id}`, postErr); failed++; continue; }
     // Update bank_feed_transaction status
     const { error: updErr } = await sb.from("bank_feed_transaction").update({ status: "posted" }).eq("id", t.id);
     if (updErr) logErr("accept", `status update failed for txn ${t.id}`, updErr);
