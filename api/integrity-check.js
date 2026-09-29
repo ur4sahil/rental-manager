@@ -9,6 +9,7 @@
 // tax-bill-reminders).
 const { createClient } = require("@supabase/supabase-js");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
+const { drainOwnerAccruals } = require("../src/utils/ownerRules");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
@@ -153,10 +154,13 @@ module.exports = async function handler(req, res) {
     // Owner accruals that could not be synced when their receipt / charge /
     // void committed (a lock-wait timeout, an error) are NEEDS_SYNC markers in
     // owner_accrual_queue; drain them for every company (service role).
+    // The RPC works in bounded batches; drainOwnerAccruals loops until none
+    // remain (or a batch makes no progress -- those stay marked for tomorrow).
     try {
-      const { data: pend, error: pendErr } = await supabase.rpc("owner_accrual_sync_pending", { p_company_id: null });
-      if (pendErr) console.error("integrity-check: owner_accrual_sync_pending failed", pendErr.message);
-      else totals.ownerAccrualsSynced = pend?.synced || 0;
+      const pend = await drainOwnerAccruals(supabase, null);
+      if (pend.error) console.error("integrity-check: owner_accrual_sync_pending failed", pend.error);
+      totals.ownerAccrualsSynced = pend.synced || 0;
+      totals.ownerAccrualsPending = pend.remaining || 0;
     } catch (e) { console.error("integrity-check: owner_accrual_sync_pending threw", e.message); }
 
     for (const companyId of companyIds) {

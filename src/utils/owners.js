@@ -8,7 +8,7 @@
 // owner_name from the owner record (a display copy, kept for readers that
 // still show text).
 import { supabase } from "../supabase";
-import { findOwnerByName } from "./ownerRules";
+import { findOwnerByName, drainOwnerAccruals } from "./ownerRules";
 import { fetchAllPaged, autoOwnerDistribution } from "./accounting";
 
 // Set (ownerId) or clear (null) a property's owner. Returns { ok, error, owner }.
@@ -162,10 +162,11 @@ export async function correctPropertyOwner(companyId, propertyId, ownerId, fromD
 }
 
 // Bring owner accruals that could not be synced at the time (a lock-wait
-// timeout, an error -- recorded as NEEDS_SYNC markers) up to date.
+// timeout, an error, a bulk write past its commit budget -- recorded as
+// NEEDS_SYNC markers) up to date, batch by batch until none remain.
 export async function syncPendingOwnerAccruals(companyId) {
-  const { data, error } = await supabase.rpc("owner_accrual_sync_pending", { p_company_id: companyId });
-  return error ? { error: error.message } : (data || {});
+  if (!companyId) return { error: "missing company" };
+  return drainOwnerAccruals(supabase, companyId);
 }
 
 // A bank deposit categorised on the Banking page (post_bank_transaction

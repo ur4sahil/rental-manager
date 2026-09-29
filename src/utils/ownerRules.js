@@ -325,6 +325,30 @@ async function syncOwnerAccruals(sb, companyId, tenantId) {
   }
 }
 
+// Drain NEEDS_SYNC markers (owner_accrual_sync_pending processes a bounded
+// batch -- up to p_max tenants or ~4s, inside the 8s API timeout -- and says
+// how many remain). Loops until none remain, a batch makes no progress (the
+// rest keep failing: they stay marked for the next run) or maxRounds.
+// companyId null = every company (service role only: the nightly cron).
+// (No object spread / destructured defaults here: Babel would inject an ESM
+// helper import into this CommonJS file and break its named exports.)
+async function drainOwnerAccruals(sb, companyId, opts) {
+  const maxRounds = (opts && opts.maxRounds) || 20, batch = (opts && opts.batch) || 50;
+  const total = { synced: 0, failed: 0, skipped: 0, remaining: 0, rounds: 0 };
+  for (let round = 0; round < maxRounds; round++) {
+    let res;
+    try { res = await sb.rpc("owner_accrual_sync_pending", { p_company_id: companyId || null, p_max: batch }); }
+    catch (e) { return Object.assign(total, { error: (e && e.message) || String(e) }); }
+    if (res.error) return Object.assign(total, { error: res.error.message });
+    const d = res.data || {};
+    total.rounds++;
+    total.synced += d.synced || 0; total.failed += d.failed || 0; total.skipped += d.skipped || 0;
+    total.remaining = d.remaining || 0;
+    if (!total.remaining || !((d.synced || 0) + (d.skipped || 0))) break;
+  }
+  return total;
+}
+
 module.exports = {
   isFeeSet, resolveMgmtFeePct, feeLabel, parseFeeInput, mgmtFeeCents, toCents,
   payoutReference, DISTRIBUTION_KINDS,
@@ -332,5 +356,5 @@ module.exports = {
   INCOME_TYPES, EXPENSE_TYPES, OWNER_MACHINERY_PREFIXES, MGMT_FEE_INCOME_CODE,
   accountClass, isRentIncomeAccount, buildOwnerStatement, statementRentSummary,
   normOwnerName, findOwnerByName, propertyOwnerName,
-  tenantRentChargeInMonth, syncOwnerAccruals,
+  tenantRentChargeInMonth, syncOwnerAccruals, drainOwnerAccruals,
 };

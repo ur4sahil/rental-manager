@@ -162,6 +162,7 @@ const docs = read("src/components/Documents.js");
 const ownUtil = read("src/utils/owners.js");
 const MIG = read("supabase/migrations/20260928100000_owner_distribution_kind.sql");
 const MIG2 = read("supabase/migrations/20260928170000_owner_accrual_rpc.sql");
+const MIG3 = read("supabase/migrations/20260929040000_owner_accrual_followups.sql");
 assert("no `|| 10` fee default left in Owners.js", !/management_fee_pct\s*\|\|\s*10/.test(owners) && !/feePct\s*=\s*owner\.management_fee_pct\s*\|\|/.test(owners));
 assert("Owners.js resolves the fee with resolveMgmtFeePct", owners.includes("resolveMgmtFeePct(owner)"));
 assert("statement from the ledger for the owner AT THE TIME (loadOwnerStatementData + buildOwnerStatement with accruals)",
@@ -203,6 +204,11 @@ assert("migration: owner_accrual_since writable only by its trigger or the manag
   MIG2.includes("NOT public.is_management_tier(NEW.company_id)") && MIG2.includes("(to_jsonb(NEW) - 'notes') IS DISTINCT FROM (to_jsonb(OLD) - 'notes')"));
 assert("migration: commit time budget -- a bulk write past 4s defers the rest as NEEDS_SYNC (no statement timeout)", MIG2.includes("IF clock_timestamp() - transaction_timestamp() > interval '4 seconds' THEN") && MIG2.includes("'deferred: commit time budget (bulk write)'"));
 assert("migration: NEEDS_SYNC markers + error_log; pending drain RPC", MIG2.includes("_owner_accrual_mark_pending") && MIG2.includes("INSERT INTO error_log") && MIG2.includes("CREATE OR REPLACE FUNCTION public.owner_accrual_sync_pending("));
+assert("follow-ups: deleting journal lines queues the tenant (AFTER DELETE, transition table)", MIG3.includes("CREATE TRIGGER trg_owner_accrual_enqueue_del AFTER DELETE ON public.acct_journal_lines") && MIG3.includes("REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT") && MIG3.includes("ELSIF TG_OP = 'DELETE' THEN"));
+assert("follow-ups: post_je_and_ledger and the owner sync claim JE numbers (per-number try-lock held to commit)", MIG3.includes("v_je_number := public._je_number_claim(p_company_id);") && MIG3.includes("v_num := public._je_number_claim(p_company_id, v_prev);") && MIG3.includes("pg_try_advisory_xact_lock(v_key,"));
+assert("follow-ups: bounded drain returns remaining; callers loop", MIG3.includes("p_max integer DEFAULT 50") && MIG3.includes("'remaining', v_remaining") && ownUtil.includes("return drainOwnerAccruals(supabase, companyId);") && read("api/integrity-check.js").includes("await drainOwnerAccruals(supabase, null)"));
+assert("follow-ups: no markers / sync for tenants no owner is involved with", MIG3.includes("IF NOT public._owner_accrual_tenant_relevant(p_company_id, p_tenant_id) THEN RETURN; END IF;") && MIG3.includes("CONTINUE WHEN NOT v_rel;"));
+assert("follow-ups: every new SECURITY DEFINER function is revoked from PUBLIC and anon", ["_owner_accrual_tenant_relevant(text, integer)", "_je_number_claim(text, bigint)", "owner_accrual_sync_pending(text, integer)", "_owner_accrual_mark_pending(text, integer, text, boolean)", "_owner_accrual_queue_run()", "_owner_accrual_enqueue_lines()", "_owner_accrual_sync_core(text, integer)"].every(f => MIG3.includes("REVOKE ALL ON FUNCTION public." + f + " FROM PUBLIC, anon")) && /REVOKE ALL ON FUNCTION public\.post_je_and_ledger\([^)]*\) FROM PUBLIC, anon;/.test(MIG3));
 assert("manual ledger payment accrues the owner's share", /newCharge\.type === "payment" && arLegIsPerTenant\)[\s\S]{0,80}autoOwnerDistribution\(companyId, selectedTenant\.property, Math\.abs\(amount\), today, selectedTenant\.name, selectedTenant\.id\)/.test(ten));
 assert("Banking: add + split deposits run the owner accrual after a successful post",
   (read("src/components/Banking.js").match(/if \(isInflow\) await accrueOwnerShareForBankDeposit\(companyId, \{ date: txn\.posted_date/g) || []).length === 2);
@@ -227,6 +233,13 @@ const SB_URL = process.env.SUPABASE_URL, SB_KEY = process.env.SUPABASE_SERVICE_K
 const sb = createClient(SB_URL, SB_KEY, { auth: { persistSession: false } });
 
 async function cleanupCompany(CO, userIds = []) {
+  // accruals and ownership history first: deleting journal lines queues their
+  // tenants (AFTER DELETE trigger) -- with no owner left there is nothing to sync
+  await sb.from("accounting_period_lock").delete().eq("company_id", CO);
+  await sb.from("owner_distributions").delete().eq("company_id", CO);
+  await sb.from("property_owner_history").delete().eq("company_id", CO);
+  // guard_last_admin refuses to remove a live company's last admin: archive first
+  await sb.from("companies").update({ archived_at: new Date().toISOString() }).eq("id", CO);
   const { data: jes } = await sb.from("acct_journal_entries").select("id").eq("company_id", CO);
   const ids = (jes || []).map(j => j.id);
   for (let i = 0; i < ids.length; i += 100) await sb.from("acct_journal_lines").delete().in("journal_entry_id", ids.slice(i, i + 100));
@@ -752,6 +765,61 @@ try {
   assert("kind is immutable for everyone (service role too)", !!kindSvc.error, kindSvc.error?.message);
   const oaSync = await oa.rpc("owner_accrual_sync", { p_company_id: CO, p_tenant_id: T.T3.id });
   assert("office assistant's own client can run the accrual RPC", !oaSync.error && Number(oaSync.data?.accrued_rent) === 1000, oaSync.error?.message || JSON.stringify(oaSync.data));
+
+  // ── round 5 (20260929040000) ──
+  const adm = await mkUser(CO + "-adm@example.com", "admin");
+  {
+    // QA E-edit-b: update_journal_entry deletes the receipt's AR line and adds an Other Income line -> accrual reversed
+    await mkProp("PE", O8); const te = await mkTen("TE", "PE", 800);
+    await chargeOn(te, "PE", startDate, 800); const rid = await cashOn(te, "PE", today, 800);
+    const before = (await live(te.id)).reduce((x, r) => x + Number(r.rent_amount), 0);
+    const { data: je } = await sb.from("acct_journal_entries").select("*").eq("id", rid).single();
+    const { data: ls } = await sb.from("acct_journal_lines").select("*").eq("journal_entry_id", rid).order("id");
+    const expected = { header: { date: je.date, description: je.description || "", reference: je.reference || "", status: je.status, property: je.property || "" },
+      lines: ls.map(l => ({ id: String(l.id), account_id: l.account_id, debit: l.debit, credit: l.credit, class_id: l.class_id || "", memo: l.memo || "" })) };
+    const cash = ls.find(l => Number(l.debit) > 0);
+    const ed = await adm.rpc("update_journal_entry", { p_company_id: CO, p_je_id: rid, p_header: {},
+      p_lines: [{ id: String(cash.id), account_id: cash.account_id, debit: cash.debit, credit: 0, class_id: cash.class_id, memo: cash.memo },
+                { account_id: acc["4100"].id, debit: 0, credit: 800, class_id: P.PE.class_id, memo: "new line" }],
+      p_expected_line_ids: ls.map(l => l.id), p_expected: expected });
+    const after = (await live(te.id)).reduce((x, r) => x + Number(r.rent_amount), 0);
+    assert("edit that DELETES the receipt's AR line (new Other Income line) reverses the accrual (AFTER DELETE queue trigger)", !ed.error && before === 800 && after === 0, (ed.error?.message || "ok") + " " + JSON.stringify([before, after]));
+  }
+  {
+    // owner-less tenant in an owner company: no NEEDS_SYNC marker, no sync work
+    await mkProp("PN", null); const tn = await mkTen("TN", "PN", 500);
+    await chargeOn(tn, "PN", startDate, 500); await cashOn(tn, "PN", today, 500);
+    const { data: qn } = await sb.from("owner_accrual_queue").select("tenant_id").eq("company_id", CO).eq("tenant_id", tn.id);
+    assert("an owner-less tenant's receipt leaves no queue row or NEEDS_SYNC marker behind", !(qn || []).length, JSON.stringify(qn));
+    ok(await sb.from("owner_accrual_queue").insert([{ company_id: CO, tenant_id: tn.id, txid: 2, needs_sync: true, last_error: "stray marker" }]), "stray marker");
+    const pd = await sb.rpc("owner_accrual_sync_pending", { p_company_id: CO });
+    const { data: q2 } = await sb.from("owner_accrual_queue").select("tenant_id").eq("company_id", CO).eq("needs_sync", true);
+    assert("the drain drops a stray marker for an owner-less tenant without syncing it", !pd.error && pd.data?.skipped === 1 && pd.data?.synced === 0 && pd.data?.remaining === 0 && !(q2 || []).length, JSON.stringify(pd.data || pd.error));
+  }
+  {
+    // bounded drain: p_max tenants per call, `remaining` reported; drainOwnerAccruals loops to zero
+    const tids = [T.T3.id, T.TM.id, T.TL.id, T.TA.id, T.TE.id];
+    ok(await sb.from("owner_accrual_queue").insert(tids.map(tenant_id => ({ company_id: CO, tenant_id, txid: 3, needs_sync: true, last_error: "test marker" }))), "markers");
+    const one = await adm.rpc("owner_accrual_sync_pending", { p_company_id: CO, p_max: 2 });
+    assert("owner_accrual_sync_pending processes a bounded batch and returns how many remain", !one.error && one.data?.synced === 2 && one.data?.remaining === 3, JSON.stringify(one.data || one.error));
+    const all = await R.drainOwnerAccruals(adm, CO, { batch: 1 });
+    const { data: q3 } = await sb.from("owner_accrual_queue").select("tenant_id").eq("company_id", CO).eq("needs_sync", true);
+    assert("drainOwnerAccruals (Owners page / nightly cron) loops batches until none remain", !all.error && all.synced === 3 && all.remaining === 0 && all.rounds === 3 && !(q3 || []).length, JSON.stringify(all));
+    const again = (await Promise.all(tids.map(id => live(id)))).map(rs => rs.reduce((x, r) => x + Number(r.rent_amount), 0));
+    assert("draining changes no settled accrual", JSON.stringify(again) === JSON.stringify([1000, 3000, 1000, 0, 0]), JSON.stringify(again));
+  }
+  {
+    // JE numbers: 12 parallel receipts through post_je_and_ledger all post, distinct numbers
+    const tt = T.T3;
+    const refs = Array.from({ length: 12 }, (_, i) => "PAR-" + i + "-" + crypto.randomBytes(3).toString("hex"));
+    const res = await Promise.all(refs.map(ref => adm.rpc("post_je_and_ledger", { p_company_id: CO, p_date: today, p_description: "par", p_reference: ref, p_property: P[tt.pk].address, p_status: "posted",
+      p_lines: [{ account_id: acc["1000"].id, account_name: "Checking", debit: 1, credit: 0, class_id: P[tt.pk].class_id, memo: "" }, { account_id: acc["4100"].id, account_name: "Other Income", debit: 0, credit: 1, class_id: P[tt.pk].class_id, memo: "" }] })));
+    const { data: nums } = await sb.from("acct_journal_entries").select("number").eq("company_id", CO);
+    const errs = res.filter(r => r.error).map(r => r.error.message);
+    assert("12 parallel post_je_and_ledger calls all post with distinct JE numbers (claimed, not raced)", !errs.length && nums.length === new Set(nums.map(n => n.number)).size, errs.join(" | "));
+    const dupRef = await adm.rpc("post_je_and_ledger", { p_company_id: CO, p_date: today, p_description: "dup", p_reference: refs[0], p_property: "", p_status: "posted", p_lines: [] });
+    assert("a duplicate reference is reported as the unique violation it is (not 'Could not generate unique JE number')", !!dupRef.error && dupRef.error.code === "23505", JSON.stringify(dupRef.error));
+  }
   // round 4 gates: every money / link column; owner_accrual_since; owner correction
   {
     const tries = {};
