@@ -33,6 +33,9 @@
       "permanent": true
     }
   ],
+  "functions": {
+    "api/integrity-check.js": { "maxDuration": 300 }
+  },
   "crons": [
     {
       "path": "/api/plaid-sync-transactions",

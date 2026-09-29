@@ -64,6 +64,9 @@ const {
   refundReference, disputeReference, disputeWonReference, disputeEventAction,
   chargeDateInPeriod, nextChargeDateAfterPeriod, paymentStatusBlockers, autopayRunCompanyIds,
 } = require("../src/utils/paymentRules");
+// Owner accrual on a rent receipt -- the same SQL function (owner_accrual_sync)
+// the browser calls through utils/accounting.js#autoOwnerDistribution.
+const { syncOwnerAccruals } = require("../src/utils/ownerRules");
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -1059,6 +1062,15 @@ async function handleWebhook(req, res) {
           await sb.from("autopay_schedules").update({ last_paid_period: paidPeriod }).eq("id", autopayId);
         }
       }
+    }
+
+    // Owner-managed property: bring the tenant's owner accruals up to date
+    // (owner_accrual_sync -- the same SQL the browser paths call; a trigger
+    // also runs it when this entry commits). Idempotent, tenant_id keyed, so
+    // a replay or stale tenant_name metadata cannot accrue twice. Non-fatal.
+    if (credit.settlesAr) {
+      const od = await syncOwnerAccruals(sb, companyId, tenantId);
+      if (od.error) console.warn("[stripe webhook] owner accrual sync failed (non-fatal):", od.error);
     }
 
     // Email + push notifications. The worker drains notification_queue

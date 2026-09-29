@@ -3,7 +3,8 @@ import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFil
 import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
-import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
+import { RENT_CHARGE_PREFIXES, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
+import { syncOwnerAccruals, tenantRentChargeInMonth } from "./ownerRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
 import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
@@ -275,20 +276,8 @@ export async function autoPostJournalEntry({ date, description, reference, prope
 // not mistake a broken query for "no rent was billed".
 export async function checkAccrualExists(companyId, month, tenantName, tenantId) {
   if (tenantId !== null && tenantId !== undefined && tenantId !== "") {
-    const { data: arAccts, error: arErr } = await supabase.from("acct_accounts")
-      .select("id").eq("company_id", companyId).eq("tenant_id", tenantId);
-    if (arErr) return true;
-    const arIds = (arAccts || []).map(a => a.id);
-    if (arIds.length === 0) return false;
-    const { start, end } = monthBounds(month);
-    const { data: lines, error: lErr } = await supabase.from("acct_journal_lines")
-      .select("account_id, debit, acct_journal_entries!inner(reference, date, status)")
-      .eq("company_id", companyId).in("account_id", arIds.slice(0, 100)).gt("debit", 0)
-      .neq("acct_journal_entries.status", "voided")
-      .gte("acct_journal_entries.date", start).lte("acct_journal_entries.date", end)
-      .limit(1000);
-    if (lErr) return true;
-    return hasRentChargeInMonth(lines, arIds, month);
+    // Shared with the Stripe webhook (utils/ownerRules.js).
+    return tenantRentChargeInMonth(supabase, companyId, month, tenantId);
   }
   // Legacy: no tenant id. Match rent-family entries in the month whose lines
   // mention the tenant by name. Paged, chunked at 100 for .in().
@@ -315,78 +304,23 @@ export async function checkAccrualExists(companyId, month, tenantName, tenantId)
 }
 
 // ============ OWNER DISTRIBUTION AUTOMATION ============
-// Auto-calculates management fee + owner net when rent is received.
-// Posts GL entry: DR Rental Income / CR Mgmt Fee Income + CR Owner Dist Payable
+// After a rent receipt on an owner-managed property, bring the tenant's owner
+// accruals up to date (DR rent income / CR 4200 fee / CR 2200 net, one
+// owner_distributions 'accrual' row per receipt-to-charge allocation).
+//
+// The work is the SQL function owner_accrual_sync (migration 20260928170000):
+// rent-first, oldest-first allocation of every receipt to the tenant's rent
+// charges in any month, in one transaction under a per-tenant lock, keyed by
+// tenant_id + receipt entry + charge entry -- never by name or calendar
+// month. Triggers already run it on every receipt, charge and void; this call
+// (autopay Run Now, manual ledger payments, Banking deposits; the Stripe
+// webhook calls the same RPC) returns the result and is idempotent. The
+// property, amount, date and name arguments are kept for the callers'
+// signature; only the tenant id matters.
 export async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName, tenantId) {
-  try {
-  const { data: prop } = await supabase.from("properties")
-  .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
-  if (!prop?.owner_id) return; // No owner assigned — skip silently
-  const { data: owner } = await supabase.from("owners")
-  .select("id, name, email, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
-  if (!owner) return;
-  // Guard: only post distribution if a rent accrual (AR charge) exists for this period.
-  // If payment was posted as direct revenue (no accrual), the DR 4000 reversal would create
-  // a negative revenue balance — effectively double-counting income.
-  const month = paymentDate.slice(0, 7);
-  const hasAccrual = await checkAccrualExists(companyId, month, tenantName, tenantId);
-  if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
-  // Null/missing management_fee_pct means self-managed — 0% fee, 100%
-  // passthrough to owner. Previous code silently substituted 10%, which
-  // charged opt-out owners a fee they never agreed to.
-  const feePct = safeNum(owner.management_fee_pct);
-  // Integer cents avoids fp precision loss, and the DR must match the sum
-  // of CR cents exactly — not the caller's (possibly un-rounded) paymentAmount.
-  // Without this, DR/CR could drift by fractional cents on float inputs and
-  // trip the new PM-4001 balance guard in autoPostJournalEntry.
-  const paymentCents = Math.round(paymentAmount * 100);
-  const mgmtFeeCents = Math.round(paymentCents * feePct / 100);
-  const mgmtFee = mgmtFeeCents / 100;
-  const ownerNet = (paymentCents - mgmtFeeCents) / 100;
-  const paymentRounded = paymentCents / 100;
-  const classId = await getPropertyClassId(propertyAddress, companyId);
-  // Deterministic reference so a retry can't double-distribute. Scope to
-  // owner + tenant + date + amount so legitimate split payments differ but
-  // identical replays collide on the unique (company_id, reference) index.
-  const tenantSlug = (tenantName || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
-  const refDate = paymentDate.replace(/-/g, "");
-  const ref = `ODIST-${owner.id}-${tenantSlug}-${refDate}-${paymentCents}`;
-  // Insert the owner_distributions record FIRST. Previously the order was
-  // JE→dist, so a failed dist insert left an orphan JE that drifted the
-  // GL silently. Inserting dist first means the worst case is a dist row
-  // without its JE — detectable by missing `reference` match and trivially
-  // retried. Column mapping uses the real schema: amount=net-to-owner,
-  // reference=JE ref, notes carries gross/fee breakdown for statements.
-  const { data: distRow, error: distErr } = await supabase.from("owner_distributions").insert([{
-    company_id: companyId,
-    owner_id: owner.id,
-    amount: ownerNet,
-    date: paymentDate,
-    reference: ref,
-    notes: `Rent accrual from ${tenantName} at ${propertyAddress} — gross ${paymentRounded.toFixed(2)} · mgmt fee ${feePct}% (${mgmtFee.toFixed(2)}) · net ${ownerNet.toFixed(2)}`,
-  }]).select("id").maybeSingle();
-  if (distErr) {
-    pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
-    return;
-  }
-  // Drop the mgmt fee line when fee=0 (self-managed owner). An explicit
-  // zero-credit line trips no guard but adds cosmetic noise on the JE.
-  const jeLines = [
-  { account_id: "4000", account_name: "Rental Income", debit: paymentRounded, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
-  ];
-  if (mgmtFee > 0) jeLines.push({ account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` });
-  jeLines.push({ account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` });
-  const jeId = await autoPostJournalEntry({
-  companyId, date: paymentDate,
-  description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
-  reference: ref, property: propertyAddress,
-  lines: jeLines,
-  });
-  if (!jeId && distRow?.id) {
-    await supabase.from("owner_distributions").delete().eq("id", distRow.id).eq("company_id", companyId);
-    pmError("PM-6004", { raw: { message: "JE failed — dist row rolled back" }, context: "owner distribution", silent: true });
-  }
-  } catch (e) { pmError("PM-6004", { raw: e, context: "auto owner distribution", silent: true }); }
+  const res = await syncOwnerAccruals(supabase, companyId, tenantId);
+  if (res.error) pmError("PM-6004", { raw: { message: res.error }, context: "owner accrual sync", silent: true });
+  return res;
 }
 
 // Resolve property address to cost-center class ID (with caching)

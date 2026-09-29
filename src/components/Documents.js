@@ -904,12 +904,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   result["property.zip"] = prop.zip || "";
   result["property.county"] = prop.county || "";
   result["property.sqft"] = prop.sqft || "";
-  // Owner comes off the property, so it is only meaningful here.
-  if (prop.owner_name) {
-    const { data: own } = await supabase.from("owners").select("*")
-      .eq("company_id", companyId).eq("name", prop.owner_name)
-      .is("archived_at", null).maybeSingle();
-    result["owner.name"] = prop.owner_name;
+  // Owner comes off the property, so it is only meaningful here. By the
+  // linked owner record (owner_id); the free-text name only for a property
+  // that has not been linked to one yet.
+  if (prop.owner_id || prop.owner_name) {
+    const { data: own } = prop.owner_id
+      ? await supabase.from("owners").select("*").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle()
+      : await supabase.from("owners").select("*").eq("company_id", companyId).eq("name", prop.owner_name).is("archived_at", null).maybeSingle();
+    result["owner.name"] = own?.name || prop.owner_name || "";
     result["owner.email"] = own?.email || "";
     result["owner.phone"] = own?.phone || "";
   }

@@ -297,13 +297,20 @@ assert("#1 runNow does not double-apply balance (trigger moves it)", /balanceUpd
 assert("#1 webhook credit chosen by pickRentReceiptCredit", /pickRentReceiptCredit\(\{ tenantAr: tenantAR, tenantId \}\)/.test(api));
 assert("#1 webhook no longer 500s when the tenant has no AR (creates it)", !api.includes("tenant has no AR sub-account — fix tenant data integrity") && api.includes("getOrCreateTenantArServer(sb, companyId, tenantId"));
 // 2
+// The id-keyed rent-charge check moved to utils/ownerRules.js
+// (tenantRentChargeInMonth) so the Stripe webhook runs the same code;
+// checkAccrualExists delegates to it and keeps the legacy name path.
 const cae = acct.slice(acct.indexOf("export async function checkAccrualExists"), acct.indexOf("// ============ OWNER DISTRIBUTION AUTOMATION"));
-assert("#2 accrual lookup covers every rent family", cae.includes("RENT_CHARGE_PREFIXES") && cae.includes("hasRentChargeInMonth("));
-assert("#2 accrual lookup keyed on tenant_id AR accounts", /\.eq\("tenant_id", tenantId\)/.test(cae));
-assert("#2 failed read still answers 'could not tell' (true)", /if \(arErr\) return true;/.test(cae) && /if \(lErr\) return true;/.test(cae));
+const ownerRulesSrc = read("src/utils/ownerRules.js");
+const trc = ownerRulesSrc.slice(ownerRulesSrc.indexOf("async function tenantRentChargeInMonth"), ownerRulesSrc.indexOf("async function runOwnerDistributionAccrual"));
+assert("#2 accrual lookup covers every rent family", cae.includes("RENT_CHARGE_PREFIXES") && trc.includes("hasRentChargeInMonth("));
+assert("#2 accrual lookup keyed on tenant_id AR accounts", /\.eq\("tenant_id", tenantId\)/.test(trc) && cae.includes("tenantRentChargeInMonth(supabase, companyId, month, tenantId)"));
+assert("#2 failed read still answers 'could not tell' (true)", /if \(arErr\) return true;/.test(trc) && /if \(lErr\) return true;/.test(trc));
 assert("#2 autoOwnerDistribution passes tenantId through", /autoOwnerDistribution\(companyId, propertyAddress, paymentAmount, paymentDate, tenantName, tenantId\)/.test(acct) && /checkAccrualExists\(companyId, month, tenantName, tenantId\)/.test(acct));
 assert("#2 runNow passes tenant id to autoOwnerDistribution", /autoOwnerDistribution\(companyId, s\.property, amt, today, tenantDisplayName, tenantRow\?\.id \|\| null\)/.test(runNow));
-assert("#2 owner fee math untouched", acct.includes("const mgmtFeeCents = Math.round(paymentCents * feePct / 100);") && acct.includes("const feePct = safeNum(owner.management_fee_pct);"));
+// Fee math: integer cents, in the SQL accrual (owner_accrual_sync).
+const ownerMig = read("supabase/migrations/20260928170000_owner_accrual_rpc.sql");
+assert("#2 owner fee math in integer cents (SQL accrual)", ownerMig.includes("v_fee := round(v_d * v_pct / 100)::bigint;") && ownerMig.includes("p_net := p_net || (v_d - v_fee)") && acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)"));
 // 3
 assert("#3 move-out looks up the tenant's recurring schedules by tenant_id", /from\("recurring_journal_entries"\)\s*\n?\s*\.select\("id, credit_account_id, credit_account_name"\)\.eq\("company_id", cid\)\.eq\("tenant_id", selectedTenant\.id\)/.test(life));
 assert("#3 move-out uses recurringRentRefsForMonth + pickMoveOutRentCharge", life.includes("recurringRentRefsForMonth(") && life.includes("pickMoveOutRentCharge(rentCharges, moveOutRentRefs)"));

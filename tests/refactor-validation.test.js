@@ -93,7 +93,10 @@ function testFileStructure() {
   // postings WO completion, invoice payment, Record payment, the recurring
   // engine and tax-bill generation now share -- no-double-expense.test.mjs).
   // 29 on 2026-09-29: theme I (loginMissing.js) merged with theme K (two files).
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 29, `src/utils/ has 8..29 files (found ${actualUtilFiles.length})`);
+  // 31 on 2026-09-29: staging's 29 merged with the owners branch's two
+  // (ownerRules.js -- the pure fee / statement rules shared with api/stripe.js --
+  // and owners.js -- owner links, statement reads, correction + pending RPCs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 31, `src/utils/ has 8..31 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -110,7 +113,8 @@ function testFileStructure() {
     assert(fs.existsSync(path.join(compDir, f)), `src/components/${f} exists`);
   }
   const actualCompFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.js'));
-  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 40, `src/components/ has 23..40 files (found ${actualCompFiles.length})`);
+  // 40 -> 41 on 2026-09-28 (owners): OwnerPicker.js, the one owner chooser used by the wizard and the property page.
+  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 41, `src/components/ has 23..41 files (found ${actualCompFiles.length})`);
 
   // Total line count. App.js grew past its own 1500 cap with the
   // SCREEN_HASHES guard that fixed deep-link routing — a deliberate,
@@ -268,9 +272,15 @@ function testFileStructure() {
   // 54200 on 2026-09-29: + audit theme J (wizard per-field payload builders
   // WIZ_FIELDS / WIZ_DB_COLS so only changed fields are written; import enum /
   // duplicate-key / HOA-due handling, import HOA salt reuse) merged with staging 4f3dcb6 (53900).
-  // 54400 on 2026-09-29: + audit theme L (property delete: chunked server-side void
-  // helpers, unfinished-delete banner with Finish/Cancel, restore preview).
-  assert(totalLines <= 54400, `Total src lines <= 54400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 55000 on 2026-09-29: staging 81d9128 (54200, theme J) merged with the owners branch (+~720 at
+  // 54700: owner links in the wizard / property page / import, OwnerPicker + owner correction, ledger
+  // statements with billed / collected / unpaid, ownership-history reads, the SQL-accrual callers, and
+  // the Owners page's background drain).
+  // 55100 on 2026-09-29: + staging 2d75397 (bookkeeping roles / canKeepBooks, balance-sheet
+  // grouping under parent accounts, Chart of Accounts parent picker: +~85).
+  // 55250 on 2026-09-29: + audit theme L (property delete: chunked server-side void helpers,
+  // unfinished-delete banner with Finish/Cancel, restore preview: +~115).
+  assert(totalLines <= 55250, `Total src lines <= 55250 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
