@@ -127,7 +127,9 @@ assert("the live read only overrides when live rows exist (new drafts keep their
     /LANGUAGE plpgsql\s+SECURITY DEFINER/.test(wiz));
 
   const editStart = wiz.indexOf("IF v_mode = 'edit' AND v_property_id_in IS NOT NULL THEN");
-  const oldRead = wiz.search(/SELECT address INTO v_old_address FROM properties\s+WHERE id = v_property_id_in AND company_id = v_company_id\s+FOR UPDATE;/);
+  // 20260928140000 reads the whole row at the same point (the merge guard
+  // compares against it): `SELECT address, to_jsonb(p) INTO v_old_address, ...`.
+  const oldRead = wiz.search(/SELECT address(?:, to_jsonb\(p\))? INTO v_old_address(?:, v_prop_cur)? FROM properties(?: p)?\s+WHERE id = v_property_id_in AND company_id = v_company_id\s+FOR UPDATE;/);
   const propUpdate = wiz.indexOf("UPDATE properties SET\n      address_line_1", editStart);
   const cascade = wiz.indexOf("PERFORM public._cascade_property_rename(v_company_id, v_old_address, v_address)");
   const classUpsert = wiz.indexOf("INSERT INTO acct_classes");

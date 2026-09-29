@@ -21,9 +21,21 @@ import { encryptCredential } from "../utils/encryption";
 import {
   PROPERTY_COLUMNS, TENANT_COLUMNS, SHEET_PROPERTIES, SHEET_TENANTS,
   buildTemplate, parseWorkbook, buildImportPlan, inferTenantStatus, computeAddress,
-  cellString, importCreatePayload, importEnumValue,
+  cellString, importCreatePayload, importEnumValue, hoaDue,
 } from "../utils/propertyImport";
+
 import { ACTIVE_LEASE } from "../utils/helpers";
+
+// A stored "YYYY-MM-DD" due date moved to another day of the SAME month (the
+// month's last day if it is shorter). No stored date: this month.
+function mergeDueDay(stored, day) {
+  const m = String(stored || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const now = new Date();
+  const y = m ? Number(m[1]) : now.getFullYear(), mo = m ? Number(m[2]) : now.getMonth() + 1;
+  if (m && Number(m[3]) === day) return String(stored).slice(0, 10);
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  return `${y}-${String(mo).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
 
 const STEPS = [
   { id: "download", label: "Download" },
@@ -67,13 +79,13 @@ export default function PropertyImport({ companyId, companyName, properties = []
     // causes statement timeouts.
     const [{ data: utilRows }, { data: hoaRows }, { data: loanRows },
            { data: insRows }, { data: taxRows }, { data: recRows }] = await Promise.all([
-      supabase.from("utilities").select("property,provider,responsibility,amount,due,due_date")
+      supabase.from("utilities").select("property,provider,account_number,responsibility,amount,due,due_date,website")
         .eq("company_id", companyId).is("archived_at", null),
-      supabase.from("hoa_payments").select("property,hoa_name,amount,frequency,due_date,notes")
+      supabase.from("hoa_payments").select("property,hoa_name,amount,frequency,due_date,notes,website")
         .eq("company_id", companyId).is("archived_at", null),
-      supabase.from("property_loans").select("property,lender_name,loan_type,account_number,original_amount,current_balance,interest_rate,monthly_payment,escrow_included,escrow_amount,loan_start_date,maturity_date")
+      supabase.from("property_loans").select("property,lender_name,loan_type,account_number,original_amount,current_balance,interest_rate,monthly_payment,escrow_included,escrow_amount,loan_start_date,maturity_date,website")
         .eq("company_id", companyId).is("archived_at", null),
-      supabase.from("property_insurance").select("property,provider,policy_number,coverage_amount,premium_amount,premium_frequency,expiration_date,notes")
+      supabase.from("property_insurance").select("property,provider,policy_number,coverage_amount,premium_amount,premium_frequency,expiration_date,notes,website")
         .eq("company_id", companyId).is("archived_at", null),
       supabase.from("property_taxes").select("property,county,jurisdiction,parcel_id,tax_year,annual_tax_amount,assessed_value,billing_frequency,next_due_date,escrow_paid_by_lender,records_url")
         .eq("company_id", companyId).is("archived_at", null),
@@ -253,7 +265,8 @@ export default function PropertyImport({ companyId, companyName, properties = []
     const utilities = [];
     for (const u of mine(ex.utilities)) {
       utilities.push({
-        provider: cellString(u.provider), responsibility: enumVal("responsibility", u.responsibility),
+        provider: cellString(u.provider), account_number: cellString(u.account_number) || null,
+        responsibility: enumVal("responsibility", u.responsibility),
         amount: u.amount ?? null, due_date: u.due_date || null,
         website: cellString(u.website) || null, ...(await encryptCreds(u, `${cellString(u.provider)} (utility)`)),
       });
@@ -339,36 +352,51 @@ export default function PropertyImport({ companyId, companyName, properties = []
     // utility bill back to pending and a closed loan back to active.
     // `keepIfBlank` names fields where an empty cell means "leave what is
     // stored" rather than "erase it".
-    async function put(table, match, row, { onInsert = {}, keepIfBlank = [] } = {}) {
-      const { data: found } = await supabase.from(table).select("id")
-        .eq("company_id", companyId).eq("property", address)
-        .match(match).is("archived_at", null).limit(1);
+    async function put(table, match, row, { onInsert = {}, keepIfBlank = [], beforeUpdate = null } = {}) {
+      // A blank key matches a blank (NULL) column: `.match` would compile
+      // account_number=null to "= 'null'" and match nothing.
+      let q = supabase.from(table).select("*")
+        .eq("company_id", companyId).eq("property", address).is("archived_at", null);
+      for (const [k, v] of Object.entries(match)) q = (v === null || v === undefined || v === "") ? q.is(k, null) : q.eq(k, v);
+      const { data: found } = await q.limit(1);
       const hit = (found || [])[0];
       const patch = { ...row };
       if (hit) keepIfBlank.forEach(k => { if (patch[k] === null || patch[k] === undefined || patch[k] === "") delete patch[k]; });
+      if (hit && beforeUpdate) beforeUpdate(patch, hit);
       const { error } = hit
         ? await supabase.from(table).update(patch).eq("id", hit.id).eq("company_id", companyId)
         : await supabase.from(table).insert([{ ...onInsert, ...row, company_id: companyId, property: address, ...match }]);
       if (error) failures.push(`${table}: ${error.message}`);
     }
 
+    // Matched on provider AND account number: a property can have two meters
+    // with one provider, and matching on the provider alone wrote the second
+    // row over the first. (The plan refuses two rows with the same key.)
     for (const u of recs.utilities) {
-      await put("utilities", { provider: u.provider }, {
+      await put("utilities", { provider: u.provider, account_number: u.account_number || null }, {
         property_id: Number.isFinite(idNum) ? idNum : null,
         amount: u.amount, due: u.due_date || null,   // the app sorts on `due`, not due_date
         responsibility: u.responsibility, website: u.website,
         username_encrypted: u.username_encrypted, password_encrypted: u.password_encrypted,
         encryption_iv: u.encryption_iv, encryption_iv_username: u.encryption_iv_username,
         encryption_salt: u.encryption_salt,
-      }, { onInsert: { status: "pending" }, keepIfBlank: ["amount", "due", "responsibility"] });
+      }, { onInsert: { status: "pending" }, keepIfBlank: ["amount", "due", "responsibility", "website"] });
     }
     for (const h of recs.hoas) {
+      // "15" / "15th" is a day of the month: it moves the stored due date to
+      // that day, keeping its month. A date is a date. Anything else is left
+      // as it was (the plan already warned).
+      const due = hoaDue(h.due_date);
+      if (due?.bad) failures.push(`HOA "${h.hoa_name}": due date "${due.bad}" not understood -- left as it was`);
       await put("hoa_payments", { hoa_name: h.hoa_name }, {
         property_id: Number.isFinite(idNum) ? idNum : null,
-        amount: h.amount, frequency: h.frequency, due_date: h.due_date, notes: h.notes,
+        amount: h.amount, frequency: h.frequency, due_date: due?.date || null, notes: h.notes,
         website: h.website, username_encrypted: h.username_encrypted,
         password_encrypted: h.password_encrypted, encryption_iv: h.encryption_iv,
         encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt,
+      }, {
+        keepIfBlank: ["amount", "frequency", "due_date", "notes", "website"],
+        beforeUpdate: (patch, hit) => { if (due?.day) patch.due_date = mergeDueDay(hit.due_date, due.day); },
       });
     }
     // property_loans.property_id and property_insurance.property_id are
@@ -378,12 +406,13 @@ export default function PropertyImport({ companyId, companyName, properties = []
       const { property: _p, status: loanStatus, ...rest } = ln;
       await put("property_loans", { lender_name: ln.lender_name },
         { ...rest, property_id: propertyId == null ? null : String(propertyId) },
-        { onInsert: { status: loanStatus || "active" } });
+        { onInsert: { status: loanStatus || "active" }, keepIfBlank: ["website", "loan_type"] });
     }
     if (recs.insurance) {
       const { property: _p, ...rest } = recs.insurance;
       await put("property_insurance", { provider: recs.insurance.provider },
-        { ...rest, property_id: propertyId == null ? null : String(propertyId) });
+        { ...rest, property_id: propertyId == null ? null : String(propertyId) },
+        { keepIfBlank: ["website", "notes", "premium_frequency"] });
     }
     // Two licence TYPES can coexist on one property, so each is matched on
     // (property_id, license_type) rather than property alone.
@@ -417,7 +446,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       if (proceed) {
         const row = { ...recs.taxes, property_id: Number.isFinite(idNum) ? idNum : null };
         if (noAmount) delete row.annual_tax_amount;   // leave what is on file
-        await put("property_taxes", {}, row);
+        await put("property_taxes", {}, row, { keepIfBlank: ["next_due_date", "billing_frequency", "records_url"] });
       }
     }
     return failures;

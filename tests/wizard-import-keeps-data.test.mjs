@@ -10,6 +10,13 @@
 //     utility amounts, archived every insurance policy / tax record when the
 //     step was not enabled in the payload, and wiped websites it never loaded.
 //
+// After the adversarial review (same migration, revised): an edit writes only
+// the fields the user changed (`_orig` / `_db` per record) and refuses one that
+// someone else changed since the wizard opened; old-shape payloads are refused;
+// rows are matched by id only; ids from another property are ignored; the
+// import matches utilities on provider + account number, refuses duplicate
+// keys, and never writes an unrecognised enum as raw text.
+//
 // STATIC checks read the source; LIVE checks run the real RPC on the TEST
 // project as a real signed-in admin, on rows tagged QA-WIZ in the sandbox
 // company, diff every row before/after, and delete everything afterwards.
@@ -47,10 +54,22 @@ assert("utilities are no longer archived wholesale",
   !/UPDATE utilities SET archived_at = now\(\)\s+WHERE company_id = v_company_id AND property = v_address AND archived_at IS NULL AND is_final_bill IS NOT TRUE;/.test(body));
 assert("HOA dues are no longer archived wholesale",
   !/UPDATE hoa_payments SET archived_at = now\(\), archived_by = v_caller_email\s+WHERE company_id = v_company_id AND property = v_address AND archived_at IS NULL;/.test(body));
-assert("removal is limited to rows the form SAW (seen ids / names)",
-  /utilities_seen_ids/.test(body) && /hoas_seen_ids/.test(body) && (body.match(/NOT \(id = ANY\(v_matched_(util|hoa)\)\)/g) || []).length >= 4);
+assert("removal is limited to rows the form SAW and the payload dropped",
+  /id::text NOT IN \(SELECT e->>'id' FROM jsonb_array_elements\(v_utilities\)/.test(body)
+  && /id::text NOT IN \(SELECT e->>'id' FROM jsonb_array_elements\(v_hoas\)/.test(body));
+assert("rows are matched by id only: no provider / HOA-name fallback that merges a new row into an old one",
+  !/lower\(btrim\(provider\)\) = lower\(btrim\(v_u->>'provider'\)\)/.test(body) && !/lower\(btrim\(hoa_name\)\) = lower/.test(body));
+assert("an edit from an out-of-date client is refused",
+  /payload_version/.test(body) && /Please reload the app/.test(body));
+assert("only staff may commit (owner and pm removed)",
+  /v_caller_role NOT IN \('admin','manager','office_assistant'\)/.test(body));
+assert("a field is written only if the user changed it, and refused if someone else changed it since",
+  (body.match(/_wizard_chg\(/g) || []).length > 80 && (body.match(/PERFORM public\._wizard_guard\(/g) || []).length >= 9);
+assert("loan / insurance / tax ids are looked up within THIS property",
+  ["property_loans", "property_insurance", "property_taxes"].every(t =>
+    new RegExp(`FROM ${t} x\\s+WHERE id::text = v_(loan|ins|tax)_id AND company_id = v_company_id AND property = v_address`).test(body)));
 assert("an existing HOA row never has status / paid_date written",
-  !/UPDATE hoa_payments SET[\s\S]{0,4000}?\bstatus\s*=/.test(body.slice(body.indexOf("HOAs — merge"))) && !/paid_date\s*=/.test(body));
+  !/UPDATE hoa_payments SET[\s\S]{0,4000}?\bstatus\s*=/.test(body.slice(body.indexOf("─── HOAs"))) && !/paid_date\s*=/.test(body));
 assert("the lease update no longer forces payment_due_day = 1",
   !/UPDATE leases SET[^;]*payment_due_day = 1/.test(body));
 assert("insurance / tax / loan are archived only when the payload names the record",
@@ -59,7 +78,7 @@ assert("insurance / tax / loan are archived only when the payload names the reco
   && /ELSIF v_mode = 'edit' AND v_loan IS NOT NULL AND NULLIF\(v_loan->>'id',''\) IS NOT NULL/.test(body)
   && !/UPDATE property_insurance SET archived_at = now\(\)\s+WHERE company_id = v_company_id AND property = v_address AND archived_at IS NULL;/.test(body));
 assert("websites: blank keeps the stored one on every update",
-  ["v_u", "v_h", "v_loan", "v_insurance"].every(v => body.includes(`website = COALESCE(NULLIF(${v}->>'website',''), website)`)));
+  ["v_u", "v_h", "v_loan", "v_insurance"].every(v => body.includes(`COALESCE(NULLIF(${v}->>'website',''), website)`)));
 assert("responsibility maps the import's 'owner'/'tenant', and blank is not guessed",
   /WHEN 'owner' THEN 'owner'/.test(body) && /WHEN 'tenant' THEN 'tenant'/.test(body) && !/ELSE 'tenant' END/.test(body));
 for (const t of ["utilities", "hoa_payments", "property_loans", "property_insurance"]) {
@@ -69,14 +88,14 @@ for (const t of ["utilities", "hoa_payments", "property_loans", "property_insura
 assert("credential_key_fp persisted on every credential UPDATE",
   (body.match(/credential_key_fp = /g) || []).length >= 4);
 assert("tenant late fee / move_in / notice are kept",
-  /late_fee_amount = COALESCE\(NULLIF\(v_tenant->>'late_fee_amount',''\)::numeric, late_fee_amount\)/.test(body)
-  && /move_in = COALESCE\(move_in,/.test(body)
-  && /lease_status = CASE WHEN lease_status = 'notice'/.test(body));
+  /COALESCE\(NULLIF\(v_tenant->>'late_fee_amount',''\)::numeric, late_fee_amount\)/.test(body)
+  && /COALESCE\(move_in,/.test(body)
+  && /OR lease_status = 'notice'\s+THEN lease_status ELSE 'active' END/.test(body));
 assert("recurring rent is stopped only on an explicit clear", /recurring_cleared/.test(body));
 assert("the wizard no longer creates or updates a mortgage recurring schedule (owner decision, theme K)",
   !/INSERT INTO recurring_journal_entries[\s\S]{0,400}Mortgage\/Loan Payment/.test(body) && !/setup_recurring/.test(body.replace(/--.*$/gm, "")));
 assert("NULLs written by other pages are not turned into '' / 0 / false",
-  /_wizard_txt\(v_loan->>'account_number', account_number\)/.test(body) && /_wizard_num\(v_insurance->>'coverage_amount', coverage_amount\)/.test(body)
+  /_wizard_txt\(v_insurance->>'policy_number', policy_number\)/.test(body) && /_wizard_num\(v_insurance->>'coverage_amount', coverage_amount\)/.test(body)
   && /_wizard_bool\(v_tenant->>'is_voucher', is_voucher\)/.test(body));
 
 console.log("\n=== STATIC: wizard client ===");
@@ -84,7 +103,12 @@ assert("due day is parsed from the stored DATE, not Number(date) || 1",
   !/Number\([uh]\.due_date\) \|\| 1/.test(props) && (props.match(/due_day: dueDayOf\(/g) || []).length === 2);
 assert("the live loader keeps each utility / HOA row id",
   /seenHoaIds\.current = hoaRows\.map\(h => h\.id\)/.test(props) && /seenUtilIds\.current = utilRows\.map\(u => u\.id\)/.test(props)
-  && /\.\.\.\(u\.id \? \{ id: u\.id \} : \{\}\)/.test(props) && /\.\.\.\(h\.id \? \{ id: h\.id \} : \{\}\)/.test(props));
+  && /\.\.\.\(u\.id \? \{ id: u\.id, \.\.\.withOrig\("utility"/.test(props) && /\.\.\.\(h\.id \? \{ id: h\.id, \.\.\.withOrig\("hoa"/.test(props));
+assert("every loaded record is sent with how it was loaded (_orig / _db) and payload_version 2",
+  /payload_version: 2/.test(props) && ["property", "tenant", "loan", "insurance", "taxes", "recurring"].every(k => props.includes(`withOrig("${k}"`)));
+assert("a tenant on notice is loaded (LIVE_TENANCY), so a save never treats them as absent",
+  /\.in\("lease_status", LIVE_TENANCY\)/.test(props));
+assert("an existing HOA with no amount no longer blocks every save", /if \(!h\.id && \(!h\.amount/.test(props));
 assert("the commit sends the seen ids",
   /hoas_seen_ids:/.test(props) && /utilities_seen_ids:/.test(props));
 assert("a switched-off loan / policy / tax record is named, anything else sends null",
@@ -106,13 +130,19 @@ assert("re-import never resets a utility's status or a loan's status",
   /onInsert: \{ status: "pending" \}/.test(imp) && /onInsert: \{ status: loanStatus \|\| "active" \}/.test(imp)
   && !/responsibility: u\.responsibility, status: "pending"/.test(imp));
 assert("the download pre-fills Next Due from `due` (the column the app uses)",
-  /select\("property,provider,responsibility,amount,due,due_date"\)/.test(imp));
-assert("a blank amount / due / Paid By keeps the stored value on re-import",
-  /keepIfBlank: \["amount", "due", "responsibility"\]/.test(imp));
+  /select\("property,provider,account_number,responsibility,amount,due,due_date,website"\)/.test(imp));
+assert("the download carries websites for every sheet that has one",
+  /hoa_name,amount,frequency,due_date,notes,website/.test(imp) && /maturity_date,website/.test(imp) && /expiration_date,notes,website/.test(imp));
+assert("utilities are matched on provider AND account number", /put\("utilities", \{ provider: u\.provider, account_number: u\.account_number \|\| null \}/.test(imp));
+assert("a blank cell keeps the stored value on re-import (utility, HOA due, tax next due, websites)",
+  /keepIfBlank: \["amount", "due", "responsibility", "website"\]/.test(imp)
+  && /keepIfBlank: \["amount", "frequency", "due_date", "notes", "website"\]/.test(imp)
+  && /keepIfBlank: \["next_due_date"/.test(imp));
 assert("a new property keeps its beds/baths/sqft/rent/licences", /await writeLicences\(r, created\.property_id/.test(imp));
 assert("recurring rows that cannot be imported are shown on the Done step", /result\.recurringSkipped > 0/.test(imp));
 assert("the subRecordsFor field mapping this test mirrors is still the component's",
-  imp.includes('provider: cellString(u.provider), responsibility: enumVal("responsibility", u.responsibility),')
+  imp.includes('provider: cellString(u.provider), account_number: cellString(u.account_number) || null,')
+  && imp.includes('responsibility: enumVal("responsibility", u.responsibility),')
   && imp.includes('amount: u.amount ?? null, due_date: u.due_date || null,'));
 
 const { importCreatePayload, importEnumValue, buildTemplate, parseWorkbook, buildImportPlan, computeAddress, cellString,
@@ -124,19 +154,54 @@ console.log("\n=== UNIT: importCreatePayload ===");
 {
   const reports = [];
   const out = importCreatePayload({
-    utilities: [], hoas: [{ hoa_name: "X", due_date: "15" }, { hoa_name: "Y", due_date: "2026-10-20" }],
+    utilities: [], hoas: [{ hoa_name: "X", amount: 10, due_date: "15th" }, { hoa_name: "Y", amount: 20, due_date: "2026-10-20" }, { hoa_name: "Z", amount: null }],
     loan: { lender_name: "L" }, loans: [{ lender_name: "L" }, { lender_name: "M" }],
     insurance: { provider: "I" }, taxes: { county: "C", annual_tax_amount: null }, recurring: null,
   }, (w) => reports.push(w));
   assert("loan and insurance are sent enabled", out.loan?.enabled === true && out.insurance?.enabled === true);
-  assert("a tax row with no amount is skipped and REPORTED (not a failed property)", out.taxes === null && reports.length === 1);
-  assert("an HOA due of '15' becomes day 15; a date stays a date",
+  assert("a tax row / new HOA with no amount is skipped and REPORTED (not a failed property)",
+    out.taxes === null && out.hoas.length === 2 && reports.length === 2, JSON.stringify(reports));
+  assert("an HOA due of '15th' becomes day 15; a date stays a date",
     out.hoas[0].due_day === 15 && out.hoas[0].due_date === null && out.hoas[1].due_date === "2026-10-20");
   assert("the RPC payload does not carry the extra-loans list", !("loans" in out));
   const withTax = importCreatePayload({ utilities: [], hoas: [], taxes: { annual_tax_amount: 10 } });
   assert("a tax row with an amount is sent enabled", withTax.taxes?.enabled === true);
   assert("'Owner' maps to owner, blank to null (not guessed)",
     importEnumValue("responsibility", "Owner") === "owner" && importEnumValue("responsibility", "") === null);
+  assert("responsibility read the way people type it; unknown text is never written raw",
+    importEnumValue("responsibility", "OWNER PAYS") === "owner" && importEnumValue("responsibility", "Landlord") === "owner"
+    && importEnumValue("responsibility", "Tenant pays") === "tenant" && importEnumValue("responsibility", "condo fee") === "condo_fee"
+    && importEnumValue("responsibility", "split 50/50") === null && importEnumValue("hoaFrequency", "fortnightly") === null
+    && importEnumValue("loanType", "Balloon") === null);
+}
+
+console.log("\n=== UNIT: the import plan ===");
+{
+  const A = "1 Plan St, Town, MD 20001";
+  const plan = buildImportPlan({
+    properties: [{ _row: 2, address_line_1: "1 Plan St", city: "Town", state: "MD", zip: "20001", type: "Single Family", status: "vacant" }],
+    tenants: [], existingProperties: [], existingTenants: [],
+    utilities: [{ _row: 2, property: A, provider: "Pepco", account_number: "1", responsibility: "Owner" },
+                { _row: 3, property: A, provider: "Pepco", account_number: "2", responsibility: "Tenant" },
+                { _row: 4, property: A, provider: "pepco", account_number: "1", responsibility: "split" }],
+    hoas: [{ _row: 2, property: A, hoa_name: "Oaks", amount: 10 }, { _row: 3, property: A, hoa_name: "OAKS", amount: 20 }],
+    loan: [{ _row: 2, property: A, lender_name: "Chase" }, { _row: 3, property: A, lender_name: "chase" }],
+    insurance: [], taxes: [], recurring: [],
+  });
+  const msgs = plan.errors.map(e => `${e.sheet} ${e.row}`);
+  assert("two utilities with the same provider + account number are refused; different accounts are fine",
+    msgs.includes("Utilities 4") && !msgs.includes("Utilities 3"), JSON.stringify(msgs));
+  assert("two HOAs / two loans with the same name on one property are refused",
+    msgs.includes("HOA 3") && msgs.includes("Loans 3"), JSON.stringify(msgs));
+  const { hoaDue } = await import("../src/utils/propertyImport.js");
+  assert("HOA due: '15' / '15th' is a day, a date is a date, junk is reported",
+    hoaDue("15").day === 15 && hoaDue("15th").day === 15 && hoaDue("2026-10-20").date === "2026-10-20" && !!hoaDue("mid-month").bad && hoaDue("") === null);
+  const p2 = buildImportPlan({
+    properties: [{ _row: 2, address_line_1: "1 Plan St", city: "Town", state: "MD", zip: "20001", type: "Single Family", status: "vacant" }],
+    tenants: [], existingProperties: [], existingTenants: [],
+    utilities: [{ _row: 2, property: A, provider: "Pepco", responsibility: "split 50/50" }], hoas: [], loan: [], insurance: [], taxes: [], recurring: [],
+  });
+  assert("an unrecognised Paid By is warned about (it will be left blank)", p2.warnings.some(w => /split 50\/50/.test(w.message)));
 }
 
 // ─────────────────────────────── LIVE ───────────────────────────────
@@ -155,6 +220,8 @@ async function cleanup() {
   const addrs = (ps || []).map(p => p.address), ids = (ps || []).map(p => p.id);
   const { data: ts } = await svc.from("tenants").select("id").eq("company_id", CID).like("name", TAG + "%");
   const tids = (ts || []).map(t => t.id);
+  // The utility-account bridge makes one utility_accounts row per utility.
+  await svc.from("utility_accounts").delete().eq("company_id", CID).like("property", TAG + "%");
   if (tids.length) {
     await svc.from("recurring_journal_entries").delete().eq("company_id", CID).in("tenant_id", tids);
     await svc.from("acct_accounts").delete().eq("company_id", CID).in("tenant_id", tids);
@@ -176,6 +243,7 @@ async function leftovers() {
     n[`${t}.${col}`] = count || 0;
   };
   await like("properties", "address");
+  await like("utility_accounts", "property");
   for (const t of ["utilities", "hoa_payments", "property_loans", "property_insurance", "property_taxes", "leases", "tenants", "recurring_journal_entries"]) await like(t, "property");
   await like("tenants", "name");
   await like("acct_classes", "name");
@@ -283,6 +351,12 @@ if (authErr) {
     const { data: c2, error: c2e } = await rpc({ company_id: CID, mode: "fresh", property: P2, tenant: TEN, utilities: [], hoas: [] });
     assert("set-up property created", !c2e && c2?.property_id, c2e?.message);
     const ADDR2 = c2.address, PID = c2.property_id;
+    // A rent schedule as the Accounting page would hold it. (Created directly:
+    // the sandbox company's AR codes include "1100-T28", which the pre-existing
+    // _wizard_get_tenant_ar cannot number past.)
+    await svc.from("recurring_journal_entries").insert([{ company_id: CID, description: `Monthly rent — ${TAG} Tenant — ${TAG} 22 Edit St`,
+      frequency: "monthly", day_of_month: 1, amount: 1500, tenant_name: `${TAG} Tenant`, tenant_id: c2.tenant_id, property: ADDR2,
+      status: "active", next_post_date: "2026-10-01" }]);
     // What other pages would have stored since.
     await svc.from("properties").update({ year_built: 1970 }).eq("id", PID);
     await svc.from("leases").update({ payment_due_day: 5 }).eq("company_id", CID).eq("property", ADDR2);
@@ -290,7 +364,7 @@ if (authErr) {
     const cred = (p) => ({ username_encrypted: p + "-u", password_encrypted: p + "-p", encryption_iv: p + "-iv",
                            encryption_iv_username: p + "-ivu", encryption_salt: p + "-salt", credential_key_fp: p + "-fp" });
     const ins = async (t, row) => { const { data, error } = await svc.from(t).insert([{ company_id: CID, property: ADDR2, ...row }]).select("*").single(); if (error) throw new Error(t + ": " + error.message); return data; };
-    await ins("utilities", { provider: `${TAG} Power`, type: "Electric", account_number: "A-1", amount: 133.45, due: "2026-10-15", responsibility: "owner", status: "paid", website: "https://power.example", ...cred("u1") });
+    const uPow = await ins("utilities", { provider: `${TAG} Power`, type: "Electric", account_number: "A-1", amount: 133.45, due: "2026-10-15", responsibility: "owner", status: "paid", website: "https://power.example", ...cred("u1") });
     await ins("utilities", { provider: `${TAG} Gas`, type: "Gas", account_number: "G-7", amount: 61.2, due: "2026-10-22", responsibility: "tenant", status: "pending", website: "https://gas.example" });
     await ins("hoa_payments", { hoa_name: `${TAG} HOA`, amount: 250, due_date: "2026-10-20", frequency: "Monthly", status: "paid", paid_date: "2026-09-10", notes: "hoa notes",
       website: "https://hoa.example", ...cred("h1"), management_company: "QA Mgmt", mgmt_website: "https://mgmt.example", contact_name: "Pat", contact_email: "pat@example.com", contact_phone: "555-0101" });
@@ -304,17 +378,14 @@ if (authErr) {
     await ins("property_taxes", { property_id: PID, county: "Testco", jurisdiction: "Testville", parcel_id: "PX-2", tax_year: 2026, annual_tax_amount: 4200,
       billing_frequency: "semi_annual", next_due_date: "2026-12-31", records_url: "https://tax.example", notes: "tax notes" });
 
-    const TABLES = { properties: ["id", PID], tenants: ["id", c2.tenant_id] };
     const snapshot = async () => {
       const out = {};
-      for (const t of ["utilities", "hoa_payments", "property_loans", "property_insurance", "property_taxes", "leases"]) {
+      for (const t of ["utilities", "hoa_payments", "property_loans", "property_insurance", "property_taxes", "leases", "recurring_journal_entries"]) {
         const { data } = await svc.from(t).select("*").eq("company_id", CID).eq("property", ADDR2).order("id");
         out[t] = data || [];
       }
-      for (const [t, [col, v]] of Object.entries(TABLES)) {
-        const { data } = await svc.from(t).select("*").eq(col, v);
-        out[t] = data || [];
-      }
+      out.properties = (await svc.from("properties").select("*").eq("id", PID)).data || [];
+      out.tenants = (await svc.from("tenants").select("*").eq("id", c2.tenant_id)).data || [];
       return out;
     };
     const VOLATILE = new Set(["updated_at"]);
@@ -332,71 +403,93 @@ if (authErr) {
       return d;
     };
 
-    // The payload exactly as the wizard now builds it after loadLiveWizardData
-    // (the form holds what the live rows hold; no logins re-entered).
-    const dueDayOf = (v) => { if (v == null || v === "") return null; const m = String(v).match(/^\d{4}-\d{2}-(\d{2})/); if (m) return Number(m[1]); const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 31 ? n : null; };
-    const respToForm = (r) => r === "owner" ? "owner_pays" : r === "tenant" ? "tenant_pays" : r === "condo_fee" ? "condo_fee" : "owner_pays";
-    const buildPayload = (s, over = {}) => {
-      const p = s.properties[0], t = s.tenants[0], lease = s.leases.find(l => l.status === "active");
-      const utils = s.utilities.filter(u => !u.archived_at), hoas = s.hoa_payments.filter(h => !h.archived_at);
-      const loan = s.property_loans.find(l => !l.archived_at);
-      const insr = s.property_insurance.filter(i => !i.archived_at).sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-      const tax = s.property_taxes.find(x => !x.archived_at);
-      return {
-        company_id: CID, wizard_id: null, mode: "edit", property_id_for_edit: PID,
-        property: { address: p.address, address_line_1: p.address_line_1, address_line_2: p.address_line_2 || "", city: p.city, state: p.state, zip: p.zip,
-                    county: p.county || "", type: p.type, status: p.status, year_built: p.year_built || null, notes: p.notes || "" },
-        tenant: { tenant: t.name, tenant_first: t.first_name || "", tenant_mi: t.middle_initial || "", tenant_last: t.last_name || "", tenant_email: t.email || "",
-                  tenant_phone: t.phone || "", rent: lease.rent_amount, security_deposit: lease.security_deposit || 0, lease_start: lease.start_date, lease_end: lease.end_date,
-                  late_fee_amount: t.late_fee_amount ?? "", late_fee_type: t.late_fee_type || "", is_voucher: !!t.is_voucher, voucher_number: t.voucher_number || "",
-                  reexam_date: t.reexam_date || "", case_manager_name: t.case_manager_name || "", case_manager_email: t.case_manager_email || "",
-                  case_manager_phone: t.case_manager_phone || "", voucher_portion: t.voucher_portion ?? "", tenant_portion: t.tenant_portion ?? "",
-                  tenant_2: p.tenant_2 || "", tenant_2_email: p.tenant_2_email || "", tenant_2_phone: p.tenant_2_phone || "",
-                  tenant_3: p.tenant_3 || "", tenant_3_email: p.tenant_3_email || "", tenant_3_phone: p.tenant_3_phone || "",
-                  tenant_4: p.tenant_4 || "", tenant_4_email: p.tenant_4_email || "", tenant_4_phone: p.tenant_4_phone || "",
-                  tenant_5: p.tenant_5 || "", tenant_5_email: p.tenant_5_email || "", tenant_5_phone: p.tenant_5_phone || "" },
-        utilities: utils.map(u => ({ id: u.id, provider: u.provider, type: u.type || "", account_number: u.account_number || "", due_day: dueDayOf(u.due || u.due_date),
-                                     responsibility: respToForm(u.responsibility), website: u.website || "" })),
-        hoas: hoas.map(h => ({ id: h.id, hoa_name: h.hoa_name, amount: Number(h.amount), due_day: dueDayOf(h.due_date), frequency: h.frequency || "Monthly",
-                               notes: (h.notes || "").trim(), website: h.website || "", management_company: (h.management_company || "").trim(), mgmt_website: h.mgmt_website || "",
-                               pay_portal_website: h.pay_portal_website || "", contact_name: h.contact_name || "", contact_email: (h.contact_email || "").toLowerCase(), contact_phone: h.contact_phone || "" })),
-        hoas_seen: hoas.map(h => h.hoa_name), utilities_seen: utils.map(u => u.provider),
-        hoas_seen_ids: hoas.map(h => String(h.id)), utilities_seen_ids: utils.map(u => String(u.id)),
-        loan: loan ? { enabled: true, id: loan.id, lender_name: loan.lender_name, loan_type: loan.loan_type, original_amount: Number(loan.original_amount) || 0,
-                       current_balance: Number(loan.current_balance) || 0, interest_rate: Number(loan.interest_rate) || 0, monthly_payment: Number(loan.monthly_payment),
-                       escrow_included: !!loan.escrow_included, escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0,
-                       loan_start_date: loan.loan_start_date || null, maturity_date: loan.maturity_date || null, account_number: (loan.account_number || "").trim(),
-                       notes: (loan.notes || "").trim(), website: loan.website || "", setup_recurring: false } : null,
-        insurance: insr ? { enabled: true, id: insr.id, provider: insr.provider, policy_number: insr.policy_number || "", premium_amount: Number(insr.premium_amount),
-                            premium_frequency: insr.premium_frequency, coverage_amount: Number(insr.coverage_amount) || 0, expiration_date: insr.expiration_date || null,
-                            notes: (insr.notes || "").trim(), website: insr.website || "" } : null,
-        taxes: tax ? { enabled: true, id: tax.id, parcel_id: tax.parcel_id || "", assessed_value: tax.assessed_value ?? "", tax_year: tax.tax_year,
-                       annual_tax_amount: tax.annual_tax_amount ?? "", billing_frequency: tax.billing_frequency, next_due_date: tax.next_due_date || "",
-                       exemptions: tax.exemptions || "", escrow_paid_by_lender: !!tax.escrow_paid_by_lender, records_url: tax.records_url || "", notes: tax.notes || "" } : null,
-        recurring_cleared: false, recurring: null,
-        ...over,
-      };
+    // The form and payload exactly as the wizard builds them: the helpers are
+    // taken from Properties.js itself, so this cannot drift from the client.
+    const H = (() => {
+      const src = props;
+      const block = src.slice(src.indexOf("const respToForm = "), src.indexOf("const loadedRow = "));
+      const lr = src.slice(src.indexOf("const loadedRow = ")).split("\n")[0];
+      return new Function(block + "\n" + lr + "\nreturn { respToForm, dueDayOf, pickCols, WIZ_DB_COLS, WIZ_FIELDS, withOrig, loadedRow };")();
+    })();
+    const loadForm = async () => {
+      const q = (t) => user.from(t).select("*").eq("company_id", CID).eq("property", ADDR2).is("archived_at", null);
+      const [hoas, utils, loans, inss, taxes] = await Promise.all([q("hoa_payments"), q("utilities"), q("property_loans"),
+        q("property_insurance").order("created_at", { ascending: true }), q("property_taxes").order("created_at", { ascending: true })]);
+      const f = {};
+      f.hoas = (hoas.data || []).map(h => H.loadedRow({ id: h.id, hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: H.dueDayOf(h.due_date) ?? "",
+        frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "", management_company: h.management_company || "",
+        mgmt_website: h.mgmt_website || "", pay_portal_website: h.pay_portal_website || "", contact_name: h.contact_name || "",
+        contact_email: h.contact_email || "", contact_phone: h.contact_phone || "" }, h, "hoa"));
+      f.utilities = (utils.data || []).map(u => H.loadedRow({ id: u.id, provider: u.provider || "", type: u.type || "", account_number: u.account_number || "",
+        due_date: H.dueDayOf(u.due || u.due_date) ?? "", responsibility: H.respToForm(u.responsibility), website: u.website || "" }, u, "utility"));
+      f.seenHoaIds = (hoas.data || []).map(h => String(h.id)); f.seenUtilIds = (utils.data || []).map(u => String(u.id));
+      const l = (loans.data || [])[0];
+      f.loan = H.loadedRow({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount ?? "",
+        current_balance: l.current_balance ?? "", interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "", escrow_included: !!l.escrow_included,
+        escrow_amount: l.escrow_amount ?? "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "",
+        notes: l.notes || "", website: l.website || "" }, l, "loan");
+      const i = (inss.data || [])[0];
+      f.insurance = H.loadedRow({ enabled: true, id: i.id, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount ?? "",
+        premium_frequency: i.premium_frequency || "annual", coverage_amount: i.coverage_amount ?? "", expiration_date: i.expiration_date || "",
+        notes: i.notes || "", website: i.website || "" }, i, "insurance");
+      const t = (taxes.data || [])[0];
+      f.taxes = H.loadedRow({ enabled: true, id: t.id, parcel_id: t.parcel_id || "", assessed_value: t.assessed_value ?? "", tax_year: t.tax_year ?? "",
+        annual_tax_amount: t.annual_tax_amount ?? "", billing_frequency: t.billing_frequency || "semi_annual", next_due_date: t.next_due_date || "",
+        exemptions: t.exemptions || "", escrow_paid_by_lender: !!t.escrow_paid_by_lender, records_url: t.records_url || "", notes: t.notes || "" }, t, "taxes");
+      const p = (await user.from("properties").select(H.WIZ_DB_COLS.property.join(", ")).eq("id", PID).single()).data;
+      f.prop = { address_line_1: p.address_line_1 || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "",
+        county: p.county || "", type: p.type || "Single Family", status: p.status || "vacant", notes: p.notes || "", year_built: p.year_built ? String(p.year_built) : "" };
+      f.propLoaded = { form: { ...f.prop }, db: H.pickCols(p, H.WIZ_DB_COLS.property) };
+      const tn = (await user.from("tenants").select(H.WIZ_DB_COLS.tenant.join(", ") + ", security_deposit").eq("id", c2.tenant_id).single()).data;
+      const ls = (await user.from("leases").select(H.WIZ_DB_COLS.lease.join(", ")).eq("company_id", CID).eq("property", ADDR2).eq("status", "active").limit(1)).data[0];
+      f.tenant = { tenant: tn.name || "", tenant_first: tn.first_name || "", tenant_mi: tn.middle_initial || "", tenant_last: tn.last_name || "",
+        tenant_email: tn.email || "", tenant_phone: tn.phone || "", late_fee_amount: tn.late_fee_amount ?? "", late_fee_type: tn.late_fee_type || "",
+        rent: (ls?.rent_amount ?? tn.rent) ?? "", security_deposit: (ls?.security_deposit ?? tn.security_deposit) ?? "",
+        lease_start: ls?.start_date || tn.lease_start || "", lease_end: ls?.end_date || tn.lease_end_date || "", is_voucher: !!tn.is_voucher,
+        voucher_number: tn.voucher_number || "", reexam_date: tn.reexam_date || "", case_manager_name: tn.case_manager_name || "",
+        case_manager_email: tn.case_manager_email || "", case_manager_phone: tn.case_manager_phone || "", voucher_portion: tn.voucher_portion ?? "",
+        tenant_portion: tn.tenant_portion ?? "" };
+      for (const n of [2, 3, 4, 5]) for (const s of ["", "_email", "_phone"]) f.tenant[`tenant_${n}${s}`] = p[`tenant_${n}${s}`] || "";
+      f.tenantLoaded = { form: { ...f.tenant }, db: H.pickCols(tn, H.WIZ_DB_COLS.tenant), dbLease: ls ? H.pickCols(ls, H.WIZ_DB_COLS.lease) : null };
+      const rc = (await user.from("recurring_journal_entries").select(H.WIZ_DB_COLS.recurring.join(", ")).eq("company_id", CID).eq("tenant_id", c2.tenant_id).eq("status", "active").limit(1)).data[0];
+      f.recurring = { amount: rc.amount, frequency: rc.frequency || "monthly", day_of_month: rc.day_of_month || 1, start_date: "" };
+      f.recurringLoaded = { form: { ...f.recurring }, db: H.pickCols(rc, H.WIZ_DB_COLS.recurring) };
+      return f;
     };
+    const buildPayload = (f) => ({
+      company_id: CID, wizard_id: null, mode: "edit", property_id_for_edit: PID, payload_version: 2,
+      property: { address: ADDR2, ...H.WIZ_FIELDS.property(f.prop), ...H.withOrig("property", f.propLoaded.form, f.propLoaded.db) },
+      tenant: { ...H.WIZ_FIELDS.tenant(f.tenant), ...H.withOrig("tenant", f.tenantLoaded.form, f.tenantLoaded.db), _db_lease: f.tenantLoaded.dbLease },
+      utilities: f.utilities.map(u => ({ ...(u.id ? { id: u.id, ...H.withOrig("utility", u._loaded, u._db) } : {}), ...H.WIZ_FIELDS.utility(u) })),
+      hoas: f.hoas.map(h => ({ ...(h.id ? { id: h.id, ...H.withOrig("hoa", h._loaded, h._db) } : {}), ...H.WIZ_FIELDS.hoa(h) })),
+      hoas_seen_ids: f.seenHoaIds, utilities_seen_ids: f.seenUtilIds,
+      loan: f.loan.enabled ? { enabled: true, id: f.loan.id, ...H.withOrig("loan", f.loan._loaded, f.loan._db), ...H.WIZ_FIELDS.loan(f.loan) } : { enabled: false, id: f.loan.id },
+      insurance: f.insurance.enabled ? { enabled: true, id: f.insurance.id, ...H.withOrig("insurance", f.insurance._loaded, f.insurance._db), ...H.WIZ_FIELDS.insurance(f.insurance) } : { enabled: false, id: f.insurance.id },
+      taxes: f.taxes.enabled ? { enabled: true, id: f.taxes.id, ...H.withOrig("taxes", f.taxes._loaded, f.taxes._db), ...H.WIZ_FIELDS.taxes(f.taxes) } : { enabled: false, id: f.taxes.id },
+      recurring_cleared: false,
+      recurring: { ...H.WIZ_FIELDS.recurring(f.recurring), ...H.withOrig("recurring", f.recurringLoaded.form, f.recurringLoaded.db) },
+    });
 
     const s0 = await snapshot();
     // (a) re-save with NO changes
-    let { error: e1 } = await rpc(buildPayload(s0));
+    const { error: e1 } = await rpc(buildPayload(await loadForm()));
     const s1 = await snapshot();
     const d1 = diff(s0, s1);
     assert("re-save with no changes: RPC ok", !e1, e1?.message);
     assert("re-save with no changes: NO row differs in any column", d1.length === 0, d1.join("\n   "));
 
     // (b) change ONE unrelated field (property notes)
-    const pl = buildPayload(s1); pl.property.notes = "edited notes";
-    const { error: e2 } = await rpc(pl);
+    const fb = await loadForm(); fb.prop.notes = "edited notes";
+    const { error: e2 } = await rpc(buildPayload(fb));
     const s2 = await snapshot();
     const d2 = diff(s1, s2);
     assert("one-field edit: RPC ok", !e2, e2?.message);
     assert("one-field edit: the ONLY difference is properties.notes",
       d2.length === 1 && /^properties#\d+\.notes: "original notes" -> "edited notes"$/.test(d2[0]), d2.join("\n   "));
     const u2 = s2.utilities.find(u => u.provider === `${TAG} Power`), h2 = s2.hoa_payments[0], l2 = s2.property_loans[0];
-    assert("due dates kept (utility 15th, HOA 20th, lease day 5)",
-      u2.due === "2026-10-15" && h2.due_date === "2026-10-20" && s2.leases[0].payment_due_day === 5);
+    assert("due dates kept (utility 15th, HOA 20th, lease day 5, rent next post)",
+      u2.due === "2026-10-15" && h2.due_date === "2026-10-20" && s2.leases[0].payment_due_day === 5
+      && s2.recurring_journal_entries[0].next_post_date === "2026-10-01");
     assert("PAID HOA stays paid; paid utility stays paid", h2.status === "paid" && h2.paid_date === "2026-09-10" && u2.status === "paid");
     assert("both insurance policies still live", s2.property_insurance.filter(i => !i.archived_at).length === 2);
     assert("websites kept", u2.website === "https://power.example" && h2.website === "https://hoa.example" && l2.website === "https://lender.example"
@@ -406,41 +499,86 @@ if (authErr) {
     assert("tenant late fee / move-in kept", Number(s2.tenants[0].late_fee_amount) === 75 && s2.tenants[0].late_fee_type === "percent" && s2.tenants[0].move_in === "2024-12-15");
     if (EVIDENCE) console.log("   evidence(edit):", JSON.stringify({ diffNoChange: d1, diffOneField: d2 }));
 
-    // (c) the step-skipped / not-loaded case: no insurance / tax / loan section
-    const pSkip = buildPayload(s2, { insurance: null, taxes: null, loan: null, utilities: [], hoas: [], hoas_seen: [], utilities_seen: [], hoas_seen_ids: [], utilities_seen_ids: [] });
-    const { error: e3 } = await rpc(pSkip);
-    const s3 = await snapshot();
-    const d3 = diff(s2, s3);
-    assert("skipped / unloaded steps archive NOTHING (policies, taxes, loan, utilities, HOA)", !e3 && d3.length === 0, (e3?.message || "") + d3.join("\n   "));
+    // (c) a STALE wizard: opened, then another page edits; the wizard saves
+    // with no changes / an unrelated change -> the other page's edit stands.
+    const fc = await loadForm();
+    await svc.from("hoa_payments").update({ amount: 300, notes: "changed on HOA page" }).eq("id", h2.id);
+    await svc.from("utilities").update({ account_number: "A-1-NEW" }).eq("id", uPow.id);
+    await svc.from("tenants").update({ phone: "555-9999" }).eq("id", c2.tenant_id);
+    fc.prop.notes = "stale tab edit";
+    const sc0 = await snapshot();
+    const { error: e3 } = await rpc(buildPayload(fc));
+    const dc = diff(sc0, await snapshot());
+    assert("stale wizard: other pages' edits survive, only the user's own change lands",
+      !e3 && dc.length === 1 && /properties#\d+\.notes/.test(dc[0]), (e3?.message || "") + dc.join("\n   "));
 
-    // (d) the user switches off ONE policy: only that one goes
-    const polA = s3.property_insurance.find(i => i.provider === `${TAG} Insure A`);
-    const { error: e4 } = await rpc(buildPayload(s3, { insurance: { enabled: false, id: polA.id } }));
-    const s4 = await snapshot();
-    const liveIns = s4.property_insurance.filter(i => !i.archived_at).map(i => i.provider);
-    assert("switching off one policy archives exactly that policy", !e4 && liveIns.length === 1 && liveIns[0] === `${TAG} Insure B`, (e4?.message || "") + liveIns);
+    // (d) the user changes a field SOMEONE ELSE also changed since the wizard
+    // opened -> refused, nothing written.
+    const fd = await loadForm();
+    await svc.from("hoa_payments").update({ amount: 325 }).eq("id", h2.id);
+    fd.hoas[0].amount = 999; fd.prop.notes = "should not land";
+    const sd0 = await snapshot();
+    const { error: e4 } = await rpc(buildPayload(fd));
+    const dd = diff(sd0, await snapshot());
+    assert("conflicting edit is refused with 'changed by someone else', nothing written",
+      /changed by someone else since you opened/.test(e4?.message || "") && dd.length === 0, (e4?.message || "no error") + dd.join("\n   "));
 
-    // (e) the user removes one utility and changes one due day
-    const payE = buildPayload(s4);
-    payE.utilities = payE.utilities.filter(u => u.provider !== `${TAG} Gas`).map(u => ({ ...u, due_day: 18 }));
-    const { error: e5 } = await rpc(payE);
-    const s5 = await snapshot();
-    const gas = s5.utilities.find(u => u.provider === `${TAG} Gas`), pw5 = s5.utilities.find(u => u.provider === `${TAG} Power`);
-    assert("a removed utility is archived; the kept one is updated IN PLACE (same id) with the new day in the same month",
-      !e5 && gas.archived_at && !pw5.archived_at && pw5.id === u2.id && pw5.due === "2026-10-18" && pw5.status === "paid" && Number(pw5.amount) === 133.45,
-      (e5?.message || "") + JSON.stringify({ gas: gas.archived_at, pw5 }));
+    // (e) a payload from an out-of-date client (no payload_version) is refused
+    const pe = buildPayload(await loadForm()); delete pe.payload_version;
+    const { error: e5 } = await rpc(pe);
+    assert("an old-shape edit payload is refused with 'Please reload the app'", /reload the app/i.test(e5?.message || ""), e5?.message);
 
-    // (f) rows written by OTHER pages often hold NULL where the wizard's form
-    // holds "" or 0. Re-saving must not turn one into the other.
+    // (f) switch off ONE policy: only that one goes; skipped steps archive nothing
+    const ff = await loadForm(); ff.insurance.enabled = false;
+    const pf = buildPayload(ff);
+    const { error: e6 } = await rpc(pf);
+    const sf = await snapshot();
+    const liveIns = sf.property_insurance.filter(i => !i.archived_at).map(i => i.provider);
+    assert("switching off one policy archives exactly that policy", !e6 && liveIns.length === 1 && liveIns[0] === `${TAG} Insure B`, (e6?.message || "") + liveIns);
+    const pskip = buildPayload(await loadForm()); pskip.insurance = null; pskip.taxes = null; pskip.loan = null;
+    const { error: e7 } = await rpc(pskip);
+    const dskip = diff(sf, await snapshot());
+    assert("skipped / unloaded steps archive nothing", !e7 && dskip.length === 0, (e7?.message || "") + dskip.join("\n   "));
+
+    // (g) remove one utility, change one due day, add a new row with the SAME
+    // provider as an existing one -> removed one archived, kept one updated in
+    // place in the same month, new one inserted (never merged by name).
+    const fg = await loadForm();
+    fg.utilities = fg.utilities.filter(u => u.provider !== `${TAG} Gas`);
+    fg.utilities[0].due_date = 18;
+    fg.utilities.push({ provider: `${TAG} Power`, type: "Electric", account_number: "A-2", due_date: 3, responsibility: "tenant_pays", website: "" });
+    const { error: e8 } = await rpc(buildPayload(fg));
+    const sg = await snapshot();
+    const gas = sg.utilities.find(u => u.provider === `${TAG} Gas`), pw = sg.utilities.find(u => u.id === uPow.id);
+    const pw2 = sg.utilities.find(u => u.account_number === "A-2");
+    assert("removed utility archived; kept one updated IN PLACE (same id, paid, amount) with the new day in the same month",
+      !e8 && gas.archived_at && !pw.archived_at && pw.due === "2026-10-18" && pw.status === "paid" && Number(pw.amount) === 133.45,
+      (e8?.message || "") + JSON.stringify({ gas: gas?.archived_at, pw }));
+    assert("a new same-provider row is inserted, not merged into the existing one", pw2 && pw2.id !== uPow.id && pw2.responsibility === "tenant");
+
+    // (h) a loan id belonging to ANOTHER property is ignored (not overwritten)
+    const { data: other } = await rpc({ company_id: CID, mode: "fresh", property: { address_line_1: `${TAG} 33 Other Rd`, city: "Testville", state: "MD", zip: "20001", type: "Single Family", status: "vacant" },
+      utilities: [], hoas: [], loan: { enabled: true, lender_name: `${TAG} Other Bank`, monthly_payment: 10 } });
+    const oLoan = (await svc.from("property_loans").select("*").eq("company_id", CID).eq("property", other.address)).data[0];
+    const fh = await loadForm(); const ph = buildPayload(fh);
+    ph.loan = { ...ph.loan, id: oLoan.id, lender_name: "HIJACKED", _orig: undefined, _db: undefined };
+    const { error: e9 } = await rpc(ph);
+    const oAfter = (await svc.from("property_loans").select("lender_name, archived_at").eq("id", oLoan.id).single()).data;
+    assert("another property's loan id is ignored", !e9 && oAfter.lender_name === `${TAG} Other Bank` && !oAfter.archived_at, (e9?.message || "") + JSON.stringify(oAfter));
+
+    // (i) rows written by OTHER pages often hold NULL where the form holds
+    // "" / 0 / false. A no-change save must not turn one into the other.
     await svc.from("property_loans").update({ notes: null, account_number: null, interest_rate: null, escrow_amount: null }).eq("company_id", CID).eq("property", ADDR2);
-    await svc.from("property_insurance").update({ notes: null, policy_number: null, coverage_amount: null }).eq("company_id", CID).eq("property", ADDR2);
+    await svc.from("property_insurance").update({ notes: null, policy_number: null, coverage_amount: null, premium_frequency: null }).eq("company_id", CID).eq("property", ADDR2);
+    await svc.from("property_taxes").update({ tax_year: null, escrow_paid_by_lender: null }).eq("company_id", CID).eq("property", ADDR2);
     await svc.from("tenants").update({ phone: null, middle_initial: null, is_voucher: null }).eq("id", c2.tenant_id);
-    await svc.from("properties").update({ notes: null, address_line_2: null }).eq("id", PID);
-    await svc.from("hoa_payments").update({ notes: null, contact_phone: null }).eq("company_id", CID).eq("property", ADDR2);
+    await svc.from("properties").update({ notes: null, address_line_2: null, tenant_2_email: null }).eq("id", PID);
+    await svc.from("hoa_payments").update({ notes: null, contact_phone: null, frequency: null }).eq("company_id", CID).eq("property", ADDR2);
+    await svc.from("utilities").update({ responsibility: null }).eq("id", uPow.id);
     const s6 = await snapshot();
-    const { error: e6 } = await rpc(buildPayload(s6));
+    const { error: e10 } = await rpc(buildPayload(await loadForm()));
     const d6 = diff(s6, await snapshot());
-    assert("re-save over NULL-holding rows changes nothing (no NULL -> '' / 0 / false)", !e6 && d6.length === 0, (e6?.message || "") + d6.join("\n   "));
+    assert("re-save over NULL-holding rows changes nothing (no NULL -> '' / 0 / false / default)", !e10 && d6.length === 0, (e10?.message || "") + d6.join("\n   "));
   } catch (e) {
     assert("live checks ran without throwing", false, e.stack || String(e));
   } finally {

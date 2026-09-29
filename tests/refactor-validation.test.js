@@ -249,7 +249,11 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  assert(totalLines <= 53200, `Total src lines <= 53200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53350 on 2026-09-29: + audit theme J -- the wizard's per-field payload
+  // builders (WIZ_FIELDS / WIZ_DB_COLS, one builder for both the save and
+  // what the form loaded, so only changed fields are written), import enum /
+  // duplicate-key / HOA-due handling in utils/propertyImport.js.
+  assert(totalLines <= 53350, `Total src lines <= 53350 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

@@ -33,6 +33,9 @@ const CRED_COLUMNS = (what) => [
 export const UTILITY_COLUMNS = [
   { key: "property",       header: "Property",       width: 30, required: true, list: "properties" },
   { key: "provider",       header: "Provider",       width: 22, required: true },
+  // With the provider, the key a re-import matches an existing utility on --
+  // a property can have two meters with the same provider.
+  { key: "account_number", header: "Account Number", width: 18 },
   { key: "responsibility", header: "Paid By",        width: 12, list: "utilityResponsibility" },
   { key: "amount",         header: "Typical Amount", width: 14, numeric: true },
   { key: "due_date",       header: "Next Due",       width: 12, date: true },
@@ -115,7 +118,7 @@ export const EXTRA_SHEETS = [
   { sheet: SHEET_RECURRING, columns: RECURRING_COLUMNS, key: "recurring", many: false },
 ];
 
-export const UTILITY_RESPONSIBILITY = ["Owner", "Tenant"];
+export const UTILITY_RESPONSIBILITY = ["Owner", "Tenant", "Condo fee"];
 export const HOA_FREQUENCY = ["Monthly", "Quarterly", "Annually"];
 export const LOAN_TYPES = ["Mortgage", "HELOC", "Private", "Commercial"];
 export const PREMIUM_FREQUENCY = ["Monthly", "Quarterly", "Annually"];
