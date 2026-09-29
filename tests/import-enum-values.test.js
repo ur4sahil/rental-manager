@@ -44,14 +44,18 @@ function assert(name, cond, detail) {
 
   // What the importer will actually write, exercised through the same
   // normaliser the commit path uses. Kept in step by reading it out of
-  // the component source, so renaming it fails the test loudly.
+  // the source, so renaming it fails the test loudly. It moved from the
+  // component to utils/propertyImport.js (IMPORT_ENUMS) so it can be tested
+  // without rendering; the component must still use it.
   const fs = require("fs");
-  const src = fs.readFileSync(path.join(__dirname, "..", "src", "components", "PropertyImport.js"), "utf8");
-  const m = src.match(/const ENUMS = \{[\s\S]*?\n  \};/);
-  assert("the normaliser is still present in PropertyImport.js", !!m);
+  const comp = fs.readFileSync(path.join(__dirname, "..", "src", "components", "PropertyImport.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "utils", "propertyImport.js"), "utf8");
+  const m = src.match(/export const IMPORT_ENUMS = \{[\s\S]*?\n\};/);
+  assert("the normaliser is still present, and PropertyImport.js still uses it",
+    !!m && /const enumVal = importEnumValue;/.test(comp));
   if (!m) { console.log(`\n✅ Passed: ${passed}   ❌ Failed: ${failed}`); process.exit(1); }
   // eslint-disable-next-line no-eval
-  const ENUMS = eval("(" + m[0].replace("const ENUMS = ", "") .replace(/;$/, "") + ")");
+  const ENUMS = eval("(" + m[0].replace("export const IMPORT_ENUMS = ", "") .replace(/;$/, "") + ")");
 
   const pi = await import(path.join(__dirname, "..", "src", "utils", "propertyImportSheets.js"));
 

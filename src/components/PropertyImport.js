@@ -21,7 +21,7 @@ import { encryptCredential } from "../utils/encryption";
 import {
   PROPERTY_COLUMNS, TENANT_COLUMNS, SHEET_PROPERTIES, SHEET_TENANTS,
   buildTemplate, parseWorkbook, buildImportPlan, inferTenantStatus, computeAddress,
-  cellString,
+  cellString, importCreatePayload, importEnumValue,
 } from "../utils/propertyImport";
 import { ACTIVE_LEASE } from "../utils/helpers";
 
@@ -67,7 +67,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
     // causes statement timeouts.
     const [{ data: utilRows }, { data: hoaRows }, { data: loanRows },
            { data: insRows }, { data: taxRows }, { data: recRows }] = await Promise.all([
-      supabase.from("utilities").select("property,provider,responsibility,amount,due_date")
+      supabase.from("utilities").select("property,provider,responsibility,amount,due,due_date")
         .eq("company_id", companyId).is("archived_at", null),
       supabase.from("hoa_payments").select("property,hoa_name,amount,frequency,due_date,notes")
         .eq("company_id", companyId).is("archived_at", null),
@@ -81,7 +81,12 @@ export default function PropertyImport({ companyId, companyName, properties = []
         .eq("company_id", companyId),
     ]);
     const extras = {
-      utilities: utilRows || [], hoas: hoaRows || [], loan: loanRows || [],
+      // `due` is the column the app reads and writes; due_date is a legacy
+      // twin that is usually empty. Pre-filling from due_date alone sent the
+      // sheet down with a blank Next Due, and the round trip then wrote that
+      // blank back over the real date.
+      utilities: (utilRows || []).map(({ due, ...u }) => ({ ...u, due_date: due || u.due_date || null })),
+      hoas: hoaRows || [], loan: loanRows || [],
       insurance: insRows || [], taxes: taxRows || [], recurring: recRows || [],
     };
 
@@ -235,31 +240,9 @@ export default function PropertyImport({ companyId, companyName, properties = []
     }
   }
 
-  // The spreadsheet shows friendly labels; the database stores lowercase
-  // tokens. property_taxes.billing_frequency is a CHECK constraint --
-  // 'annual', 'semi_annual', 'quarterly', 'monthly' -- so "Annually"
-  // was rejected outright and every one of a 40-row tax sheet was lost.
-  // The rest have no constraint but do have a house style, and writing
-  // "Monthly" beside "monthly" quietly splits the data in two.
-  const ENUMS = {
-    responsibility:    { owner: "owner", tenant: "tenant" },
-    hoaFrequency:      { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
-    premiumFrequency:  { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
-    loanType:          { mortgage: "mortgage", heloc: "heloc", private: "private", commercial: "commercial" },
-    taxFrequency:      { annually: "annual", annual: "annual", "semi-annually": "semi_annual",
-                         semi_annual: "semi_annual", quarterly: "quarterly", monthly: "monthly" },
-  };
-  const enumVal = (kind, v) => {
-    const raw = cellString(v).trim();
-    if (!raw) return null;
-    const hit = ENUMS[kind][raw.toLowerCase()];
-    // Unrecognised values are passed through lowercased rather than
-    // dropped: better a value someone can see and correct than a silent
-    // null. The tax one is the exception -- a bad value there is a hard
-    // constraint failure, so fall back to null and let it be blank.
-    if (hit) return hit;
-    return kind === "taxFrequency" ? null : raw.toLowerCase();
-  };
+  // Label -> stored token. Lives in utils/propertyImport so the mapping the
+  // import writes can be tested without rendering this component.
+  const enumVal = importEnumValue;
 
   // Rows for one property, in the shape commit_property_wizard expects.
   async function subRecordsFor(address) {
@@ -351,14 +334,21 @@ export default function PropertyImport({ companyId, companyName, properties = []
     const idNum = Number(propertyId);
     const failures = [];
 
-    async function put(table, match, row) {
+    // `onInsert` holds what only a NEW row should get -- a status, say.
+    // Writing status: "pending" / "active" on every re-import turned a paid
+    // utility bill back to pending and a closed loan back to active.
+    // `keepIfBlank` names fields where an empty cell means "leave what is
+    // stored" rather than "erase it".
+    async function put(table, match, row, { onInsert = {}, keepIfBlank = [] } = {}) {
       const { data: found } = await supabase.from(table).select("id")
         .eq("company_id", companyId).eq("property", address)
         .match(match).is("archived_at", null).limit(1);
       const hit = (found || [])[0];
+      const patch = { ...row };
+      if (hit) keepIfBlank.forEach(k => { if (patch[k] === null || patch[k] === undefined || patch[k] === "") delete patch[k]; });
       const { error } = hit
-        ? await supabase.from(table).update(row).eq("id", hit.id).eq("company_id", companyId)
-        : await supabase.from(table).insert([{ ...row, company_id: companyId, property: address, ...match }]);
+        ? await supabase.from(table).update(patch).eq("id", hit.id).eq("company_id", companyId)
+        : await supabase.from(table).insert([{ ...onInsert, ...row, company_id: companyId, property: address, ...match }]);
       if (error) failures.push(`${table}: ${error.message}`);
     }
 
@@ -366,11 +356,11 @@ export default function PropertyImport({ companyId, companyName, properties = []
       await put("utilities", { provider: u.provider }, {
         property_id: Number.isFinite(idNum) ? idNum : null,
         amount: u.amount, due: u.due_date || null,   // the app sorts on `due`, not due_date
-        responsibility: u.responsibility, status: "pending", website: u.website,
+        responsibility: u.responsibility, website: u.website,
         username_encrypted: u.username_encrypted, password_encrypted: u.password_encrypted,
         encryption_iv: u.encryption_iv, encryption_iv_username: u.encryption_iv_username,
         encryption_salt: u.encryption_salt,
-      });
+      }, { onInsert: { status: "pending" }, keepIfBlank: ["amount", "due", "responsibility"] });
     }
     for (const h of recs.hoas) {
       await put("hoa_payments", { hoa_name: h.hoa_name }, {
@@ -385,9 +375,10 @@ export default function PropertyImport({ companyId, companyName, properties = []
     // TEXT; property_taxes.property_id is INTEGER. Getting that wrong is
     // a silent 400 from PostgREST.
     for (const ln of (recs.loans || [])) {
-      const { property: _p, ...rest } = ln;
+      const { property: _p, status: loanStatus, ...rest } = ln;
       await put("property_loans", { lender_name: ln.lender_name },
-        { ...rest, property_id: propertyId == null ? null : String(propertyId) });
+        { ...rest, property_id: propertyId == null ? null : String(propertyId) },
+        { onInsert: { status: loanStatus || "active" } });
     }
     if (recs.insurance) {
       const { property: _p, ...rest } = recs.insurance;
@@ -432,6 +423,57 @@ export default function PropertyImport({ companyId, companyName, properties = []
     return failures;
   }
 
+  // Licences from the Properties sheet. Keyed on (property_id, license_type)
+  // so re-importing updates rather than duplicating, and so a rental licence
+  // and a lead certificate coexist. expiry_date is NOT NULL and is what the
+  // reminder cron counts down to, so a row with other licence fields but no
+  // expiry is reported rather than written half-formed.
+  //
+  // Shared by both paths: the create path used to write none of these.
+  async function writeLicences(r, propertyId, what, done) {
+    const licenceRows = [];
+    if (r.license_number || r.license_jurisdiction || r.license_issue_date || r.license_expiry_date || r.license_fee) {
+      if (!r.license_expiry_date) {
+        done.failed.push({ what, why: "License Expires is required when any other license field is filled" });
+      } else {
+        licenceRows.push({
+          license_type: "rental_license",
+          license_number: r.license_number || null,
+          jurisdiction: r.license_jurisdiction || null,
+          issue_date: r.license_issue_date || null,
+          expiry_date: r.license_expiry_date,
+          fee_amount: r.license_fee ?? null,
+          status: "active",
+        });
+      }
+    }
+    if (r.lead_cert_number || r.lead_cert_expiry) {
+      if (!r.lead_cert_expiry) {
+        done.failed.push({ what, why: "Lead Cert Expires is required when a lead certificate number is given" });
+      } else {
+        licenceRows.push({
+          license_type: "lead_paint",
+          license_number: r.lead_cert_number || null,
+          jurisdiction: null,
+          issue_date: null,
+          expiry_date: r.lead_cert_expiry,
+          fee_amount: null,
+          status: "active",
+        });
+      }
+    }
+    for (const lrow of licenceRows) {
+      const { data: lfound } = await supabase.from("property_licenses").select("id")
+        .eq("company_id", companyId).eq("property_id", Number(propertyId))
+        .eq("license_type", lrow.license_type).is("archived_at", null).limit(1);
+      const lhit = (lfound || [])[0];
+      const { error: lerr } = lhit
+        ? await supabase.from("property_licenses").update(lrow).eq("id", lhit.id).eq("company_id", companyId)
+        : await supabase.from("property_licenses").insert([{ ...lrow, company_id: companyId, property_id: Number(propertyId) }]);
+      if (lerr) done.failed.push({ what, why: `license (${lrow.license_type}): ${lerr.message}` });
+    }
+  }
+
   async function handleCommit() {
     if (!guardSubmit("propImportCommit")) return;
     setBusy(true);
@@ -446,7 +488,9 @@ export default function PropertyImport({ companyId, companyName, properties = []
       for (const c of plan.creates) {
         tick(c.newAddress);
         const r = c.record;
-        const { error } = await supabase.rpc("commit_property_wizard", {
+        const recs = await subRecordsFor(c.newAddress);
+        const createPayload = importCreatePayload(recs, (why) => done.failed.push({ what: c.newAddress, why }));
+        const { data: created, error } = await supabase.rpc("commit_property_wizard", {
           p_payload: {
             company_id: companyId, wizard_id: null, mode: "fresh", property_id_for_edit: null,
             property: {
@@ -464,11 +508,39 @@ export default function PropertyImport({ companyId, companyName, properties = []
             // The object-shaped fields take null quite happily.
             // Tenants still come from their own sheet. Everything else
             // comes from the six optional sheets, already encrypted.
-            tenant: null, ...(await subRecordsFor(c.newAddress)),
+            tenant: null, ...createPayload,
           },
         });
         if (error) { done.failed.push({ what: c.newAddress, why: error.message }); continue; }
         done.created += 1;
+        // The RPC takes one loan. The rest go straight in, exactly as they
+        // would for a property that already existed -- they used to be dropped.
+        const moreLoans = (recs.loans || []).slice(1);
+        if (moreLoans.length && created?.property_id) {
+          const subFails = await writeSubRecordsForExisting(created.address || c.newAddress, created.property_id,
+            { utilities: [], hoas: [], loans: moreLoans, insurance: null, taxes: null });
+          subFails.forEach(why => done.failed.push({ what: c.newAddress, why }));
+        }
+        // The RPC's property payload carries only address, type, status and
+        // notes. Everything else on the Properties row -- short name, beds,
+        // baths, sqft, year built, rent, deposit, licences -- was dropped for
+        // a NEW property. Write it the way the update path does.
+        if (created?.property_id) {
+          const extra = {
+            short_name: r.short_name || null, bedrooms: r.bedrooms, bathrooms: r.bathrooms,
+            sqft: r.sqft, year_built: r.year_built, rent: r.rent, security_deposit: r.security_deposit,
+          };
+          Object.keys(extra).forEach(k => { if (extra[k] === null || extra[k] === undefined || extra[k] === "") delete extra[k]; });
+          if (Object.keys(extra).length) {
+            const { error: xErr } = await supabase.from("properties").update(extra)
+              .eq("id", created.property_id).eq("company_id", companyId);
+            if (xErr) done.failed.push({ what: c.newAddress, why: xErr.message });
+          }
+          await writeLicences(r, created.property_id, c.newAddress, done);
+        }
+        // No tenant exists yet when a property is created here, so the RPC
+        // cannot set up recurring rent. Counted and shown, not silently lost.
+        if (recs.recurring) done.recurringSkipped += 1;
       }
 
       // --- existing properties -----------------------------------------
@@ -505,47 +577,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         // expiry_date is NOT NULL and is what the reminder cron counts
         // down to, so a row with other licence fields but no expiry is
         // reported rather than written half-formed.
-        const licenceRows = [];
-        if (r.license_number || r.license_jurisdiction || r.license_issue_date || r.license_expiry_date || r.license_fee) {
-          if (!r.license_expiry_date) {
-            done.failed.push({ what: u.newAddress, why: "License Expires is required when any other license field is filled" });
-          } else {
-            licenceRows.push({
-              license_type: "rental_license",
-              license_number: r.license_number || null,
-              jurisdiction: r.license_jurisdiction || null,
-              issue_date: r.license_issue_date || null,
-              expiry_date: r.license_expiry_date,
-              fee_amount: r.license_fee ?? null,
-              status: "active",
-            });
-          }
-        }
-        if (r.lead_cert_number || r.lead_cert_expiry) {
-          if (!r.lead_cert_expiry) {
-            done.failed.push({ what: u.newAddress, why: "Lead Cert Expires is required when a lead certificate number is given" });
-          } else {
-            licenceRows.push({
-              license_type: "lead_paint",
-              license_number: r.lead_cert_number || null,
-              jurisdiction: null,
-              issue_date: null,
-              expiry_date: r.lead_cert_expiry,
-              fee_amount: null,
-              status: "active",
-            });
-          }
-        }
-        for (const lrow of licenceRows) {
-          const { data: lfound } = await supabase.from("property_licenses").select("id")
-            .eq("company_id", companyId).eq("property_id", Number(u.id))
-            .eq("license_type", lrow.license_type).is("archived_at", null).limit(1);
-          const lhit = (lfound || [])[0];
-          const { error: lerr } = lhit
-            ? await supabase.from("property_licenses").update(lrow).eq("id", lhit.id).eq("company_id", companyId)
-            : await supabase.from("property_licenses").insert([{ ...lrow, company_id: companyId, property_id: Number(u.id) }]);
-          if (lerr) done.failed.push({ what: u.newAddress, why: `license (${lrow.license_type}): ${lerr.message}` });
-        }
+        await writeLicences(r, u.id, u.newAddress, done);
         if (Object.keys(patch).length) {
           const { error } = await supabase.from("properties").update(patch)
             .eq("id", u.id).eq("company_id", companyId);
@@ -940,6 +972,19 @@ function DoneStep({ result, onAgain }) {
     {/* A login that could not be encrypted. The record itself imported;
         only the username and password are missing, and saying so beats
         leaving someone to discover it when a bill is due. */}
+    {/* Recurring rent rows the import cannot set up (it posts money, and a
+        new property has no tenant id yet). They were counted and never
+        mentioned, so the rent schedule was simply missing afterwards. */}
+    {result.recurringSkipped > 0 && (
+      <div className="rounded-xl border-2 border-warn-300 bg-warn-50/50 p-4">
+        <div className="text-sm font-semibold text-warn-800 mb-1">
+          {result.recurringSkipped} recurring rent row{result.recurringSkipped === 1 ? " was" : "s were"} not set up
+        </div>
+        <div className="text-xs text-warn-700">
+          Recurring rent posts to your books, so it is set on each property itself (Setup wizard, Recurring Rent step).
+        </div>
+      </div>
+    )}
     {(result.credFailures || []).length > 0 && (
       <div className="rounded-xl border-2 border-warn-300 bg-warn-50/50 p-4">
         <div className="text-sm font-semibold text-warn-800 mb-1">

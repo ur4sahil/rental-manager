@@ -26,6 +26,19 @@ const respToForm = (r) =>
   : (r === "owner_pays" || r === "tenant_pays") ? r
   : "owner_pays";
 
+// The wizard's due-date inputs take a DAY OF THE MONTH (1-28), but the tables
+// store a full date ("2026-09-15"). Loading the full string into the number
+// box showed nothing, and Number("2026-09-15") is NaN, so every save sent day 1
+// and moved every utility and HOA due date to the 1st. Blank -> null ("not
+// given"), which commit_property_wizard treats as "keep what is stored".
+const dueDayOf = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const m = String(v).match(/^\d{4}-\d{2}-(\d{2})/);
+  if (m) return Number(m[1]);
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 31 ? n : null;
+};
+
 const LICENSE_TYPE_OPTIONS = [
   { value: "rental_license", label: "Rental License" },
   { value: "rental_registration", label: "Rental Registration" },
@@ -594,7 +607,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // never been committed and lives nowhere else. For a COMPLETED
             // one the tables are the record and the snapshot is a memory of
             // it, so the tables are read here and override what was just set.
-            await loadLiveWizardData(addr);
+            await loadLiveWizardData(addr, { refreshProperty: true });
             }
             return;
           }
@@ -611,7 +624,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // the wizard, which is exactly what "Add Tenant" on a fresh
             // vacant property hits, and where the earlier fix did not reach.
             const _statusForForm = wizardData?.addingTenant ? "occupied" : (existProp.status || "vacant");
-            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "" };
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "", year_built: existProp.year_built ? String(existProp.year_built) : "" };
             setPropForm(filledProp);
             // Jump to the requested step (e.g. tenant_lease for Add Tenant).
             if (wizardData?.startAtStep) {
@@ -621,37 +634,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             }
             setSavedPropertyId(wizardData.propertyId);
             setSavedAddress(existProp.address);
-            // Load related data
-            const [utilRes, hoaRes, loanRes, insRes, taxRes] = await Promise.all([
-              supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_taxes").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-            ]);
-            if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: respToForm(u.responsibility), website: u.website || "", username: u.username || "", password: u.password || "" })));
-            // Credentials are NOT read back: hoa_payments stores only
-            // ciphertext, so h.username has always been undefined here and
-            // the blank boxes are honest. commit_property_wizard carries the
-            // stored ciphertext forward when the form sends none, so leaving
-            // them empty no longer wipes the saved login.
-            if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({
-              enabled: true,
-              hoa_name: h.hoa_name || h.name || "", amount: h.amount || "",
-              due_date: h.due_date || "", frequency: h.frequency || "Monthly",
-              notes: h.notes || "", website: h.website || "",
-              username: "", password: "",
-              management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
-              mgmt_username: "", mgmt_password: "",
-              pay_portal_website: h.pay_portal_website || "",
-              pay_username: "", pay_password: "",
-              contact_name: h.contact_name || "", contact_email: h.contact_email || "",
-              contact_phone: h.contact_phone || "",
-            })));
-            setLoanChoices(loanRes.data || []);
-            if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
-            if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
-            if (taxRes.data?.[0]) { const tx = taxRes.data[0]; setTaxes({ enabled: true, assessed_value: tx.assessed_value || "", tax_year: tx.tax_year || new Date().getFullYear(), annual_tax_amount: tx.annual_tax_amount || "", billing_frequency: tx.billing_frequency || "semi_annual", next_due_date: tx.next_due_date || "", parcel_id: tx.parcel_id || "", exemptions: tx.exemptions || "", escrow_paid_by_lender: tx.escrow_paid_by_lender || false, records_url: tx.records_url || "", notes: tx.notes || "", setup_recurring: false }); }
+            // Load related data through the SAME loader the other two paths
+            // use. This path had its own copy and it had drifted: the loan and
+            // insurance loaders dropped `website` (so the save wiped it),
+            // utilities read the unused due_date column instead of `due`, no
+            // row ids were kept, and nothing recorded which rows were seen --
+            // so the merge commit could not tell a removed row from one that
+            // was never loaded.
+            await loadLiveWizardData(existProp.address);
           }
         }
         // Create new wizard entry
@@ -940,6 +930,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // silently deletes someone else's addition.
   const seenHoaNames = useRef([]);
   const seenUtilProviders = useRef([]);
+  const seenHoaIds = useRef([]);
+  const seenUtilIds = useRef([]);
   // Once the user has edited utilities/HOAs, the async live-load must NOT
   // overwrite them. The wizard renders the resume step (which can be Utilities)
   // and awaits loadLiveWizardData; a remove/edit made during that gap was being
@@ -947,7 +939,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const utilTouched = useRef(false);
   const hoaTouched = useRef(false);
 
-  async function loadLiveWizardData(address) {
+  async function loadLiveWizardData(address, { refreshProperty = false } = {}) {
     if (!address || !companyId) return;
     const [hoaRes, utilRes] = await Promise.all([
       supabase.from("hoa_payments").select("*")
@@ -962,11 +954,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     const utilRows = utilRes.data || [];
     seenHoaNames.current = hoaRows.map(h => h.hoa_name).filter(Boolean);
     seenUtilProviders.current = utilRows.map(u => u.provider).filter(Boolean);
+    // The ids are what commit_property_wizard merges on: a row is UPDATEd in
+    // place (keeping its status, paid date, amount and id) and only a row
+    // that was seen here and is missing from the save is archived.
+    seenHoaIds.current = hoaRows.map(h => h.id);
+    seenUtilIds.current = utilRows.map(u => u.id);
+
+    // Nothing live any more, but the restored draft still holds rows that came
+    // from the table (they carry an id): those were removed elsewhere since.
+    // Drop them so the form does not show -- or the save try to revive --
+    // records that no longer exist. Rows typed into a draft have no id.
+    if (!hoaRows.length && !hoaTouched.current) setHoas(prev => prev.filter(h => !h.id));
+    if (!utilRows.length && !utilTouched.current) setUtilities(prev => prev.filter(u => !u.id));
 
     // Credential boxes stay blank on purpose: only ciphertext comes back, and
     // the RPC carries the stored ciphertext forward when the form sends none.
     if (hoaRows.length && !hoaTouched.current) setHoas(hoaRows.map(h => ({
-      hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: h.due_date || 1,
+      id: h.id,
+      hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: dueDayOf(h.due_date) ?? "",
       frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "",
       username: "", password: "",
       management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
@@ -977,8 +982,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     })));
 
     if (utilRows.length && !utilTouched.current) setUtilities(utilRows.map(u => ({
-      provider: u.provider || "", type: u.type || "Electric",
-      account_number: u.account_number || "", due_date: u.due || u.due_date || 1,
+      id: u.id,
+      provider: u.provider || "", type: u.type || "",
+      account_number: u.account_number || "", due_date: dueDayOf(u.due || u.due_date) ?? "",
       responsibility: respToForm(u.responsibility),
       website: u.website || "", username: "", password: "",
     })));
@@ -1003,13 +1009,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       supabase.from("property_loans").select("*").eq("company_id", companyId)
         .eq("property", address).is("archived_at", null).limit(5),
       supabase.from("property_insurance").select("*").eq("company_id", companyId)
-        .eq("property", address).is("archived_at", null).limit(5),
+        .eq("property", address).is("archived_at", null)
+        .order("created_at", { ascending: true }).limit(5),
       supabase.from("property_taxes").select("*").eq("company_id", companyId)
-        .eq("property", address).is("archived_at", null).limit(5),
+        .eq("property", address).is("archived_at", null)
+        .order("created_at", { ascending: true }).limit(5),
     ]);
 
     const loans = loanRes.data || [];
     setLoanChoices(loans);
+    // A read that FAILED is not "there are none": leave the form alone, and
+    // with no id in it the commit leaves the table alone too.
+    const liveLoaded = !loanRes.error && !insRes.error && !taxRes.error;
+    // The draft points at a loan / policy / tax record that has since been
+    // archived elsewhere: clear it rather than let the save revive it.
+    if (liveLoaded && !loans.length) setLoan(prev => (prev.id ? { ...emptyLoan, enabled: false } : prev));
     if (loans.length) setLoan(prev => {
       // Freshen the loan the user is editing (multi-loan picker), not always
       // the first one; fall back to the first if the picked id is gone.
@@ -1027,8 +1041,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     });
 
     const ins = (insRes.data || [])[0];
+    if (liveLoaded && !ins) setInsurance(prev => (prev.id ? { ...prev, enabled: false, id: "" } : prev));
     if (ins) setInsurance(prev => ({
-      ...prev, enabled: true,
+      ...prev, enabled: true, id: ins.id,
       provider: ins.provider || "", policy_number: ins.policy_number || "",
       premium_amount: ins.premium_amount ?? "", premium_frequency: ins.premium_frequency || "annual",
       coverage_amount: ins.coverage_amount ?? "", expiration_date: ins.expiration_date || "",
@@ -1084,6 +1099,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         tenant_last: primary.last_name || "",
         tenant_email: primary.email || "",
         tenant_phone: primary.phone || "",
+        // Not shown in the wizard, but carried so a save never blanks them.
+        late_fee_amount: primary.late_fee_amount ?? "",
+        late_fee_type: primary.late_fee_type || "",
         tenant_2: pr.tenant_2 || "", tenant_2_email: pr.tenant_2_email || "", tenant_2_phone: pr.tenant_2_phone || "",
         tenant_3: pr.tenant_3 || "", tenant_3_email: pr.tenant_3_email || "", tenant_3_phone: pr.tenant_3_phone || "",
         tenant_4: pr.tenant_4 || "", tenant_4_email: pr.tenant_4_email || "", tenant_4_phone: pr.tenant_4_phone || "",
@@ -1119,8 +1137,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     }
 
     const tx = (taxRes.data || [])[0];
+    if (liveLoaded && !tx) setTaxes(prev => (prev.id ? { ...prev, enabled: false, id: "" } : prev));
     if (tx) setTaxes(prev => ({
-      ...prev, enabled: true,
+      ...prev, enabled: true, id: tx.id,
       parcel_id: tx.parcel_id || "", assessed_value: tx.assessed_value ?? "",
       tax_year: tx.tax_year || new Date().getFullYear(),
       annual_tax_amount: tx.annual_tax_amount ?? "",
@@ -1129,6 +1148,28 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       escrow_paid_by_lender: !!tx.escrow_paid_by_lender,
       records_url: tx.records_url || "", notes: tx.notes || "",
     }));
+
+    // PROPERTY DETAILS, for a completed wizard reopened to edit. propForm came
+    // from the wizard_data snapshot, so a type, note, county, status or year
+    // changed on the Properties page since was written back over on the next
+    // save -- and a stale "occupied" status re-ran the tenant step for a
+    // tenant who had moved out. The live row wins, as it does above.
+    if (refreshProperty) {
+      const { data: p, error: pErr } = await supabase.from("properties")
+        .select("address_line_1, address_line_2, city, state, zip, county, type, status, notes, year_built")
+        .eq("company_id", companyId).eq("address", address).is("archived_at", null).maybeSingle();
+      if (!pErr && p) setPropForm(prev => ({
+        ...prev,
+        address_line_1: p.address_line_1 ?? prev.address_line_1,
+        address_line_2: p.address_line_2 ?? prev.address_line_2,
+        city: p.city ?? prev.city, state: p.state ?? prev.state, zip: p.zip ?? prev.zip,
+        county: p.county ?? prev.county,
+        type: p.type || prev.type,
+        status: wizardData?.addingTenant ? "occupied" : (p.status || prev.status),
+        notes: p.notes ?? prev.notes,
+        year_built: p.year_built ? String(p.year_built) : (prev.year_built || ""),
+      }));
+    }
   }
 
   async function commitWizard() {
@@ -1184,10 +1225,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       for (const u of utilities.filter(x => x.provider.trim())) {
         const creds = await encryptRow(!!(u.username && u.password), u.username, u.password);
         pre.utilities.push({
+          // The row this came from, so an edit UPDATEs it in place.
+          ...(u.id ? { id: u.id } : {}),
           provider: u.provider.trim(),
-          type: u.type || 'Electric',
+          type: u.type || '',   // blank keeps the stored type; a new row gets Electric
           account_number: u.account_number || '',
-          due_day: Number(u.due_date) || 1,
+          // null = not given: the RPC keeps the stored due date (and uses the
+          // 1st only for a brand-new row).
+          due_day: dueDayOf(u.due_date),
           responsibility: u.responsibility,
           website: u.website || '',
           ...(creds || {}),
@@ -1214,9 +1259,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const salt      = mgmtSalt || payRaw?.encryption_salt || null;
 
         pre.hoas.push({
+          ...(h.id ? { id: h.id } : {}),
           hoa_name: h.hoa_name.trim(),
           amount: Number(h.amount),
-          due_day: Number(h.due_date) || 1,
+          due_day: dueDayOf(h.due_date),
           frequency: h.frequency || 'Monthly',
           notes: (h.notes || '').trim(),
           website: h.website || '',
@@ -1297,6 +1343,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const creds = await encryptRow(!!(insurance.username && insurance.password), insurance.username, insurance.password);
         pre.insurance = {
           enabled: true,
+          id: insurance.id || null,
           provider: insurance.provider.trim(),
           policy_number: (insurance.policy_number || '').trim(),
           premium_amount: Number(insurance.premium_amount),
@@ -1363,7 +1410,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         lease_start: tenantForm.lease_start || '',
         lease_end: tenantForm.lease_end || '',
         late_fee_amount: tenantForm.late_fee_amount || '',
-        late_fee_type: tenantForm.late_fee_type || 'flat',
+        // Blank = keep the tenant's stored terms (the wizard has no field).
+        late_fee_type: tenantForm.late_fee_type || '',
         is_voucher: !!tenantForm.is_voucher,
         voucher_number: tenantForm.voucher_number || '',
         reexam_date: tenantForm.reexam_date || '',
@@ -1394,10 +1442,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       // as collateral.
       hoas_seen: seenHoaNames.current || [],
       utilities_seen: seenUtilProviders.current || [],
-      loan: pre.loan,
-      insurance: pre.insurance,
+      // The same, by id -- what the RPC actually merges and archives on.
+      hoas_seen_ids: (seenHoaIds.current || []).map(String),
+      utilities_seen_ids: (seenUtilIds.current || []).map(String),
+      // Loan / insurance / tax: a step switched OFF names the one record the
+      // user turned off. Anything else (skipped, never loaded) sends null and
+      // the RPC leaves the table alone -- it used to archive every policy.
+      loan: pre.loan || (loan.id ? { enabled: false, id: loan.id } : null),
+      insurance: pre.insurance || (insurance.id ? { enabled: false, id: insurance.id } : null),
       taxes: taxes.enabled ? {
         enabled: true,
+        id: taxes.id || null,
         parcel_id: (taxes.parcel_id || '').trim(),
         assessed_value: taxes.assessed_value,
         tax_year: taxes.tax_year,
@@ -1408,7 +1463,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         escrow_paid_by_lender: !!taxes.escrow_paid_by_lender,
         records_url: (taxes.records_url || '').trim(),
         notes: (taxes.notes || '').trim(),
-      } : null,
+      } : (taxes.id ? { enabled: false, id: taxes.id } : null),
+      // Only a deliberate clear stops the rent schedule; a payload that merely
+      // lacks recurring rent leaves it running.
+      recurring_cleared: !!(propForm.status === 'occupied' && tenantForm.tenant.trim() && !recurring.amount),
       recurring: (propForm.status === 'occupied' && tenantForm.tenant.trim() && recurring.amount) ? {
         amount: recurring.amount,
         frequency: recurring.frequency || 'monthly',

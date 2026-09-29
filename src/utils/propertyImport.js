@@ -813,11 +813,13 @@ export function buildImportPlan({
   // row will be added to it" -- on every single row. That was 132 of one
   // real import's 195 approvals, it told the user nothing they did not
   // already know, and it was false: nothing was being added at all.
+  // The same holds for a property this file CREATES: the tenant it would
+  // post against does not exist yet when the property is written, so the
+  // row was dropped there too -- silently, because only existing properties
+  // were warned about.
   for (const r of attached.recurring) {
-    if (!r._creating) {
-      warnings.push({ sheet: SHEET_RECURRING, row: r._row, kind: "pendency",
-        message: `${r._address}: recurring rent must be set on the property itself — this row is not imported.` });
-    }
+    warnings.push({ sheet: SHEET_RECURRING, row: r._row, kind: "pendency",
+      message: `${r._address}: recurring rent must be set on the property itself — this row is not imported.` });
   }
 
   const extraRecords = Object.values(attached).reduce((n, a) => n + a.length, 0);
@@ -840,3 +842,61 @@ export function buildImportPlan({
     },
   };
 }
+
+// ---- create-path payload -------------------------------------------
+//
+// A NEW property goes through commit_property_wizard, which only acts on a
+// loan / insurance / tax section marked `enabled` -- the wizard's own toggle.
+// The import never set it, so every loan, policy and tax row for a new
+// property was parsed, counted in the preview, and then silently ignored.
+//
+// `recs` is what PropertyImport's subRecordsFor built for one address.
+// `report(why)` receives anything that could not be sent.
+export function importCreatePayload(recs, report = () => {}) {
+  const { loans: _all, ...rest } = recs || {};
+  const out = { ...rest };
+  out.utilities = rest.utilities || [];
+  out.loan = rest.loan ? { ...rest.loan, enabled: true } : null;
+  out.insurance = rest.insurance ? { ...rest.insurance, enabled: true } : null;
+  // annual_tax_amount is NOT NULL: a tax row without one would fail the
+  // whole property. Skip just the tax row, and say so.
+  const t = rest.taxes;
+  const noAmount = !!t && (t.annual_tax_amount === null || t.annual_tax_amount === undefined || t.annual_tax_amount === "");
+  if (noAmount) report("Property tax row not saved: a new tax record needs an Annual Tax Amount");
+  out.taxes = t && !noAmount ? { ...t, enabled: true } : null;
+  // The HOA "Due Date" column is free text: a bare day ("15") is a day of the
+  // month, a date is a date. Anything else falls to the RPC's default.
+  out.hoas = (rest.hoas || []).map(h => {
+    const d = cellString(h.due_date).trim();
+    return /^\d{1,2}$/.test(d) ? { ...h, due_day: Number(d), due_date: null } : h;
+  });
+  return out;
+}
+
+// ---- label -> token ----------------------------------------------
+//
+// The spreadsheet shows friendly labels; the database stores lowercase
+// tokens. property_taxes.billing_frequency is a CHECK constraint --
+// 'annual', 'semi_annual', 'quarterly', 'monthly' -- so "Annually"
+// was rejected outright and every one of a 40-row tax sheet was lost.
+// The rest have no constraint but do have a house style, and writing
+// "Monthly" beside "monthly" quietly splits the data in two.
+export const IMPORT_ENUMS = {
+  responsibility:    { owner: "owner", tenant: "tenant" },
+  hoaFrequency:      { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+  premiumFrequency:  { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+  loanType:          { mortgage: "mortgage", heloc: "heloc", private: "private", commercial: "commercial" },
+  taxFrequency:      { annually: "annual", annual: "annual", "semi-annually": "semi_annual",
+                       semi_annual: "semi_annual", quarterly: "quarterly", monthly: "monthly" },
+};
+export const importEnumValue = (kind, v) => {
+  const raw = cellString(v).trim();
+  if (!raw) return null;
+  const hit = IMPORT_ENUMS[kind][raw.toLowerCase()];
+  // Unrecognised values are passed through lowercased rather than
+  // dropped: better a value someone can see and correct than a silent
+  // null. The tax one is the exception -- a bad value there is a hard
+  // constraint failure, so fall back to null and let it be blank.
+  if (hit) return hit;
+  return kind === "taxFrequency" ? null : raw.toLowerCase();
+};
