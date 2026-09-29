@@ -61,7 +61,7 @@ const webpush = require("web-push");
 const {
   pickRentReceiptCredit, isTenantOwnArAccount, localBusinessDate,
   billingPeriodOf, autopayIdempotencyKey, autopayMethodFromPmType, isAchAutopayMethod,
-  refundReference, disputeReference, disputeWonReference,
+  refundReference, disputeReference, disputeWonReference, disputeEventAction,
   chargeDateInPeriod, nextChargeDateAfterPeriod, paymentStatusBlockers, autopayRunCompanyIds,
 } = require("../src/utils/paymentRules");
 
@@ -387,6 +387,17 @@ async function findStripePaymentEntry(sb, paymentIntentId) {
   return je || null;
 }
 
+// The payment's STRIPE-<pi> entry exists but was VOIDED by staff (and there
+// is no live one): there is nothing left to reverse. Returns { company_id }
+// or null. Without this the webhook answered 500 ("not posted yet") forever.
+async function findVoidedStripePaymentEntry(sb, paymentIntentId) {
+  if (!paymentIntentId) return null;
+  // company-scope-exempt: keyed on a globally unique Stripe id.
+  const { data } = await sb.from("acct_journal_entries")
+    .select("id, company_id").eq("reference", "STRIPE-" + paymentIntentId).eq("status", "voided").limit(1);
+  return (data && data[0]) || null;
+}
+
 // Is this PaymentIntent one of ours (created by this app, so it carries our
 // metadata)? Used to decide between "retry later" (ours, the succeeded post
 // has not landed yet) and "ignore" (not a rent payment).
@@ -422,7 +433,7 @@ async function setPaymentStatus(sb, companyId, paymentIntentId, status) {
 // reversed and caps the new reversal at booked rent minus that, so
 // concurrent or overlapping refund and dispute events can never reverse
 // more than was booked. Returns { id } | { idempotent } | { skipped } | { error }.
-async function postStripeReversal(sb, original, { piId, chargeId, kind, reference, amountCents, description, memo, disputeId, disputeStatus }) {
+async function postStripeReversal(sb, original, { piId, chargeId, kind, reference, amountCents, description, memo, disputeId, disputeStatus, refundFull }) {
   const { data, error } = await sb.rpc("stripe_post_reversal", {
     p_company_id: original.company_id,
     p_payment_intent_id: piId,
@@ -435,6 +446,10 @@ async function postStripeReversal(sb, original, { piId, chargeId, kind, referenc
     p_dispute_id: disputeId || null,
     p_dispute_status: disputeStatus || null,
     p_date: localBusinessDate(),
+    // payments.status is derived by the RPC from the books, under the same
+    // lock (see migration 20260928090000); this only says Stripe reports the
+    // charge fully refunded.
+    p_refund_full: !!refundFull,
   });
   if (error) return { error: "stripe_post_reversal failed: " + error.message };
   const r = data || {};
@@ -760,8 +775,11 @@ async function handleChargeAutopayDue(req, res) {
     // CLAIM the period atomically before charging: move next_charge_date
     // forward only if it still holds the value we read. Two overlapping runs
     // both read the row, but only one UPDATE matches; the other skips it.
+    // The claim also clears last_payment_intent_id: until this attempt's
+    // PaymentIntent exists, NO earlier attempt's late failure may give the
+    // period back (see payment_intent.payment_failed).
     const { data: claimed, error: claimErr } = await sb.from("autopay_schedules")
-      .update({ next_charge_date: nextDate, last_charge_at: new Date().toISOString() })
+      .update({ next_charge_date: nextDate, last_charge_at: new Date().toISOString(), last_payment_intent_id: null })
       .eq("id", row.id).eq("next_charge_date", claimedDate)
       .eq("enabled", true).is("archived_at", null)
       .select("id");
@@ -813,8 +831,13 @@ async function handleChargeAutopayDue(req, res) {
         // is retried or a second run gets this far.
         idempotencyKey: autopayIdempotencyKey(row.id, period, today),
       });
+      // This PaymentIntent is now the schedule's CURRENT attempt. Only its
+      // own async failure may release the claim. A charge that already
+      // succeeded marks the period paid.
       await sb.from("autopay_schedules").update({
         last_error: null, last_error_at: null,
+        last_payment_intent_id: intent.id,
+        ...(intent.status === "succeeded" ? { last_paid_period: period } : {}),
       }).eq("id", row.id);
       results.push({ autopay_id: row.id, intent: intent.id, status: intent.status, period });
     } catch (e) {
@@ -825,6 +848,9 @@ async function handleChargeAutopayDue(req, res) {
         next_charge_date: claimedDate,
         last_error: e.message?.slice(0, 500) || "unknown",
         last_error_at: new Date().toISOString(),
+        // A declined off-session charge still creates a PaymentIntent
+        // (Stripe returns it on the error); record it as the current attempt.
+        last_payment_intent_id: e?.raw?.payment_intent?.id || e?.payment_intent?.id || null,
       }).eq("id", row.id).eq("next_charge_date", nextDate);
       results.push({ autopay_id: row.id, error: e.message, period });
     }
@@ -1024,6 +1050,15 @@ async function handleWebhook(req, res) {
         last_charge_at: new Date().toISOString(),
         last_error: null, last_error_at: null,
       }).eq("id", autopayId);
+      // The period this charge paid: a late failure of any attempt for it
+      // (or an earlier period) must not reopen it. Only ever moves forward.
+      const paidPeriod = billingPeriodOf(md.billing_period);
+      if (paidPeriod) {
+        const { data: cur } = await sb.from("autopay_schedules").select("last_paid_period").eq("id", autopayId).maybeSingle();
+        if (!cur?.last_paid_period || String(cur.last_paid_period) < paidPeriod) {
+          await sb.from("autopay_schedules").update({ last_paid_period: paidPeriod }).eq("id", autopayId);
+        }
+      }
     }
 
     // Email + push notifications. The worker drains notification_queue
@@ -1080,10 +1115,23 @@ async function handleWebhook(req, res) {
           claimedDate = claimedDate || chargeDateInPeriod(period, dom);
           advancedDate = advancedDate || nextChargeDateAfterPeriod(period, dom);
         }
-        if (claimedDate && advancedDate && claimedDate !== advancedDate) {
+        // Only the schedule's CURRENT attempt may give the period back, and
+        // never a period already paid: every attempt in a period shares the
+        // same advanced date, so a late failure of an EARLIER attempt (a day-0
+        // decline delivered after the day-1 retry succeeded) would otherwise
+        // reopen a paid period and the next run would charge it again.
+        // Schedules charged before last_payment_intent_id existed have it
+        // null, so their failures never release (safe: last_error is still
+        // stamped and staff can retry).
+        const { data: cur } = await sb.from("autopay_schedules")
+          .select("last_payment_intent_id, last_paid_period").eq("id", autopayId).maybeSingle();
+        const paid = cur?.last_paid_period && String(cur.last_paid_period) >= period;
+        const isCurrent = !!intent.id && cur?.last_payment_intent_id === intent.id;
+        if (claimedDate && advancedDate && claimedDate !== advancedDate && isCurrent && !paid) {
           const { error: relErr } = await sb.from("autopay_schedules")
             .update({ next_charge_date: claimedDate })
-            .eq("id", autopayId).eq("next_charge_date", advancedDate);
+            .eq("id", autopayId).eq("next_charge_date", advancedDate)
+            .eq("last_payment_intent_id", intent.id);
           if (relErr) console.warn("[stripe webhook] claim release failed (non-fatal):", relErr.message);
         }
       }
@@ -1112,8 +1160,17 @@ async function handleWebhook(req, res) {
   if (event.type === "charge.refunded") {
     const charge = event.data.object;
     const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+    const status = charge.refunded ? "refunded" : "partially_refunded";
     const original = await findStripePaymentEntry(sb, piId);
     if (!original) {
+      // The payment's entry was voided by staff: nothing to reverse. Answer
+      // 200 so Stripe stops retrying, and still move the status forward.
+      const voided = await findVoidedStripePaymentEntry(sb, piId);
+      if (voided) {
+        console.warn("[stripe webhook] refund for " + piId + ": original voided — nothing to reverse");
+        await setPaymentStatus(sb, voided.company_id, piId, status);
+        return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "original voided — nothing to reverse" });
+      }
       // Ours but the succeeded post has not landed yet (events can arrive
       // out of order): 500 so Stripe retries. Not ours: nothing to do.
       if (await isOurPaymentIntent(piId)) return res.status(500).json({ error: "original payment not posted yet — retry" });
@@ -1121,24 +1178,47 @@ async function handleWebhook(req, res) {
     }
     // Refunds can come in several partial steps; amount_refunded is the
     // cumulative total. The RPC reverses only what is not already reversed
-    // -- refunds AND disputes of this payment, under one lock -- and never
-    // more than the rent that was booked.
-    const status = charge.refunded ? "refunded" : "partially_refunded";
+    // -- refunds AND disputes of this payment, under one lock -- never more
+    // than the rent that was booked, and derives payments.status from the
+    // books under that lock (so an out-of-order event cannot regress it).
     const r = await postStripeReversal(sb, original, {
       piId, chargeId: charge.id, kind: "refund",
       amountCents: charge.amount_refunded,
       reference: refundReference(charge.id, charge.amount_refunded),
       description: reversalDescription("Stripe refund", original, piId),
       memo: "Refund of Stripe charge " + charge.id,
+      refundFull: !!charge.refunded,
     });
     if (r.error) { console.error("[stripe webhook] refund reversal failed:", r.error); return res.status(500).json({ error: r.error }); }
-    await setPaymentStatus(sb, original.company_id, piId, status);
-    if (r.skipped) return res.status(200).json({ received: true, type: event.type, action: "already_reversed" });
-    return res.status(200).json({ received: true, type: event.type, reversed_je: r.id || null, idempotent: !!r.idempotent });
+    if (r.skipped) return res.status(200).json({ received: true, type: event.type, action: "already_reversed", payment_status: r.payment_status || null });
+    return res.status(200).json({ received: true, type: event.type, reversed_je: r.id || null, idempotent: !!r.idempotent, payment_status: r.payment_status || null });
   }
 
-  if (event.type === "charge.dispute.created" || event.type === "charge.dispute.closed") {
+  if (["charge.dispute.created", "charge.dispute.updated", "charge.dispute.funds_withdrawn", "charge.dispute.closed"].includes(event.type)) {
     const dispute = event.data.object;
+    // What this event means for the books (paymentRules.disputeEventAction):
+    //  * INQUIRIES -- status warning_needs_response / warning_under_review /
+    //    warning_closed -- are a pre-dispute request for information: Stripe
+    //    does NOT withdraw funds ("Some card networks initiate a preliminary
+    //    phase before creating a formal dispute ... Stripe calls this
+    //    preliminary phase an inquiry"; "When an account owner files a formal
+    //    dispute ... whether due to an escalated inquiry or for another
+    //    reason ... The card network pulls the funds for the dispute from your
+    //    Stripe balance" -- docs.stripe.com/disputes/how-disputes-work#inquiries).
+    //    So an inquiry reverses nothing, and warning_closed ("open for 120
+    //    days without escalation") is a no-op.
+    //  * An inquiry that ESCALATES becomes a chargeback (status needs_response
+    //    / under_review) and Stripe withdraws the funds, reported as
+    //    charge.dispute.funds_withdrawn ("Occurs when funds are removed from
+    //    your account due to a dispute") and charge.dispute.updated -- or as a
+    //    new dispute (charge.dispute.created). Any of those with a chargeback
+    //    status reverses, idempotently by dispute id
+    //    (docs.stripe.com/api/events/types).
+    const action = disputeEventAction(event.type, dispute.status);
+    if (action === "noop") {
+      return res.status(200).json({ received: true, type: event.type, action: "noop", status: dispute.status || null,
+        reason: /^warning_/.test(String(dispute.status || "")) ? "inquiry — no funds withdrawn" : "no books change for this event" });
+    }
     let piId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id;
     if (!piId && dispute.charge) {
       try {
@@ -1148,46 +1228,19 @@ async function handleWebhook(req, res) {
     }
     const original = await findStripePaymentEntry(sb, piId);
     if (!original) {
+      const voided = await findVoidedStripePaymentEntry(sb, piId);
+      if (voided) {
+        console.warn("[stripe webhook] dispute " + dispute.id + " for " + piId + ": original voided — nothing to reverse");
+        if (action === "reverse") await setPaymentStatus(sb, voided.company_id, piId, "disputed");
+        if (action === "lost") await setPaymentStatus(sb, voided.company_id, piId, "dispute_lost");
+        return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "original voided — nothing to reverse" });
+      }
       if (await isOurPaymentIntent(piId)) return res.status(500).json({ error: "original payment not posted yet — retry" });
       return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "no posted payment for " + piId });
     }
     const chargeId = typeof dispute.charge === "string" ? dispute.charge : (dispute.charge?.id || null);
-    // Capped inside the RPC at booked rent minus everything already reversed
-    // for this payment (an earlier partial refund included).
-    const reverse = () => postStripeReversal(sb, original, {
-      piId, chargeId, kind: "dispute",
-      amountCents: Number.isFinite(Number(dispute.amount)) && Number(dispute.amount) > 0 ? Math.round(Number(dispute.amount)) : null,
-      reference: disputeReference(dispute.id),
-      description: reversalDescription("Stripe dispute", original, piId),
-      memo: "Disputed Stripe payment " + dispute.id,
-      disputeId: dispute.id, disputeStatus: dispute.status || null,
-    });
-    if (event.type === "charge.dispute.created") {
-      // Stripe withdraws the disputed funds when the dispute opens -- unless
-      // this delivery is late and the dispute has already been won (the
-      // event says so, or the RPC finds the durable 'won' marker the closed
-      // event recorded).
-      if (dispute.status === "won") {
-        return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "dispute already won" });
-      }
-      const r = await reverse();
-      if (r.error) { console.error("[stripe webhook] dispute reversal failed:", r.error); return res.status(500).json({ error: r.error }); }
-      if (r.skipped === "dispute_already_won") {
-        return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "dispute already won" });
-      }
-      await setPaymentStatus(sb, original.company_id, piId, "disputed");
-      return res.status(200).json({ received: true, type: event.type, reversed_je: r.id || null, idempotent: !!r.idempotent });
-    }
-    // closed
-    if (dispute.status === "lost") {
-      // Make sure the reversal exists (idempotent if .created already ran;
-      // a .created delivered later finds the reference and posts nothing).
-      const r = await reverse();
-      if (r.error) return res.status(500).json({ error: r.error });
-      await setPaymentStatus(sb, original.company_id, piId, "dispute_lost");
-      return res.status(200).json({ received: true, type: event.type, action: "dispute_lost", reversed_je: r.id || null });
-    }
-    if (dispute.status === "won") {
+
+    if (action === "won") {
       // Funds returned: re-post the payment if it was reversed. The RPC
       // always records the durable 'won' marker -- even when there is nothing
       // to re-post yet because .created has not been delivered -- so a late
@@ -1200,10 +1253,29 @@ async function handleWebhook(req, res) {
         disputeId: dispute.id, disputeStatus: "won",
       });
       if (r.error) return res.status(500).json({ error: r.error });
-      await setPaymentStatus(sb, original.company_id, piId, "paid");
-      return res.status(200).json({ received: true, type: event.type, action: "dispute_won", reposted_je: r.id || null });
+      return res.status(200).json({ received: true, type: event.type, action: "dispute_won", reposted_je: r.id || null, payment_status: r.payment_status || null });
     }
-    return res.status(200).json({ received: true, type: event.type, action: "noop", status: dispute.status });
+
+    // "reverse" (a chargeback opened / escalated) or "lost" (closed lost --
+    // make sure the reversal exists; idempotent if it already does, and a
+    // .created delivered later finds the reference and posts nothing).
+    // Capped inside the RPC at booked rent minus everything already reversed
+    // for this payment (an earlier partial refund included). A dispute that
+    // reversed nothing (already fully refunded) does not change the status.
+    const r = await postStripeReversal(sb, original, {
+      piId, chargeId, kind: "dispute",
+      amountCents: Number.isFinite(Number(dispute.amount)) && Number(dispute.amount) > 0 ? Math.round(Number(dispute.amount)) : null,
+      reference: disputeReference(dispute.id),
+      description: reversalDescription("Stripe dispute", original, piId),
+      memo: "Disputed Stripe payment " + dispute.id,
+      disputeId: dispute.id, disputeStatus: action === "lost" ? "lost" : (dispute.status || null),
+    });
+    if (r.error) { console.error("[stripe webhook] dispute reversal failed:", r.error); return res.status(500).json({ error: r.error }); }
+    if (r.skipped === "dispute_already_won") {
+      return res.status(200).json({ received: true, type: event.type, action: "noop", reason: "dispute already won", payment_status: r.payment_status || null });
+    }
+    return res.status(200).json({ received: true, type: event.type, action: action === "lost" ? "dispute_lost" : "dispute_reversed",
+      reversed_je: r.id || null, idempotent: !!r.idempotent, skipped: r.skipped || null, payment_status: r.payment_status || null });
   }
 
   return res.status(200).json({ received: true, type: event.type, action: "noop" });

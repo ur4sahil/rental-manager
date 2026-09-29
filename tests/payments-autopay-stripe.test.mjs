@@ -26,6 +26,16 @@
 // minor: no dead-end "Run again?" confirm; no housify365.com worker fallback;
 //        move-out proration only looks at RENT schedules
 //
+// QA re-test (v2):
+// N1  a LATE failure of an EARLIER attempt reopened a period a later attempt paid
+//     -> release only for the schedule's current attempt (last_payment_intent_id)
+//        and never for a paid period (last_paid_period)
+// N2  status regressions (dispute on refunded -> "disputed"; won on partially
+//     refunded -> "paid"; partial refund overwrote "disputed"; created+won race)
+//     -> payments.status derived from the books under the payment's lock
+// P1  refund/dispute of a payment whose entry was VOIDED returned 500 forever -> 200
+// P2  inquiries (warning_*) reversed money -> no-op until escalated
+//
 // Part 1: pure helpers (src/utils/paymentRules.js).
 // Part 2: static checks that each call site uses them.
 // Part 3: api/stripe.js handlers driven end-to-end with a MOCKED Stripe
@@ -202,7 +212,42 @@ console.log("\n🚦 Q4. PAYMENT STATUS ONLY MOVES FORWARD");
   assert("paid -> partially_refunded allowed", R.paymentStatusMayMove("paid", "partially_refunded"));
   assert("partially_refunded -> refunded allowed", R.paymentStatusMayMove("partially_refunded", "refunded"));
   assert("dispute_lost blocks a late 'disputed'", !R.paymentStatusMayMove("dispute_lost", "disputed"));
-  assert("blockers list for the conditional update", JSON.stringify(R.paymentStatusBlockers("partially_refunded")) === '["refunded"]' && R.paymentStatusBlockers("refunded").length === 0);
+  assert("blockers: partially_refunded never overwrites refunded / disputed / dispute_lost", JSON.stringify(R.paymentStatusBlockers("partially_refunded")) === '["refunded","disputed","dispute_lost"]');
+  assert("blockers: a refunded payment is never marked disputed", !R.paymentStatusMayMove("refunded", "disputed") && !R.paymentStatusMayMove("refunded", "dispute_lost"));
+  assert("blockers: paid never overwrites a refund / dispute state", ["partially_refunded", "refunded", "disputed", "dispute_lost"].every(c => !R.paymentStatusMayMove(c, "paid")));
+  assert("blockers: paid -> disputed -> dispute_lost allowed", R.paymentStatusMayMove("paid", "disputed") && R.paymentStatusMayMove("disputed", "dispute_lost"));
+}
+
+console.log("\n🧮 N2. payments.status DERIVED FROM THE BOOKS (mirrors _stripe_sync_payment_status)");
+{
+  const D = R.derivePaymentStatus;
+  assert("nothing reversed -> paid", D({ bookedCents: 100000 }) === "paid");
+  assert("partial refund -> partially_refunded", D({ bookedCents: 100000, refundedCents: 30000 }) === "partially_refunded");
+  assert("refunds >= booked -> refunded", D({ bookedCents: 100000, refundedCents: 100000 }) === "refunded");
+  assert("Stripe says fully refunded -> refunded", D({ bookedCents: 100000, refundedCents: 50000, refundFull: true }) === "refunded");
+  assert("refunded is sticky (a stale partial event cannot regress it)", D({ bookedCents: 100000, refundedCents: 30000, current: "refunded" }) === "refunded");
+  assert("open dispute outranks a partial refund (a late partial-refund event cannot overwrite disputed)", D({ bookedCents: 100000, refundedCents: 30000, openDisputes: 1, current: "disputed" }) === "disputed");
+  assert("dispute WON on a partially refunded payment -> partially_refunded (not paid)", D({ bookedCents: 100000, refundedCents: 30000, openDisputes: 0, current: "disputed" }) === "partially_refunded");
+  assert("dispute won, no refunds -> paid", D({ bookedCents: 100000, current: "disputed" }) === "paid");
+  assert("lost outranks everything", D({ bookedCents: 100000, lostDisputes: 1, openDisputes: 1, refundedCents: 100000 }) === "dispute_lost");
+  assert("a dispute that reversed nothing is not counted -> refunded stays", D({ bookedCents: 100000, refundedCents: 100000, openDisputes: 0, current: "refunded" }) === "refunded");
+}
+
+console.log("\n🕵️  P2. DISPUTE EVENT -> BOOKS ACTION (inquiries move no money)");
+{
+  const A = R.disputeEventAction;
+  for (const st of ["warning_needs_response", "warning_under_review", "warning_closed"]) {
+    for (const ev of ["charge.dispute.created", "charge.dispute.updated", "charge.dispute.funds_withdrawn", "charge.dispute.closed"]) assert(`inquiry ${st} on ${ev.slice(15)} -> noop`, A(ev, st) === "noop");
+  }
+  assert("chargeback created (needs_response) -> reverse", A("charge.dispute.created", "needs_response") === "reverse");
+  assert("escalated inquiry: funds_withdrawn needs_response -> reverse", A("charge.dispute.funds_withdrawn", "needs_response") === "reverse");
+  assert("escalated inquiry: updated needs_response / under_review -> reverse", A("charge.dispute.updated", "needs_response") === "reverse" && A("charge.dispute.updated", "under_review") === "reverse");
+  assert("closed lost -> lost; won -> won", A("charge.dispute.closed", "lost") === "lost" && A("charge.dispute.closed", "won") === "won");
+  assert("unchallengeable dispute created already lost -> lost", A("charge.dispute.created", "lost") === "lost");
+  assert("created whose snapshot is won -> noop (never reverse a won dispute)", A("charge.dispute.created", "won") === "noop");
+  assert("updated with won/lost -> noop (closed handles it)", A("charge.dispute.updated", "won") === "noop" && A("charge.dispute.updated", "lost") === "noop");
+  assert("charge_refunded status -> noop", A("charge.dispute.closed", "charge_refunded") === "noop" && A("charge.dispute.updated", "charge_refunded") === "noop");
+  assert("unknown event -> noop", A("charge.dispute.funds_reinstated", "won") === "noop");
 }
 
 console.log("\n🔐 Q9. WHO MAY RUN THE AUTOPAY CHARGER");
@@ -287,7 +332,17 @@ assert("#7 refunds/disputes go through the same verified constructEvent", (api.m
 // QA fixes (static)
 const whAll = api.slice(api.indexOf("async function handleWebhook"));
 assert("Q1/Q2 refunds and disputes post through the stripe_post_reversal RPC (no JS read-then-write)", (whAll.match(/postStripeReversal\(sb, original/g) || []).length >= 3 && api.includes('sb.rpc("stripe_post_reversal"') && !whAll.includes("refundDeltaCents(") && !whAll.includes('.like("reference", "STRIPE-REFUND-"'));
-assert("Q3 created skips a dispute already won (event status); won posts through the RPC marker", /if \(dispute\.status === "won"\) \{\s*return res\.status\(200\)/.test(whAll) && whAll.includes('r.skipped === "dispute_already_won"') && whAll.includes('kind: "dispute_won"'));
+assert("Q3 created skips a dispute already won (event status via disputeEventAction, marker via RPC); won posts through the RPC", whAll.includes("disputeEventAction(event.type, dispute.status)") && whAll.includes('r.skipped === "dispute_already_won"') && whAll.includes('kind: "dispute_won"'));
+assert("N2 the webhook no longer writes refund/dispute statuses itself (the RPC derives them)", (whAll.match(/setPaymentStatus\(/g) || []).length === 3 && /findVoidedStripePaymentEntry/.test(whAll));
+assert("N1 cron: claim clears last_payment_intent_id; the created PI becomes the current attempt; sync success marks the period paid", cron.includes("last_payment_intent_id: null })") && cron.includes("last_payment_intent_id: intent.id,") && cron.includes('intent.status === "succeeded" ? { last_paid_period: period }'));
+assert("N1 payment_failed releases only for the current attempt of an unpaid period", /const isCurrent = !!intent\.id && cur\?\.last_payment_intent_id === intent\.id;/.test(api) && /isCurrent && !paid/.test(api) && /\.eq\("last_payment_intent_id", intent\.id\)/.test(api));
+assert("P2 dispute events handled: created / updated / funds_withdrawn / closed", ["charge.dispute.updated", "charge.dispute.funds_withdrawn"].every(e => whAll.includes('"' + e + '"')));
+const mig2 = read("supabase/migrations/20260928090000_autopay_current_attempt.sql");
+assert("N1 migration adds last_payment_intent_id + last_paid_period", /ADD COLUMN IF NOT EXISTS last_payment_intent_id text/.test(mig2) && /ADD COLUMN IF NOT EXISTS last_paid_period text/.test(mig2));
+assert("N2 migration: status derived under the lock; core renamed; new functions server-only", mig2.includes("RENAME TO _stripe_post_reversal_core") && mig2.includes("v_status := public._stripe_sync_payment_status(") &&
+  /REVOKE ALL ON FUNCTION public\._stripe_sync_payment_status\(text, text, text, text, boolean\) FROM PUBLIC, anon, authenticated;/.test(mig2) &&
+  /REVOKE ALL ON FUNCTION public\.stripe_post_reversal\(text, text, text, text, text, bigint, text, text, text, text, date, boolean\) FROM PUBLIC, anon, authenticated;/.test(mig2) &&
+  /REVOKE ALL ON FUNCTION public\._stripe_post_reversal_core\([^)]*\) FROM PUBLIC, anon, authenticated;/.test(mig2));
 assert("Q4 setPaymentStatus is a forward-only conditional update", /for \(const blocked of paymentStatusBlockers\(status\)\) q = q\.neq\("status", blocked\);/.test(api));
 assert("Q5 receipt AR via the locked stripe_tenant_ar RPC", api.includes('sb.rpc("stripe_tenant_ar"'));
 assert("Q5 an existing tenant without AR -> 500 (Stripe retries), never Rental Income", /else if \(!arLookup\.tenantMissing\) \{\s*return res\.status\(500\)/.test(api) && /if \(arLookup\.error\) \{[\s\S]{0,200}return res\.status\(500\)/.test(api));
@@ -444,6 +499,35 @@ function fakeStripeTenantAr(T, { p_company_id, p_tenant_id }) {
   return { data: row.id, error: null };
 }
 function fakeStripePostReversal(T, a, jeNumber) {
+  const res = fakeStripePostReversalCore(T, a, jeNumber);
+  if (res.error || res.data?.error) return res;
+  res.data.payment_status = fakeSyncPaymentStatus(T, a);
+  return res;
+}
+// Mirrors _stripe_sync_payment_status (migration 20260928090000).
+function fakeSyncPaymentStatus(T, a) {
+  const JE = T.acct_journal_entries, JL = T.acct_journal_lines;
+  const cents = (id) => Math.round(JL.filter(l => l.journal_entry_id === id).reduce((s, l) => s + (Number(l.debit) || 0), 0) * 100);
+  const orig = JE.find(j => j.company_id === a.p_company_id && j.reference === "STRIPE-" + a.p_payment_intent_id && j.status !== "voided");
+  if (!orig) return null;
+  const pool = JE.filter(j => j.company_id === a.p_company_id && j.status === "posted" && (
+    (j.stripe_payment_intent_id === a.p_payment_intent_id && /^STRIPE-(REFUND|DISPUTE)-/.test(j.reference || "")) ||
+    (a.p_charge_id && (j.reference || "").startsWith("STRIPE-REFUND-" + a.p_charge_id + "-")) ||
+    (a.p_dispute_id && ["STRIPE-DISPUTE-" + a.p_dispute_id, "STRIPE-DISPUTE-WON-" + a.p_dispute_id].includes(j.reference))));
+  let refundedCents = 0, openDisputes = 0, lostDisputes = 0;
+  for (const j of pool) {
+    if (/^STRIPE-REFUND-/.test(j.reference)) { refundedCents += cents(j.id); continue; }
+    if (/^STRIPE-DISPUTE-WON-/.test(j.reference) || cents(j.id) <= 0) continue;
+    const dp = j.reference.slice("STRIPE-DISPUTE-".length);
+    if (JE.some(x => x.company_id === a.p_company_id && x.status === "posted" && x.reference === "STRIPE-DISPUTE-WON-" + dp)) continue;
+    if ((T.stripe_dispute_outcomes || []).some(m => m.dispute_id === dp && m.status === "lost")) lostDisputes++; else openDisputes++;
+  }
+  const pays = (T.payments || []).filter(x => x.company_id === a.p_company_id && x.stripe_session_id === a.p_payment_intent_id);
+  const st = R.derivePaymentStatus({ lostDisputes, openDisputes, refundedCents, bookedCents: cents(orig.id), refundFull: !!a.p_refund_full, current: pays[0]?.status || null });
+  pays.forEach(x => { x.status = st; });
+  return st;
+}
+function fakeStripePostReversalCore(T, a, jeNumber) {
   T.stripe_dispute_outcomes = T.stripe_dispute_outcomes || [];
   const JE = T.acct_journal_entries, JL = T.acct_journal_lines;
   const cents = (id) => Math.round(JL.filter(l => l.journal_entry_id === id).reduce((s, l) => s + (Number(l.debit) || 0), 0) * 100);
@@ -756,7 +840,7 @@ const piEvent = (id, extra = {}) => ({ type: "payment_intent.succeeded", data: {
 // — Q6 async ACH failure releases the claim —
 {
   const failEv = (md) => ({ type: "payment_intent.payment_failed", data: { object: { id: "pi_f", last_payment_error: { message: "ACH return R01" }, metadata: { company_id: CO, tenant_id: "42", tenant_name: "Jo Smith", rent_cents: "150000", ...md } } } });
-  const seedAp = (next) => ({ ...baseSeed(), autopay_schedules: [{ id: "ap-f", company_id: CO, tenant_id: 42, amount: 1500, day_of_month: 5, provider: "stripe", enabled: true, archived_at: null, next_charge_date: next, method: "stripe_us_bank_account" }] });
+  const seedAp = (next, extra = {}) => ({ ...baseSeed(), autopay_schedules: [{ id: "ap-f", company_id: CO, tenant_id: 42, amount: 1500, day_of_month: 5, provider: "stripe", enabled: true, archived_at: null, next_charge_date: next, method: "stripe_us_bank_account", last_payment_intent_id: "pi_f", last_paid_period: null, ...extra }] });
   currentDb = makeDb(seedAp("2026-10-05"));
   stripeState.events.push(failEv({ autopay_id: "ap-f", billing_period: "2026-09", claimed_date: "2026-09-05", advanced_date: "2026-10-05" }));
   let r = await call("webhook", { headers: { "stripe-signature": "valid" }, body: "{}" });
@@ -806,7 +890,7 @@ const piEvent = (id, extra = {}) => ({ type: "payment_intent.succeeded", data: {
   assert("Q3 won delivered BEFORE created: marker recorded, created reverses nothing", won.status === 200 && late.status === 200 && late.body.reason === "dispute already won" && Math.abs(arNet() - (-1500)) < 0.001 && currentDb.T.stripe_dispute_outcomes?.some(m => m.dispute_id === "dp_W" && m.status === "won"), JSON.stringify(late.body));
   assert("Q3 …payment stays paid", payStatus("pi_W") === "paid");
   const snap = await ev(dEv("charge.dispute.created", "dp_W2", "pi_W", 154548, "won"));
-  assert("Q3 created whose own snapshot says won -> no reversal", snap.body.reason === "dispute already won" && Math.abs(arNet() - (-1500)) < 0.001);
+  assert("Q3 created whose own snapshot says won -> no reversal", snap.status === 200 && snap.body.action === "noop" && Math.abs(arNet() - (-1500)) < 0.001, JSON.stringify(snap.body));
 
   currentDb = makeDb(baseSeed());
   await ev(piEvent("pi_L"));
@@ -895,6 +979,97 @@ const piEvent = (id, extra = {}) => ({ type: "payment_intent.succeeded", data: {
   } finally {
     supabase.from = realFrom; reset();
   }
+}
+
+// — N1 a late failure of an EARLIER attempt never reopens a paid period —
+{
+  const failEv = (pi, md) => ({ type: "payment_intent.payment_failed", data: { object: { id: pi, last_payment_error: { message: "ACH return R01" }, metadata: { company_id: CO, tenant_id: "42", tenant_name: "Jo Smith", rent_cents: "150000", autopay_id: "ap-n", billing_period: "2026-09", claimed_date: "2026-09-05", advanced_date: "2026-10-05", ...md } } } });
+  const seed = (extra) => ({ ...baseSeed(), autopay_schedules: [{ id: "ap-n", company_id: CO, tenant_id: 42, tenant: "Jo Smith", property: "1 Main", amount: 1500, day_of_month: 5, provider: "stripe", enabled: true, archived_at: null, next_charge_date: "2026-10-05", method: "stripe_us_bank_account", stripe_customer_id: "c", stripe_payment_method_id: "pm_bank", ...extra }] });
+  const ev = async (e) => { stripeState.events.push(e); return call("webhook", { headers: { "stripe-signature": "valid" }, body: "{}" }); };
+  currentDb = makeDb(seed({ last_payment_intent_id: "pi_day1", last_paid_period: null }));
+  await ev(failEv("pi_day0"));
+  assert("N1 failure of an EARLIER attempt (not the current one) does not release", currentDb.T.autopay_schedules[0].next_charge_date === "2026-10-05" && /R01/.test(currentDb.T.autopay_schedules[0].last_error || ""));
+  currentDb = makeDb(seed({ last_payment_intent_id: "pi_day1", last_paid_period: "2026-09" }));
+  await ev(failEv("pi_day1"));
+  assert("N1 even the current attempt cannot reopen a PAID period", currentDb.T.autopay_schedules[0].next_charge_date === "2026-10-05");
+  currentDb = makeDb(seed({ last_payment_intent_id: null, last_paid_period: null }));
+  await ev(failEv("pi_old"));
+  assert("N1 schedules charged before the column existed (null) never release (safe)", currentDb.T.autopay_schedules[0].next_charge_date === "2026-10-05");
+  currentDb = makeDb(seed({ last_payment_intent_id: "pi_day1", last_paid_period: "2026-08" }));
+  await ev(failEv("pi_day1"));
+  assert("N1 the current attempt of an unpaid period releases", currentDb.T.autopay_schedules[0].next_charge_date === "2026-09-05");
+  // succeeded webhook records the paid period (forward only)
+  currentDb = makeDb(seed({ last_payment_intent_id: "pi_s", last_paid_period: "2026-08" }));
+  await ev(piEvent("pi_s", { autopay_id: "ap-n", billing_period: "2026-09" }));
+  assert("N1 payment_intent.succeeded marks the period paid", currentDb.T.autopay_schedules[0].last_paid_period === "2026-09");
+  currentDb = makeDb(seed({ last_payment_intent_id: "pi_s", last_paid_period: "2026-10" }));
+  await ev(piEvent("pi_s2", { autopay_id: "ap-n", billing_period: "2026-09" }));
+  assert("N1 …and never moves it backwards", currentDb.T.autopay_schedules[0].last_paid_period === "2026-10");
+  // cron: claim clears, PI recorded; processing ACH is not "paid"; a decline carrying its PI records it
+  currentDb = makeDb(seed({ next_charge_date: "2026-09-05", last_payment_intent_id: "pi_stale" }));
+  stripeState.pmType = { pm_bank: "us_bank_account" };
+  const origCreate = FakeStripe;
+  stripeCalls.piCreate.length = 0;
+  await call("charge-autopay-due", { headers: { authorization: "Bearer admin" } });
+  const row = currentDb.T.autopay_schedules[0];
+  assert("N1 cron records the new PaymentIntent as the current attempt", row.last_payment_intent_id === "pi_" + stripeCalls.piCreate.length && row.next_charge_date === "2026-10-05");
+  assert("N1 a synchronously succeeded charge marks the period paid", row.last_paid_period === "2026-09");
+  void origCreate;
+}
+
+// — N2 / P1 / P2 through the webhook —
+{
+  const arNet = () => currentDb.T.acct_journal_lines.filter(l => l.account_id === "ar42").reduce((a, l) => a + (l.debit || 0) - (l.credit || 0), 0);
+  const ev = async (e) => { stripeState.events.push(e); return call("webhook", { headers: { "stripe-signature": "valid" }, body: "{}" }); };
+  const refundEv = (ch, pi, amt, full) => ({ type: "charge.refunded", data: { object: { id: ch, payment_intent: pi, amount_refunded: amt, refunded: full } } });
+  const dEv = (type, dp, pi, amount, status) => ({ type, data: { object: { id: dp, charge: "ch_" + dp, payment_intent: pi, amount, status } } });
+  const payStatus = (pi) => currentDb.T.payments.find(p => p.stripe_session_id === pi)?.status;
+
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_M"));
+  await ev(refundEv("ch_M", "pi_M", 154548, true));
+  const m = await ev(dEv("charge.dispute.created", "dp_M", "pi_M", 154548, "needs_response"));
+  assert("N2 dispute on a fully refunded payment: nothing reversed, status stays refunded", m.status === 200 && payStatus("pi_M") === "refunded" && !currentDb.T.acct_journal_entries.some(j => j.reference === "STRIPE-DISPUTE-dp_M"), JSON.stringify(m.body));
+
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_P"));
+  await ev(refundEv("ch_P", "pi_P", 30000, false));
+  await ev(dEv("charge.dispute.created", "dp_P", "pi_P", 124548, "needs_response"));
+  const sD = payStatus("pi_P");
+  await ev(refundEv("ch_P", "pi_P", 30000, false));
+  assert("N2 a late partial-refund event does not overwrite disputed", sD === "disputed" && payStatus("pi_P") === "disputed");
+  await ev(dEv("charge.dispute.closed", "dp_P", "pi_P", 124548, "won"));
+  assert("N2 dispute won on a partially refunded payment -> partially_refunded, not paid", payStatus("pi_P") === "partially_refunded" && Math.abs(arNet() - (-1500 + 300)) < 0.001, payStatus("pi_P"));
+
+  // P1 voided original
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_V"));
+  currentDb.T.acct_journal_entries.find(j => j.reference === "STRIPE-pi_V").status = "voided";
+  stripeState.piMeta.pi_V = { company_id: CO, tenant_id: "42" };
+  const v1 = await ev(refundEv("ch_V", "pi_V", 154548, true));
+  const v2 = await ev(dEv("charge.dispute.created", "dp_V", "pi_V", 154548, "needs_response"));
+  assert("P1 refund / dispute of a VOIDED payment -> 200 'original voided', nothing posted", v1.status === 200 && v2.status === 200 && /voided/.test(v1.body.reason) && /voided/.test(v2.body.reason) && !currentDb.T.acct_journal_entries.some(j => /^STRIPE-(REFUND|DISPUTE)-/.test(j.reference)), JSON.stringify([v1.body, v2.body]));
+  assert("P1 …status still moves forward (refunded; the later dispute does not overwrite it)", payStatus("pi_V") === "refunded");
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_V2"));
+  currentDb.T.acct_journal_entries.find(j => j.reference === "STRIPE-pi_V2").status = "voided";
+  await ev(dEv("charge.dispute.closed", "dp_V2", "pi_V2", 154548, "lost"));
+  assert("P1 dispute lost on a voided payment -> dispute_lost, 200", payStatus("pi_V2") === "dispute_lost");
+
+  // P2 inquiries
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_I"));
+  const i1 = await ev(dEv("charge.dispute.created", "dp_I", "pi_I", 154548, "warning_needs_response"));
+  const i2 = await ev(dEv("charge.dispute.updated", "dp_I", "pi_I", 154548, "warning_under_review"));
+  assert("P2 inquiry created / updated -> no reversal, status paid", i1.body.action === "noop" && i2.body.action === "noop" && Math.abs(arNet() - (-1500)) < 0.001 && payStatus("pi_I") === "paid", JSON.stringify(i1.body));
+  const e1 = await ev(dEv("charge.dispute.funds_withdrawn", "dp_I", "pi_I", 154548, "needs_response"));
+  const e2 = await ev(dEv("charge.dispute.updated", "dp_I", "pi_I", 154548, "needs_response"));
+  assert("P2 inquiry escalated (funds_withdrawn, then updated) -> reversed exactly once, disputed", e1.status === 200 && e2.status === 200 && currentDb.T.acct_journal_entries.filter(j => j.reference === "STRIPE-DISPUTE-dp_I").length === 1 && Math.abs(arNet()) < 0.001 && payStatus("pi_I") === "disputed");
+  currentDb = makeDb(baseSeed());
+  await ev(piEvent("pi_I2"));
+  await ev(dEv("charge.dispute.created", "dp_I2", "pi_I2", 154548, "warning_needs_response"));
+  const c = await ev(dEv("charge.dispute.closed", "dp_I2", "pi_I2", 154548, "warning_closed"));
+  assert("P2 inquiry closed (warning_closed) -> no-op", c.body.action === "noop" && Math.abs(arNet() - (-1500)) < 0.001 && payStatus("pi_I2") === "paid");
 }
 
 // ─── 4. TEST DB (read-only): the accrual query shape PostgREST accepts ────
@@ -987,7 +1162,12 @@ try {
     const w = await rev({ p_payment_intent_id: pB, p_kind: "dispute_won", p_reference: "STRIPE-DISPUTE-WON-" + dpB, p_amount_cents: null, p_dispute_id: dpB, p_dispute_status: "won" });
     const c = await rev({ p_payment_intent_id: pB, p_kind: "dispute", p_reference: "STRIPE-DISPUTE-" + dpB, p_amount_cents: 103121, p_dispute_id: dpB, p_dispute_status: "needs_response" });
     assert("LIVE Q3 won before created: marker recorded, created skipped, net reversal 0", !w.error && w.data?.skipped === "nothing_to_repost" && !c.error && c.data?.skipped === "dispute_already_won" && await reversed(pB) === 0, JSON.stringify([w.error?.message || w.data, c.error?.message || c.data]));
+    const cS = await rev({ p_payment_intent_id: pB, p_kind: "dispute", p_reference: "STRIPE-DISPUTE-" + dpB + "-x", p_amount_cents: 103121, p_dispute_id: dpB + "x", p_dispute_status: "needs_response", p_refund_full: false });
+    assert("LIVE N2 the RPC returns the payment status it derived under the lock", !cS.error && typeof cS.data?.payment_status !== "undefined", JSON.stringify(cS.error?.message || cS.data));
     const anonSb = createClient(url, process.env.TEST_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const aS = await anonSb.rpc("_stripe_sync_payment_status", { p_company_id: LCO, p_payment_intent_id: pA, p_charge_id: null, p_dispute_id: null, p_refund_full: false });
+    const aC = await anonSb.rpc("_stripe_post_reversal_core", { p_company_id: LCO, p_payment_intent_id: pA, p_charge_id: null, p_kind: "refund", p_reference: "x", p_amount_cents: 1, p_description: "x", p_memo: "x", p_dispute_id: null, p_dispute_status: null, p_date: null });
+    assert("LIVE anon cannot execute _stripe_sync_payment_status / _stripe_post_reversal_core", !!aS.error && !!aC.error, JSON.stringify([aS.error?.message, aC.error?.message]));
     const a1 = await anonSb.rpc("stripe_post_reversal", { p_company_id: LCO, p_payment_intent_id: pA, p_charge_id: null, p_kind: "refund", p_reference: "STRIPE-REFUND-x-1", p_amount_cents: 1, p_description: "x", p_memo: "x", p_dispute_id: null, p_dispute_status: null, p_date: null });
     const a2 = await anonSb.rpc("stripe_tenant_ar", { p_company_id: LCO, p_tenant_id: t.id });
     const a3 = await anonSb.from("stripe_dispute_outcomes").select("dispute_id").limit(1);

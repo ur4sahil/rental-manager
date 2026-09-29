@@ -227,21 +227,77 @@ function buildReversalLines(originalLines, amountCents, memo) {
   })).filter(l => l.debit > 0 || l.credit > 0);
 }
 
-// payments.status only moves FORWARD. Stripe does not guarantee event
-// order, so an older charge.refunded (partial) can arrive after the newer
-// one (full): it must not turn "refunded" back into "partially_refunded".
-// Likewise a late charge.dispute.created must not undo "dispute_lost".
-// Returns the current statuses that block writing `incoming` (the webhook
-// applies it as a conditional update, so there is no read-then-write race).
+// ── payments.status of a Stripe payment ─────────────────────────────────
+// Stripe does not guarantee event order, so the status is DERIVED from the
+// books rather than copied from whichever event arrived last. For refunds
+// and disputes the stripe_post_reversal RPC derives it under the payment's
+// lock (migration 20260928090000, _stripe_sync_payment_status); this is the
+// same rule in JS, for tests and documentation. Precedence, top down:
+//
+//   dispute_lost        a dispute reversal was posted and the dispute closed lost
+//   disputed            a dispute reversal was posted, not yet won or lost
+//   refunded            refund reversals >= booked rent, or Stripe says the
+//                       charge is fully refunded, or it already said refunded
+//   partially_refunded  any refund reversal, or it already said so
+//   paid                otherwise -- including a dispute that was WON
+//
+// So: a won dispute on a partially refunded payment is partially_refunded,
+// not paid; a partial-refund event cannot overwrite disputed; a dispute that
+// reversed nothing (the payment was already fully refunded) leaves refunded.
+function derivePaymentStatus({ lostDisputes = 0, openDisputes = 0, refundedCents = 0, bookedCents = 0, refundFull = false, current = null } = {}) {
+  if (num(lostDisputes) > 0) return "dispute_lost";
+  if (num(openDisputes) > 0) return "disputed";
+  if ((num(bookedCents) > 0 && num(refundedCents) >= num(bookedCents)) || refundFull || current === "refunded") return "refunded";
+  if (num(refundedCents) > 0 || current === "partially_refunded") return "partially_refunded";
+  return "paid";
+}
+
+// When the books cannot be consulted (the payment's entry was voided), the
+// webhook still writes the event's status, but only FORWARD along the same
+// order: paid < partially_refunded < refunded, paid < disputed < dispute_lost,
+// and a refunded payment is never later marked disputed/lost (a dispute on a
+// fully refunded charge reverses nothing). Returns the current statuses that
+// block writing `incoming`; applied as a conditional update (no read-then-
+// write race).
 const PAYMENT_STATUS_BLOCKERS = {
-  partially_refunded: ["refunded"],
-  disputed: ["dispute_lost"],
+  paid: ["partially_refunded", "refunded", "disputed", "dispute_lost"],
+  partially_refunded: ["refunded", "disputed", "dispute_lost"],
+  refunded: ["dispute_lost"],
+  disputed: ["refunded", "dispute_lost"],
+  dispute_lost: ["refunded"],
 };
 function paymentStatusBlockers(incoming) {
   return (PAYMENT_STATUS_BLOCKERS[incoming] || []).slice();
 }
 function paymentStatusMayMove(current, incoming) {
   return !paymentStatusBlockers(incoming).includes(String(current || ""));
+}
+
+// What a Stripe dispute event means for the books (api/stripe.js):
+//   "reverse"  a chargeback is open: funds were withdrawn -> reverse the payment
+//   "lost"     closed lost: make sure it is reversed; record the loss
+//   "won"      closed won: re-post what was reversed
+//   "noop"     nothing moves
+// Inquiries (status warning_needs_response / warning_under_review /
+// warning_closed) withdraw no funds, so every inquiry event is a no-op; an
+// inquiry that escalates arrives with a chargeback status (needs_response /
+// under_review) on charge.dispute.updated / .funds_withdrawn / .created and
+// is reversed then. docs.stripe.com/disputes/how-disputes-work#inquiries
+const DISPUTE_OPEN_STATUSES = ["needs_response", "under_review"];
+function disputeEventAction(eventType, status) {
+  const st = String(status || "");
+  if (/^warning_/.test(st)) return "noop";
+  if (eventType === "charge.dispute.closed") return st === "lost" ? "lost" : st === "won" ? "won" : "noop";
+  if (eventType === "charge.dispute.created" || eventType === "charge.dispute.updated" || eventType === "charge.dispute.funds_withdrawn") {
+    if (DISPUTE_OPEN_STATUSES.includes(st)) return "reverse";
+    // An unchallengeable dispute is created already lost.
+    if (eventType === "charge.dispute.created" && st === "lost") return "lost";
+    // created with no status at all (older payloads): funds are withdrawn
+    // when a chargeback opens.
+    if (eventType === "charge.dispute.created" && st === "") return "reverse";
+    return "noop";
+  }
+  return "noop";
 }
 
 // Only these company roles may trigger the autopay charger with their own
@@ -328,7 +384,7 @@ module.exports = {
   chargeDateInPeriod, nextChargeDateAfterPeriod,
   autopayMethodFromPmType, isAchAutopayMethod,
   refundReference, disputeReference, disputeWonReference, refundDeltaCents, buildReversalLines,
-  paymentStatusBlockers, paymentStatusMayMove, autopayRunCompanyIds, isRentSchedule,
+  paymentStatusBlockers, paymentStatusMayMove, derivePaymentStatus, disputeEventAction, autopayRunCompanyIds, isRentSchedule,
   pickLegacyNamedArAccount, nextTenantArSeq,
   matchAutopayTenant, isStripeSchedule,
 };
