@@ -58,10 +58,15 @@ const NAV_CHILD_IDS = new Set(ALL_NAV.flatMap(n => (n.children || []).map(c => c
 // A work order with accounting entries or vendor invoices cannot be
 // permanently deleted (DB trigger + FK RESTRICT): deleting it used to unlink
 // its invoice, so paying the invoice expensed the repair a second time.
+// Same for a vendor with invoices: deleting it used to cascade its invoices
+// away, so a paid repair could be expensed again.
 function bookedDeleteMessage(table, error) {
-  if (table !== "work_orders" || !error) return null;
-  if (error.hint === "work_order_booked" || error.code === "23503") {
+  if (!error) return null;
+  if (table === "work_orders" && (error.hint === "work_order_booked" || error.code === "23503")) {
     return "This work order has accounting entries or vendor invoices, so it can't be permanently deleted. It stays archived; its history is kept for the books.";
+  }
+  if (table === "vendors" && (error.hint === "vendor_has_invoices" || error.code === "23503")) {
+    return "This vendor has invoices, so it can't be permanently deleted. It stays archived; its invoices are kept for the books.";
   }
   return null;
 }

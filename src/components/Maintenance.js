@@ -7,7 +7,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
-import { postWorkOrderCompletion, postVendorInvoicePayment } from "../utils/expensePosting";
+import { postWorkOrderCompletion, postVendorInvoicePayment, closeOutWorkOrder } from "../utils/expensePosting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 import { ArchivedItems } from "./Admin";
 
@@ -900,6 +900,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   // rather than expensing the repair twice -- see utils/expenseRules.js.
   const res = await postVendorInvoicePayment({ companyId, inv, date: today });
   if (res.reason === "already_paid") { showToast("This invoice was already paid.", "error"); fetchData(); return; }
+  if (res.reason === "withdrawn") { showToast("This invoice was withdrawn and can no longer be paid.", "error"); fetchData(); return; }
+  if (res.reason === "disputed") { showToast("This invoice is disputed. Resolve the dispute before paying it.", "error"); fetchData(); return; }
   if (!res.jeId) { pmError("PM-4002", { raw: res.error || new Error("invoice payment " + res.reason), context: "paying vendor invoice" }); showToast("Accounting entry failed, so the invoice was NOT marked paid. Please try again.", "error"); return; }
   if (res.closeout?.reversed > 0) showToast(`Work order #${inv.work_order_id} closed under budget: ${formatCurrency(res.closeout.reversed)} unused accrual reversed.`, "success");
   logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name + (res.ap > 0 ? " (cleared $" + res.ap + " work-order payable)" : ""), inv.id, userProfile?.email, userRole, companyId);
@@ -918,6 +920,13 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const { error } = await supabase.from("vendor_invoices").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("company_id", companyId).eq("id", inv.id).neq("status", "paid");
   if (error) { pmError("PM-8006", { raw: error, context: "withdraw vendor invoice" }); return; }
   logAudit("delete", "vendor_invoices", "Withdrew invoice: $" + inv.amount + " from " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
+  // A withdrawn invoice no longer holds up its work order: if every other
+  // linked invoice is paid, the unused accrual is reversed now.
+  if (inv.work_order_id) {
+    const co = await closeOutWorkOrder({ companyId, woId: inv.work_order_id, date: formatLocalDate(new Date()) });
+    if (co.reversed > 0) showToast(`Work order #${inv.work_order_id} closed under budget: ${formatCurrency(co.reversed)} unused accrual reversed.`, "success");
+    else if (co.reason === "rpc_failed") pmError("PM-4002", { raw: co.error, context: "close out work order after withdraw", silent: true });
+  }
   fetchData();
   } finally { guardRelease("withdrawInvoice", inv.id); }
   }

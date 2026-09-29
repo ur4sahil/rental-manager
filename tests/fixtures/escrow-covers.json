@@ -1,0 +1,352 @@
+[
+ {
+  "value": "Taxes",
+  "escrowed": true
+ },
+ {
+  "value": "taxes, insurance",
+  "escrowed": true
+ },
+ {
+  "value": "Taxes, Insurance",
+  "escrowed": true
+ },
+ {
+  "value": "Taxes only",
+  "escrowed": true
+ },
+ {
+  "value": "Taxes: yes",
+  "escrowed": true
+ },
+ {
+  "value": "Yes - taxes",
+  "escrowed": true
+ },
+ {
+  "value": "Property Tax",
+  "escrowed": true
+ },
+ {
+  "value": "property_taxes",
+  "escrowed": true
+ },
+ {
+  "value": "real-estate taxes",
+  "escrowed": true
+ },
+ {
+  "value": "Real-Estate Taxes",
+  "escrowed": true
+ },
+ {
+  "value": "County tax",
+  "escrowed": true
+ },
+ {
+  "value": "county taxes",
+  "escrowed": true
+ },
+ {
+  "value": "School tax",
+  "escrowed": true
+ },
+ {
+  "value": "Tax",
+  "escrowed": true
+ },
+ {
+  "value": "insurance and taxes",
+  "escrowed": true
+ },
+ {
+  "value": "Taxes & Hazard",
+  "escrowed": true
+ },
+ {
+  "value": "insurance, taxes only",
+  "escrowed": true
+ },
+ {
+  "value": "ESCROW: TAXES",
+  "escrowed": true
+ },
+ {
+  "value": "T&I",
+  "escrowed": true
+ },
+ {
+  "value": "t & i",
+  "escrowed": true
+ },
+ {
+  "value": "T and I",
+  "escrowed": true
+ },
+ {
+  "value": "PITI",
+  "escrowed": true
+ },
+ {
+  "value": "piti (principal, interest, taxes, insurance)",
+  "escrowed": true
+ },
+ {
+  "value": null,
+  "escrowed": false
+ },
+ {
+  "value": "",
+  "escrowed": false
+ },
+ {
+  "value": false,
+  "escrowed": false
+ },
+ {
+  "value": true,
+  "escrowed": false
+ },
+ {
+  "value": "no escrow",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes: no",
+  "escrowed": false
+ },
+ {
+  "value": "No taxes",
+  "escrowed": false
+ },
+ {
+  "value": "Insurance only (owner pays taxes)",
+  "escrowed": false
+ },
+ {
+  "value": "insurance only",
+  "escrowed": false
+ },
+ {
+  "value": "no escrow for taxes",
+  "escrowed": false
+ },
+ {
+  "value": "not taxes",
+  "escrowed": false
+ },
+ {
+  "value": "taxes excluded",
+  "escrowed": false
+ },
+ {
+  "value": "Insurance",
+  "escrowed": false
+ },
+ {
+  "value": "taxidermy",
+  "escrowed": false
+ },
+ {
+  "value": "N/A",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes: N/A",
+  "escrowed": false
+ },
+ {
+  "value": "Tax escrow waived",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes (waived)",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes - removed 2025",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes paid separately",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes paid by borrower",
+  "escrowed": false
+ },
+ {
+  "value": "taxes paid by me",
+  "escrowed": false
+ },
+ {
+  "value": "Previously taxes, now insurance only",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes cancelled",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes canceled",
+  "escrowed": false
+ },
+ {
+  "value": "Taxes? ask lender",
+  "escrowed": false
+ },
+ {
+  "value": "taxes no longer escrowed",
+  "escrowed": false
+ },
+ {
+  "value": "no PMI; taxes and insurance",
+  "escrowed": false
+ },
+ {
+  "value": "tip",
+  "escrowed": false
+ },
+ {
+  "value": "title insurance",
+  "escrowed": false
+ },
+ {
+  "value": [
+   "taxes"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [
+   "Property Taxes"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [
+   "property_tax"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [
+   "county taxes"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [
+   "PITI"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [
+   "T&I"
+  ],
+  "escrowed": true
+ },
+ {
+  "value": [],
+  "escrowed": false
+ },
+ {
+  "value": [
+   "insurance"
+  ],
+  "escrowed": false
+ },
+ {
+  "value": [
+   "no taxes"
+  ],
+  "escrowed": false
+ },
+ {
+  "value": [
+   "taxes: no"
+  ],
+  "escrowed": false
+ },
+ {
+  "value": {
+   "taxes": true
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "Taxes": true
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "taxes": "yes"
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "taxes": 1
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "property_taxes": "true"
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "property_tax": true
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "county_taxes": "y"
+  },
+  "escrowed": true
+ },
+ {
+  "value": {
+   "taxes": false
+  },
+  "escrowed": false
+ },
+ {
+  "value": {
+   "taxes": "no"
+  },
+  "escrowed": false
+ },
+ {
+  "value": {
+   "taxes": "false"
+  },
+  "escrowed": false
+ },
+ {
+  "value": {
+   "taxes": 0
+  },
+  "escrowed": false
+ },
+ {
+  "value": {
+   "insurance": true
+  },
+  "escrowed": false
+ },
+ {
+  "value": {
+   "taxes": {
+    "included": true
+   }
+  },
+  "escrowed": false
+ }
+]
