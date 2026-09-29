@@ -17,6 +17,13 @@
 
 const PAGE = 1000;
 
+// Addresses are typed by people and copied between tables, so compare them
+// loosely: case, surrounding/doubled spaces and commas do not make a
+// different property ("1 main st  md" == "1 Main St, MD").
+function normAddress(a) {
+  return String(a || "").toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ").trim();
+}
+
 async function loadPropertyArchiveIndex(sb, companyIds) {
   const ids = [...new Set((companyIds || []).filter(Boolean))];
   const live = new Set();          // company|address
@@ -42,7 +49,7 @@ async function loadPropertyArchiveIndex(sb, companyIds) {
         return { ok: false, isArchived: () => false };
       }
       for (const p of data || []) {
-        const key = p.company_id + "|" + (p.address || "");
+        const key = p.company_id + "|" + normAddress(p.address);
         if (p.archived_at) { archivedAddr.add(key); archivedIds.add(String(p.id)); }
         else live.add(key);
       }
@@ -54,7 +61,7 @@ async function loadPropertyArchiveIndex(sb, companyIds) {
     // rec: { company_id, property?, property_id? }
     isArchived(rec, companyId) {
       const cid = rec.company_id || companyId;
-      const key = cid + "|" + (rec.property || "");
+      const key = cid + "|" + normAddress(rec.property);
       if (rec.property && live.has(key)) return false;
       if (rec.property && archivedAddr.has(key)) return true;
       if (rec.property_id != null && archivedIds.has(String(rec.property_id))) return true;
@@ -63,4 +70,4 @@ async function loadPropertyArchiveIndex(sb, companyIds) {
   };
 }
 
-module.exports = { loadPropertyArchiveIndex };
+module.exports = { loadPropertyArchiveIndex, normAddress };

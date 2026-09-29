@@ -11,7 +11,7 @@ import { formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
-import { safeLedgerInsert, atomicPostJEAndLedger, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, tenantOwnArAccountId, deactivateTenantRecurring } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, depositReference, depositAlreadyPosted, tenantOwnArAccountId, deactivateTenantRecurring } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -3067,32 +3067,43 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   }
 
   async function restoreProperty(prop) {
-  if (!await showConfirm({ message: "Restore property \"" + prop.address + "\"?" })) return;
-  // Tenants archived BY the property delete carry the property's own
-  // archived_at (archive_property_cascade stamps every row with it). A
-  // tenant archived separately -- one who moved out earlier -- does not, and
-  // is not offered back.
-  const { data: stampedTenants } = await supabase.from("tenants").select("id, name")
-    .eq("company_id", companyId).eq("property", prop.address).eq("archived_at", prop.archived_at);
+  // What restore will do, from the server: the tenants this delete archived,
+  // entries to re-post, and anything it cannot bring back.
+  const { data: pv, error: pvErr } = await supabase.rpc("property_restore_preview", {
+    p_company_id: companyId, p_property_id: Number(prop.id),
+  });
+  if (pvErr) { pmError("PM-2010", { raw: pvErr, context: "restore preview" }); showToast("Could not restore: " + (pvErr.message || "server error"), "error"); return; }
+  if (pv?.already_live) { fetchProperties(); fetchArchivedProperties(); return; }
+  if (pv?.address_clash) { showToast(`A live property already has the address "${prop.address}". Rename or delete it before restoring this one.`, "error"); return; }
+  const notes = [];
+  if (pv?.entries_to_unvoid > 0) notes.push(`${pv.entries_to_unvoid} journal entr${pv.entries_to_unvoid === 1 ? "y" : "ies"} voided by the delete will be re-posted.`);
+  if (pv?.locked_entries?.length) notes.push(`${pv.locked_entries.length} of them are now in a locked period and will stay voided.`);
+  if (pv?.utility_clashes?.length) notes.push("These utilities stay archived (the same account is live elsewhere): " + pv.utility_clashes.map(u => `${u.provider} ${u.account_number} (live at ${u.live_at})`).join("; ") + ".");
+  if (!await showConfirm({ message: "Restore property \"" + prop.address + "\"?" + (notes.length ? "\n\n" + notes.join("\n") : "") })) return;
   let restoreTenants = false;
-  if (stampedTenants?.length > 0) {
-  restoreTenants = await showConfirm({ message: `This property was deleted with ${stampedTenants.length} tenant(s): ${stampedTenants.map(t => t.name).join(", ")}\n\nRestore them and their leases too? Autopay and recurring charges come back paused.` });
+  const stamped = pv?.tenants || [];
+  if (stamped.length > 0) {
+  restoreTenants = await showConfirm({ message: `This property was deleted with ${stamped.length} tenant(s): ${stamped.map(t => t.name).join(", ")}\n\nRestore them and their leases too? Autopay and recurring charges come back paused.` });
   }
-  // One transaction: the property plus every record archived by its delete
-  // (utilities, utility accounts + unpaid bills, taxes + pending tax bills,
-  // licences, HOA, loans, insurance, portfolio links, work orders, ...).
-  const { error } = await supabase.rpc("restore_property_cascade", {
+  // Re-post the voided entries in chunks first (a busy property has >1,000).
+  if (pv?.deletion_id && pv.entries_to_unvoid > 300) {
+    for (let i = 0; i < 1000; i++) {
+      const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: pv.deletion_id, p_limit: 200 });
+      if (uErr) { pmError("PM-2010", { raw: uErr, context: "restore un-void" }); showToast("Could not re-post the property's journal entries: " + (uErr.message || "server error") + ". The property is still deleted; try Restore again.", "error"); return; }
+      if (!u || u.remaining === 0) break;
+    }
+  }
+  const { data: res, error } = await supabase.rpc("restore_property_cascade", {
     p_company_id: companyId, p_property_id: Number(prop.id), p_restore_tenants: restoreTenants,
   });
   if (error) { pmError("PM-2010", { raw: error, context: "restore property" }); showToast("Could not restore: " + (error.message || "server error"), "error"); return; }
-  if (prop.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", prop.class_id);
-  else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
-  // A property deleted before 2026-09-29 has no stamped children; keep the
-  // old tenant prompt for those.
-  if (!(stampedTenants?.length > 0)) {
+  // Only a property deleted before 2026-09-29 (no deletion record) falls
+  // back to the old prompt; for any newer delete the server knows exactly
+  // which tenants the delete took.
+  if (res?.legacy) {
   const { data: archivedTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", prop.address).not("archived_at", "is", null);
   if (archivedTenants?.length > 0) {
-  const shouldRestore = await showConfirm({ message: `This property has ${archivedTenants.length} archived tenant(s): ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them and their leases?` });
+  const shouldRestore = await showConfirm({ message: `This property was deleted before deletions were tracked. It has ${archivedTenants.length} archived tenant(s): ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them and their leases?` });
   if (shouldRestore) {
   const tenantIds = archivedTenants.map(t => t.id);
   await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("company_id", companyId).in("id", tenantIds);
@@ -3100,7 +3111,14 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   }
   }
   }
-  addNotification("♻️", "Restored: " + prop.address);
+  const leftVoided = res?.restored?.journal_entries_left_voided || [];
+  const leftUtils = res?.restored?.utilities_left_archived || [];
+  if (leftVoided.length || leftUtils.length) {
+    showToast(`Restored, with exceptions: ${leftVoided.length} journal entr${leftVoided.length === 1 ? "y" : "ies"} left voided`
+      + (leftVoided.length ? ` (${[...new Set(leftVoided.map(x => x.why))].join(", ")})` : "")
+      + (leftUtils.length ? `; ${leftUtils.length} utilit${leftUtils.length === 1 ? "y" : "ies"} left archived (account live elsewhere)` : "") + ".", "warning");
+  }
+  addNotification("\u267b\ufe0f", "Restored: " + prop.address);
   fetchProperties(); fetchArchivedProperties();
   }
 
@@ -3518,89 +3536,87 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   );
   if (deleteReason === null) return; // User hit Cancel
   const reasonText = deleteReason.trim() || "No reason provided";
-  // Step 2: Gather related data
+  // Step 2: tenant names, for the audit line and the client caches below.
   const { data: propertyTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", address).is("archived_at", null);
   const tenantNames = (propertyTenants || []).map(t => t.name);
-  const tenantIds = (propertyTenants || []).map(t => t.id);
   const archiveBy = userProfile?.email || "admin";
-  const archiveTs = new Date().toISOString();
-  const arch = { archived_at: archiveTs, archived_by: archiveBy };
 
-  // ── SOFT DELETE: Archive everything. Restorable within 180 days. ──
-  // Everything removed from active views but data preserved in DB.
-
-  // 1. Read this property's journal entries up front (read-only). If that
-  // read fails nothing has been touched yet, so stop here.
-  // PAGED. Unpaged it stopped at Supabase's 1000-row cap without an
-  // error, and the busiest property in production carries 1,304 entries --
-  // so deleting it would have voided a thousand and left 304 live on a
-  // property the app reports as gone, with nothing said. Measured, not
-  // hypothetical.
-  const { rows: propJEs, failed: jeFailed } = await fetchAllPaged(
-    () => supabase.from("acct_journal_entries").select("id")
-      .eq("company_id", companyId).eq("property", address).order("id"),
-    "property journal entries",
-  );
-  if (jeFailed) {
-    showToast("Could not read this property's journal entries — nothing was deleted. Try again.", "error");
+  // ── SOFT DELETE, entirely server-side (migrations 20260929010000 + 050000).
+  // 1. property_delete_begin: role check, and a refusal -- listing them -- if
+  //    any of the property's entries sits in a LOCKED accounting period
+  //    (those cannot be voided, so nothing is touched).
+  // 2. property_delete_void_chunk, repeated: voids the property's journal
+  //    entries a few hundred at a time and records each one, so Restore
+  //    un-voids exactly those. This used to be one browser UPDATE, after the
+  //    archive had committed, with no error check: it timed out at ~1,300
+  //    entries and failed outright on a locked period, leaving everything
+  //    posted under a deleted property.
+  // 3. archive_property_cascade: archives the property and everything live
+  //    under it in one transaction (tenants + AR accounts, leases, autopay,
+  //    recurring, WOs, invoices, documents, inspections, payments, HOA,
+  //    loans, insurance, licences, taxes + pending tax bills, utility
+  //    accounts/utilities/unpaid bills, portfolio links, the class).
+  // If 2 or 3 fails, the entries already voided are un-voided again.
+  const { data: begun, error: beginErr } = await supabase.rpc("property_delete_begin", {
+    p_company_id: companyId, p_property_id: Number(id),
+  });
+  if (beginErr) {
+    let detail = "";
+    try {
+      const locked = JSON.parse(beginErr.details || "[]");
+      if (Array.isArray(locked) && locked.length) {
+        detail = "\n\n" + locked.slice(0, 15).map(e => `#${e.number || "?"}  ${e.date}  ${e.description || ""}`).join("\n")
+          + (locked.length > 15 ? `\n…and ${locked.length - 15} more` : "");
+      }
+    } catch (_) { /* details is not the locked list */ }
+    pmError("PM-2003", { raw: beginErr, context: "property_delete_begin for " + address, silent: true });
+    await showConfirm({ message: (beginErr.message || "Could not start the delete.") + detail, confirmText: "OK" });
     return;
   }
-  const jeIds = (propJEs || []).map(je => je.id);
-
-  // 2. Archive the property and EVERYTHING operational under it in one
-  // transaction (archive_property_cascade, migration 20260929010000):
-  // tenants, leases, autopay, recurring entries, work orders, vendor
-  // invoices, documents, inspections, payments, HOA, loans, insurance,
-  // licences, property taxes + pending tax bills, utility accounts +
-  // utilities + unpaid utility bills, portfolio-loan links, and an
-  // in-progress setup wizard. This used to be ~15 separate requests that
-  // still missed the utility accounts/bills, taxes and tax bills, licences
-  // and portfolio links -- so the portal sweep and the tax-bill cron kept
-  // running for a deleted property. Every row archived here carries the
-  // property's own archived_at, which is how Restore tells "archived by this
-  // delete" from "archived separately". Paid bills and security deposits
-  // are not touched (owner decision: delete does not forfeit deposits).
-  const { error: cascadeErr } = await supabase.rpc("archive_property_cascade", {
-    p_company_id: companyId, p_property_id: Number(id), p_user_email: archiveBy,
+  const deletionId = begun.deletion_id;
+  const undoVoids = async () => {
+    for (let i = 0; i < 100; i++) {
+      const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: deletionId, p_limit: 200 });
+      if (uErr) return uErr.message || "server error";
+      if (!u || u.remaining === 0) return null;
+    }
+    return "gave up after 100 rounds";
+  };
+  let voided = 0;
+  for (let i = 0; i < 1000; i++) {
+    const { data: v, error: vErr } = await supabase.rpc("property_delete_void_chunk", { p_deletion_id: deletionId, p_limit: 200 });
+    if (vErr) {
+      pmError("PM-2003", { raw: vErr, context: "property_delete_void_chunk for " + address, silent: true });
+      const undoErr = await undoVoids();
+      showToast(`Could not void this property's journal entries (${vErr.message || "server error"}). Nothing was deleted`
+        + (undoErr ? `, but re-posting the ${voided} already voided failed (${undoErr}) -- try Delete again to finish, or contact support.` : "; the entries voided so far were re-posted."), "error");
+      return;
+    }
+    voided += v?.voided || 0;
+    if (!v || v.remaining === 0) break;
+  }
+  const { data: out, error: cascadeErr } = await supabase.rpc("archive_property_cascade", {
+    p_company_id: companyId, p_property_id: Number(id), p_deletion_id: deletionId,
   });
   if (cascadeErr) {
     pmError("PM-2003", { raw: cascadeErr, context: "archive_property_cascade for " + address });
-    showToast("Could not delete this property: " + (cascadeErr.message || "server error") + ". Nothing was changed.", "error");
+    const undoErr = await undoVoids();
+    showToast("Could not delete this property: " + (cascadeErr.message || "server error")
+      + (undoErr ? `. ${voided} journal entries are still voided (${undoErr}) -- try Delete again.` : ". Nothing was changed."), "error");
     return;
   }
-
-  // 3. Void all journal entries for this property (preserved but inactive)
-  if (jeIds.length > 0) {
-  await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("property", address);
-  }
-
-  // 4. Archive ledger entries for tenants at this property
-  for (const name of tenantNames) {
-  await supabase.from("ledger_entries").update(arch).eq("company_id", companyId).eq("tenant", name).eq("property", address).is("archived_at", null);
-  }
-
-  // 5. Deactivate tenant AR sub-accounts
-  for (const tid of tenantIds) {
-  await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", tid);
-  }
-
-  // 6. Deactivate accounting class (hidden from class tracking)
-  const { data: delProp } = await supabase.from("properties").select("class_id").eq("id", id).eq("company_id", companyId).maybeSingle();
-  if (delProp?.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", delProp.class_id);
-  else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", address);
+  const jeCount = out?.archived?.journal_entries_voided ?? voided;
 
   // 7. Security deposits: deleting a property does NOTHING with them (owner
-  // decision). Step 3 voids every entry at this property, which removes
-  // the deposit booking itself; forfeiting a deposit is a separate
-  // decision made on the Leases page. This step used to post a DR 2100 /
-  // CR 4150 forfeiture on top -- after a return, or after those very
-  // entries were voided, that drove 2100 negative.
+  // decision). Voiding the property's entries removes the deposit booking
+  // itself; forfeiting a deposit is a separate decision made on the Leases
+  // page. This step used to post a DR 2100 / CR 4150 forfeiture on top.
   // Terminate leases, disable autopay, archive tenants and the property: all
-  // done atomically in step 2.
+  // done atomically by archive_property_cascade.
 
   // 8. Audit trail with reason
   logAudit("delete", "properties",
-  `DELETED property: ${address}\nReason: ${reasonText}\nArchived: ${jeIds.length} journal entries voided, ${tenantNames.length} tenant(s) [${tenantNames.join(", ")}] archived (balance cleared), all related data archived. Restorable within 180 days.`,
+  `DELETED property: ${address}\nReason: ${reasonText}\nArchived: ${jeCount} journal entries voided, ${tenantNames.length} tenant(s) [${tenantNames.join(", ")}] archived (balance cleared), all related data archived. Restorable within 180 days.`,
   id, archiveBy, userRole, companyId);
   addNotification("🗑️", `Property deleted: ${address}`);
   showToast("Property and all related data deleted. Restorable within 180 days. Reason logged to audit trail.", "success");
