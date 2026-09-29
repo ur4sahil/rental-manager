@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, canVoidEntries, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, canKeepBooks, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable } from "../utils/theme";
@@ -1078,7 +1078,7 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
         </div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={() => { /* nav handled by parent tab */ }} title="Opens the Journal Entries tab via the usual sidebar click">View journal entry →</Btn>
-          {canVoidEntries(userRole) && <Btn variant="danger" onClick={handleVoid}>Void</Btn>}
+          {canKeepBooks(userRole) && <Btn variant="danger" onClick={handleVoid}>Void</Btn>}
         </div>
       </div>
     );
@@ -1324,7 +1324,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
         render: a => (<>
           <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openEdit(a); }}  title="Edit account"><span className="material-icons-outlined text-sm">edit</span></TextLink>
             <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }}  title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</TextLink>
-            {onDelete && canManage(userRole) && a.computedBalance === 0 && <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onDelete(a.id); }}  title="Delete account"><span className="material-icons-outlined text-sm">delete</span></TextLink>}
+            {onDelete && canKeepBooks(userRole) && a.computedBalance === 0 && <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onDelete(a.id); }}  title="Delete account"><span className="material-icons-outlined text-sm">delete</span></TextLink>}
         </>) },
     ]}
     rows={accts}
@@ -1702,7 +1702,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   return (
   <div className="space-y-4">
   <PageHeader size="section" title="Journal Entries" subtitle="Record and manage financial transactions">
-  {canManage(userRole) && <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>}
+  {canKeepBooks(userRole) && <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>}
   </PageHeader>
   {/* Filter row — flex-wrap so mobile can stack the property Select +
       date pickers below the status pills instead of overlapping them.
@@ -1765,8 +1765,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
         render: je => (<>
           <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
             {je.status === "draft" && <Btn onClick={() => onPost(je.id)} variant="success" size="sm">Post</Btn>}
-            {je.status === "posted" && canVoidEntries(userRole) && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
-            {je.status === "posted" && onReverse && canVoidEntries(userRole) && <Btn variant="slate" size="sm" onClick={() => onReverse(je.id)}>Reverse</Btn>}
+            {je.status === "posted" && canKeepBooks(userRole) && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
+            {je.status === "posted" && onReverse && canKeepBooks(userRole) && <Btn variant="slate" size="sm" onClick={() => onReverse(je.id)}>Reverse</Btn>}
             {je.status !== "voided" && <TextLink tone="brand" size="xs" onClick={() => openEdit(je)}>Edit</TextLink>}
             <TextLink tone="neutral" size="xs" onClick={() => openDuplicate(je)}>Duplicate</TextLink>
             </div>
@@ -1866,8 +1866,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
       dumped the user on the journal list instead of the ledger they
       came from. */}
   {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Post</Btn>}
-  {modal.je.status === "posted" && canVoidEntries(userRole) && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Void</Btn>}
-  {modal.je.status === "posted" && onReverse && canVoidEntries(userRole) && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Reverse</Btn>}
+  {modal.je.status === "posted" && canKeepBooks(userRole) && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Void</Btn>}
+  {modal.je.status === "posted" && onReverse && canKeepBooks(userRole) && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }}>Reverse</Btn>}
   {modal.je.status !== "voided" && <Btn variant="slate" size="sm" onClick={() => openEdit(modal.je)}>Edit</Btn>}
   <Btn variant="slate" size="sm" onClick={() => { openDuplicate(modal.je); }}>Duplicate</Btn>
   </div>
@@ -6818,10 +6818,10 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
             <div className="text-xs text-danger-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {fmtDate(periodLock.locked_at)}</div>
             {periodLock.notes && <div className="text-xs text-danger-500 mt-1">{periodLock.notes}</div>}
           </div>
-          {(userRole === "admin" || userRole === "owner" || userRole === "manager") ? (
+          {canKeepBooks(userRole) ? (
             <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
           ) : (
-            <div className="text-2xs text-danger-500 italic">Only admin/manager can unlock.</div>
+            <div className="text-2xs text-danger-500 italic">Only accounting staff can unlock.</div>
           )}
         </div>
       </div>
@@ -6915,7 +6915,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div>
   <div className="flex items-center justify-between mb-2">
   <Btn variant="ghost" size="sm" onClick={() => setViewRecon(null)}>← Back</Btn>
-  {viewRecon.status !== "reopened" && (userRole === "admin" || userRole === "owner" || userRole === "manager") && (
+  {viewRecon.status !== "reopened" && canKeepBooks(userRole) && (
     <Btn variant="danger" size="sm" onClick={() => reopenReconciliation(viewRecon)}>Re-open</Btn>
   )}
   </div>
