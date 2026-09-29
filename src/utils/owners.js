@@ -89,6 +89,7 @@ export async function loadOwnerStatementData(companyId, ownerId, startDate, endD
   }
   const lines = [];
   for (const { prop, from, to } of ranges) {
+    // A builder, only ever read through fetchAllPaged below (no row cap).
     const base = () => supabase.from("acct_journal_lines").select(SEL).eq("company_id", companyId)
       .eq("acct_journal_entries.status", "posted")
       .gte("acct_journal_entries.date", from).lte("acct_journal_entries.date", to);

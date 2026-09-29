@@ -80,8 +80,12 @@ console.log("==============================================");
       let present = false;
       for (const f of migs) {
         const t = fs.readFileSync(path.join(migDir, f), "utf8");
-        if (new RegExp("DROP TRIGGER[\\s\\S]{0,80}ON public\\." + table + "\\b").test(t)) present = false;
-        if (new RegExp("CREATE TRIGGER[\\s\\S]{0,120}ON public\\." + table + "\\b").test(t)) present = true;
+        // Only the GATE triggers (trg_mgmt_gate*) count: other triggers on the
+        // same table (e.g. the owner-accrual constraint trigger on
+        // acct_journal_entries, 20260928170000) are dropped and re-created
+        // without touching the gate.
+        if (new RegExp("DROP TRIGGER (IF EXISTS )?trg_mgmt_gate\\w* ON public\\." + table + "\\b").test(t)) present = false;
+        if (new RegExp("CREATE TRIGGER trg_mgmt_gate\\w*[\\s\\S]{0,120}ON public\\." + table + "\\b").test(t)) present = true;
       }
       return present;
     };
