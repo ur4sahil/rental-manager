@@ -3,7 +3,7 @@ import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFil
 import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
-import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth } from "./paymentRules";
+import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
@@ -563,54 +563,76 @@ export async function depositAlreadyPosted(companyId, tenantId) {
   }
 }
 
+// The tenant's OWN AR sub-account (1100-NNN, tenant_id set), found or made.
+// Same rules as the SQL helper _late_fee_tenant_ar (which the Stripe webhook
+// uses under a lock):
+//   1. by tenant_id -- the ACTIVE linked account, else the lowest code. A
+//      tenant with two linked accounts used to make .maybeSingle() error,
+//      which fell through to step 3 and left a junk account behind.
+//   2. legacy "AR - <name>" -- only when that name is unambiguous AND the
+//      account is not linked to another tenant (pickLegacyNamedArAccount).
+//      A returning tenant whose old account belongs to their archived
+//      tenant row gets a new account, never the old row's.
+//   3. create 1100-NNN linked to the tenant under the 1100 parent. On a
+//      unique/code collision (a concurrent creator), re-read step 1 and
+//      otherwise try the next code. It never retries without tenant_id /
+//      parent -- that retry was what littered the chart with unlinked
+//      "AR - <name>" accounts.
+// Falls back to the 1100 parent only when all of that fails (not cached, so
+// the next call tries again); callers that must post to the tenant's own
+// account check tenant_id on the result.
 export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   try {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
   const cacheKey = `${companyId}::${tenantId || tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
-  // 1. Look up by tenant_id (preferred — the per-lease key)
-  if (tenantId) {
-    const { data: byId } = await supabase.from("acct_accounts")
-      .select("id").eq("company_id", companyId).eq("type", "Asset")
-      .eq("tenant_id", tenantId).maybeSingle();
-    if (byId?.id) { _tenantArCache[cacheKey] = byId.id; return byId.id; }
+  const hasTid = tenantId !== null && tenantId !== undefined && tenantId !== "";
+  // 1. By tenant_id (the per-lease key). Several rows are possible.
+  const findLinked = async () => {
+    const { data: linked, error } = await supabase.from("acct_accounts")
+      .select("id, code, name, is_active, tenant_id").eq("company_id", companyId).eq("type", "Asset")
+      .eq("tenant_id", tenantId).limit(50);
+    if (error) return { error };
+    return { pick: pickTenantArAccount(linked || [], tenantId) };
+  };
+  if (hasTid) {
+    const { pick, error } = await findLinked();
+    if (error) throw error;
+    if (pick?.id) { _tenantArCache[cacheKey] = pick.id; return pick.id; }
   }
-  // 2. Legacy fallback by name — only if exactly one active tenant
-  //    row at this company shares the name (otherwise we'd grab the
-  //    consolidated account that another lease is using).
-  const { data: existing } = await supabase.from("acct_accounts")
+  // 2. Legacy fallback by exact name.
+  const { data: named } = await supabase.from("acct_accounts")
     .select("id, tenant_id").eq("company_id", companyId).eq("type", "Asset")
-    .eq("name", "AR - " + tenantName).maybeSingle();
+    .eq("name", "AR - " + tenantName).limit(10);
+  const existing = pickLegacyNamedArAccount(named || [], hasTid ? tenantId : null);
   if (existing?.id) {
-    if (tenantId) {
-      // Same-name multiplicity check
+    if (hasTid) {
+      // Same-name multiplicity check: two ACTIVE tenants sharing the name
+      // must each get their own account, not share the consolidated one.
       const { data: sib } = await supabase.from("tenants").select("id")
         .eq("company_id", companyId).eq("name", tenantName).is("archived_at", null);
-      const activeCount = (sib || []).length;
-      if (activeCount <= 1) {
-        // Adopt this account for this tenant — populate tenant_id so
-        // future lookups hit Rule 1 directly.
-        if (!existing.tenant_id) {
-          await supabase.from("acct_accounts").update({ tenant_id: tenantId }).eq("id", existing.id);
-        }
-        _tenantArCache[cacheKey] = existing.id;
-        return existing.id;
+      if ((sib || []).length <= 1) {
+        if (existing.tenant_id) { _tenantArCache[cacheKey] = existing.id; return existing.id; }
+        // Adopt it -- only while it is still unlinked, so two callers cannot
+        // both claim it.
+        const { data: adopted } = await supabase.from("acct_accounts").update({ tenant_id: tenantId })
+          .eq("id", existing.id).eq("company_id", companyId).is("tenant_id", null).select("id");
+        if ((adopted || []).length > 0) { _tenantArCache[cacheKey] = existing.id; return existing.id; }
+        // Linked by someone else meanwhile (or refused): whatever this
+        // tenant now has wins; otherwise create below.
+        const again = await findLinked();
+        if (again.pick?.id) { _tenantArCache[cacheKey] = again.pick.id; return again.pick.id; }
       }
-      // Multiple active rows share this name — fall through to create
-      // a per-lease account (don't reuse the consolidated one).
     } else {
       _tenantArCache[cacheKey] = existing.id;
       return existing.id;
     }
   }
-  // 3. Create new per-lease sub-account
+  // 3. Create a new per-lease sub-account.
   const parentArId = await resolveAccountId("1100", companyId);
-  const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
-  const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
-  const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
   // Look up the tenant's property to disambiguate the account name.
   let acctName = "AR - " + tenantName;
-  if (tenantId) {
+  if (hasTid) {
     const { data: tRow } = await supabase.from("tenants").select("property").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
     // Deliberately NOT propertyLabel(): this is a MATCHING key compared
     // against values built the same way elsewhere, not a label. Making it
@@ -618,22 +640,28 @@ export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
     const shortProp = (tRow?.property || "").split(",")[0].trim();
     if (shortProp) acctName = "AR - " + tenantName + " (" + shortProp + ")";
   }
-  const oldTextId = companyId + "-" + newCode;
   let newAcct = null, createErr = null;
-  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
-    company_id: companyId, code: newCode, name: acctName,
-    type: "Asset", is_active: true, old_text_id: oldTextId,
-    parent_id: parentArId || null, tenant_id: tenantId || null,
-  }]).select("id").maybeSingle());
-  if (createErr) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1000);
+    const newCode = "1100-" + String(nextTenantArSeq((subAccts || []).map(r => r.code), attempt)).padStart(3, "0");
+    const oldTextId = companyId + "-" + newCode;
     ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
       company_id: companyId, code: newCode, name: acctName,
       type: "Asset", is_active: true, old_text_id: oldTextId,
+      parent_id: parentArId || null, tenant_id: hasTid ? tenantId : null,
     }]).select("id").maybeSingle());
+    if (!createErr && newAcct?.id) break;
+    newAcct = null;
+    const unique = createErr?.code === "23505" || /duplicate|unique|already has an active AR/i.test(createErr?.message || "");
+    if (!unique) break;
+    // A concurrent creator may have made this tenant's account: use it.
+    if (hasTid) {
+      const again = await findLinked();
+      if (again.pick?.id) { _tenantArCache[cacheKey] = again.pick.id; return again.pick.id; }
+    }
   }
   if (createErr || !newAcct?.id) {
     pmError("PM-4006", { raw: createErr, context: "AR sub-account creation", silent: true });
-    _tenantArCache[cacheKey] = parentArId;
     return parentArId;
   }
   _tenantArCache[cacheKey] = newAcct.id;

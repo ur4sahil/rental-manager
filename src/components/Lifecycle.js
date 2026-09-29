@@ -9,7 +9,7 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring} from "../utils/accounting";
-import { recurringRentRefsForMonth, pickMoveOutRentCharge } from "../utils/paymentRules";
+import { recurringRentRefsForMonth, pickMoveOutRentCharge, isRentSchedule } from "../utils/paymentRules";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
 function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
@@ -276,10 +276,16 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   // those schedules, so they are looked up regardless of status. The old
   // lookup, RENT-AUTO-<lease id>-<month>, is a reference nothing produces,
   // so proration never fired; it is kept last only for legacy books.
+  // Only the tenant's RENT schedule(s) -- the ones crediting Rental Income.
+  // A pet-fee or parking schedule's charge is not the month's rent and must
+  // not trigger a rent proration credit.
   const { data: rentScheds } = await supabase.from("recurring_journal_entries")
-    .select("id").eq("company_id", cid).eq("tenant_id", selectedTenant.id);
+    .select("id, credit_account_id, credit_account_name").eq("company_id", cid).eq("tenant_id", selectedTenant.id);
+  const { data: rentalIncomeAccts } = await supabase.from("acct_accounts")
+    .select("id").eq("company_id", cid).eq("code", "4000");
+  const rentalIncomeIds = (rentalIncomeAccts || []).map(a => a.id);
   const moveOutRentRefs = [
-    ...recurringRentRefsForMonth((rentScheds || []).map(r => r.id), moveOutMonth),
+    ...recurringRentRefsForMonth((rentScheds || []).filter(r => isRentSchedule(r, rentalIncomeIds)).map(r => r.id), moveOutMonth),
     "RENT-AUTO-" + selectedLease.id + "-" + moveOutMonth,
   ];
   const { data: rentCharges } = await supabase.from("acct_journal_entries")
