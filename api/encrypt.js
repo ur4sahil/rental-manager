@@ -40,9 +40,21 @@ const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
 //
 // Truncated to 12 hex characters: enough to tell two keys apart, far too
 // little to attack the key itself.
-const KEY_FP = MASTER_KEY
-  ? crypto.createHash("sha256").update(MASTER_KEY).digest("hex").slice(0, 12)
-  : null;
+//
+// THE FINGERPRINT RULE (worker/portals/ensure-session.js keyFingerprint()
+// implements the identical rule -- change both or neither):
+//   fp = sha256( key with trailing "\r" / "\n" characters removed ), first 12 hex
+// The deployed key carries a trailing newline, and a key exported through a
+// shell `$(...)` loses it -- the same key, two different raw hashes. Only
+// the FINGERPRINT input is normalised. The key bytes used to encrypt and
+// decrypt (MASTER_KEY, verbatim) are unchanged, so existing ciphertext
+// still opens. Fingerprints stored before this rule (hash of the verbatim
+// key) are still recognised as "this key" via KEY_FPS_ACCEPTED.
+function fingerprintOf(material) {
+  return crypto.createHash("sha256").update(material).digest("hex").slice(0, 12);
+}
+const KEY_FP = MASTER_KEY ? fingerprintOf(MASTER_KEY.replace(/[\r\n]+$/, "")) : null;
+const KEY_FPS_ACCEPTED = new Set(MASTER_KEY ? [KEY_FP, fingerprintOf(MASTER_KEY)] : []);
 
 function deriveKeyFromSalt(saltBytes) {
   if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
@@ -220,11 +232,20 @@ module.exports = async function handler(req, res) {
     if (body.billId && body.enroll !== true) {
       const { data: gateBill } = await userClient
         .from("utility_bills")
-        .select("responsibility")
+        .select("responsibility, utility_account_id")
         .eq("id", body.billId)
         .eq("company_id", companyId)
         .maybeSingle();
-      if (gateBill && gateBill.responsibility === "tenant" && membership.role !== "admin") {
+      // One rule everywhere: the ACCOUNT's current responsibility wins; the
+      // bill's snapshot (taken when it was read) is only the fallback.
+      let responsibility = gateBill ? gateBill.responsibility : null;
+      if (gateBill && gateBill.utility_account_id) {
+        const { data: gateAcct } = await userClient
+          .from("utility_accounts").select("responsibility")
+          .eq("id", gateBill.utility_account_id).eq("company_id", companyId).maybeSingle();
+        if (gateAcct && gateAcct.responsibility) responsibility = gateAcct.responsibility;
+      }
+      if (gateBill && responsibility === "tenant" && membership.role !== "admin") {
         return res.status(403).json({ error: "Tenant-owed utilities need an admin to authorize payment." });
       }
     }
@@ -358,7 +379,7 @@ module.exports = async function handler(req, res) {
         // Name the likely cause instead of "decryption failed". A caller
         // that knows the row was encrypted under a different key can tell
         // the user to re-enter it; a caller told only "failed" cannot.
-        const mismatched = typeof keyFp === "string" && KEY_FP && keyFp !== KEY_FP;
+        const mismatched = typeof keyFp === "string" && KEY_FP && !KEY_FPS_ACCEPTED.has(keyFp);
         return res.status(422).json({
           error: mismatched
             ? "encrypted under a different ENCRYPTION_KEY — this credential must be re-entered"
@@ -375,3 +396,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message || "Crypto error" });
   }
 };
+
+// For tests: the fingerprint this process would stamp and accept. Never the key.
+module.exports.keyFingerprints = { current: KEY_FP, accepted: [...KEY_FPS_ACCEPTED] };

@@ -64,8 +64,13 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     // gets its OWN IV — both preserved now (encryption_iv_username for
     // username, encryption_iv for password). Prior schema only held one
     // slot so username was unreadable after save.
+    //
+    // The row has ONE encryption_salt for all three logins, so a changed
+    // association login must reuse the row's existing salt: minting a fresh
+    // one overwrote the column and left the stored management-company and
+    // payment-portal logins undecryptable.
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
+      const resU = await encryptCredential(form.username || "", companyId, (editingHoa && editingHoa.encryption_salt) || null);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       payload.username_encrypted = resU.encrypted;
       // Which key encrypted this. ENCRYPTION_KEY was rotated once with

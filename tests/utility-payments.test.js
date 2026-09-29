@@ -129,9 +129,13 @@ assert("the worker refuses before the browser opens",
   && /status: "cancelled"/.test(runner),
   "layer 3");
 
-assert("the worker falls back to the ACCOUNT when the bill does not say",
-  /if \(!responsibility && bill\?\.utility_account_id\)/.test(runner),
-  "responsibility can be set on either row");
+// One rule everywhere since 20260928130000: the account's CURRENT
+// responsibility wins, the bill snapshot is only the fallback (the UI and the
+// claim RPC use the same order).
+assert("the worker reads the ACCOUNT's responsibility first, bill snapshot as fallback",
+  /if \(bill\?\.utility_account_id\) \{[\s\S]{0,260}responsibility = ra\?\.responsibility/.test(runner)
+  && /if \(!responsibility\) responsibility = bill\?\.responsibility/.test(runner),
+  "responsibility can be set on either row; the account is the current truth");
 
 // 1f1672c moved the tenant exclusion out of sweep-targets and into the
 // sweep, per playbook: WSSC opts in (sweepTenant) so the owner keeps a tenant
