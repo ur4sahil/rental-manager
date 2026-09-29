@@ -66,6 +66,47 @@ export const sortAccountsForReport = (list) => [...(list || [])].sort((a, b) => 
   return byName(a, b);
 });
 
+// The parent an account sits under: its parent_id when that account exists,
+// else the account whose code is this code's prefix ("1500" for "1500-001").
+// null for a top-level account. `all` is the full chart, so a parent that a
+// report filtered out still counts as the parent.
+export const accountParentId = (a, all) => {
+  if (!a) return null;
+  if (a.parent_id && a.parent_id !== a.id && (all || []).some(p => p.id === a.parent_id)) return a.parent_id;
+  const code = String(a.code || "");
+  const dash = code.indexOf("-");
+  if (dash > 0) {
+    const p = (all || []).find(x => x.id !== a.id && String(x.code || "") === code.slice(0, dash));
+    if (p) return p.id;
+  }
+  return null;
+};
+
+// Group a report's accounts (already sorted) under their parents, QuickBooks
+// style. Returns, in order, { account } for a lone account or
+// { account: parent, children: [...] } for a parent with sub-accounts (every
+// descendant, flattened, so a sub-sub-account is never lost). An account whose
+// parent is not in `list` stands alone rather than disappearing.
+export const groupAccountsByParent = (list, all = list) => {
+  const inList = new Set((list || []).map(a => a.id));
+  const byId = new Map((all || []).map(a => [a.id, a]));
+  // Parent links that loop (A under B under A) must not hide both accounts:
+  // an account on a loop is shown at the top level.
+  const onLoop = (a) => { const seen = new Set([a.id]); let cur = a;
+    for (let i = 0; i < 50; i++) { const pid = accountParentId(cur, all); if (!pid) return false; if (seen.has(pid)) return true; seen.add(pid); cur = byId.get(pid); if (!cur) return false; }
+    return true; };
+  const kids = new Map();
+  for (const a of list || []) {
+    const pid = accountParentId(a, all);
+    if (pid && inList.has(pid) && !onLoop(a)) { if (!kids.has(pid)) kids.set(pid, []); kids.get(pid).push(a); }
+  }
+  const descendants = (id, seen = new Set([id])) => (kids.get(id) || []).flatMap(c =>
+    seen.has(c.id) ? [] : (seen.add(c.id), [c, ...descendants(c.id, seen)]));
+  return (list || [])
+    .filter(a => { const pid = accountParentId(a, all); return !(pid && inList.has(pid)) || onLoop(a); })
+    .map(a => { const children = descendants(a.id); return children.length ? { account: a, children } : { account: a }; });
+};
+
 // Build dynamic types/subtypes from existing accounts + defaults
 export const getAccountTypes = (accounts) => {
   const types = new Set(DEFAULT_ACCOUNT_TYPES);

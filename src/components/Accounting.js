@@ -25,6 +25,7 @@ import {
   getAccountSubtypes, getAccountTypes, getBalanceSheetData, getClassReport,
   getGeneralLedger, getNormalBalance, getPLData, getPeriodDates,
   getTrialBalance, nextAccountCode, nextAccountId, validateJE, sortAccountsForReport,
+  accountParentId, groupAccountsByParent,
 } from "../utils/acctReports";
 
 // ============ REFERENCE LABELS ============
@@ -1180,7 +1181,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   // one runs to ~870 rows across nine type groups, so without a search the
   // only way to "1590" was to know which group it lives in and scroll.
   const [acctSearch, setAcctSearch] = useState("");
-  const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" });
+  const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"", parent_id:"" });
 
   const dynamicTypes = getAccountTypes(accounts);
   const dynamicSubtypes = getAccountSubtypes(accounts, form.type === "__custom__" ? form.customType : form.type);
@@ -1240,21 +1241,29 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   filtered.forEach(a => { if (!grouped[a.type]) grouped[a.type] = []; grouped[a.type].push(a); });
   // Sort accounts within each type: parents first (no dash in code), then sub-accounts
   Object.keys(grouped).forEach(type => {
-  const parentAccts = grouped[type].filter(a => !a.parent_id && !(a.code || "").includes("-"));
-  const subAccts = grouped[type].filter(a => a.parent_id || (a.code || "").includes("-"));
+  const parentAccts = grouped[type].filter(a => !accountParentId(a, accounts) && !(a.code || "").includes("-"));
+  const subAccts = grouped[type].filter(a => accountParentId(a, accounts) || (a.code || "").includes("-"));
   // Build ordered list: parent followed by its sub-accounts
   const ordered = [];
   parentAccts.forEach(parent => {
   ordered.push(parent);
-  sortAccountsForReport(subAccts.filter(s => s.parent_id === parent.id || (s.code || "").startsWith((parent.code || "") + "-"))).forEach(sub => ordered.push({ ...sub, _isSubAccount: true }));
+  sortAccountsForReport(subAccts.filter(s => accountParentId(s, accounts) === parent.id)).forEach(sub => ordered.push({ ...sub, _isSubAccount: true }));
   });
   // Add any orphan sub-accounts not matched to a parent
   sortAccountsForReport(subAccts.filter(s => !ordered.find(o => o.id === s.id))).forEach(s => ordered.push({ ...s, _isSubAccount: true }));
   grouped[type] = ordered;
   });
 
-  const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" }); setModal("add"); };
-  const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "", customType:"", customSubtype:"" }); setModal(a); };
+  const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"", parent_id:"" }); setModal("add"); };
+  const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "", customType:"", customSubtype:"", parent_id: accountParentId(a, accounts) || "" }); setModal(a); };
+  // Parent choices: same type, active, not the account itself, and not one of
+  // its own sub-accounts (that would make a loop).
+  const parentOptions = (() => {
+    const selfId = modal && modal !== "add" ? modal.id : null;
+    const isDescendant = (cand) => { let cur = cand, hops = 0; while (cur && hops++ < 20) { const pid = accountParentId(cur, accounts); if (!pid) return false; if (pid === selfId) return true; cur = accounts.find(x => x.id === pid); } return false; };
+    const t = form.type === "__custom__" ? form.customType.trim() : form.type;
+    return sortAccountsForReport(accounts.filter(a => a.type === t && a.id !== selfId && a.is_active !== false && !isDescendant(a)));
+  })();
 
   const saveAccount = async () => {
   if (!form.name.trim()) return;
@@ -1263,9 +1272,9 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   if (!finalType) { showToast("Please enter an account type.", "error"); return; }
   if (modal === "add") {
   const newCode = nextAccountCode(accounts, finalType);
-  await onAdd({ code: newCode, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true });
+  await onAdd({ code: newCode, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true, parent_id: form.parent_id || null });
   } else {
-  await onUpdate({ ...modal, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description });
+  await onUpdate({ ...modal, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, parent_id: form.parent_id || null });
   }
   setModal(null);
   };
@@ -1340,7 +1349,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-neutral-500">Type *</label>
-  <Select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="mt-1">
+  <Select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "", parent_id: "" }); }} className="mt-1">
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
   </Select>
@@ -1355,6 +1364,13 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   </Select>
   {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new subtype" />}
   </div>
+  </div>
+  <div>
+  <label className="text-xs font-medium text-neutral-500">Parent account</label>
+  <Select value={form.parent_id || ""} onChange={e => setForm({...form, parent_id: e.target.value})} className="mt-1">
+  <option value="">None (top-level)</option>
+  {parentOptions.map(a => <option key={a.id} value={a.id}>{a.code ? a.code + " · " : ""}{a.name}</option>)}
+  </Select>
   </div>
   <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
@@ -3843,6 +3859,24 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           : <span className="tnum text-xs text-neutral-900 tabular-nums">{acctFmt(amount)}</span>}
       </div>
     );
+    // Parent headings with their sub-accounts and a "Total for" line, like the
+    // QuickBooks balance sheet. A parent's own balance (posted to the parent
+    // itself) shows as its own line inside the group.
+    const renderGrouped = (list, indent) => groupAccountsByParent(list, accounts).map(g => {
+      if (!g.children) return (showZeros || g.account.amount !== 0)
+        ? <BSRow key={g.account.id} name={g.account.name} amount={g.account.amount} indent={indent} ids={[g.account.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([g.account.id], g.account.name)} />
+        : null;
+      const members = [g.account, ...g.children];
+      const total = members.reduce((s, a) => s + a.amount, 0);
+      const shownKids = g.children.filter(a => showZeros || a.amount !== 0);
+      if (!showZeros && shownKids.length === 0 && g.account.amount === 0) return null;
+      return (<div key={g.account.id} className="mb-1">
+        <div className="text-sm font-medium text-neutral-700 py-1" style={{ paddingLeft: indent * 24 }}>{g.account.name}</div>
+        {g.account.amount !== 0 && <BSRow name={g.account.name + " (direct)"} amount={g.account.amount} indent={indent + 1} ids={[g.account.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([g.account.id], g.account.name)} />}
+        {shownKids.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={indent + 1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+        <BSSubtotal label={"Total for " + g.account.name} amount={total} ids={members.map(a => a.id)} />
+      </div>);
+    });
     const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic, ids, onOpenLedger }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-info-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>{ids && onOpenLedger ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className={`text-sm no-underline hover:underline ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</LedgerLink> : <span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span>}{ids && onOpenLedger
       ? <LedgerLink ids={ids} title={name} onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(amount, true)}</LedgerLink>
       : <span className={`tnum text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span>}</div>);
@@ -3858,9 +3892,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     return (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-success-600 bg-success-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-danger-600 bg-danger-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
       <div className="flex justify-end mb-2 border-b border-neutral-200 pb-1"><span className="text-xs font-semibold text-neutral-500 uppercase">Total</span></div>
-      <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS" totalIds={[...bankAccounts, ...arSubAccounts, ...arParentAccounts, ...otherAssets].map(a=>a.id)} onOpenLedger={onOpenLedger}>{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for Bank Accounts" amount={bankAccounts.reduce((s,a)=>s+a.amount,0)} ids={bankAccounts.map(a=>a.id)} /></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>showZeros||a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for AR" amount={arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0)} ids={(arSubAccounts.length > 0 ? arSubAccounts : arParentAccounts).map(a=>a.id)} /></div>}{otherAssets.filter(a=>showZeros||a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
-      <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities" totalIds={bsData.liabilities.map(a=>a.id)} onOpenLedger={onOpenLedger}>{bsData.liabilities.filter(a=>showZeros||a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
-      <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity" totalIds={bsData.equity.map(a=>a.id)}>{bsData.equity.filter(a=>showZeros||a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
+      <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS" totalIds={[...bankAccounts, ...arSubAccounts, ...arParentAccounts, ...otherAssets].map(a=>a.id)} onOpenLedger={onOpenLedger}>{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for Bank Accounts" amount={bankAccounts.reduce((s,a)=>s+a.amount,0)} ids={bankAccounts.map(a=>a.id)} /></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>showZeros||a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} ids={[a.id]} onOpenLedger={onOpenLedger} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<BSSubtotal label="Total for AR" amount={arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0)} ids={(arSubAccounts.length > 0 ? arSubAccounts : arParentAccounts).map(a=>a.id)} /></div>}{renderGrouped(otherAssets, 1)}</BSSection>
+      <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities" totalIds={bsData.liabilities.map(a=>a.id)} onOpenLedger={onOpenLedger}>{renderGrouped(bsData.liabilities, 1)}</BSSection>
+      <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity" totalIds={bsData.equity.map(a=>a.id)}>{renderGrouped(bsData.equity, 1)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
       <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black">{onOpenLedger ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="text-sm no-underline hover:underline">TOTAL LIABILITIES AND EQUITY</LedgerLink> : <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>}{onOpenLedger
       ? <LedgerLink ids={[...bsData.liabilities, ...bsData.equity].map(a=>a.id)} title="Total Liabilities and Equity" onOpenLedger={onOpenLedger} className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</LedgerLink>
       : <span className="tnum text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>}</div>
@@ -5661,7 +5695,8 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { id } = acct;
   const { error } = await supabase.from("acct_accounts").update({
   name: acct.name, type: acct.type, subtype: acct.subtype,
-  is_active: acct.is_active, description: acct.description || ""
+  is_active: acct.is_active, description: acct.description || "",
+  ...(acct.parent_id !== undefined ? { parent_id: acct.parent_id || null } : {})
   }).eq("company_id", companyId).eq("id", id);
   if (error) { pmError("PM-4006", { raw: error, context: "update account" }); return; }
   // Drop the resolveAccountId cache for this company so name-keyed
