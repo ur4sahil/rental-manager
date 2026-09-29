@@ -90,14 +90,15 @@ console.log("==============================================");
       return present;
     };
     const expectedTrigger = ["properties", "leases", "autopay_schedules",
-      "owners", "vendors", "tenants", "work_orders", "acct_accounts", "owner_distributions"];
+      "owners", "vendors", "tenants", "work_orders", "owner_distributions"];
     const missing = expectedTrigger.filter(t => !triggerPresent(t));
     // utility_accounts is intentionally NOT gated (routine ops), and JE void
     // moved to its own accounting-tier trigger (20260929080000) so office
     // assistants and accountants can void -- neither may carry trg_mgmt_gate.
-    const shouldNotHave = ["utility_accounts", "acct_journal_entries"].filter(t => triggerPresent(t));
+    // acct_accounts delete likewise moved to trg_acct_delete_gate (20260929090000).
+    const shouldNotHave = ["utility_accounts", "acct_journal_entries", "acct_accounts"].filter(t => triggerPresent(t));
     assert("gate trigger attached to exactly the gated tables", missing.length === 0 && shouldNotHave.length === 0,
-      missing.length ? "MISSING: " + missing.join(", ") : shouldNotHave.length ? "UNEXPECTED: " + shouldNotHave.join(", ") : "9 gated, utility_accounts + JE ungated");
+      missing.length ? "MISSING: " + missing.join(", ") : shouldNotHave.length ? "UNEXPECTED: " + shouldNotHave.join(", ") : "8 gated; utility_accounts, JE, acct_accounts off trg_mgmt_gate");
 
     // JE void: its own trigger, INVOKER, accounting roles only (maintenance etc. refused).
     const v = latestFnText("enforce_je_void_role");
@@ -108,6 +109,13 @@ console.log("==============================================");
       && /enforce_je_void_role\(\)[\s\S]{0,120}SECURITY INVOKER/.test(v.text)
       && /'office_assistant','accountant'/.test(t.text) && !/maintenance/.test(t.text.slice(t.text.indexOf("is_accounting_tier"), t.text.indexOf("$$;"))),
       v ? v.file : "no enforce_je_void_role");
+
+    // GL-account delete: own INVOKER trigger on the accounting tier.
+    const d = latestFnText("enforce_acct_delete_role");
+    const delAttached = migs.some(f => /CREATE TRIGGER\s+trg_acct_delete_gate\s+BEFORE DELETE ON public\.acct_accounts\b/.test(fs.readFileSync(path.join(migDir, f), "utf8")));
+    assert("GL-account delete gate: INVOKER, accounting tier",
+      !!d && delAttached && /enforce_acct_delete_role\(\)[\s\S]{0,120}SECURITY INVOKER/.test(d.text) && /is_accounting_tier\(OLD\.company_id\)/.test(d.text),
+      d ? d.file : "no enforce_acct_delete_role");
   }
 }
 
