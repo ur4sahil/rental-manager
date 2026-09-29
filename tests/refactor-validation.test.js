@@ -253,9 +253,10 @@ function testFileStructure() {
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
   // 53350 on 2026-09-29: +~150 for "login missing" to-dos (src/utils/loginMissing.js incl.
   // portfolio loans) and the edit deep links on Utilities/Insurance/Loans/HOA.
+  // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f) — both branches' lines together.
   // 53450 on 2026-09-29: +~65 for theme-I round 2 (named-account utility save, half-login refusals,
   // allowedPages-filtered to-dos, unavailable-record toasts, account-first Fetched Bills).
-  assert(totalLines <= 53450, `Total src lines <= 53450 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  assert(totalLines <= 53600, `Total src lines <= 53600 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
