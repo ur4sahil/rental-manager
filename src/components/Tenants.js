@@ -8,7 +8,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId } from "../utils/accounting";
 import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
 import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
@@ -465,7 +465,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // Security deposit + rent charges in parallel
   if (_secDep > 0 && tenantId) {
-  const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), getOrCreateTenantAR(companyId, _name, tenantId)]);
+  // Owed, then paid: DR the tenant's OWN AR -- tenantOwnArAccountId returns
+  // null rather than the shared 1100 fallback, and resolveJELineAccounts
+  // below then refuses to post.
+  const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), tenantOwnArAccountId(companyId, _name, tenantId)]);
   // "2100" is a bare code and post_je_and_ledger casts account_id to
   // ::uuid, so leaving it bare 400s the RPC and drops the deposit onto
   // the non-atomic fallback. Resolve both legs up front; refuse to

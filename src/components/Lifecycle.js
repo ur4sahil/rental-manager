@@ -8,7 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring} from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring, depositReleaseState } from "../utils/accounting";
 import { recurringRentRefsForMonth, pickMoveOutRentCharge, isRentSchedule } from "../utils/paymentRules";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
@@ -28,6 +28,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const [completed, setCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [outstandingBalance, setOutstandingBalance] = useState(0);
+  // { released, reason } for the selected tenant's deposit -- see selectTenant.
+  const [depositRelease, setDepositRelease] = useState(null);
 
   const defaultChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review","Photos taken"];
 
@@ -63,7 +65,20 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const t = tenants.find(x => String(x.id) === String(tenantId));
   setSelectedTenant(t || null);
   if (!t) { setSelectedLease(null); setOutstandingBalance(0); return; }
-  let lease = leases.find(l => l.tenant_name === t.name || l.property === t.property);
+  // Whose lease is this? By tenant_id first; a lease with no tenant_id only
+  // when its name AND property both match. Never by property alone, and
+  // never a lease that carries another tenant's id -- matching "name OR
+  // property" moved a roommate out on someone else's lease and released
+  // THEIR deposit onto this tenant's ledger.
+  const ownLeases = leases.filter(l => l.tenant_id !== null && l.tenant_id !== undefined && String(l.tenant_id) === String(t.id));
+  const legacyLeases = leases.filter(l => (l.tenant_id === null || l.tenant_id === undefined) && l.tenant_name === t.name && l.property === t.property);
+  const candidates = ownLeases.length ? ownLeases : legacyLeases;
+  if (candidates.length > 1) {
+    showToast(`${t.name} has ${candidates.length} active leases, so the move-out cannot tell which one ends. Terminate or fix the extra lease on the Leases page first.`, "error");
+    setSelectedTenant(null); setSelectedLease(null); setDepositRelease(null); setOutstandingBalance(0);
+    return;
+  }
+  let lease = candidates[0] || null;
   if (!lease && t.property) {
     // Imported and legacy tenants often have no active `leases` row. Without
     // one the wizard showed a BLANK property and the Execute button silently
@@ -74,6 +89,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     lease = { id: null, property: t.property, tenant_name: t.name, rent_amount: safeNum(t.rent), security_deposit: 0 };
   }
   setSelectedLease(lease || null);
+  // A deposit leaves 2100 once. If the Leases page (or an earlier move-out)
+  // already released it, this move-out must not release it again.
+  setDepositRelease(null);
+  if (lease && safeNum(lease.security_deposit) > 0) {
+    depositReleaseState(companyId, { tenantId: t.id, leaseId: lease.id }).then(setDepositRelease, () => setDepositRelease(null));
+  }
   // Read balance live from the GL. `tenants.balance` drifts whenever
   // `recurring_journal_entries.tenant_id` is NULL —
   // autoPostRecurringEntries skips update_tenant_balance in that case,
@@ -123,6 +144,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   }
 
   const depositAmount = safeNum(selectedLease?.security_deposit);
+  // What this move-out will actually move off 2100: nothing when the deposit
+  // was already released (returned on the Leases page, or an earlier move-out).
+  const releasableDeposit = depositRelease?.released ? 0 : depositRelease?.partial ? safeNum(depositRelease.remaining) : depositAmount;
   const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
   const depositReturn = Math.max(0, depositAmount - totalDeductions);
   const depositForfeited = Math.max(0, totalDeductions - depositAmount);
@@ -139,6 +163,35 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const cid = companyId;
   const tName = selectedTenant.name;
   const classId = await getPropertyClassId(selectedLease.property, cid);
+
+  // Deposit release guard -- BEFORE anything is committed. Re-read now rather
+  // than trusting the check made when the tenant was picked. Fails closed: if
+  // it cannot be verified, nothing happens.
+  //
+  // The release is posted under the reference depositReleaseState derives
+  // from the LEASE (DEPRET-T<lease tenant id>, or DEPRET-L<root lease id> for
+  // a lease with no tenant id) -- the same one the Leases page uses, so the
+  // two can never release one deposit under different keys. If part was
+  // already released and part voided, only what is still held is released.
+  let releaseAmt = 0, releaseRef = null;
+  if (depositAmount > 0) {
+    const rel = await depositReleaseState(cid, { tenantId: selectedTenant.id, leaseId: selectedLease.id });
+    if (rel.error) {
+      showToast("Move-out not started: " + rel.reason + ". Nothing was changed; try again.", "error");
+      return;
+    }
+    if (rel.released) {
+      if (!depositRelease?.released && !await showConfirm({ message: "This tenant's security deposit cannot be released again: " + rel.reason + ".\n\nContinue the move-out WITHOUT releasing the deposit?" })) return;
+      setDepositRelease(rel);
+      showToast("The security deposit is not released again at this move-out: " + rel.reason + ".", "warning");
+    } else {
+      releaseAmt = safeNum(rel.remaining);
+      releaseRef = (rel.freeReferences || [])[0] || null;
+      if (rel.partial) showToast("Only the part of the deposit still held is released: " + rel.reason + ".", "warning");
+    }
+  }
+  // What actually left 2100 at this move-out -- set only once the entry posts.
+  let releasedAmount = 0;
 
   // STATE-FIRST flow (2026-04-24): the server-side move_out_commit_state
   // RPC bundles lease termination + tenant archive + property vacant +
@@ -208,7 +261,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   //
   // No cash refund JE is posted here. By design, any leftover credit
   // stays on the tenant AR for the admin to refund manually later.
-  const unifiedArId = (depositAmount > 0 || totalDeductions > 0 || arAction === "waive")
+  const unifiedArId = (releaseAmt > 0 || totalDeductions > 0 || arAction === "waive")
     ? await getOrCreateTenantAR(cid, tName, selectedTenant.id)
     : null;
   // Balances on this path are moved by the sync_tenant_balance_lines
@@ -224,14 +277,35 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   // A. Deposit → tenant AR credit. Always runs if a deposit exists,
   //    regardless of deductions / arAction, because the 2100 liability
   //    must be released once the tenant moves out.
-  if (depositAmount > 0) {
-  const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit transferred to ledger — ${tName}`, reference: `DEP-TFR-${shortId()}`, property: selectedLease.property,
+  //    The reference is the release claim shared with the Leases page's
+  //    "Process Deposit Return" and property deletion: DEPRET-T<tenant id>.
+  //    The unique reference index refuses a second release from any path;
+  //    a refused (or failed) post leaves the lease "held".
+  if (releaseAmt > 0 && releaseRef) {
+  const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit transferred to ledger — ${tName}`, reference: releaseRef, property: selectedLease.property,
   lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: depositAmount, credit: 0, class_id: classId, memo: `Deposit release at move-out — ${tName}` },
-  { account_id: unifiedArId, account_name: "AR - " + tName, debit: 0, credit: depositAmount, class_id: classId, memo: `Deposit credit — move-out` },
-  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Deposit transferred to ledger", amount: -depositAmount, type: "credit", balance: 0 },
-  balanceUpdate: { tenantId: selectedTenant.id, amount: -depositAmount } });
-  if (!depResult.jeId) showToast("Warning: Deposit-to-ledger transfer failed — please post manually in Accounting.", "error");
+  { account_id: "2100", account_name: "Security Deposits Held", debit: releaseAmt, credit: 0, class_id: classId, memo: `Deposit release at move-out — ${tName}` },
+  { account_id: unifiedArId, account_name: "AR - " + tName, debit: 0, credit: releaseAmt, class_id: classId, memo: `Deposit credit — move-out` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Deposit transferred to ledger", amount: -releaseAmt, type: "credit", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: -releaseAmt } });
+  if (depResult.jeId) {
+    releasedAmount = releaseAmt;
+    // Mark the lease so the Leases page no longer offers "Return Deposit".
+    // move_out_commit_state does not touch deposit_status. "returned": the
+    // deposit went back to the tenant, as a credit on their ledger.
+    if (selectedLease.id) {
+      const { error: dsErr } = await supabase.from("leases").update({ deposit_status: "returned", deposit_return_date: moveOutDate })
+        .eq("company_id", cid).eq("id", selectedLease.id);
+      if (dsErr) pmError("PM-3004", { raw: dsErr, context: "mark deposit returned at move-out", silent: true });
+    }
+  } else {
+    // Refused by the unique reference (another screen released it a moment
+    // ago) or a real failure: tell them which.
+    const again = await depositReleaseState(cid, { tenantId: selectedTenant.id, leaseId: selectedLease.id });
+    const takenNow = !again.error && (again.released || safeNum(again.remaining) < releaseAmt - 0.005 || !(again.freeReferences || []).includes(releaseRef));
+    if (takenNow) showToast("Deposit not released at move-out: it was already released elsewhere (" + (again.reason || releaseRef) + ").", "warning");
+    else showToast("Warning: Deposit-to-ledger transfer failed — please post manually in Accounting.", "error");
+  }
   }
 
   // B. Deductions → charge tenant AR as damage income. One JE
@@ -253,7 +327,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   //    rather than re-querying the GL (which would incur an extra
   //    round-trip and race with the JEs we just posted).
   if (arAction === "waive") {
-  const netOwed = Math.round((outstandingBalance - depositAmount + totalDeductions) * 100) / 100;
+  const netOwed = Math.round((outstandingBalance - releasedAmount + totalDeductions) * 100) / 100;
   if (netOwed > 0) {
   const woResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
@@ -465,6 +539,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <h3 className="text-lg font-display font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
   <div className="bg-brand-50/30 rounded-xl p-4 mb-4">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Original Deposit</span><span className="font-bold text-neutral-700">${depositAmount.toFixed(2)}</span></div>
+  {depositRelease?.released && <div className="text-xs text-warn-700 mt-2">Already released — {depositRelease.reason}. This move-out will not release it again.</div>}
   </div>
   <h4 className="text-sm font-semibold text-neutral-500 mb-2">Deductions</h4>
   {deductions.map((d, i) => (
@@ -490,7 +565,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="bg-success-50 rounded-xl p-4 mt-4 space-y-1">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>
   {(() => {
-    const netCredit = safeNum(depositAmount) - safeNum(totalDeductions);
+    const netCredit = safeNum(releasableDeposit) - safeNum(totalDeductions);
     const owed = netCredit < 0;
     return (
       <div className="flex justify-between text-sm font-bold">
@@ -547,10 +622,11 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{fmtDate(moveOutDate)}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-success-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit → Tenant Ledger</span><span className="font-semibold text-neutral-700">${safeNum(depositAmount).toFixed(2)}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit → Tenant Ledger</span><span className="font-semibold text-neutral-700">${safeNum(releasableDeposit).toFixed(2)}</span></div>
+  {depositRelease?.released && <div className="text-xs text-warn-700 py-1">Deposit not released again: {depositRelease.reason}.</div>}
   {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>}
   {(() => {
-    const finalAR = Math.round((safeNum(outstandingBalance) - safeNum(depositAmount) + safeNum(totalDeductions)) * 100) / 100;
+    const finalAR = Math.round((safeNum(outstandingBalance) - safeNum(releasableDeposit) + safeNum(totalDeductions)) * 100) / 100;
     const owes = finalAR > 0;
     return (
       <div className="flex justify-between py-2 border-b border-brand-50">

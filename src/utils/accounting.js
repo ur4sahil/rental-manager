@@ -5,6 +5,7 @@ import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
+import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
 // (acct_journal_lines + acct_journal_entries). There is nothing to
@@ -561,6 +562,55 @@ export async function depositAlreadyPosted(companyId, tenantId) {
   } catch (_e) {
     return true;
   }
+}
+
+// ---------------------------------------------------------------------------
+// OWED, THEN PAID
+//
+// A security deposit is booked as a charge on the tenant -- DR the tenant's
+// OWN AR sub-account / CR 2100 Security Deposits Held -- and the tenant then
+// pays it like rent (the payment credits the same AR). Every path that books
+// a deposit (wizard, property form, Tenants page, Leases page) uses this to
+// find that account. getOrCreateTenantAR falls back to the shared 1100 parent
+// (or a name-only legacy account) when it cannot find or create one keyed on
+// the tenant; neither is this tenant's receivable, so null is returned and
+// the caller refuses to post rather than parking the charge on a shared
+// account where no payment will ever meet it.
+export async function tenantOwnArAccountId(companyId, tenantName, tenantId) {
+  if (!companyId || tenantId === null || tenantId === undefined || tenantId === "") return null;
+  const id = await getOrCreateTenantAR(companyId, tenantName, tenantId);
+  if (!id) return null;
+  const { data, error } = await supabase.from("acct_accounts").select("id, tenant_id")
+    .eq("company_id", companyId).eq("id", id).maybeSingle();
+  if (error || !data || data.tenant_id === null || data.tenant_id === undefined) return null;
+  return String(data.tenant_id) === String(tenantId) ? data.id : null;
+}
+
+// ---------------------------------------------------------------------------
+// SECURITY DEPOSIT RELEASE -- never twice. Rules and the reference scheme
+// (DEPRET-T<tenant id>, or DEPRET-L<lease id> for a lease with no tenant id)
+// live in depositRules.js; this binds the check to the app's client.
+export { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef };
+export function depositReleaseState(companyId, { tenantId = null, leaseId = null } = {}) {
+  return depositReleaseStateWith(supabase, companyId, { tenantId, leaseId });
+}
+
+// What the tenant owes right now, from the GL: debits minus credits on their
+// own AR account(s) (acct_accounts.tenant_id), voided entries excluded.
+// null when it cannot be read -- callers then show no amount rather than 0.
+export async function tenantOwedFromGL(companyId, tenantId) {
+  if (!companyId || tenantId === null || tenantId === undefined || tenantId === "") return null;
+  const { data: accts, error } = await supabase.from("acct_accounts").select("id")
+    .eq("company_id", companyId).eq("type", "Asset").eq("tenant_id", tenantId);
+  if (error) return null;
+  const ids = (accts || []).map(a => a.id);
+  if (!ids.length) return 0;
+  const { rows, failed } = await fetchAllPaged(() => supabase.from("acct_journal_lines")
+    .select("debit, credit, acct_journal_entries!inner(status)")
+    .eq("company_id", companyId).in("account_id", ids)
+    .neq("acct_journal_entries.status", "voided").order("id"), "tenant owed");
+  if (failed) return null;
+  return Math.round(rows.reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0) * 100) / 100;
 }
 
 // The tenant's OWN AR sub-account (1100-NNN, tenant_id set), found or made.
