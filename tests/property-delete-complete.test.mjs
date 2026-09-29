@@ -123,6 +123,11 @@ assert("restore does the property atomically and re-posts a large backlog afterw
   !/call property_delete_unvoid_chunk first/.test(fn2("restore_property_cascade")) && /'journal_entries_pending', v_left/.test(fn2("restore_property_cascade")));
 assert("a tenant AR ledger with a posted balance stays active and is reported (never blocks the delete)",
   /ar_accounts_left_active/.test(fn2("archive_property_cascade")) && /<= 0\.005;/.test(fn2("archive_property_cascade")));
+assert("un-void: no self-join of the voids table; the reference check carries the partial index's predicate (10-14s -> ms)",
+  !/FROM property_deletion_voids v2/.test(fn2("property_delete_unvoid_chunk"))
+  && /o\.status <> 'voided' AND o\.reference <> ''/.test(fn2("property_delete_unvoid_chunk")));
+assert("owner-portal role gets no bookkeeping tier either (is_accounting_tier without 'owner')",
+  /FUNCTION public\.is_accounting_tier[\s\S]*cm\.role IN \('admin','pm','manager','office_assistant','accountant'\)/.test(mig2));
 assert("unfinished deletes/restores are listed by property_deletions_pending", /FUNCTION public\.property_deletions_pending\(/.test(mig2) && /REVOKE ALL ON FUNCTION public\.property_deletions_pending\(text\) FROM PUBLIC, anon/.test(mig2));
 assert("un-void skips (and reports) locked / reference-clashing entries", /'locked period'/.test(fn2("property_delete_unvoid_chunk")) && /'reference now used by another live entry'/.test(fn2("property_delete_unvoid_chunk")));
 assert("rename cascade skips rows stamped by a deletion at the old address", /archived_at <> ALL \(s\)/.test(fn2("_cascade_property_rename")) && /property_deletion_voids/.test(fn2("_cascade_property_rename")));
@@ -147,6 +152,12 @@ assert("deleteProperty never voids entries from the browser, never touches the l
 assert("deleteProperty re-posts the voided entries when a later step fails",
   /if \(vres\.error\) \{[\s\S]*?unvoidDeletion\(deletionId\)[\s\S]*?return;/.test(del) && /if \(cascadeErr\) \{[\s\S]*?unvoidDeletion\(deletionId\)[\s\S]*?return;/.test(del));
 assert("the chunk helpers stop when a locked period blocks progress (no spin)", /if \(!u\.unvoided\) return \{ error: null, remaining: u\.remaining, blocked:/.test(props));
+assert("first chunk is small (50), then 200; a timeout halves the chunk and retries",
+  /CHUNK_FIRST = 50, CHUNK_NEXT = 200/.test(props) && /isTimeout\(error\) && size > CHUNK_MIN/.test(props) && !/p_limit: 200/.test(props));
+assert("banner counts the entries still voided (pending), not voided minus pending", /\$\{pd\.pending\} journal entr/.test(props) && !/pd\.voided - pd\.pending/.test(props));
+const helpers = read("src/utils/helpers.js");
+assert("owner-portal role hidden from destructive and bookkeeping buttons",
+  /MANAGEMENT_ROLES = \["admin", "pm", "manager"\]/.test(helpers) && /ACCOUNTING_ROLES = \["admin", "pm", "manager", "office_assistant", "accountant"\]/.test(helpers));
 assert("Properties page lists unfinished deletes/restores with Finish / Cancel", /rpc\("property_deletions_pending"/.test(props) && /"finish_delete"/.test(props) && /"cancel_delete"/.test(props) && /"finish_restore"/.test(props));
 assert("deleteProperty shows the locked entries the server listed", /beginErr\.details/.test(del));
 assert("archived_by is not sent by the client any more", !/p_user_email/.test(props));

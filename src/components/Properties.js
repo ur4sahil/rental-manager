@@ -3191,26 +3191,42 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const { data, error } = await supabase.rpc("property_deletions_pending", { p_company_id: companyId });
   if (!error) setPendingDeletions(Array.isArray(data) ? data : []);
   }
-  // Re-post the entries a deletion voided, in chunks. Stops -- instead of
-  // spinning -- when a locked period blocks what is left.
+  // Chunk sizes: the FIRST call is small (50) -- it pays for cold caches and
+  // plan setup on a busy database -- then 200. A statement timeout halves the
+  // size and retries (down to 10) before giving up, so one slow chunk never
+  // strands a half-voided property.
+  const CHUNK_FIRST = 50, CHUNK_NEXT = 200, CHUNK_MIN = 10;
+  const isTimeout = (e) => e && (e.code === "57014" || /statement timeout/i.test(e.message || ""));
+  async function chunked(rpcName, deletionId, onChunk) {
+  let size = CHUNK_FIRST;
+  for (let i = 0; i < 2000; i++) {
+    const { data, error } = await supabase.rpc(rpcName, { p_deletion_id: deletionId, p_limit: size });
+    if (error) {
+      if (isTimeout(error) && size > CHUNK_MIN) { size = Math.max(CHUNK_MIN, Math.floor(size / 2)); continue; }
+      return { error: error.message || "server error" };
+    }
+    const stop = onChunk(data);
+    if (stop) return stop;
+    size = CHUNK_NEXT;
+  }
+  return { error: "gave up after 2000 rounds" };
+  }
+  // Re-post the entries a deletion voided. Stops -- instead of spinning --
+  // when a locked period blocks what is left.
   async function unvoidDeletion(deletionId) {
-  for (let i = 0; i < 1000; i++) {
-    const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: deletionId, p_limit: 200 });
-    if (uErr) return { error: uErr.message || "server error" };
+  return chunked("property_delete_unvoid_chunk", deletionId, (u) => {
     if (!u || u.remaining === 0) return { error: null, remaining: 0 };
     if (!u.unvoided) return { error: null, remaining: u.remaining, blocked: u.blocked_by_lock || [] };
-  }
-  return { error: "gave up after 1000 rounds" };
+    return null;
+  });
   }
   async function voidDeletion(deletionId) {
   let voided = 0;
-  for (let i = 0; i < 1000; i++) {
-    const { data: v, error: vErr } = await supabase.rpc("property_delete_void_chunk", { p_deletion_id: deletionId, p_limit: 200 });
-    if (vErr) return { error: vErr.message || "server error", voided };
+  const r = await chunked("property_delete_void_chunk", deletionId, (v) => {
     voided += v?.voided || 0;
-    if (!v || v.remaining === 0) return { error: null, voided };
-  }
-  return { error: "gave up after 1000 rounds", voided };
+    return (!v || v.remaining === 0) ? { error: null } : null;
+  });
+  return { ...r, voided };
   }
   const describeUndo = (u) => u.error ? `re-posting them failed (${u.error})`
     : u.remaining ? `${u.remaining} could not be re-posted because their period is now locked (${(u.blocked || []).slice(0, 5).map(e => "#" + (e.number || "?") + " " + e.date).join(", ")}${(u.blocked || []).length > 5 ? ", …" : ""}); unlock it and use "Cancel delete" in the banner`
@@ -4597,7 +4613,8 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   {pendingDeletions.map(pd => (
   <div key={pd.deletion_id} className="flex flex-wrap items-center gap-2 py-1">
   <span>{pd.kind === "delete"
-    ? `Delete of ${pd.address} stopped part-way: ${pd.voided - pd.pending} of ${pd.voided} voided entries remain voided while the property is still live.`
+    // pending = entries this delete voided that are still voided (not yet re-posted)
+    ? `Delete of ${pd.address} stopped part-way: ${pd.pending} journal entr${pd.pending === 1 ? "y is" : "ies are"} voided while the property is still live.`
     : `Restore of ${pd.address}: ${pd.pending} journal entr${pd.pending === 1 ? "y is" : "ies are"} still voided.`}</span>
   {pd.kind === "delete" && canManage(userRole) && <Btn size="sm" variant="danger" onClick={() => resolvePending(pd, "finish_delete")}>Finish delete</Btn>}
   {pd.kind === "delete" && canManage(userRole) && <Btn size="sm" variant="secondary" onClick={() => resolvePending(pd, "cancel_delete")}>Cancel delete</Btn>}

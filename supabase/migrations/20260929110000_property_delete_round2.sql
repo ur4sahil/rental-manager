@@ -140,9 +140,8 @@ $do$;
 
 -- ─── 3. cascade flag in the follow-triggers (inserted, bodies otherwise untouched)
 -- Each patch is skipped (with a NOTICE) when the function is not installed.
--- _owner_accrual_enqueue_entries exists only once the owners work
--- (20260928170000, branch fix/owners) is applied: THAT migration must carry
--- the same first line itself --
+-- _owner_accrual_enqueue_entries comes with the owners work (20260928170000);
+-- if a later migration redefines it, it must keep the same first line --
 --   IF current_setting('app.property_cascade', true) = 'on' THEN RETURN NULL; END IF;
 -- -- or a property delete applied after it would rewrite owner accruals.
 DO $do$
@@ -484,21 +483,34 @@ BEGIN
                                        WHERE je.id = x AND je.status = 'voided' AND je.date <= v_lock));
   END IF;
 
-  WITH s AS (
-    UPDATE property_deletion_voids v SET restored_at = now(),
-           note = CASE WHEN je.id IS NULL THEN 'entry no longer exists'
-                       WHEN je.status <> 'voided' THEN 'already live'
-                       WHEN v_lock IS NOT NULL AND je.date <= v_lock THEN 'locked period'
-                       ELSE 'reference now used by another live entry' END
-      FROM property_deletion_voids v2
-      LEFT JOIN acct_journal_entries je ON je.id = v2.je_id
-     WHERE v.deletion_id = p_deletion_id AND v.je_id = v2.je_id AND v2.deletion_id = p_deletion_id
-       AND v.je_id = ANY (v_ids)
-       AND (je.id IS NULL OR je.status <> 'voided'
-            OR (v_lock IS NOT NULL AND je.date <= v_lock)
-            OR (COALESCE(je.reference, '') <> '' AND EXISTS (
-                  SELECT 1 FROM acct_journal_entries o WHERE o.company_id = je.company_id
-                     AND o.reference = je.reference AND o.status <> 'voided' AND o.id <> je.id)))
+  -- Entries that cannot be re-posted are marked done-with-a-note, in one pass
+  -- over THIS chunk's rows only. (This used to join the voids table to itself
+  -- and test the reference clash without the `reference <> ''` predicate, so
+  -- the partial unique index on (company_id, reference) could not be used and
+  -- every row scanned the company's entries: 10-14s for a 200-row chunk.)
+  WITH cand AS (
+    SELECT v.je_id, je.id AS jid, je.status, je.date, je.reference, je.company_id
+      FROM property_deletion_voids v
+      LEFT JOIN acct_journal_entries je ON je.id = v.je_id
+     WHERE v.deletion_id = p_deletion_id AND v.je_id = ANY (v_ids) AND v.restored_at IS NULL),
+  bad AS (
+    SELECT c.je_id,
+           CASE WHEN c.jid IS NULL THEN 'entry no longer exists'
+                WHEN c.status <> 'voided' THEN 'already live'
+                WHEN v_lock IS NOT NULL AND c.date <= v_lock THEN 'locked period'
+                ELSE 'reference now used by another live entry' END AS why
+      FROM cand c
+     WHERE c.jid IS NULL OR c.status <> 'voided'
+        OR (v_lock IS NOT NULL AND c.date <= v_lock)
+        OR (COALESCE(c.reference, '') <> '' AND EXISTS (
+              SELECT 1 FROM acct_journal_entries o
+               WHERE o.company_id = c.company_id AND o.reference = c.reference
+                 AND o.status <> 'voided' AND o.reference <> ''   -- = idx_je_company_reference_unique's predicate
+                 AND o.id <> c.jid))),
+  s AS (
+    UPDATE property_deletion_voids v SET restored_at = now(), note = b.why
+      FROM bad b
+     WHERE v.deletion_id = p_deletion_id AND v.je_id = b.je_id
     RETURNING v.je_id, v.note)
   SELECT COALESCE(jsonb_agg(jsonb_build_object('id', je_id, 'why', note)), '[]'::jsonb) INTO v_skipped FROM s;
 
@@ -1033,3 +1045,23 @@ GRANT EXECUTE ON FUNCTION public.property_delete_unvoid_chunk(bigint, int) TO au
 GRANT EXECUTE ON FUNCTION public.archive_property_cascade(text, bigint, bigint) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.property_restore_preview(text, bigint) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.restore_property_cascade(text, bigint, boolean) TO authenticated, service_role;
+
+-- ─── owner decision (2026-09-29): 'owner' is the owner-PORTAL login ──────
+-- It gets no destructive or bookkeeping rights. is_management_tier above
+-- already excludes it; is_accounting_tier (20260929080000) did not.
+CREATE OR REPLACE FUNCTION public.is_accounting_tier(p_company_id text)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.company_members cm
+     WHERE cm.company_id = p_company_id
+       AND lower(cm.user_email) = lower(current_setting('request.jwt.claims', true)::json->>'email')
+       AND cm.status = 'active'
+       AND cm.role IN ('admin','pm','manager','office_assistant','accountant')
+  );
+$function$;
+REVOKE ALL ON FUNCTION public.is_accounting_tier(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_accounting_tier(text) TO authenticated, service_role;
