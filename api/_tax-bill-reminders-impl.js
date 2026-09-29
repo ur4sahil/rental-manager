@@ -136,18 +136,23 @@ function resolveDueDates(schedule, startingYear) {
 // Taxes are escrowed when the tax record says the lender pays them, or an
 // active loan on the property includes escrow that covers taxes.
 // Read CONSERVATIVELY: unclear or negated text counts as NOT escrowed.
+// MIRRORS src/utils/expenseRules.js; both are held to
+// tests/fixtures/escrow-covers.json.
 const escNorm = (v) => String(v ?? "").toLowerCase().replace(/[_\-./]+/g, " ").replace(/\s+/g, " ").trim();
-const ESC_TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes"]);
+const ESC_TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes",
+  "county tax", "county taxes", "city tax", "city taxes", "school tax", "school taxes",
+  "piti", "t&i", "t & i", "t and i", "taxes and insurance", "taxes & insurance", "tax and insurance", "tax & insurance"]);
 const escIsTaxToken = (v) => ESC_TAX_TOKENS.has(escNorm(v));
 const ESC_TRUTHY = new Set(["true", "yes", "y", "1", "included", "x"]);
 const escIsTruthy = (v) => v === true || v === 1 || ESC_TRUTHY.has(escNorm(v));
-const ESC_NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*)\b/;
+const ESC_NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*|waiv\w*|cancel\w*|remov\w*|separate\w*|borrower|by me|myself|previous\w*|formerly|former|used to|no longer|ended|stopped|dropped|ask|unknown|unsure|tbd|maybe)\b|\?/;
+const ESC_NAMES_TAXES = /\btax(es)?\b|\bpiti\b|(^|[^a-z])t\s*(&|and)\s*i([^a-z]|$)/;
 function escTextCoversTaxes(text) {
   const t = escNorm(text);
   if (!t || ESC_NEGATION.test(t)) return false;
-  if (!/\b(taxes|tax|property tax(es)?|real estate tax(es)?)\b/.test(t)) return false;
+  if (!ESC_NAMES_TAXES.test(t)) return false;
   const only = t.match(/^(.*?)\bonly\b/);
-  if (only && !/\btax(es)?\b/.test(only[1])) return false;
+  if (only && !ESC_NAMES_TAXES.test(only[1])) return false;
   return true;
 }
 function escrowCoversTaxes(covers) {

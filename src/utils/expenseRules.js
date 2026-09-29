@@ -47,22 +47,28 @@ export function invoicePaymentReference(invoiceId) {
 
 // ─── escrowed taxes ────────────────────────────────────────────────────────
 // "Property_Taxes" / "property-tax" / " TAXES " -> "property taxes" etc.
+// MIRRORED in api/_tax-bill-reminders-impl.js; both are held to
+// tests/fixtures/escrow-covers.json.
 const norm = (v) => String(v ?? "").toLowerCase().replace(/[_\-./]+/g, " ").replace(/\s+/g, " ").trim();
-const TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes"]);
+const TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes",
+  "county tax", "county taxes", "city tax", "city taxes", "school tax", "school taxes",
+  "piti", "t&i", "t & i", "t and i", "taxes and insurance", "taxes & insurance", "tax and insurance", "tax & insurance"]);
 const isTaxToken = (v) => TAX_TOKENS.has(norm(v));
 const TRUTHY = new Set(["true", "yes", "y", "1", "included", "x"]);
 const isTruthy = (v) => v === true || v === 1 || TRUTHY.has(norm(v));
-// Any hint that taxes are NOT in escrow.
-const NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*)\b/;
+// Any hint that taxes are NOT (or no longer, or not certainly) in escrow.
+const NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*|waiv\w*|cancel\w*|remov\w*|separate\w*|borrower|by me|myself|previous\w*|formerly|former|used to|no longer|ended|stopped|dropped|ask|unknown|unsure|tbd|maybe)\b|\?/;
+// Names taxes: "tax"/"taxes" as a word, or PITI / T&I.
+const NAMES_TAXES = /\btax(es)?\b|\bpiti\b|(^|[^a-z])t\s*(&|and)\s*i([^a-z]|$)/;
 
-// Free text: escrowed only when it names taxes and carries no negation, and
-// "X only" does not exclude them ("Insurance only" -> no; "Taxes only" -> yes).
+// Free text: escrowed only when it names taxes and carries no negation or
+// doubt, and "X only" does not exclude them ("Insurance only" -> no).
 function textCoversTaxes(text) {
   const t = norm(text);
   if (!t || NEGATION.test(t)) return false;
-  if (!/\b(taxes|tax|property tax(es)?|real estate tax(es)?)\b/.test(t)) return false;
+  if (!NAMES_TAXES.test(t)) return false;
   const only = t.match(/^(.*?)\bonly\b/);
-  if (only && !/\btax(es)?\b/.test(only[1])) return false;
+  if (only && !NAMES_TAXES.test(only[1])) return false;
   return true;
 }
 

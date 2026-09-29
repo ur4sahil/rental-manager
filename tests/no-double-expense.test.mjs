@@ -44,13 +44,9 @@ assert("no mortgage machinery left in the rules", !/Mortgage|loanPayment|recurri
 
 console.log("\n🧮 ESCROW — conservative parsing");
 const esc = R.escrowCoversTaxes;
-const escrowed = ["Taxes", "taxes, insurance", "Taxes only", "Taxes: yes", "Property Tax", "property_taxes", "real-estate taxes",
-  ["taxes"], ["Property Taxes"], ["property_tax"], { taxes: true }, { Taxes: true }, { taxes: "yes" }, { taxes: 1 }, { property_taxes: "true" }];
-const notEscrowed = [null, undefined, "", false, "no escrow", "Taxes: no", "No taxes", "Insurance only (owner pays taxes)", "insurance only",
-  "no escrow for taxes", "not taxes", "taxes excluded", "Insurance", "taxidermy", "N/A", [], ["insurance"], ["no taxes"],
-  { taxes: false }, { taxes: "no" }, { insurance: true }, { taxes: 0 }];
-for (const c of escrowed) assert("escrowed: " + JSON.stringify(c), esc(c) === true);
-for (const c of notEscrowed) assert("NOT escrowed: " + JSON.stringify(c), esc(c) === false);
+// Shared with the cron: tests/fixtures/escrow-covers.json is the contract.
+const ESC_FIXTURES = JSON.parse(read("tests/fixtures/escrow-covers.json"));
+for (const f of ESC_FIXTURES) assert((f.escrowed ? "escrowed: " : "NOT escrowed: ") + JSON.stringify(f.value), esc(f.value) === f.escrowed);
 assert("tax record flag escrows (strictly true)", R.taxesEscrowed({ taxRecord: { escrow_paid_by_lender: true }, loans: [] }) && !R.taxesEscrowed({ taxRecord: { escrow_paid_by_lender: "yes" }, loans: [] }));
 assert("active loan with tax escrow escrows", R.taxesEscrowed({ taxRecord: null, loans: [{ escrow_included: true, escrow_covers: { taxes: true } }] }));
 assert("archived / paid-off / escrow-off loans do not", !R.taxesEscrowed({ taxRecord: { escrow_paid_by_lender: false }, loans: [
@@ -59,9 +55,8 @@ assert("archived / paid-off / escrow-off loans do not", !R.taxesEscrowed({ taxRe
   { escrow_included: false, escrow_covers: { taxes: true } }] }));
 
 const cron = require(path.join(root, "api", "_tax-bill-reminders-impl.js"));
-const fixtures = [...escrowed, ...notEscrowed];
-assert("cron escrowCoversTaxes == expenseRules.escrowCoversTaxes on every fixture",
-  fixtures.every(f => cron._escrow.escrowCoversTaxes(f) === esc(f)), JSON.stringify(fixtures.filter(f => cron._escrow.escrowCoversTaxes(f) !== esc(f))));
+assert("cron escrowCoversTaxes matches every shared fixture (" + ESC_FIXTURES.length + ")",
+  ESC_FIXTURES.every(f => cron._escrow.escrowCoversTaxes(f.value) === f.escrowed), JSON.stringify(ESC_FIXTURES.filter(f => cron._escrow.escrowCoversTaxes(f.value) !== f.escrowed)));
 
 // ─── 2. STATIC ────────────────────────────────────────────────────────────
 console.log("\n🔎 PATHS");
@@ -117,7 +112,16 @@ assert("voided entries are ignored by every guard", (code2.match(/status <> 'voi
 assert("same-company trigger on invoices AND photos; paid invoice cannot be re-pointed", /ON public\.vendor_invoices\s+FOR EACH ROW EXECUTE FUNCTION public\._guard_work_order_link/.test(code2) && /ON public\.work_order_photos\s+FOR EACH ROW EXECUTE FUNCTION public\._guard_work_order_link/.test(code2) && /paid_invoice_relink/.test(code2));
 assert("tenant INSERT policy scoped to the tenant's own work order", /CREATE POLICY wo_photos_tenant_insert[\s\S]{0,400}wo\.tenant_id = get_tenant_id\(wo\.company_id\)/.test(code2));
 assert("vendor totals counted on the paid transition, not per post", /IF v_inv\.status IS DISTINCT FROM 'paid' THEN[\s\S]{0,300}UPDATE vendors SET total_paid/.test(code2));
-assert("no migration touches existing journal entries", !/(UPDATE|DELETE FROM)\s+(public\.)?acct_journal/i.test(mig1 + code2));
+const mig3 = read("supabase/migrations/20260928152000_repair_postings_qa3.sql");
+const code3 = mig3.replace(/^\s*--.*$/gm, "");
+assert("no migration touches existing journal entries", !/(UPDATE|DELETE FROM)\s+(public\.)?acct_journal/i.test(mig1 + code2 + code3));
+assert("R3: vendor FK is RESTRICT and a vendor with invoices cannot be deleted", /REFERENCES public\.vendors\(id\) ON DELETE RESTRICT/.test(code3) && /BEFORE DELETE ON public\.vendors/.test(code3) && /vendor_has_invoices/.test(admin));
+assert("R3: withdraw re-runs the close-out", /async function withdrawInvoice[\s\S]{0,1400}closeOutWorkOrder\(\{ companyId, woId: inv\.work_order_id/.test(maint));
+assert("R3: the pay RPC refuses withdrawn and disputed invoices", /archived_at IS NOT NULL THEN RETURN jsonb_build_object\('reason', 'withdrawn'\)/.test(code3) && /status = 'disputed' THEN RETURN jsonb_build_object\('reason', 'disputed'\)/.test(code3));
+assert("R3: voiding a VPAY- un-pays the invoice and its vendor totals (and un-voiding re-pays)", /AFTER UPDATE OF status ON public\.acct_journal_entries/.test(code3) && /SET status = 'pending', paid_date = NULL/.test(code3) && /total_paid = greatest\(0/.test(code3));
+assert("R3: account creation is race-safe", /ON CONFLICT \(company_id, code\) DO NOTHING/.test(code3));
+assert("R3: purge deletes row by row and skips what it cannot delete", /EXCEPTION WHEN OTHERS THEN\s+v_skipped := v_skipped \+ 1/.test(code3) && /'skipped', v_skipped/.test(code3));
+assert("R3: VPAY is a system reference; link error names no id", /\|VPAY\|/.test(code3) && /'Work order not found in this company'/.test(code3));
 
 // ─── 3. LIVE on TEST ─────────────────────────────────────────────────────
 require("./sandbox-env");
@@ -280,8 +284,8 @@ if (!url || !key) {
       const wB = must(await svc.from("work_orders").insert([{ company_id: CO2, property: "QA-EXP B", issue: "QA-EXP B", cost: 1 }]).select("id").single(), "woB");
       const x1 = await svc.from("vendor_invoices").insert([{ company_id: CO, vendor_name: "QA-EXP", amount: 1, work_order_id: wB.id }]);
       const x2 = await svc.from("work_order_photos").insert([{ company_id: CO, work_order_id: wB.id, url: "qa-exp" }]);
-      assert("X1 invoice cannot link another company's work order", !!x1.error && /does not belong/.test(x1.error.message), x1.error?.message);
-      assert("X2 photo cannot point at another company's work order", !!x2.error && /does not belong/.test(x2.error.message), x2.error?.message);
+      assert("X1 invoice cannot link another company's work order", !!x1.error && /not found in this company/.test(x1.error.message), x1.error?.message);
+      assert("X2 photo cannot point at another company's work order", !!x2.error && /not found in this company/.test(x2.error.message), x2.error?.message);
       await svc.from("work_orders").delete().eq("id", wB.id); await svc.from("companies").delete().eq("id", CO2); }
 
     // V1 vendor totals counted once (incl. legacy "posted but not marked paid")
@@ -309,6 +313,59 @@ if (!url || !key) {
       const ids = new Set(rows.map(r => r.id));
       assert("U1 as of Aug 31: paid-in-Sept shows unpaid, disputed shows, withdrawn and paid-in-Aug do not",
         ids.has(early.id) && ids.has(disp.id) && !ids.has(gone.id) && !ids.has(paidEarly.id)); }
+
+    // Round 3 --------------------------------------------------------------
+    // V2 a vendor with invoices cannot be hard-deleted (used to cascade them away)
+    { const v = must(await svc.from("vendors").insert([{ company_id: CO, name: "QA-EXP Del Vendor" }]).select("id").single(), "v");
+      const w = await mkWO(800); await complete(w);
+      const inv = await mkInv(800, w.id, { vendor_id: v.id }); await pay(inv);
+      const del = await svc.from("vendors").delete().eq("id", v.id);
+      const left = must(await svc.from("vendor_invoices").select("id").eq("id", inv.id), "inv left");
+      const r = await complete(w);
+      const l = await ledger(refs(w, [inv]));
+      assert("V2 vendor delete refused; invoice kept; repair still booked once (800)", !!del.error && /cannot be permanently deleted/.test(del.error.message) && left.length === 1 && r.reason === "already_posted" && bal(l, "5300") === 800 && bal(l, "2110") === 0, del.error?.message); }
+
+    // W1 withdraw re-runs the close-out (the UI calls repair_close_out_work_order after archiving)
+    { const w = await mkWO(600); await complete(w); const a = await mkInv(400, w.id); const d = await mkInv(50, w.id, { status: "disputed" });
+      const p = await pay(a);
+      must(await svc.from("vendor_invoices").update({ archived_at: new Date().toISOString() }).eq("id", d.id), "withdraw");
+      const c = await closeOut(w);
+      const l = await ledger(refs(w, [a, d]));
+      assert("W1 disputed sibling withdrawn -> close-out reverses 200; 5300 400, AP 0", p.closeout?.reason === "invoices_unpaid" && c.reversed === 200 && bal(l, "5300") === 400 && bal(l, "2110") === 0); }
+
+    // W2 withdrawn / disputed invoices are refused by the pay RPC
+    { const wi = await mkInv(75, null, { archived_at: new Date().toISOString() });
+      const di = await mkInv(60, null, { status: "disputed" });
+      const r1 = await pay(wi), r2 = await pay(di);
+      const l = await ledger(["VPAY-" + wi.id, "VPAY-" + di.id]);
+      assert("W2 pay RPC refuses withdrawn and disputed invoices; nothing posted", r1.reason === "withdrawn" && r2.reason === "disputed" && l.count === 0); }
+
+    // P1 voiding a VPAY- entry un-pays the invoice + vendor totals; re-pay works; un-void blocked
+    { const v = must(await svc.from("vendors").insert([{ company_id: CO, name: "QA-EXP Void Vendor", total_paid: 0, total_jobs: 0 }]).select("id").single(), "v");
+      const w = await mkWO(600); await complete(w);
+      const inv = await mkInv(400, w.id, { vendor_id: v.id }); await pay(inv);
+      await voidJE("VPAY-" + inv.id); await voidJE("WO-ADJ-" + w.id);
+      const after = must(await svc.from("vendor_invoices").select("status, paid_date").eq("id", inv.id).single(), "after");
+      const vv1 = must(await svc.from("vendors").select("total_paid, total_jobs").eq("id", v.id).single(), "vv1");
+      const rp = await pay({ ...inv, status: after.status });
+      const vv2 = must(await svc.from("vendors").select("total_paid, total_jobs").eq("id", v.id).single(), "vv2");
+      const l = await ledger(refs(w, [inv]));
+      assert("P1 void of VPAY -> invoice pending, vendor totals back to 0", after.status === "pending" && after.paid_date === null && Number(vv1.total_paid) === 0 && vv1.total_jobs === 0, JSON.stringify({ after, vv1 }));
+      assert("P1b re-pay after void: posted, totals 400/1, close-out 200, 5300 400, AP 0", rp.reason === "posted" && rp.marked_paid && Number(vv2.total_paid) === 400 && vv2.total_jobs === 1 && rp.closeout?.reversed === 200 && bal(l, "5300") === 400 && bal(l, "2110") === 0, JSON.stringify({ rp: rp.reason, vv2 })); }
+
+    // F1 first use in a brand-new company: 10 postings at once must all succeed
+    { const CO3 = CO + "-c"; must(await svc.from("companies").insert([{ id: CO3, name: "QA-EXP fresh" }]), "co3");
+      const ws = [];
+      for (let i = 0; i < 10; i++) ws.push(must(await svc.from("work_orders").insert([{ company_id: CO3, property: "QA-EXP F" + i, issue: "QA-EXP fresh " + i, cost: 100 + i, status: "completed" }]).select("*").single(), "wo3"));
+      const rs = await Promise.all(ws.map(w => P.postWorkOrderCompletion({ companyId: CO3, wo: w, date: TODAY })));
+      const accts = must(await svc.from("acct_accounts").select("code").eq("company_id", CO3), "a3");
+      assert("F1 10 concurrent first postings in a fresh company all post; one 2110 and one 5300", rs.every(r => r.reason === "accrue") && accts.filter(a => a.code === "2110").length === 1 && accts.filter(a => a.code === "5300").length === 1, JSON.stringify(rs.map(r => r.reason + (r.error ? ":" + r.error.message : "")))); }
+
+    // S1 VPAY- is a system reference; link error does not name the id
+    { const { data: sys } = await svc.rpc("je_reference_is_system", { p_reference: "VPAY-" + "00000000-0000-0000-0000-000000000000" });
+      const x = await svc.from("vendor_invoices").insert([{ company_id: CO, vendor_name: "QA-EXP", amount: 1, work_order_id: 2147480000 }]);
+      assert("S1 VPAY- counts as a system reference", sys === true);
+      assert("S1b link error for a missing / foreign work order names no id", !!x.error && x.error.message === "Work order not found in this company", x.error?.message); }
 
     // Escrowed taxes
     { must(await svc.from("property_taxes").insert([
