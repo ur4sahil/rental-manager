@@ -5,6 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDate
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
@@ -133,14 +134,15 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const handledAction = useRef(null);
   useEffect(() => {
     const id = initialAction?.editRecordId;
-    if (!id || handledAction.current === initialAction || utilAccounts.length === 0) return;
+    if (!id || handledAction.current === initialAction || loading) return;
     const acct = utilAccounts.find(a => String(a.legacy_utility_id) === String(id))
       || utilAccounts.find(a => String(a.id) === String(initialAction.editAccountId || ""));
-    if (!acct) return;
     handledAction.current = initialAction;
+    // Loaded, and not among this company's live accounts: say so.
+    if (!acct) { showToast("That record was archived or isn't available.", "error"); return; }
     setUtilTab("automation");
     openEditAccount(acct);
-  }, [initialAction, utilAccounts]);
+  }, [initialAction, utilAccounts, loading]);
 
   async function fetchAutomationData() {
   const [accts, bills, jobs, provs, receipts] = await Promise.all([
@@ -155,7 +157,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   setUtilAccounts(accts.data || []);
   const receiptByBill = new Map();
   for (const r of (receipts.data || [])) { if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path); }
-  setAutoBills((bills.data || []).map(b => ({ ...b, receipt_path: receiptByBill.get(b.id) || null })));
+  // One responsibility rule (same as the list and claim_utility_payment): the
+  // ACCOUNT's current responsibility, the bill's snapshot only as fallback --
+  // so "Pay this bill" is never offered on a now-tenant/condo account.
+  const respByAcct = new Map((accts.data || []).map(a => [a.id, a.responsibility]));
+  setAutoBills((bills.data || []).map(b => ({ ...b, responsibility: respByAcct.get(b.utility_account_id) || b.responsibility, receipt_path: receiptByBill.get(b.id) || null })));
   setAutoJobs(jobs.data || []);
   // Approved providers, plus any this company proposed and an admin has not
   // approved yet (usable immediately). A legacy row with no approval_status
@@ -180,6 +186,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   if (!editingAccount && (!accountForm.provider || !accountForm.username || !accountForm.password)) {
   showToast("Property, provider, username, and password are required.", "error"); return;
   }
+  // Half a login is refused on edit too: blank-both keeps the stored login,
+  // one half alone would silently keep the OLD login while looking saved.
+  if (isHalfLogin(accountForm.username, accountForm.password)) { showToast(halfLoginMessage("utility portal login"), "error"); return; }
   const providerInfo = (accountForm.provider && accountForm.provider !== "__keep__")
     ? providers.find(p => p.id === accountForm.provider) : null;
   const payload = {
@@ -236,21 +245,37 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   responsibility: payload.responsibility,
   ...(creds || {}),
   };
+  // Moved to another property: let the fill trigger recompute property_id
+  // for the new address instead of keeping the old property's id.
+  if (editingAccount && editingAccount.property !== payload.property) utilPatch.property_id = null;
   let error;
   let legacyId = editingAccount?.legacy_utility_id || null;
   if (legacyId) {
-  ({ error } = await supabase.from("utilities").update(utilPatch).eq("id", legacyId).eq("company_id", companyId));
-  } else {
-  // No utilities row behind this account (added here, never through the
-  // wizard) -- so the sweep could not see it. Create one; the bridge links it.
-  const { data: ins, error: insErr } = await supabase.from("utilities").insert([{
-    ...utilPatch, company_id: companyId,
-    type: UTIL_TYPE_FOR_ACCOUNT[payload.account_type] || "Electric",
-    amount: 0, status: "pending",
-    website: payload.login_url || editingAccount?.login_url || editingAccount?.website || "",
-  }]).select("id").single();
+  // Only a LIVE linked row counts; a link to an archived row is treated as
+  // no row at all (below), so the account gets a live line again.
+  const { data: updRows, error: updErr } = await supabase.from("utilities").update(utilPatch)
+    .eq("id", legacyId).eq("company_id", companyId).is("archived_at", null).select("id");
+  error = updErr;
+  if (!error && !(updRows || []).length) legacyId = null;
+  }
+  if (!error && !legacyId) {
+  // No live utilities row behind this account (added here, never through the
+  // wizard) -- so the sweep could not see it. Create one. The RPC NAMES the
+  // account the row belongs to (null = a brand-new account) in the same
+  // transaction, so the bridge links exactly that one and never adopts a
+  // different account at the same property + provider.
+  const { data: newId, error: insErr } = await supabase.rpc("save_utility_line_for_account", {
+    p_company_id: companyId,
+    p_account_id: editingAccount?.id || null,
+    p_row: {
+      ...utilPatch,
+      type: UTIL_TYPE_FOR_ACCOUNT[payload.account_type] || "Electric",
+      amount: 0, status: "pending",
+      website: payload.login_url || editingAccount?.login_url || editingAccount?.website || "",
+    },
+  });
   error = insErr;
-  if (!error) legacyId = ins.id;
+  if (!error) legacyId = newId;
   }
   if (error) {
   if (/duplicate key|unique/i.test(error.message || "")) showToast("That provider and account number are already on another utility line.", "error");
@@ -265,14 +290,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   acctId = linked?.[0]?.id || null;
   }
   if (acctId) {
-  ({ error } = await supabase.from("utility_accounts").update({ ...payload, legacy_utility_id: legacyId })
+  // The link itself was made by the bridge (named account); this writes the
+  // account-only fields.
+  ({ error } = await supabase.from("utility_accounts").update(payload)
     .eq("id", acctId).eq("company_id", companyId));
-  // One utilities row, one account: if the bridge linked a different account
-  // to a row created for this one, unlink that other account.
-  if (!error) await supabase.from("utility_accounts").update({ legacy_utility_id: null })
-    .eq("company_id", companyId).eq("legacy_utility_id", legacyId).neq("id", acctId);
   } else {
-  ({ error } = await supabase.from("utility_accounts").insert([{ ...payload, legacy_utility_id: legacyId }]));
+  error = { message: "the new utility line was saved but no account was linked to it" };
   }
   if (error) { pmError("PM-4002", { raw: error, context: "saving utility account" }); return; }
   logAudit("update", "utilities", `${editingAccount ? "Edited" : "Added"} utility account: ${providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider} at ${accountForm.property} (${respLabel(payload.responsibility)})${creds ? " — login updated" : ""}`, String(acctId || ""), userProfile?.email, userRole, companyId);
@@ -748,6 +771,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const row = { ...form, amount: Number(form.amount), company_id: companyId };
   delete row.username; delete row.password; // don't store plaintext
   row.website = form.website || "";
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("utility portal login"), "error"); return; }
   if (form.username || form.password) {
     try {
       const resU = await encryptCredential(form.username || "", companyId);

@@ -827,7 +827,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
   );
 }
 
-function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification }) {
+function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification, allowedPages }) {
   const [loading, setLoading] = useState(true);
   const [approvals, setApprovals] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -938,8 +938,12 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   // LOGIN MISSING: utilities / insurance / loans / HOAs saved without a
   // portal login. Computed from the records, so a to-do vanishes as soon as a
   // login is saved. Paged -- a company can exceed PostgREST's 1000-row cap.
+  // Only record types whose page this viewer can open: a manager or office
+  // assistant has Tasks but not Loans / Insurance, and a to-do linking there
+  // just lands them back on the dashboard. No allowedPages = no filter.
+  const canOpenPage = (pg) => !Array.isArray(allowedPages) || allowedPages.includes(pg);
   const loginRows = {};
-  await Promise.all(LOGIN_MISSING_SOURCES.map(async src => {
+  await Promise.all(LOGIN_MISSING_SOURCES.filter(src => canOpenPage(src.page)).map(async src => {
     const { rows } = await fetchAllPaged(() => {
       let q = supabase.from(src.table).select(src.select).eq("company_id", companyId).is("archived_at", null);
       if (src.kind === "utility") q = q.not("is_final_bill", "is", true);
@@ -948,7 +952,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
     loginRows[src.kind] = rows;
   }));
   const propIdByAddr = new Map((props.data || []).map(p => [p.address, p.id]));
-  allTasks.push(...buildLoginMissingTasks(loginRows, propIdByAddr));
+  allTasks.push(...buildLoginMissingTasks(loginRows, propIdByAddr, { allowedPages }));
   // Cache open doc_exception requests keyed on address + doc_type so
   // the TasksList can badge "Exception pending review" on the right
   // step without refetching per row. Must live inside the try block

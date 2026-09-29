@@ -5,6 +5,7 @@ import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
@@ -27,12 +28,14 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   const handledAction = useRef(null);
   useEffect(() => {
   const id = initialAction?.editRecordId;
-  if (!id || handledAction.current === initialAction || policies.length === 0) return;
+  if (!id || handledAction.current === initialAction || loading) return;
   const rec = policies.find(x => String(x.id) === String(id));
-  if (!rec) return;
   handledAction.current = initialAction;
+  // Loaded, and not among this company's live records: say so rather than
+  // silently opening nothing.
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
   openEditPolicy(rec);
-  }, [initialAction, policies]);
+  }, [initialAction, policies, loading]);
 
   async function fetchPolicies() {
   const { data } = await supabase.from("property_insurance").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
@@ -50,6 +53,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   // valid date literal. Coerce blanks to null so INSERT behaves like UPDATE.
   payload.expiration_date = form.expiration_date || null;
   payload.website = form.website || "";
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("insurance portal login"), "error"); return; }
   if (form.username || form.password) {
     try {
       const resU = await encryptCredential(form.username || "", companyId);

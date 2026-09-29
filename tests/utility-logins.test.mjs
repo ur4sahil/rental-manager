@@ -55,7 +55,9 @@ function open(master, r) {
 
 console.log("\n=== UTILITY LOGINS · part 1: crypto + worker rules (dummy key) ===\n");
 
-// Item 10: one fingerprint rule on both sides, key bytes untouched.
+// Item 10: one fingerprint rule on both sides -- the hash of the EXACT key
+// bytes. Not normalised: "K\n" and "K" are different keys and must show
+// different fingerprints, or a real mismatch hides behind a matching fp.
 {
   const saved = process.env.ENCRYPTION_KEY;
   process.env.ENCRYPTION_KEY = DUMMY_KEY;
@@ -65,13 +67,19 @@ console.log("\n=== UTILITY LOGINS · part 1: crypto + worker rules (dummy key) =
   const fp = api.keyFingerprints;
   assert("api and worker compute the SAME fingerprint for the same key",
     fp.current === sel.keyFingerprint(DUMMY_KEY), `${fp.current} vs ${sel.keyFingerprint(DUMMY_KEY)}`);
-  assert("the fingerprint ignores a trailing newline (shell export vs key file)",
-    sel.keyFingerprint(DUMMY_KEY) === sel.keyFingerprint(DUMMY_KEY.replace(/\n$/, ""))
-    && sel.keyFingerprint(DUMMY_KEY) === sel.keyFingerprint(DUMMY_KEY + "\r\n"));
   const rawFp = crypto.createHash("sha256").update(DUMMY_KEY).digest("hex").slice(0, 12);
-  assert("fingerprints stored before the rule (hash of the verbatim key) are still accepted — api",
-    fp.accepted.includes(rawFp));
-  assert("… and by the worker", sel.acceptedFingerprints(DUMMY_KEY).has(rawFp));
+  assert("the fingerprint is the hash of the exact key bytes (so stored fps still match)",
+    fp.current === rawFp && sel.keyFingerprint(DUMMY_KEY) === rawFp && fp.accepted.length === 1);
+  assert("a key that lost its trailing newline is a DIFFERENT fingerprint (mismatch stays visible)",
+    sel.keyFingerprint(DUMMY_KEY) !== sel.keyFingerprint(DUMMY_KEY.replace(/\n$/, ""))
+    && !sel.acceptedFingerprints(DUMMY_KEY.replace(/\n$/, "")).has(rawFp));
+  {
+    // "K\n" app wrote the row; a "K" worker must report a key mismatch, not
+    // a silent decrypt failure.
+    const row = loginRow(DUMMY_KEY, "u@example.test", "pw", { provider: "QA Power" });
+    const r2 = sel.pickCredential([row], DUMMY_KEY.replace(/\n$/, ""), { aliases: ["qa power"] });
+    assert("a worker holding K (app used K\\n) reports a key mismatch", r2.error && r2.sawForeignKey === true, JSON.stringify(r2));
+  }
   assert("a different key is still a different fingerprint",
     sel.keyFingerprint("another-key\n") !== sel.keyFingerprint(DUMMY_KEY));
 
@@ -107,7 +115,7 @@ console.log("\n=== UTILITY LOGINS · part 1: crypto + worker rules (dummy key) =
     picked.username === "new@example.test" && picked.password === "new-pw", JSON.stringify(picked));
   const legacyFp = loginRow(DUMMY_KEY, "legacy@example.test", "pw", {
     provider: "QA Power", credential_key_fp: crypto.createHash("sha256").update(DUMMY_KEY).digest("hex").slice(0, 12) });
-  assert("a row stamped with the pre-rule fingerprint is still used",
+  assert("a row stamped with the verbatim-key fingerprint is used",
     sel.pickCredential([legacyFp], DUMMY_KEY, { aliases }).username === "legacy@example.test");
   const foreign = loginRow("some-other-key", "x@example.test", "pw", { provider: "QA Power" });
   const res = sel.pickCredential([foreign], DUMMY_KEY, { aliases });
@@ -159,8 +167,14 @@ assert("… persists the key fingerprint and all six credential columns",
   && ["username_encrypted", "password_encrypted", "encryption_iv_username", "encryption_iv", "encryption_salt"].every(k => new RegExp(k + ":").test(saveAcct)));
 assert("… writes the SAME ciphertext to the linked utilities row (or creates one)",
   /\.\.\.\(creds \|\| \{\}\)/.test(saveAcct)
-  && /from\("utilities"\)\.update\(utilPatch\)\.eq\("id", legacyId\)/.test(saveAcct)
-  && /from\("utilities"\)\.insert\(\[\{\s*\.\.\.utilPatch/.test(saveAcct));
+  && /from\("utilities"\)\.update\(utilPatch\)/.test(saveAcct)
+  && /rpc\("save_utility_line_for_account", \{[\s\S]{0,120}p_account_id: editingAccount\?\.id \|\| null/.test(saveAcct));
+assert("… never re-points links itself (the bridge links the NAMED account)",
+  !/legacy_utility_id: null/.test(saveAcct) && !/\.update\(\{ \.\.\.payload, legacy_utility_id/.test(saveAcct));
+assert("… moving property clears property_id so the fill trigger recomputes it",
+  /editingAccount\.property !== payload\.property\) utilPatch\.property_id = null/.test(saveAcct));
+assert("… refuses half a login on edit",
+  /isHalfLogin\(accountForm\.username, accountForm\.password\)/.test(saveAcct));
 assert("… syncs property, provider, account number and responsibility to the utilities row",
   /property: payload\.property,\s*provider: providerName,\s*account_number: accountForm\.account_number \|\| null,\s*responsibility: payload\.responsibility/.test(saveAcct));
 assert("… stores the provider NAME, not the utility_providers id",
@@ -179,8 +193,8 @@ assert("Loans persists credential_key_fp on update and insert",
 const props = read("src/components/Properties.js");
 assert("the wizard payload carries credential_key_fp for each credential set",
   /credential_key_fp: u\.keyFp \|\| p\.keyFp \|\| null/.test(props));
-assert("the wizard reuses the stored HOA row salt for every login set",
-  /storedHoaSalt\[h\.hoa_name\.trim\(\)\]/.test(props)
+assert("the wizard reuses the stored HOA row salt for every login set, keyed by row id",
+  /storedHoaSaltById\[String\(h\.id\)\]/.test(props)
   && /encryptRow\(!!\(h\.username && h\.password\), h\.username, h\.password, keptSalt\)/.test(props));
 const hoa = read("src/components/HOA.js");
 assert("the HOA page reuses the row salt when the association login changes",
@@ -209,6 +223,31 @@ assert("migration: claim RPC reads COALESCE(account, bill)",
 assert("migration: every definer function it defines is revoked from PUBLIC/anon",
   (mig.match(/SECURITY DEFINER/g) || []).length
     === (mig.match(/REVOKE ALL ON FUNCTION public\.[a-z_]+\([^)]*\) FROM PUBLIC, anon/g) || []).length);
+
+// Round 2 (adversarial pass).
+{
+  const lm = read("src/utils/loginMissing.js");
+  assert("half a login never clears a to-do (username AND password)",
+    /hasPair\(r\.username_encrypted, r\.password_encrypted\)/.test(lm) && !/hasLogin: \(r\) => hasValue\(r\.username_encrypted\)/.test(lm));
+  for (const [f, re] of [["src/components/Utilities.js", /isHalfLogin\(form\.username, form\.password\)/],
+                         ["src/components/Insurance.js", /isHalfLogin\(form\.username, form\.password\)/],
+                         ["src/components/HOA.js", /isHalfLogin\(form\.pay_username, form\.pay_password\)/],
+                         ["src/components/Loans.js", /isHalfLogin\(portfolioForm\.username, portfolioForm\.password\)/]]) {
+    assert(`${path.basename(f)} refuses half a login`, re.test(read(f)));
+  }
+  const adm = read("src/components/Admin.js");
+  assert("login-missing to-dos are limited to pages the viewer can open",
+    /buildLoginMissingTasks\(loginRows, propIdByAddr, \{ allowedPages \}\)/.test(adm) && /TasksAndApprovals\(\{[^}]*allowedPages \}\)/.test(adm));
+  for (const f of ["Insurance.js", "HOA.js", "Loans.js", "Utilities.js"]) {
+    assert(`${f}: a deep link to an unavailable record says so`, /That record was archived or isn't available/.test(read("src/components/" + f)));
+  }
+  assert("Fetched Bills decides Pay from the ACCOUNT's responsibility",
+    /responsibility: respByAcct\.get\(b\.utility_account_id\) \|\| b\.responsibility/.test(util));
+  assert("pay-runner refuses condo_fee and compares case-insensitively",
+    /responsibility === "condo_fee"/.test(runner) && /toLowerCase\(\)/.test(runner));
+  assert("portfolio loan insert writes NULL, not '', when there is no login",
+    /noLogin = base\.username_encrypted \? \{\} : \{ username_encrypted: null/.test(read("src/components/Loans.js")));
+}
 
 // ─── part 3: the database, on TEST ───────────────────────────────────────
 let sb = null;
@@ -361,6 +400,62 @@ if (sb) {
     const a4 = await acctFor(u4.id);
     const a3again = await acctFor(u3.id);
     assert("a second live line for the same provider gets its OWN account", a4 && a4.id !== a3.id && a3again && a3again.id === a3.id);
+
+    // 11. Accounts-tab save NAMES its account (round 2): no hijack.
+    const P2 = "QA-UTIL 2 Hijack Ave";
+    const mkAcct = async (extra) => (await one(sb.from("utility_accounts").insert([{ company_id: CO, property: P2, provider: PROV,
+      provider_display: PROV, account_type: "electric", ...extra }]).select("*")))[0];
+    const bOld = await mkAcct({ account_number: "B-OLD-111", responsibility: "owner" });
+    const cTen = await mkAcct({ account_number: "C-222", responsibility: "tenant" });
+    // ADD: a brand-new account at the same property + provider
+    const { data: addId, error: addErr } = await sb.rpc("save_utility_line_for_account", { p_company_id: CO, p_account_id: null,
+      p_row: { property: P2, provider: PROV, account_number: "A-NEW-333", responsibility: "owner", ...loginRow(DUMMY_KEY, "new@example.test", "pw") } });
+    const aNew = addErr ? null : await acctFor(addId);
+    const bAfter = (await one(sb.from("utility_accounts").select("*").eq("id", bOld.id)))[0];
+    assert("add: a NEW account is created for the new line; the unlinked B-OLD-111 is untouched",
+      !addErr && aNew && aNew.id !== bOld.id && aNew.id !== cTen.id && aNew.account_number === "A-NEW-333"
+      && bAfter.legacy_utility_id == null && bAfter.account_number === "B-OLD-111" && bAfter.username_encrypted == null,
+      addErr ? addErr.message : JSON.stringify({ aNew: aNew && aNew.id, b: bAfter.legacy_utility_id }));
+    // EDIT: the unlinked tenant account C gets its line; nothing else moves
+    const { data: cLine, error: cErr2 } = await sb.rpc("save_utility_line_for_account", { p_company_id: CO, p_account_id: cTen.id,
+      p_row: { property: P2, provider: PROV, account_number: "C-222", responsibility: "tenant" } });
+    const cAfter = (await one(sb.from("utility_accounts").select("*").eq("id", cTen.id)))[0];
+    const aNewAfter = await acctFor(addId);
+    assert("edit: the NAMED account C is linked, stays tenant; the other accounts keep their links",
+      !cErr2 && cAfter.legacy_utility_id === cLine && cAfter.responsibility === "tenant" && cAfter.account_number === "C-222"
+      && aNewAfter && aNewAfter.id === aNew.id,
+      cErr2 ? cErr2.message : JSON.stringify(cAfter));
+    const { error: againErr } = await sb.rpc("save_utility_line_for_account", { p_company_id: CO, p_account_id: cTen.id,
+      p_row: { property: P2, provider: PROV, account_number: "C-222b", responsibility: "tenant" } });
+    assert("a second line for an account that already has a live one is refused (no silent relink)", !!againErr, "no error");
+    const { error: otherCoErr } = await sb.rpc("save_utility_line_for_account", { p_company_id: CO + "-other", p_account_id: bOld.id,
+      p_row: { property: P2, provider: PROV, account_number: "X", responsibility: "owner" } });
+    assert("naming an account from another company is refused", !!otherCoErr, "no error");
+    const { count: strayLines } = await sb.from("utilities").select("*", { count: "exact", head: true }).eq("company_id", CO + "-other");
+    assert("… and leaves nothing behind", strayLines === 0);
+    const { data: wiz } = await sb.from("utilities").insert([{ company_id: CO, property: P2, provider: PROV, type: "Electric",
+      account_number: "B-OLD-111", responsibility: "owner", amount: 0, status: "pending" }]).select("id").single();
+    assert("an UNNAMED insert (wizard) still re-links the matching unlinked account",
+      (await acctFor(wiz.id))?.id === bOld.id);
+
+    // 12. property moved: property_id recomputed, not stale
+    const anyProp = (await one(sb.from("properties").select("id").limit(1)))[0];
+    if (anyProp) {
+      await one(sb.from("utilities").update({ property_id: anyProp.id }).eq("id", addId));
+      await one(sb.from("utilities").update({ property: "QA-UTIL 3 Moved Rd", property_id: null }).eq("id", addId));
+      const moved = (await one(sb.from("utilities").select("property_id").eq("id", addId)))[0];
+      assert("moving a line to another property does not keep the old property_id", moved.property_id !== anyProp.id, JSON.stringify(moved));
+    }
+
+    // 13. condo fee: the claim RPC refuses it (account wins, any case)
+    const condoBill = (await one(sb.from("utility_bills").insert([{ company_id: CO, utility_account_id: bOld.id, property: P2, provider: PROV,
+      amount: 9, statement_period: "2026-08", responsibility: "owner", status: "pending_review" }]).select("id")))[0];
+    await one(sb.from("utility_accounts").update({ responsibility: "Condo_Fee" }).eq("id", bOld.id));
+    const cp = (await one(sb.from("utility_payments").insert([{ company_id: CO, provider: "qa", approved_amount: 5, approved_by: "qa@example.test",
+      approved_at: new Date().toISOString(), status: "approved", bill_id: condoBill.id, idem_key: "QA-UTIL-condo-" + CO }]).select("id")))[0];
+    const { data: cc } = await sb.rpc("claim_utility_payment", { p_company_id: CO, p_id: cp.id, p_worker: "qa" });
+    const c2 = Array.isArray(cc) ? cc[0] : cc;
+    assert("claim_utility_payment refuses a condo-fee utility (case-insensitive)", c2 && c2.ok === false && /condo/.test(c2.reason || ""), JSON.stringify(c2));
   } catch (e) {
     assert("database part ran without error", false, e.stack || e.message);
   } finally {
@@ -381,6 +476,16 @@ if (sb) {
     }
     assert("cleanup: zero QA-UTIL rows left behind", Object.values(left).every(n => n === 0), JSON.stringify(left));
   }
+}
+
+// RLS (round 2): a real tenant JWT on TEST cannot read or change utility
+// accounts / bills. utility-rls-exploit.mjs creates and removes its own
+// throwaway user and QA-UTIL rows.
+if (sb) {
+  const { runTenantExploit } = await import("./utility-rls-exploit.mjs");
+  const r = await runTenantExploit();
+  assert("a tenant cannot read, flip or read ciphertext of utility accounts/bills", !r.error && r.exploitable === false, JSON.stringify(r));
+  assert("the exploit run left nothing behind", r.leftovers === 0, JSON.stringify(r));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

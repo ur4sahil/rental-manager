@@ -28,3 +28,11 @@ ALTER TABLE public.hoa_payments
   ALTER COLUMN username_encrypted SET DEFAULT NULL,
   ALTER COLUMN password_encrypted SET DEFAULT NULL,
   ALTER COLUMN encryption_iv      SET DEFAULT NULL;
+
+-- Portfolio (blanket) loans carry the same three credential columns, also
+-- DEFAULT ''. No CHECK there, but '' still reads as a stored login to
+-- anything testing IS NOT NULL, so the honest "no login" is NULL here too.
+ALTER TABLE public.portfolio_loans
+  ALTER COLUMN username_encrypted SET DEFAULT NULL,
+  ALTER COLUMN password_encrypted SET DEFAULT NULL,
+  ALTER COLUMN encryption_iv      SET DEFAULT NULL;

@@ -112,6 +112,15 @@ async function runOne(pay, live) {
     responsibility = ra?.responsibility || null;
   }
   if (!responsibility) responsibility = bill?.responsibility || null;
+  responsibility = responsibility ? String(responsibility).trim().toLowerCase() : null;
+  // Covered by the condo fee: there is no separate bill of ours to pay.
+  if (responsibility === "condo_fee") {
+    await sb.from("utility_payments").update({ status: "cancelled",
+      error: "this utility is covered by the condo fee — there is no separate bill to pay",
+    }).eq("id", pay.id).eq("company_id", COMPANY);
+    console.error("  refused: covered by the condo fee");
+    return "refused";
+  }
   if (responsibility === "tenant") {
     await sb.from("utility_payments").update({ status: "cancelled",
       error: "the tenant is responsible for this utility — it is not ours to pay",

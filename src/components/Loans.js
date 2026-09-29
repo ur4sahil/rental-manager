@@ -5,6 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanT
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
@@ -21,6 +22,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const emptyPortfolioForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", account_number: "", loan_start_date: "", maturity_date: "", escrow_included: false, escrow_amount: "", status: "active", notes: "", website: "", username: "", password: "", properties: [] };
   const [portfolioLoans, setPortfolioLoans] = useState([]);
   const [portfolioProps, setPortfolioProps] = useState([]);
+  const [pfLoaded, setPfLoaded] = useState(false);
   const [showPortfolioForm, setShowPortfolioForm] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState(null);
   const [portfolioForm, setPortfolioForm] = useState(emptyPortfolioForm);
@@ -39,12 +41,13 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const handledAction = useRef(null);
   useEffect(() => {
   const id = initialAction?.editRecordId;
-  if (!id || handledAction.current === initialAction || loans.length === 0) return;
+  if (!id || handledAction.current === initialAction || loading) return;
   const rec = loans.find(x => String(x.id) === String(id));
-  if (!rec) return;
   handledAction.current = initialAction;
+  // Loaded, and not among this company's live records: say so.
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
   openEditLoan(rec);
-  }, [initialAction, loans]);
+  }, [initialAction, loans, loading]);
 
   function openEditPortfolio(l) {
   setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true);
@@ -53,12 +56,12 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const handledPfAction = useRef(null);
   useEffect(() => {
   const id = initialAction?.editPortfolioId;
-  if (!id || handledPfAction.current === initialAction || portfolioLoans.length === 0) return;
+  if (!id || handledPfAction.current === initialAction || !pfLoaded) return;
   const rec = portfolioLoans.find(x => String(x.id) === String(id));
-  if (!rec) return;
   handledPfAction.current = initialAction;
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
   openEditPortfolio(rec);
-  }, [initialAction, portfolioLoans, portfolioProps]);
+  }, [initialAction, portfolioLoans, portfolioProps, pfLoaded]);
 
   // Load the current portfolio attachment for whichever property the loan form
   // is on, so the dropdown reflects reality and save can detach/attach.
@@ -96,6 +99,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   // that fills only one field would otherwise write a broken half-credential and
   // the whole save would fail the constraint).
   let creds = null;
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
   if (form.username && form.password) {
     try {
       const resU = await encryptCredential(form.username, companyId);
@@ -202,6 +206,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   ]);
   setPortfolioLoans(pl || []);
   setPortfolioProps(pp || []);
+  setPfLoaded(true);
   }
 
   async function savePortfolioLoan() {
@@ -219,6 +224,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     escrow_included: portfolioForm.escrow_included, escrow_amount: portfolioForm.escrow_included ? Number(portfolioForm.escrow_amount || 0) : 0,
     status: portfolioForm.status, notes: portfolioForm.notes || "", website: portfolioForm.website || "",
   };
+  if (isHalfLogin(portfolioForm.username, portfolioForm.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
   if (portfolioForm.username && portfolioForm.password) {
     try {
       const resU = await encryptCredential(portfolioForm.username || "", companyId);
@@ -232,7 +238,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     const { error } = await supabase.from("portfolio_loans").update({ ...base, updated_at: new Date().toISOString() }).eq("id", editingPortfolio.id).eq("company_id", companyId);
     if (error) { showToast("Error updating portfolio loan: " + error.message, "error"); return; }
   } else {
-    const { data, error } = await supabase.from("portfolio_loans").insert([{ ...base, company_id: companyId }]).select("id").single();
+    // No login: NULL, never the '' column default.
+    const noLogin = base.username_encrypted ? {} : { username_encrypted: null, password_encrypted: null, encryption_iv: null, encryption_iv_username: null, encryption_salt: null };
+    const { data, error } = await supabase.from("portfolio_loans").insert([{ ...base, ...noLogin, company_id: companyId }]).select("id").single();
     if (error) { showToast("Error saving portfolio loan: " + error.message, "error"); return; }
     loanId = data.id;
   }

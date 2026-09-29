@@ -14,6 +14,16 @@
 // before 20260914210000 could hold '' -- treat that as missing too.
 export const hasValue = (v) => typeof v === "string" ? v.trim() !== "" : v != null;
 
+// A login is BOTH halves. A username with no password (or the reverse) is not
+// a login: the portal worker skips such a row, so it must not clear the to-do.
+export const hasPair = (u, p) => hasValue(u) && hasValue(p);
+
+// Exactly one half typed into a form. Every save refuses this rather than
+// storing half a login that looks saved and never works.
+export const isHalfLogin = (username, password) => hasValue(username) !== hasValue(password);
+export const halfLoginMessage = (what = "portal login") =>
+  "Enter both the username and the password for the " + what + ", or leave both blank.";
+
 // Utilities the TENANT pays are the tenant's business, not a to-do for us.
 // The utilities table stores the short form ("tenant"); the wizard's form
 // state uses the long form ("tenant_pays"). Accept both.
@@ -42,31 +52,31 @@ export const LOGIN_MISSING_SOURCES = [
     kind: "utility", label: "Utility", icon: "⚡", page: "utilities", table: "utilities",
     // The daily bill sweep reads logins from `utilities`, so that row is the
     // one that decides. Final bills are one-off move-out statements.
-    select: "id, property, provider, responsibility, is_final_bill, archived_at, username_encrypted",
+    select: "id, property, provider, responsibility, is_final_bill, archived_at, username_encrypted, password_encrypted",
     name: (r) => r.provider,
     include: (r) => !r.archived_at && r.is_final_bill !== true && !isTenantPaid(r.responsibility) && !isCondoFee(r.responsibility),
-    hasLogin: (r) => hasValue(r.username_encrypted),
+    hasLogin: (r) => hasPair(r.username_encrypted, r.password_encrypted),
   },
   {
     kind: "insurance", label: "Insurance", icon: "🛡️", page: "insurance", table: "property_insurance",
-    select: "id, property, provider, archived_at, username_encrypted",
+    select: "id, property, provider, archived_at, username_encrypted, password_encrypted",
     name: (r) => r.provider,
     include: (r) => !r.archived_at,
-    hasLogin: (r) => hasValue(r.username_encrypted),
+    hasLogin: (r) => hasPair(r.username_encrypted, r.password_encrypted),
   },
   {
     kind: "loan", label: "Loan", icon: "🏦", page: "loans", table: "property_loans",
-    select: "id, property, lender_name, status, archived_at, username_encrypted",
+    select: "id, property, lender_name, status, archived_at, username_encrypted, password_encrypted",
     name: (r) => r.lender_name,
     include: (r) => !r.archived_at && !isPaidOff(r.status),
-    hasLogin: (r) => hasValue(r.username_encrypted),
+    hasLogin: (r) => hasPair(r.username_encrypted, r.password_encrypted),
   },
   {
     kind: "portfolio_loan", label: "Portfolio loan", icon: "🏦", page: "loans", table: "portfolio_loans",
-    select: "id, lender_name, status, archived_at, username_encrypted",
+    select: "id, lender_name, status, archived_at, username_encrypted, password_encrypted",
     name: (r) => r.lender_name,
     include: (r) => !r.archived_at && !isPaidOff(r.status),
-    hasLogin: (r) => hasValue(r.username_encrypted),
+    hasLogin: (r) => hasPair(r.username_encrypted, r.password_encrypted),
     // No single property: grouped under one "Portfolio loans" card, and the
     // Loans page opens the portfolio loan's own edit form.
     group: () => PORTFOLIO_LOANS_GROUP,
@@ -76,10 +86,12 @@ export const LOGIN_MISSING_SOURCES = [
     kind: "hoa", label: "HOA", icon: "🏘️", page: "hoa", table: "hoa_payments",
     // An HOA carries up to three logins (association, management company,
     // payment portal). Any one of them is a login.
-    select: "id, property, hoa_name, archived_at, username_encrypted, mgmt_username_encrypted, pay_username_encrypted",
+    select: "id, property, hoa_name, archived_at, username_encrypted, password_encrypted, mgmt_username_encrypted, mgmt_password_encrypted, pay_username_encrypted, pay_password_encrypted",
     name: (r) => r.hoa_name,
     include: (r) => !r.archived_at,
-    hasLogin: (r) => hasValue(r.username_encrypted) || hasValue(r.mgmt_username_encrypted) || hasValue(r.pay_username_encrypted),
+    hasLogin: (r) => hasPair(r.username_encrypted, r.password_encrypted)
+      || hasPair(r.mgmt_username_encrypted, r.mgmt_password_encrypted)
+      || hasPair(r.pay_username_encrypted, r.pay_password_encrypted),
   },
 ];
 
@@ -89,9 +101,11 @@ export const LOGIN_MISSING_SOURCES = [
 // Returns task objects in the shape TasksList already renders: `address`
 // puts each one under its property's card; `link` + `linkAction` open that
 // record's edit form on its own page.
-export function buildLoginMissingTasks(rowsByKind, propertyIdByAddress = new Map()) {
+export function buildLoginMissingTasks(rowsByKind, propertyIdByAddress = new Map(), { allowedPages } = {}) {
   const tasks = [];
   for (const src of LOGIN_MISSING_SOURCES) {
+    // Only to-dos the viewer can act on: the link must open a page they have.
+    if (Array.isArray(allowedPages) && !allowedPages.includes(src.page)) continue;
     const rows = (rowsByKind && rowsByKind[src.kind]) || [];
     // Utilities can hold more than one live row for the same provider at the
     // same property; that is one login to add, so one to-do. If any of those

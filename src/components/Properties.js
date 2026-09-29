@@ -1197,11 +1197,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       // set the form leaves blank forward from the stored row, still encrypted
       // under THAT row's salt -- so a set entered now must reuse it too, or
       // changing one of the three logins breaks the other two.
-      const storedHoaSalt = {};
+      // Keyed by ROW ID: an HOA renamed in the same save as a login change must
+      // still find its row's salt. By name only for a form row with no id.
+      const storedHoaSaltById = {};
+      const storedHoaSaltByName = {};
       if (savedAddress) {
-        const { data: liveHoas } = await supabase.from('hoa_payments').select('hoa_name, encryption_salt')
+        const { data: liveHoas } = await supabase.from('hoa_payments').select('id, hoa_name, encryption_salt')
           .eq('company_id', companyId).eq('property', savedAddress).is('archived_at', null);
-        for (const r of (liveHoas || [])) if (r.hoa_name && r.encryption_salt) storedHoaSalt[r.hoa_name.trim()] = r.encryption_salt;
+        for (const r of (liveHoas || [])) {
+          if (!r.encryption_salt) continue;
+          storedHoaSaltById[String(r.id)] = r.encryption_salt;
+          if (r.hoa_name) storedHoaSaltByName[r.hoa_name.trim()] = r.encryption_salt;
+        }
       }
       for (const h of hoas.filter(x => x.hoa_name.trim())) {
         if (!h.amount || Number(h.amount) <= 0) throw new Error('HOA amount required: ' + h.hoa_name);
@@ -1214,7 +1221,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         // decrypt to nothing. The first set that exists establishes the salt
         // and the others reuse it, exactly as username and password already
         // do within one set. Each set still gets its own IV.
-        const keptSalt  = storedHoaSalt[h.hoa_name.trim()] || null;
+        const keptSalt  = (h.id != null ? storedHoaSaltById[String(h.id)] : storedHoaSaltByName[h.hoa_name.trim()]) || null;
         const hoaCreds  = await encryptRow(!!(h.username && h.password), h.username, h.password, keptSalt);
         const rowSalt   = keptSalt || hoaCreds?.encryption_salt || null;
 

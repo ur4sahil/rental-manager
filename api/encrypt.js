@@ -41,20 +41,18 @@ const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
 // Truncated to 12 hex characters: enough to tell two keys apart, far too
 // little to attack the key itself.
 //
-// THE FINGERPRINT RULE (worker/portals/ensure-session.js keyFingerprint()
+// THE FINGERPRINT RULE (worker/portals/credential-select.js keyFingerprint()
 // implements the identical rule -- change both or neither):
-//   fp = sha256( key with trailing "\r" / "\n" characters removed ), first 12 hex
-// The deployed key carries a trailing newline, and a key exported through a
-// shell `$(...)` loses it -- the same key, two different raw hashes. Only
-// the FINGERPRINT input is normalised. The key bytes used to encrypt and
-// decrypt (MASTER_KEY, verbatim) are unchanged, so existing ciphertext
-// still opens. Fingerprints stored before this rule (hash of the verbatim
-// key) are still recognised as "this key" via KEY_FPS_ACCEPTED.
+//   fp = sha256( the EXACT key bytes used to encrypt ), first 12 hex
+// Deliberately NOT normalised. The deployed key carries a trailing newline,
+// and those bytes are part of the key: "K\n" and "K" decrypt differently, so
+// they must fingerprint differently too, or a real mismatch (a worker whose
+// shell export dropped the newline) would hide behind a matching fp.
 function fingerprintOf(material) {
   return crypto.createHash("sha256").update(material).digest("hex").slice(0, 12);
 }
-const KEY_FP = MASTER_KEY ? fingerprintOf(MASTER_KEY.replace(/[\r\n]+$/, "")) : null;
-const KEY_FPS_ACCEPTED = new Set(MASTER_KEY ? [KEY_FP, fingerprintOf(MASTER_KEY)] : []);
+const KEY_FP = MASTER_KEY ? fingerprintOf(MASTER_KEY) : null;
+const KEY_FPS_ACCEPTED = new Set(KEY_FP ? [KEY_FP] : []);
 
 function deriveKeyFromSalt(saltBytes) {
   if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
@@ -245,6 +243,11 @@ module.exports = async function handler(req, res) {
           .eq("id", gateBill.utility_account_id).eq("company_id", companyId).maybeSingle();
         if (gateAcct && gateAcct.responsibility) responsibility = gateAcct.responsibility;
       }
+      responsibility = String(responsibility || "").trim().toLowerCase();
+      // A bill this caller cannot see (another company, or a role RLS keeps
+      // out of utility_bills) is not one they can open a payment for.
+      if (!gateBill) return res.status(403).json({ error: "That bill isn't available to you." });
+      if (responsibility === "condo_fee") return res.status(403).json({ error: "This utility is covered by the condo fee — there's no separate bill to pay." });
       if (gateBill && responsibility === "tenant" && membership.role !== "admin") {
         return res.status(403).json({ error: "Tenant-owed utilities need an admin to authorize payment." });
       }

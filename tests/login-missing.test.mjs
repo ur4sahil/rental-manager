@@ -55,17 +55,17 @@ const rows = {
     { id: 2, property: A, provider: "WSSC", responsibility: "tenant", username_encrypted: null },            // tenant pays -> skip
     { id: 3, property: A, provider: "Washington Gas", responsibility: "tenant_pays", username_encrypted: null }, // tenant pays -> skip
     { id: 4, property: A, provider: "BGE", responsibility: "owner", is_final_bill: true, username_encrypted: null }, // final bill -> skip
-    { id: 5, property: A, provider: "Verizon", responsibility: null, username_encrypted: "cipher" },       // has login
+    { id: 5, property: A, provider: "Verizon", responsibility: null, username_encrypted: "cipher", password_encrypted: "cipher" },       // has login
     { id: 6, property: B, provider: "Dominion", responsibility: "owner", archived_at: "2026-01-01", username_encrypted: null }, // archived
     { id: 7, property: B, provider: "Fairfax Water", responsibility: "owner", username_encrypted: "" },      // '' = missing
     { id: 13, property: B, provider: "Condo Gas", responsibility: "condo_fee", username_encrypted: null },   // condo/HOA fee -> skip
     { id: 8, property: B, provider: "fairfax water ", responsibility: "owner", username_encrypted: null },   // same provider -> one to-do
     { id: 9, property: B, provider: "Comcast", responsibility: "owner", username_encrypted: null },
-    { id: 10, property: B, provider: "Comcast", responsibility: "owner", username_encrypted: "cipher" },     // a duplicate with login covers it
+    { id: 10, property: B, provider: "Comcast", responsibility: "owner", username_encrypted: "cipher", password_encrypted: "cipher" },     // a duplicate with login covers it
   ],
   insurance: [
     { id: "i1", property: A, provider: "State Farm", username_encrypted: null },
-    { id: "i2", property: B, provider: "Allstate", username_encrypted: "cipher" },
+    { id: "i2", property: B, provider: "Allstate", username_encrypted: "cipher", password_encrypted: "cipher" },
     { id: "i3", property: B, provider: "Old Policy", archived_at: "2026-01-01", username_encrypted: null },
   ],
   loan: [
@@ -75,12 +75,12 @@ const rows = {
   portfolio_loan: [
     { id: "p1", lender_name: "Blanket Lender", status: "active", username_encrypted: "" },
     { id: "p2", lender_name: "Old Blanket", status: "paid_off", username_encrypted: null },               // paid off -> skip
-    { id: "p3", lender_name: "Has Login", status: "active", username_encrypted: "cipher" },
+    { id: "p3", lender_name: "Has Login", status: "active", username_encrypted: "cipher", password_encrypted: "cipher" },
     { id: "p4", lender_name: "Gone", status: "active", archived_at: "2026-01-01", username_encrypted: null },
   ],
   hoa: [
     { id: 11, property: A, hoa_name: "Alpha HOA", username_encrypted: null, mgmt_username_encrypted: null, pay_username_encrypted: null },
-    { id: 12, property: B, hoa_name: "Beta HOA", username_encrypted: null, mgmt_username_encrypted: null, pay_username_encrypted: "cipher" }, // pay login counts
+    { id: 12, property: B, hoa_name: "Beta HOA", username_encrypted: null, mgmt_username_encrypted: null, pay_username_encrypted: "cipher", pay_password_encrypted: "cipher" }, // pay login counts
   ],
 };
 const tasks = M.buildLoginMissingTasks(rows, new Map([[A, 101]]));
@@ -102,8 +102,22 @@ assert("each to-do links to its record's page with editRecordId", pepco.link ===
   && tasks.find(t => t.recordType === "hoa").link === "hoa");
 assert("property id attached when known", pepco.propertyId === 101 && tasks.find(t => t.recordType === "loan").propertyId === null);
 assert("to-dos are _kind login_missing (rendered as click-to-navigate rows, not wizard steps)", tasks.every(t => t._kind === "login_missing"));
-const after = M.buildLoginMissingTasks({ ...rows, insurance: rows.insurance.map(r => r.id === "i1" ? { ...r, username_encrypted: "cipher" } : r) });
+const after = M.buildLoginMissingTasks({ ...rows, insurance: rows.insurance.map(r => r.id === "i1" ? { ...r, username_encrypted: "cipher", password_encrypted: "cipher" } : r) });
 assert("a saved login removes its to-do", !after.some(t => t.recordType === "insurance") && after.length === tasks.length - 1);
+// Half a login (username only) is not a login: the to-do stays.
+{
+  const half = M.buildLoginMissingTasks({ insurance: [{ id: "h1", property: A, provider: "Half Co", username_encrypted: "cipher", password_encrypted: null }],
+    hoa: [{ id: 99, property: A, hoa_name: "Half HOA", mgmt_username_encrypted: "cipher", mgmt_password_encrypted: "" }] });
+  assert("a username without a password does not clear the to-do", half.length === 2, JSON.stringify(half.map(t => t.title)));
+  assert("isHalfLogin: exactly one half", M.isHalfLogin("u", "") && M.isHalfLogin("", "p") && !M.isHalfLogin("u", "p") && !M.isHalfLogin("", ""));
+}
+// Only to-dos whose page the viewer can open (manager: no loans / insurance).
+{
+  const mgr = M.buildLoginMissingTasks(rows, new Map(), { allowedPages: ["dashboard", "tasks", "utilities", "hoa"] });
+  assert("allowedPages filters out loan/insurance to-dos for a viewer without those pages",
+    mgr.length > 0 && mgr.every(t => ["utilities", "hoa"].includes(t.link)), JSON.stringify(mgr.map(t => t.link)));
+  assert("no allowedPages = no filter", M.buildLoginMissingTasks(rows).length === tasks.length);
+}
 assert("no rows -> no to-dos", M.buildLoginMissingTasks({}).length === 0 && M.buildLoginMissingTasks(null).length === 0);
 
 // ─── 2. STATIC ────────────────────────────────────────────────────────────
@@ -124,13 +138,13 @@ assert("Loans.js: insert writes NULL creds when none", /username_encrypted: cred
 
 console.log("\n📋 TASKS PAGE + DEEP LINKS");
 const admin = src("components/Admin.js");
-assert("Tasks page builds login-missing to-dos from the shared rules", /buildLoginMissingTasks\(loginRows/.test(admin) && /LOGIN_MISSING_SOURCES\.map/.test(admin));
+assert("Tasks page builds login-missing to-dos from the shared rules", /buildLoginMissingTasks\(loginRows/.test(admin) && /LOGIN_MISSING_SOURCES\.filter\(src => canOpenPage\(src\.page\)\)\.map/.test(admin));
 assert("Tasks page pages its reads (fetchAllPaged) and excludes archived", /fetchAllPaged\(\(\) => \{[\s\S]{0,200}\.is\("archived_at", null\)/.test(admin));
 assert("Tasks page excludes utility final bills", /not\("is_final_bill", "is", true\)/.test(admin));
 for (const [f, list] of [["Utilities.js", "utilAccounts"], ["Insurance.js", "policies"], ["Loans.js", "loans"], ["HOA.js", "hoaPayments"]]) {
   const s = src("components/" + f);
   assert(`${f}: accepts initialAction and opens the edit form for editRecordId`,
-    /showConfirm, initialAction \}\)/.test(s) && /initialAction\?\.editRecordId/.test(s) && new RegExp("\\}, \\[initialAction, " + list + "\\]\\)").test(s));
+    /showConfirm, initialAction \}\)/.test(s) && /initialAction\?\.editRecordId/.test(s) && new RegExp("\\}, \\[initialAction, " + list + "(, loading)?\\]\\)").test(s));
 }
 assert("Loans.js: portfolio deep link opens the portfolio edit form", /initialAction\?\.editPortfolioId/.test(src("components/Loans.js")) && /openEditPortfolio\(rec\)/.test(src("components/Loans.js")));
 assert("Utilities deep link resolves the utilities row to its linked account", /a\.legacy_utility_id\) === String\(id\)/.test(src("components/Utilities.js")));

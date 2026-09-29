@@ -21,18 +21,18 @@ function readMasterKey(env = process.env) {
 }
 
 // THE FINGERPRINT RULE -- identical to api/encrypt.js KEY_FP:
-//   fp = sha256( key with trailing "\r" / "\n" removed ), first 12 hex chars
-// Only the fingerprint input is normalised; the key bytes used to decrypt are
-// never changed. Fingerprints written before this rule hashed the verbatim
-// key, so both forms are accepted as "this key".
+//   fp = sha256( the EXACT key bytes used to decrypt ), first 12 hex chars
+// Not normalised: a trailing newline is part of the key, so a key that lost
+// it is a DIFFERENT key and must show a different fingerprint (a mismatch
+// reported as such, not a row that silently fails to decrypt).
 function fingerprintOf(material) {
   return crypto.createHash("sha256").update(material).digest("hex").slice(0, 12);
 }
 function keyFingerprint(master) {
-  return fingerprintOf(String(master || "").replace(/[\r\n]+$/, ""));
+  return fingerprintOf(String(master || ""));
 }
 function acceptedFingerprints(master) {
-  return new Set([keyFingerprint(master), fingerprintOf(String(master || ""))]);
+  return new Set([keyFingerprint(master)]);
 }
 
 // DECRYPT -- the same scheme as api/encrypt.js v3: PBKDF2-SHA256, 100k

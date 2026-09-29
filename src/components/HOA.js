@@ -5,6 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, forma
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Badge, Spinner, PropertySelect } from "./shared";
@@ -41,12 +42,13 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   const handledAction = useRef(null);
   useEffect(() => {
   const id = initialAction?.editRecordId;
-  if (!id || handledAction.current === initialAction || hoaPayments.length === 0) return;
+  if (!id || handledAction.current === initialAction || loading) return;
   const rec = hoaPayments.find(x => String(x.id) === String(id));
-  if (!rec) return;
   handledAction.current = initialAction;
+  // Loaded, and not among this company's live records: say so.
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
   openEditHoa(rec);
-  }, [initialAction, hoaPayments]);
+  }, [initialAction, hoaPayments, loading]);
 
   async function fetchHOA() {
   const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).is("archived_at", null).order("due_date", { ascending: false });
@@ -77,6 +79,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   delete payload.mgmt_username; delete payload.mgmt_password;
   delete payload.pay_username; delete payload.pay_password;
   payload.website = form.website || "";
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("association login"), "error"); return; }
+  if (isHalfLogin(form.mgmt_username, form.mgmt_password)) { showToast(halfLoginMessage("management company login"), "error"); return; }
+  if (isHalfLogin(form.pay_username, form.pay_password)) { showToast(halfLoginMessage("payment portal login"), "error"); return; }
   if (form.username || form.password) {
     // Pair of creds shares one per-row salt (encryption_salt). Each value
     // gets its OWN IV — both preserved now (encryption_iv_username for
