@@ -10,7 +10,7 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
-import OwnerPicker from "./OwnerPicker";
+import OwnerPicker, { CorrectOwnerForm } from "./OwnerPicker";
 import { assignPropertyOwner } from "../utils/owners";
 import { propertyOwnerName } from "../utils/ownerRules";
 import { safeLedgerInsert, atomicPostJEAndLedger, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, tenantOwnArAccountId, deactivateTenantRecurring } from "../utils/accounting";
@@ -4040,6 +4040,16 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
                 setProperties(ps => ps.map(x => x.id === selectedProperty.id ? { ...x, ...patch } : x));
                 logAudit("update", "properties", "Owner of " + selectedProperty.address + " set to " + (r.owner ? r.owner.name : "none"), selectedProperty.id, userProfile?.email, userRole, companyId);
                 showToast(r.owner ? "Owner set to " + r.owner.name + "." : "Owner cleared.", "success");
+              }} />
+          )}
+          ownerFix={isReadOnly(selectedProperty) || !canManage(userRole) ? null : (
+            <CorrectOwnerForm companyId={companyId} propertyId={selectedProperty.id}
+              onDone={(res, owner) => {
+                const patch = { owner_id: owner ? owner.id : selectedProperty.owner_id, owner_name: owner ? owner.name : selectedProperty.owner_name, _ownerName: owner ? owner.name : selectedProperty._ownerName, _ownerKey: owner ? "id:" + owner.id : selectedProperty._ownerKey };
+                setSelectedProperty(sp => ({ ...sp, ...patch }));
+                setProperties(ps => ps.map(x => x.id === selectedProperty.id ? { ...x, ...patch } : x));
+                logAudit("update", "properties", "Owner of " + selectedProperty.address + " corrected to " + (owner ? owner.name : "?") + " from " + (res?.from || "the start") + " (" + (res?.tenants_resynced || 0) + " tenants re-synced)", selectedProperty.id, userProfile?.email, userRole, companyId);
+                showToast("Owner corrected" + (owner ? " to " + owner.name : "") + ". Owner accruals in that range were re-stamped.", "success");
               }} />
           )}
           onBack={() => setSelectedProperty(null)}

@@ -175,8 +175,13 @@ assert("accruals are written only by SQL (owner_accrual_sync), kind 'accrual'", 
 assert("autoOwnerDistribution calls the SQL function", acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)") && read("src/utils/ownerRules.js").includes('sb.rpc("owner_accrual_sync"'));
 assert("Stripe webhook calls the same SQL function", api.includes('require("../src/utils/ownerRules")') && api.includes("syncOwnerAccruals(sb, companyId, tenantId)") && !api.includes("postJournalEntryWithCodes"));
 assert("migration: advisory lock per tenant; tenant_id + receipt + charge reference; rent by rent-income credit, not prefix",
-  MIG2.includes("pg_advisory_xact_lock(hashtext('owner_accrual:' || p_company_id), p_tenant_id)") && MIG2.includes("v_ref := 'ODIST-' || p_tenant_id || '-' || d_rc[k] || '-' || d_ch[k]") && MIG2.includes("owner_is_rent_income_account(a.code, a.name)") && !/RECUR-/.test(MIG2.replace(/^--.*$/mg, "")));
-assert("migration: deferred triggers on lines + entry status keep accruals in step", /CREATE CONSTRAINT TRIGGER trg_owner_accrual_after_line[\s\S]{0,160}DEFERRABLE INITIALLY DEFERRED/.test(MIG2) && /CREATE CONSTRAINT TRIGGER trg_owner_accrual_after_je_status[\s\S]{0,160}DEFERRABLE INITIALLY DEFERRED/.test(MIG2));
+  MIG2.includes("pg_advisory_xact_lock(hashtext('owner_accrual:' || p_company_id), p_tenant_id)") && MIG2.includes("v_base_ref := 'ODIST-' || p_tenant_id || '-' || d_rc[x] || '-' || d_ch[x]") && MIG2.includes("owner_is_rent_income_account(a.code, a.name)") && !/RECUR-/.test(MIG2.replace(/^--.*$/mg, "")));
+assert("migration: statement-level triggers enqueue each tenant once per transaction; one deferred runner, fixed order, lock_timeout",
+  /CREATE TRIGGER trg_owner_accrual_enqueue_ins AFTER INSERT ON public\.acct_journal_lines\s+REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT/.test(MIG2) &&
+  /CREATE TRIGGER trg_owner_accrual_enqueue_je AFTER UPDATE ON public\.acct_journal_entries\s+REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT/.test(MIG2) &&
+  /CREATE CONSTRAINT TRIGGER trg_owner_accrual_queue_run AFTER INSERT ON public\.owner_accrual_queue\s+DEFERRABLE INITIALLY DEFERRED/.test(MIG2) &&
+  MIG2.includes("WHERE txid = NEW.txid AND NOT needs_sync ORDER BY company_id, tenant_id") && MIG2.includes("set_config('lock_timeout', '3s', true)") &&
+  !/CREATE CONSTRAINT TRIGGER trg_owner_accrual_after_line/.test(MIG2));
 assert("migration: every new SECURITY DEFINER function is revoked from PUBLIC, anon", (() => {
   const body = MIG2.replace(/^--.*$/mg, "");
   const defs = [...body.matchAll(/FUNCTION public\.(\w+)\(([^)]*)\)\s*RETURNS [\s\S]{0,120}?SECURITY DEFINER/g)].map(m => m[1]);
@@ -185,8 +190,19 @@ assert("migration: every new SECURITY DEFINER function is revoked from PUBLIC, a
 assert("migration: sync checks company staff; fee CHECK 0..100; kind immutable; gate on UPDATE / DELETE",
   MIG2.includes("PERFORM public._assert_company_staff(p_company_id)") && MIG2.includes("CHECK (management_fee_pct IS NULL OR (management_fee_pct >= 0 AND management_fee_pct <= 100))") &&
   MIG2.includes("trg_owner_distribution_kind_immutable") && MIG2.includes("CREATE TRIGGER trg_mgmt_gate_upd BEFORE UPDATE ON public.owner_distributions") && MIG2.includes("CREATE TRIGGER trg_mgmt_gate_del BEFORE DELETE ON public.owner_distributions"));
-assert("migration: ownership history table + trigger; accrual owner = owner on the charge date",
-  MIG2.includes("CREATE TABLE IF NOT EXISTS public.property_owner_history") && MIG2.includes("AFTER INSERT OR UPDATE OF owner_id ON public.properties") && MIG2.includes("public.property_owner_on(v_prop.id, r.date)"));
+assert("migration: ownership history (NY dates, first row at link time); charge keyed to the property on its own entry; no re-stamp outside correct_property_owner",
+  MIG2.includes("CREATE TABLE IF NOT EXISTS public.property_owner_history") && MIG2.includes("AFTER INSERT OR UPDATE OF owner_id ON public.properties") &&
+  MIG2.includes("(now() AT TIME ZONE 'America/New_York')::date") && MIG2.includes("VALUES (NEW.company_id, NEW.id, NEW.owner_id, v_today, NULL)") &&
+  MIG2.includes("public.owner_for_charge(v_prop, r.date, r.created_at)") && MIG2.includes("class_id = r.ar_class") &&
+  MIG2.includes("v_restamp <> '' AND v_restamp = coalesce(d_prop[x]::text, '')") && MIG2.includes("CREATE OR REPLACE FUNCTION public.correct_property_owner("));
+assert("migration: no FK on receipt/charge entry links (no key lock on the receipt -> no deadlock with undo)",
+  MIG2.includes("DROP CONSTRAINT IF EXISTS owner_distributions_receipt_je_id_fkey") && /ADD COLUMN IF NOT EXISTS receipt_je_id text,/.test(MIG2));
+assert("migration: locked accruals count as covering their charge; mismatches reversed after the lock",
+  MIG2.includes("'ODIST-' || p_tenant_id || '-R-' || e_id[k]::text") && MIG2.includes("p_date := p_date || (v_lock + 1)"));
+assert("migration: owner_accrual_since writable only by its trigger or the management tier; gate covers every distribution column but notes",
+  MIG2.includes("NOT public.is_management_tier(NEW.company_id)") && MIG2.includes("(to_jsonb(NEW) - 'notes') IS DISTINCT FROM (to_jsonb(OLD) - 'notes')"));
+assert("migration: commit time budget -- a bulk write past 4s defers the rest as NEEDS_SYNC (no statement timeout)", MIG2.includes("IF clock_timestamp() - transaction_timestamp() > interval '4 seconds' THEN") && MIG2.includes("'deferred: commit time budget (bulk write)'"));
+assert("migration: NEEDS_SYNC markers + error_log; pending drain RPC", MIG2.includes("_owner_accrual_mark_pending") && MIG2.includes("INSERT INTO error_log") && MIG2.includes("CREATE OR REPLACE FUNCTION public.owner_accrual_sync_pending("));
 assert("manual ledger payment accrues the owner's share", /newCharge\.type === "payment" && arLegIsPerTenant\)[\s\S]{0,80}autoOwnerDistribution\(companyId, selectedTenant\.property, Math\.abs\(amount\), today, selectedTenant\.name, selectedTenant\.id\)/.test(ten));
 assert("Banking: add + split deposits run the owner accrual after a successful post",
   (read("src/components/Banking.js").match(/if \(isInflow\) await accrueOwnerShareForBankDeposit\(companyId, \{ date: txn\.posted_date/g) || []).length === 2);
@@ -214,10 +230,12 @@ async function cleanupCompany(CO, userIds = []) {
   const { data: jes } = await sb.from("acct_journal_entries").select("id").eq("company_id", CO);
   const ids = (jes || []).map(j => j.id);
   for (let i = 0; i < ids.length; i += 100) await sb.from("acct_journal_lines").delete().in("journal_entry_id", ids.slice(i, i + 100));
+  await sb.from("accounting_period_lock").delete().eq("company_id", CO);
+  await sb.from("owner_distributions").delete().eq("company_id", CO);
   for (const tb of ["bank_feed_transaction_link", "bank_posting_decision_line", "bank_posting_decision", "bank_feed_transaction", "bank_import_batch", "bank_account_feed",
                     "acct_journal_lines", "acct_journal_entries", "owner_distributions", "owner_statements", "payments", "ledger_entries",
                     "notification_queue", "notifications", "tenants", "property_owner_history", "properties", "owners", "acct_accounts", "acct_classes",
-                    "company_members", "audit_trail", "error_log"]) {
+                    "company_members", "audit_trail", "error_log", "owner_accrual_queue"]) {
     await sb.from(tb).delete().eq("company_id", CO);
   }
   await sb.from("companies").delete().eq("id", CO);
@@ -225,8 +243,8 @@ async function cleanupCompany(CO, userIds = []) {
 }
 async function leftovers(CO) {
   const out = {};
-  for (const tb of ["bank_feed_transaction", "bank_account_feed", "acct_journal_entries", "acct_journal_lines", "owner_distributions", "owner_statements", "payments", "tenants", "property_owner_history", "properties", "owners", "acct_accounts", "acct_classes", "company_members"]) {
-    const { count } = await sb.from(tb).select("id", { count: "exact", head: true }).eq("company_id", CO);
+  for (const tb of ["bank_feed_transaction", "bank_account_feed", "acct_journal_entries", "acct_journal_lines", "owner_distributions", "owner_statements", "payments", "tenants", "property_owner_history", "properties", "owners", "acct_accounts", "acct_classes", "company_members", "owner_accrual_queue", "error_log"]) {
+    const { count } = await sb.from(tb).select("*", { count: "exact", head: true }).eq("company_id", CO);
     if (count) out[tb] = count;
   }
   const { count: c } = await sb.from("companies").select("id", { count: "exact", head: true }).eq("id", CO);
@@ -622,6 +640,77 @@ try {
     assert("DB refuses a fee above 100 or below 0", !!bad150.error && !!badNeg.error, (bad150.error?.message || "150 accepted") + " / " + (badNeg.error?.message || "-1 accepted"));
   }
 
+  // ── round 4: tenant move, period lock, archived property, NEEDS_SYNC ──
+  const mkProp = async (k, owner) => {
+    const n = 200 + Object.keys(P).length;
+    const row = ok(await sb.from("properties").insert([{ company_id: CO, address_line_1: `${n} ${TAG} Way`, city: "Testville", state: "MD", zip: "20001", address: `${n} ${TAG} Way, Testville, MD 20001`, type: "Single Family", status: "occupied" }]).select("*").single(), "property " + k);
+    const cls = ok(await sb.from("acct_classes").insert([{ id: crypto.randomUUID(), company_id: CO, name: row.address, is_active: true }]).select("id").single(), "class " + k);
+    ok(await sb.from("properties").update({ class_id: cls.id }).eq("id", row.id), "class link " + k);
+    P[k] = { ...row, class_id: cls.id };
+    if (owner) { const r = await OU.assignPropertyOwner(CO, row.id, owner.id); if (!r.ok) throw new Error(r.error); }
+    return P[k];
+  };
+  const mkTen = async (k, pk, rent) => {
+    const t = ok(await sb.from("tenants").insert([{ company_id: CO, name: `${TAG} Tenant ${k}`, property: P[pk].address, lease_status: "active", balance: 0, rent }]).select("*").single(), "tenant " + k);
+    const ar = await mkAcct("1100-" + (++seq).toString().padStart(3, "0"), "AR - " + t.name, "Asset", { tenant_id: t.id, parent_id: acc["1100"].id });
+    T[k] = { ...t, ar, rent, pk };
+    return T[k];
+  };
+  const chargeOn = (t, pk, date, amt) => A.autoPostJournalEntry({ companyId: CO, date, reference: `RECUR-${crypto.randomBytes(4).toString("hex")}-${date.slice(0, 7)}`, description: "Rent", property: P[pk].address,
+    lines: [{ account_id: t.ar.id, account_name: t.ar.name, debit: amt, credit: 0, class_id: P[pk].class_id, memo: "rent" }, { account_id: acc["4000"].id, account_name: "Rental Income", debit: 0, credit: amt, class_id: P[pk].class_id, memo: "rent" }] });
+  const cashOn = (t, pk, date, amt) => A.autoPostJournalEntry({ companyId: CO, date, reference: "MANUAL-" + crypto.randomBytes(4).toString("hex"), description: amt > 0 ? "receipt" : "refund", property: P[pk].address,
+    lines: amt > 0 ? [{ account_id: acc["1000"].id, account_name: "Checking", debit: amt, credit: 0, class_id: P[pk].class_id }, { account_id: t.ar.id, account_name: t.ar.name, debit: 0, credit: amt, class_id: P[pk].class_id }]
+                   : [{ account_id: t.ar.id, account_name: t.ar.name, debit: -amt, credit: 0, class_id: P[pk].class_id }, { account_id: acc["1000"].id, account_name: "Checking", debit: 0, credit: -amt, class_id: P[pk].class_id }] });
+  const pm1 = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonth = `${pm1.getFullYear()}-${pad(pm1.getMonth() + 1)}`;
+  {
+    // tenant who moves to another owner's property keeps past accruals with the old owner (H5)
+    const OM1 = (await OU.createOwner(CO, { name: TAG + " Move One", management_fee_pct: 10 })).owner;
+    const OM2 = (await OU.createOwner(CO, { name: TAG + " Move Two", management_fee_pct: 10 })).owner;
+    await mkProp("PM1", OM1); await mkProp("PM2", OM2);
+    const tm = await mkTen("TM", "PM1", 1000);
+    await chargeOn(tm, "PM1", prevMonth + "-01", 1000); await chargeOn(tm, "PM1", startDate, 1000); await cashOn(tm, "PM1", today, 2000);
+    ok(await sb.from("tenants").update({ property: P.PM2.address }).eq("id", tm.id), "move tenant");
+    const nm = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    await chargeOn(tm, "PM2", `${nm.getFullYear()}-${pad(nm.getMonth() + 1)}-01`, 1000); await cashOn(tm, "PM2", today, 1000);
+    const rows = await live(tm.id);
+    const by = (o) => rows.filter(r => r.owner_id === o.id).reduce((x, r) => x + Number(r.rent_amount), 0);
+    assert("tenant who moves: charges keep the property on their own entry (old owner 2000, new owner 1000)", by(OM1) === 2000 && by(OM2) === 1000, JSON.stringify([by(OM1), by(OM2)]));
+  }
+  {
+    // period lock: an NSF after the lock, then re-payment -> the locked accrual counts, is reversed after the lock, rent accrued once (L2)
+    await mkProp("PL", O8); const tl = await mkTen("TL", "PL", 1000);
+    await chargeOn(tl, "PL", prevMonth + "-01", 1000); await cashOn(tl, "PL", prevMonth + "-05", 1000);
+    const lockDate = prevDate;
+    ok(await sb.from("accounting_period_lock").insert([{ company_id: CO, lock_date: lockDate }]), "lock");
+    await cashOn(tl, "PL", today, -1000);   // NSF / refund of the locked receipt
+    const afterNsf = await live(tl.id);
+    await cashOn(tl, "PL", today, 1000);    // re-paid
+    const rows = await live(tl.id);
+    ok(await sb.from("accounting_period_lock").delete().eq("company_id", CO), "unlock");
+    const net = rows.reduce((x, r) => x + Number(r.rent_amount), 0);
+    const locked = rows.filter(r => r.date <= lockDate), after = rows.filter(r => r.date > lockDate);
+    assert("period lock: NSF after the lock reverses the frozen accrual after the lock (net 0)", afterNsf.reduce((x, r) => x + Number(r.rent_amount), 0) === 0 && afterNsf.some(r => Number(r.rent_amount) < 0 && r.reverses_id), JSON.stringify(afterNsf.map(r => [r.date, r.rent_amount])));
+    assert("period lock: re-payment accrues the rent once (locked +1000, reversal -1000, new +1000 after the lock)", net === 1000 && locked.length === 1 && Number(locked[0].rent_amount) === 1000 && after.length === 2, JSON.stringify(rows.map(r => [r.date, r.rent_amount])));
+  }
+  {
+    // archived property: a void still reverses its accrual (H6)
+    await mkProp("PA", O8); const ta = await mkTen("TA", "PA", 700);
+    await chargeOn(ta, "PA", startDate, 700); const rc = await cashOn(ta, "PA", today, 700);
+    const before = (await live(ta.id)).reduce((x, r) => x + Number(r.rent_amount), 0);
+    ok(await sb.from("properties").update({ archived_at: new Date().toISOString() }).eq("id", P.PA.id), "archive property");
+    ok(await sb.from("acct_journal_entries").update({ status: "voided" }).eq("id", rc), "void receipt");
+    const after = (await live(ta.id)).reduce((x, r) => x + Number(r.rent_amount), 0);
+    assert("archived property: voiding the receipt still reverses the accrual", before === 700 && after === 0, JSON.stringify([before, after]));
+  }
+  {
+    // NEEDS_SYNC marker (what a lock-wait timeout leaves) is drained by owner_accrual_sync_pending
+    ok(await sb.from("owner_accrual_queue").insert([{ company_id: CO, tenant_id: T.T3.id, txid: 1, needs_sync: true, last_error: "test marker" }]), "marker");
+    const pend = await sb.rpc("owner_accrual_sync_pending", { p_company_id: CO });
+    const { data: left } = await sb.from("owner_accrual_queue").select("tenant_id").eq("company_id", CO).eq("needs_sync", true);
+    assert("NEEDS_SYNC markers are drained by owner_accrual_sync_pending", !pend.error && pend.data?.synced >= 1 && !(left || []).length, JSON.stringify(pend.data || pend.error));
+  }
+
   // ── as real users: owner portal (RLS) and the office-assistant gate ──
   const mkUser = async (email, role) => {
     const password = "Qa!" + crypto.randomBytes(9).toString("hex");
@@ -663,6 +752,24 @@ try {
   assert("kind is immutable for everyone (service role too)", !!kindSvc.error, kindSvc.error?.message);
   const oaSync = await oa.rpc("owner_accrual_sync", { p_company_id: CO, p_tenant_id: T.T3.id });
   assert("office assistant's own client can run the accrual RPC", !oaSync.error && Number(oaSync.data?.accrued_rent) === 1000, oaSync.error?.message || JSON.stringify(oaSync.data));
+  // round 4 gates: every money / link column; owner_accrual_since; owner correction
+  {
+    const tries = {};
+    for (const [k, v] of [["receipt_je_id", "x"], ["charge_je_id", "x"], ["tenant_id", null], ["date", "2019-01-01"], ["reference", "moved"], ["owner_id", O8.id]]) {
+      const r = await oa.from("owner_distributions").update({ [k]: v }).eq("id", anAccrual.id).select("id");
+      tries[k] = r.error ? "refused" : ((r.data || []).length ? "ALLOWED" : "0 rows");
+    }
+    assert("office assistant: cannot change a distribution's date / reference / links / owner", Object.values(tries).every(v => v === "refused"), JSON.stringify(tries));
+    const since = await oa.from("properties").update({ owner_accrual_since: "2000-01-01T00:00:00Z" }).eq("id", P.P3.id).select("id");
+    assert("office assistant: cannot move properties.owner_accrual_since (retroactive accruals)", !!since.error, since.error?.message || "ALLOWED");
+    const mgr = await mkUser(CO + "-mgr@example.com", "manager");
+    const deny = await oa.rpc("correct_property_owner", { p_company_id: CO, p_property_id: P.P3.id, p_owner_id: O8.id, p_from: null });
+    const fix = await mgr.rpc("correct_property_owner", { p_company_id: CO, p_property_id: P.P3.id, p_owner_id: O8.id, p_from: null });
+    const rows = await live(T.T3.id);
+    assert("correct_property_owner: office assistant refused; manager re-stamps the property's accruals (0% owner -> 8% owner: rent 1000, net 920)",
+      !!deny.error && !fix.error && rows.length === 1 && rows[0].owner_id === O8.id && Number(rows[0].amount) === 920,
+      (deny.error?.message || "OA ALLOWED") + " / " + (fix.error?.message || JSON.stringify(rows.map(r => [r.owner_id === O8.id ? "O8" : "other", r.rent_amount, r.amount]))));
+  }
   const anon = createClient(SB_URL, ANON, { auth: { persistSession: false } });
   const anonSync = await anon.rpc("owner_accrual_sync", { p_company_id: CO, p_tenant_id: T.T3.id });
   assert("anon cannot call the accrual RPC", !!anonSync.error, JSON.stringify(anonSync.data));

@@ -150,6 +150,15 @@ module.exports = async function handler(req, res) {
 
     let totals = { companies: 0, unbalancedJEs: 0, recurringTemplates: 0, tenantBalance: 0, errors: 0 };
 
+    // Owner accruals that could not be synced when their receipt / charge /
+    // void committed (a lock-wait timeout, an error) are NEEDS_SYNC markers in
+    // owner_accrual_queue; drain them for every company (service role).
+    try {
+      const { data: pend, error: pendErr } = await supabase.rpc("owner_accrual_sync_pending", { p_company_id: null });
+      if (pendErr) console.error("integrity-check: owner_accrual_sync_pending failed", pendErr.message);
+      else totals.ownerAccrualsSynced = pend?.synced || 0;
+    } catch (e) { console.error("integrity-check: owner_accrual_sync_pending threw", e.message); }
+
     for (const companyId of companyIds) {
       totals.companies++;
       try {

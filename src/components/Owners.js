@@ -8,7 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { getPropertyClassId, atomicPostJEAndLedger, fetchAllPaged } from "../utils/accounting";
-import { loadOwnerStatementData } from "../utils/owners";
+import { loadOwnerStatementData, syncPendingOwnerAccruals } from "../utils/owners";
 import { resolveMgmtFeePct, feeLabel, parseFeeInput, payoutReference, toCents, distributionKind, isLivePayout, sumPayouts, buildOwnerStatement, statementRentSummary } from "../utils/ownerRules";
 import { Spinner, Modal, StatCard, Badge } from "./shared";
 
@@ -209,6 +209,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   setLoading(true);
   // The income side of a statement comes from the general ledger at
   // generation time (generateStatement), not from a capped payments list.
+  // Accruals that could not be synced at the time (a lock-wait timeout, an
+  // error) are recorded as NEEDS_SYNC markers; bring them up to date first.
+  // Best effort -- the nightly integrity cron drains them too.
+  try { await syncPendingOwnerAccruals(companyId); } catch (_e) { /* retried nightly */ }
   const [o, p, s, d] = await Promise.all([
   supabase.from("owners").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),

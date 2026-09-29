@@ -96,7 +96,7 @@ function Occupancy({ tenancies }) {
 export default function PropertyPage({
   property, tenants = [], utilities = [], hoas = [], loans = [], insurance = [], readOnly, userRole,
   onBack, onEdit, onUploadDoc, onWorkOrder, onOpenTenant, onAddTenant, onArchive,
-  onDeactivate, onReactivate, onDelete, onRequestDelete, ownerSlot,
+  onDeactivate, onReactivate, onDelete, onRequestDelete, ownerSlot, ownerFix,
   tabs,
 }) {
   if (!property) return null;
@@ -173,7 +173,7 @@ export default function PropertyPage({
           </DetailPanel>
 
           <DetailPanel title="Ownership">
-            <DetailRow label="Owner">{ownerSlot || p._ownerName || p.owner_name || <span className="text-neutral-400">Not set</span>}</DetailRow>
+            <DetailRow label="Owner">{ownerSlot || p._ownerName || p.owner_name || <span className="text-neutral-400">Not set</span>}{ownerFix}</DetailRow>
             <DetailRow label="Manager">{p.pm_company_name || <span className="text-neutral-400">In-house</span>}</DetailRow>
             <DetailRow label="Class">{p.short_name || <span className="text-neutral-400">Not set</span>}</DetailRow>
             <DetailRow label="Tenancies">{tenancies.length} on record{current.length ? ` · ${current.length} current` : ""}</DetailRow>

@@ -113,9 +113,9 @@ async function testProrationMath() {
   assert(accountingJs.includes('syncOwnerAccruals(supabase, companyId, tenantId)'), 'autoOwnerDistribution runs the SQL accrual (owner_accrual_sync)');
   assert(ownerMig.includes('round(least(r.ar_dr, r.rent_net) * 100)') || ownerMig.includes('rent_part := least(chg, greatest(round(r.rent_net * 100)::bigint, 0));'), 'Owner accrual works in integer cents (rent part)');
   assert(ownerMig.includes('amt := round(r.ar_cr * 100)::bigint'), 'Receipts converted to integer cents with round()');
-  assert(ownerMig.includes('v_fee := round(d_amt[k] * v_pct / 100)::bigint;'), 'mgmt fee computed from integer cents * percentage');
-  assert(ownerMig.includes('v_fee / 100.0'), 'mgmtFee converted back from cents');
-  assert(ownerMig.includes('v_net := d_amt[k] - v_fee;') && ownerMig.includes('v_net / 100.0'), 'ownerNet computed from cents difference');
+  assert(ownerMig.includes('v_fee := round(v_d * v_pct / 100)::bigint;'), 'mgmt fee computed from integer cents * percentage');
+  assert(ownerMig.includes('greatest(u.fee, 0) / 100.0'), 'mgmtFee converted back from cents');
+  assert(ownerMig.includes('p_net := p_net || (v_d - v_fee)') && ownerMig.includes('u.net / 100.0'), 'ownerNet computed from cents difference');
 
   // No raw floating-point multiplication for financial percentages
   // (paymentAmount * feePct without cents would be a bug)

@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { Btn, Input, Select } from "../ui";
 import { pmError } from "../utils/errors";
 import { parseFeeInput } from "../utils/ownerRules";
-import { createOwner } from "../utils/owners";
+import { createOwner, correctPropertyOwner } from "../utils/owners";
 
 // Choose the owner record a property belongs to -- or create one on the spot.
 // Controlled: `value` is an owner id (or ""/null for none) and onChange(id,
@@ -69,6 +69,53 @@ export default function OwnerPicker({ companyId, value, onChange, disabled, fall
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Manager-only fix for a WRONG owner pick: from a date (blank = from the
+// start) the property belongs to another owner. Rewrites the ownership
+// history for that range and re-stamps the property's owner accruals
+// (voided and re-posted, or reversed after a period lock). A plain owner
+// change (the picker above) never touches past accruals. The database
+// refuses this for anyone below the management tier.
+export function CorrectOwnerForm({ companyId, propertyId, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [owners, setOwners] = useState([]);
+  const [ownerId, setOwnerId] = useState("");
+  const [from, setFrom] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    supabase.from("owners").select("id, name").eq("company_id", companyId).is("archived_at", null).order("name")
+      .then(({ data, error }) => { if (error) pmError("PM-8006", { raw: error, context: "correct owner: load owners", silent: true }); if (live) setOwners(data || []); });
+    return () => { live = false; };
+  }, [open, companyId]);
+  async function run() {
+    if (!ownerId) { setMsg("Pick the right owner."); return; }
+    setBusy(true); setMsg("");
+    const r = await correctPropertyOwner(companyId, propertyId, ownerId, from || null);
+    setBusy(false);
+    if (!r.ok) { setMsg("Not corrected: " + r.error); return; }
+    setOpen(false); setOwnerId(""); setFrom("");
+    onDone && onDone(r.result, owners.find(o => String(o.id) === String(ownerId)) || null);
+  }
+  if (!open) return <button type="button" className="text-2xs text-brand-600 underline mt-1" onClick={() => setOpen(true)}>Wrong owner picked? Correct it from a date…</button>;
+  return (
+    <div className="border border-warn-200 rounded-xl p-2.5 space-y-2 bg-warn-50/40 mt-1.5">
+      <div className="text-2xs text-neutral-500">From this date the property belongs to the owner you pick; rent already accrued in that range moves to them (after a period lock, as a reversal dated after the lock). Leave the date blank for "from the start".</div>
+      <Select aria-label="Correct owner" value={ownerId} onChange={e => setOwnerId(e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+        <option value="">— Pick the right owner —</option>
+        {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </Select>
+      <Input type="date" value={from} onChange={e => setFrom(e.target.value)} />
+      {msg && <div className="text-2xs text-danger-600">{msg}</div>}
+      <div className="flex gap-2">
+        <Btn size="xs" onClick={run} disabled={busy}>Correct owner</Btn>
+        <Btn size="xs" variant="ghost" onClick={() => { setOpen(false); setMsg(""); }}>Cancel</Btn>
+      </div>
     </div>
   );
 }

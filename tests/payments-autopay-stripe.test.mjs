@@ -310,7 +310,7 @@ assert("#2 autoOwnerDistribution passes tenantId through", /autoOwnerDistributio
 assert("#2 runNow passes tenant id to autoOwnerDistribution", /autoOwnerDistribution\(companyId, s\.property, amt, today, tenantDisplayName, tenantRow\?\.id \|\| null\)/.test(runNow));
 // Fee math: integer cents, in the SQL accrual (owner_accrual_sync).
 const ownerMig = read("supabase/migrations/20260928170000_owner_accrual_rpc.sql");
-assert("#2 owner fee math in integer cents (SQL accrual)", ownerMig.includes("v_fee := round(d_amt[k] * v_pct / 100)::bigint;") && ownerMig.includes("v_net := d_amt[k] - v_fee;") && acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)"));
+assert("#2 owner fee math in integer cents (SQL accrual)", ownerMig.includes("v_fee := round(v_d * v_pct / 100)::bigint;") && ownerMig.includes("p_net := p_net || (v_d - v_fee)") && acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)"));
 // 3
 assert("#3 move-out looks up the tenant's recurring schedules by tenant_id", /from\("recurring_journal_entries"\)\s*\n?\s*\.select\("id, credit_account_id, credit_account_name"\)\.eq\("company_id", cid\)\.eq\("tenant_id", selectedTenant\.id\)/.test(life));
 assert("#3 move-out uses recurringRentRefsForMonth + pickMoveOutRentCharge", life.includes("recurringRentRefsForMonth(") && life.includes("pickMoveOutRentCharge(rentCharges, moveOutRentRefs)"));
