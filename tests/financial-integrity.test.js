@@ -106,16 +106,16 @@ async function testProrationMath() {
   assert(lifecycleJs.includes('proratedCents / 100'), 'proratedRent converted back from cents to dollars');
   assert(lifecycleJs.includes('(fullRentCents - proratedCents) / 100'), 'creditBack computed from cents difference (avoids floating point)');
 
-  // Owner distribution uses cents. The math moved to utils/ownerRules.js
-  // (runOwnerDistributionAccrual) so the Stripe webhook shares it;
-  // accounting.js#autoOwnerDistribution now delegates there.
-  const ownerRulesJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'utils', 'ownerRules.js'), 'utf8');
-  assert(accountingJs.includes('runOwnerDistributionAccrual(supabase,'), 'autoOwnerDistribution delegates to the shared ownerRules implementation');
-  assert(ownerRulesJs.includes('const paymentCents = toCents(amount);'), 'Owner distribution computes paymentCents');
-  assert(ownerRulesJs.includes('Math.round(n * 100)'), 'paymentCents uses Math.round');
-  assert(ownerRulesJs.includes('return Math.round(incomeCents * Number(pct) / 100);') && ownerRulesJs.includes('const feeC = mgmtFeeCents(rentC, rule.pct);'), 'mgmtFeeCents computed from integer cents * percentage');
-  assert(ownerRulesJs.includes('feeC / 100'), 'mgmtFee converted back from cents');
-  assert(ownerRulesJs.includes('const netC = rentC - feeC;') && ownerRulesJs.includes('amount: netC / 100'), 'ownerNet computed from cents difference');
+  // Owner distribution uses cents. The accrual is the SQL function
+  // owner_accrual_sync (migration 20260928170000); accounting.js#
+  // autoOwnerDistribution calls it through ownerRules.syncOwnerAccruals.
+  const ownerMig = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations', '20260928170000_owner_accrual_rpc.sql'), 'utf8');
+  assert(accountingJs.includes('syncOwnerAccruals(supabase, companyId, tenantId)'), 'autoOwnerDistribution runs the SQL accrual (owner_accrual_sync)');
+  assert(ownerMig.includes('round(least(r.ar_dr, r.rent_net) * 100)') || ownerMig.includes('rent_part := least(chg, greatest(round(r.rent_net * 100)::bigint, 0));'), 'Owner accrual works in integer cents (rent part)');
+  assert(ownerMig.includes('amt := round(r.ar_cr * 100)::bigint'), 'Receipts converted to integer cents with round()');
+  assert(ownerMig.includes('v_fee := round(d_amt[k] * v_pct / 100)::bigint;'), 'mgmt fee computed from integer cents * percentage');
+  assert(ownerMig.includes('v_fee / 100.0'), 'mgmtFee converted back from cents');
+  assert(ownerMig.includes('v_net := d_amt[k] - v_fee;') && ownerMig.includes('v_net / 100.0'), 'ownerNet computed from cents difference');
 
   // No raw floating-point multiplication for financial percentages
   // (paymentAmount * feePct without cents would be a bug)

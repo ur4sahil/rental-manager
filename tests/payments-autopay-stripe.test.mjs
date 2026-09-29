@@ -308,8 +308,9 @@ assert("#2 accrual lookup keyed on tenant_id AR accounts", /\.eq\("tenant_id", t
 assert("#2 failed read still answers 'could not tell' (true)", /if \(arErr\) return true;/.test(trc) && /if \(lErr\) return true;/.test(trc));
 assert("#2 autoOwnerDistribution passes tenantId through", /autoOwnerDistribution\(companyId, propertyAddress, paymentAmount, paymentDate, tenantName, tenantId\)/.test(acct) && /checkAccrualExists\(companyId, month, tenantName, tenantId\)/.test(acct));
 assert("#2 runNow passes tenant id to autoOwnerDistribution", /autoOwnerDistribution\(companyId, s\.property, amt, today, tenantDisplayName, tenantRow\?\.id \|\| null\)/.test(runNow));
-// Fee math: integer cents; one shared rule (0 = 0, unset = not set -> 0%).
-assert("#2 owner fee math in integer cents via the shared rule", ownerRulesSrc.includes("return Math.round(incomeCents * Number(pct) / 100);") && ownerRulesSrc.includes("const rule = resolveMgmtFeePct(owner, d.companyDefaultFeePct);"));
+// Fee math: integer cents, in the SQL accrual (owner_accrual_sync).
+const ownerMig = read("supabase/migrations/20260928170000_owner_accrual_rpc.sql");
+assert("#2 owner fee math in integer cents (SQL accrual)", ownerMig.includes("v_fee := round(d_amt[k] * v_pct / 100)::bigint;") && ownerMig.includes("v_net := d_amt[k] - v_fee;") && acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)"));
 // 3
 assert("#3 move-out looks up the tenant's recurring schedules by tenant_id", /from\("recurring_journal_entries"\)\s*\n?\s*\.select\("id, credit_account_id, credit_account_name"\)\.eq\("company_id", cid\)\.eq\("tenant_id", selectedTenant\.id\)/.test(life));
 assert("#3 move-out uses recurringRentRefsForMonth + pickMoveOutRentCharge", life.includes("recurringRentRefsForMonth(") && life.includes("pickMoveOutRentCharge(rentCharges, moveOutRentRefs)"));

@@ -62,63 +62,73 @@ export async function findOrCreateOwnerByName(companyId, name, owners) {
   return { owner, created: true };
 }
 
-// The owner's slice of the GENERAL LEDGER for a statement period: posted
-// lines on the owner's properties -- matched by the property's accounting
-// class, and, only for lines that carry no class, by the entry's property
-// text -- plus the chart of accounts to classify them. Every query is paged
-// (fetchAllPaged), so a busy portfolio is never cut off at 1000 rows.
-// buildOwnerStatement (utils/ownerRules.js) turns this into the statement.
-export async function loadOwnerLedger(companyId, ownerProps, startDate, endDate) {
-  const SEL = "id, account_id, debit, credit, memo, class_id, acct_journal_entries!inner(date, reference, description, status, property)";
-  const classIds = [...new Set((ownerProps || []).map(p => p.class_id).filter(Boolean))];
-  const addrs = [...new Set((ownerProps || []).map(p => p.address).filter(Boolean))];
-  const base = () => supabase.from("acct_journal_lines").select(SEL).eq("company_id", companyId)
-    .eq("acct_journal_entries.status", "posted")
-    .gte("acct_journal_entries.date", startDate).lte("acct_journal_entries.date", endDate);
-  const lines = [];
-  for (let i = 0; i < classIds.length; i += 100) {
-    const chunk = classIds.slice(i, i + 100);
-    const r = await fetchAllPaged(() => base().in("class_id", chunk).order("id"), "owner statement lines (class)");
-    if (r.failed) return { failed: true };
-    lines.push(...r.rows);
+// Everything an owner statement needs, for the owner AT THE TIME (owner
+// decision 8): the properties the owner owned during [startDate, endDate]
+// come from property_owner_history, each clipped to the owner's own dates, so
+// a property reassigned mid-month gives the old owner the rent billed before
+// the change and the new owner the rent billed after. For each such property
+// and date range: posted GL lines matched by the property's class, or -- only
+// for lines with no class -- by the entry's property text. Plus the chart of
+// accounts, and the owner's own accrual and payout rows (stamped owner_id).
+// Every query is paged (fetchAllPaged): no 1000-row ceiling.
+export async function loadOwnerStatementData(companyId, ownerId, startDate, endDate) {
+  const SEL = "id, journal_entry_id, account_id, debit, credit, memo, class_id, acct_journal_entries!inner(date, reference, description, status, property)";
+  const h = await fetchAllPaged(() => supabase.from("property_owner_history")
+    .select("property_id, from_date, to_date, properties(id, address, class_id, short_name)")
+    .eq("company_id", companyId).eq("owner_id", ownerId).order("id"), "owner history");
+  if (h.failed) return { failed: true };
+  const endExcl = (d) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() - 1); return x.toISOString().slice(0, 10); };
+  const ranges = [];
+  for (const r of h.rows) {
+    const p = Array.isArray(r.properties) ? r.properties[0] : r.properties;
+    if (!p) continue;
+    const from = r.from_date && r.from_date > startDate ? r.from_date : startDate;
+    const to = r.to_date ? (endExcl(r.to_date) < endDate ? endExcl(r.to_date) : endDate) : endDate;
+    if (from > to) continue;
+    ranges.push({ prop: p, from, to });
   }
-  for (let i = 0; i < addrs.length; i += 50) {
-    const chunk = addrs.slice(i, i + 50);
-    const r = await fetchAllPaged(() => base().is("class_id", null).in("acct_journal_entries.property", chunk).order("id"), "owner statement lines (property text)");
-    if (r.failed) return { failed: true };
-    lines.push(...r.rows);
+  const lines = [];
+  for (const { prop, from, to } of ranges) {
+    const base = () => supabase.from("acct_journal_lines").select(SEL).eq("company_id", companyId)
+      .eq("acct_journal_entries.status", "posted")
+      .gte("acct_journal_entries.date", from).lte("acct_journal_entries.date", to);
+    if (prop.class_id) {
+      const r = await fetchAllPaged(() => base().eq("class_id", prop.class_id).order("id"), "owner statement lines (class)");
+      if (r.failed) return { failed: true };
+      lines.push(...r.rows);
+    }
+    const r2 = await fetchAllPaged(() => base().is("class_id", null).eq("acct_journal_entries.property", prop.address).order("id"), "owner statement lines (property text)");
+    if (r2.failed) return { failed: true };
+    lines.push(...r2.rows);
   }
   const a = await fetchAllPaged(() => supabase.from("acct_accounts").select("id, code, name, type").eq("company_id", companyId).order("id"), "owner statement accounts");
   if (a.failed) return { failed: true };
-  return { failed: false, lines, accounts: a.rows };
+  const d = await fetchAllPaged(() => supabase.from("owner_distributions")
+    .select("id, kind, amount, rent_amount, date, charge_je_id, charge_month, voided_at, method, notes, reference")
+    .eq("company_id", companyId).eq("owner_id", ownerId).order("id"), "owner distributions");
+  if (d.failed) return { failed: true };
+  const props = [...new Map(ranges.map(x => [x.prop.id, x.prop])).values()];
+  return {
+    failed: false, props, ranges, lines, accounts: a.rows,
+    accruals: d.rows.filter(x => x.kind === "accrual"),
+    payouts: d.rows.filter(x => x.kind === "payout"),
+  };
 }
 
-
 // A bank deposit categorised on the Banking page (post_bank_transaction
-// 'add' / 'split') to a tenant's own AR account is a rent receipt too: run the
-// same owner accrual (autoOwnerDistribution -> ownerRules.runOwnerDistribution-
-// Accrual, same deterministic ODIST- reference, same rent-first rule). `lines`
-// are the deposit's credit legs, [{ accountId, amount }]; legs on the same
-// tenant are combined so a split into two rent lines accrues once.
+// 'add' / 'split') to a tenant's own AR account is a rent receipt too: bring
+// that tenant's owner accruals up to date (owner_accrual_sync, the same SQL
+// as every other receipt path; a trigger also runs it on commit). `lines` are
+// the deposit's credit legs, [{ accountId, amount }].
 export async function accrueOwnerShareForBankDeposit(companyId, { date, lines }) {
   const legs = (lines || []).filter(l => l && l.accountId && Number(l.amount) > 0);
-  if (!companyId || !date || !legs.length) return [];
+  if (!companyId || !legs.length) return [];
   const ids = [...new Set(legs.map(l => String(l.accountId)))].slice(0, 100);
   const { data: accts, error } = await supabase.from("acct_accounts").select("id, tenant_id")
     .eq("company_id", companyId).in("id", ids).not("tenant_id", "is", null);
   if (error || !accts || !accts.length) return [];
-  const byTenant = new Map();
-  for (const l of legs) {
-    const a = accts.find(x => String(x.id) === String(l.accountId));
-    if (!a) continue;
-    byTenant.set(String(a.tenant_id), (byTenant.get(String(a.tenant_id)) || 0) + Math.round(Number(l.amount) * 100));
-  }
+  const tenants = [...new Set(accts.map(a => String(a.tenant_id)))];
   const out = [];
-  for (const [tenantId, cents] of byTenant) {
-    const { data: t } = await supabase.from("tenants").select("id, name, property")
-      .eq("company_id", companyId).eq("id", tenantId).maybeSingle();
-    if (!t || !t.property) continue;
-    out.push(await autoOwnerDistribution(companyId, t.property, cents / 100, date, t.name, t.id));
-  }
+  for (const tid of tenants) out.push(await autoOwnerDistribution(companyId, null, null, date, null, tid));
   return out;
 }

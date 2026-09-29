@@ -8,8 +8,8 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { getPropertyClassId, atomicPostJEAndLedger, fetchAllPaged } from "../utils/accounting";
-import { loadOwnerLedger } from "../utils/owners";
-import { resolveMgmtFeePct, feeLabel, parseFeeInput, payoutReference, toCents, distributionKind, isLivePayout, sumPayouts, buildOwnerStatement } from "../utils/ownerRules";
+import { loadOwnerStatementData } from "../utils/owners";
+import { resolveMgmtFeePct, feeLabel, parseFeeInput, payoutReference, toCents, distributionKind, isLivePayout, sumPayouts, buildOwnerStatement, statementRentSummary } from "../utils/ownerRules";
 import { Spinner, Modal, StatCard, Badge } from "./shared";
 
 // Build a formatted, printable HTML document for an owner statement.
@@ -45,7 +45,19 @@ function buildStatementHtml(statement, companyId) {
       </table>`;
   }).join("");
 
-  const summary = `
+  // Billed, but show collected: the fee and the net distribution are on
+  // collected rent. Older statements (no rent summary) keep the old rows.
+  const rs = statementRentSummary(cats);
+  const summary = rs ? `
+    <table class="summary"><tbody>
+      <tr><td>Rent billed</td><td class="amt">${formatCurrency(rs.billed)}</td></tr>
+      <tr><td>Rent collected</td><td class="amt">${formatCurrency(rs.collected)}</td></tr>
+      <tr><td>Rent unpaid</td><td class="amt">${formatCurrency(rs.unpaid)}</td></tr>
+      <tr><td>Total income billed</td><td class="amt">${formatCurrency(safeNum(s.total_income))}</td></tr>
+      <tr><td>Total expenses</td><td class="amt">(${formatCurrency(safeNum(s.total_expenses))})</td></tr>
+      <tr><td>Management fee (on collected rent)</td><td class="amt">(${formatCurrency(safeNum(s.management_fee))})</td></tr>
+      <tr class="net"><td>Net Distribution to Owner (collected rent less fee)</td><td class="amt">${formatCurrency(safeNum(s.net_to_owner))}</td></tr>
+    </tbody></table>` : `
     <table class="summary"><tbody>
       <tr><td>Total Income</td><td class="amt">${formatCurrency(safeNum(s.total_income))}</td></tr>
       <tr><td>Total Expenses</td><td class="amt">(${formatCurrency(safeNum(s.total_expenses))})</td></tr>
@@ -122,6 +134,7 @@ async function exportStatementExcel(statement) {
   ws.addRow(["Period", (s.period || "") + (s.start_date ? " (" + fmtDate(s.start_date) + " – " + fmtDate(s.end_date) + ")" : "")]);
   ws.addRow([]);
   const subtotal = {};
+  const rentRows = {};   // cell of each Rent Summary row, for the summary formulas
   for (const cat of cats) {
     const h = ws.addRow([cat.category || ""]);
     h.font = { bold: true };
@@ -132,8 +145,12 @@ async function exportStatementExcel(statement) {
       const r = ws.addRow([it.date ? excelDate(it.date) : null, it.description || "", safeNum(it.amount)]);
       r.getCell(1).numFmt = EXCEL_DATE_FMT;
       r.getCell(3).numFmt = money;
+      if (cat.category === "Rent Summary" && it.key) rentRows[it.key] = "C" + r.number;
     }
     const last = ws.rowCount;
+    // The Rent Summary rows (billed / collected / unpaid) are three views of
+    // the same rent, not items to add up: no subtotal.
+    if (cat.category === "Rent Summary") { ws.addRow([]); continue; }
     const t = ws.addRow(["", "Total " + (cat.category || ""), last >= first ? { formula: `SUM(C${first}:C${last})` } : 0]);
     t.font = { bold: true }; t.getCell(3).numFmt = money;
     subtotal[cat.category] = "C" + t.number;
@@ -142,10 +159,17 @@ async function exportStatementExcel(statement) {
   const ref = (name) => subtotal[name] ? `ABS(${subtotal[name]})` : "0";
   const sumRow = (label, formula, bold) => { const r = ws.addRow(["", label, { formula }]); r.getCell(3).numFmt = money; if (bold) r.font = { bold: true }; return r.number; };
   ws.addRow(["Summary"]).font = { bold: true };
-  const inc = sumRow("Total Income", ref("Income"));
+  const inc = sumRow("Total Income (billed)", ref("Income"));
   const exp = sumRow("Total Expenses", ref("Expenses"));
-  const fee = sumRow("Management Fee", ref("Management Fee"));
-  sumRow("Net to Owner", `C${inc}-C${exp}-C${fee}`, true);
+  const fee = sumRow(rentRows.collected ? "Management Fee (on collected rent)" : "Management Fee", ref("Management Fee"));
+  if (rentRows.collected) {
+    // Billed, but show collected: the net distribution is collected rent
+    // less the fee (what was booked to 2200).
+    sumRow("Net Distribution to Owner (collected rent less fee)", `${rentRows.collected}-C${fee}`, true);
+    sumRow("Net after expenses (information)", `${rentRows.collected}-C${fee}-C${exp}`);
+  } else {
+    sumRow("Net to Owner", `C${inc}-C${exp}-C${fee}`, true);
+  }
   if (subtotal["Distributions Paid"]) sumRow("Distributions Paid in Period", ref("Distributions Paid"));
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -280,18 +304,18 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
   const endDate = formatLocalDate(endObj);
 
-  const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id));
-  if (ownerProps.length === 0) { showToast("No properties assigned to this owner.", "error"); return; }
-
-  // From the GENERAL LEDGER: every posted line in the period on these
-  // properties -- by the property's class, or, for lines with no class, by
-  // the entry's property text. Paged: no 500 / 1000 row ceiling.
-  const gl = await loadOwnerLedger(companyId, ownerProps, startDate, endDate);
+  // The properties this owner owned DURING the period (ownership history,
+  // clipped to the owner's dates), the general ledger for them, and the
+  // owner's own accruals / payouts (stamped owner_id). Billed rent is shown;
+  // the fee and the net distribution are on COLLECTED rent (= 4200 / 2200).
+  const gl = await loadOwnerStatementData(companyId, owner.id, startDate, endDate);
   if (gl.failed) { showToast("Could not read the books for this statement. Nothing was generated — please retry.", "error"); return; }
+  const ownerProps = gl.props;
+  if (ownerProps.length === 0 && gl.accruals.length === 0) { showToast("This owner had no properties in that period.", "error"); return; }
   const st = buildOwnerStatement({
   lines: gl.lines, accounts: gl.accounts,
   feeRule: resolveMgmtFeePct(owner),
-  payouts: distributions.filter(d => String(d.owner_id) === String(owner.id)),
+  accruals: gl.accruals, payouts: gl.payouts,
   startDate, endDate,
   });
 
@@ -310,7 +334,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   management_fee: st.managementFee,
   net_to_owner: st.netToOwner,
   line_items: JSON.stringify(st.lineItems),
-  notes: "From the general ledger: " + ownerProps.length + " propert" + (ownerProps.length === 1 ? "y" : "ies") + ". Distributions paid in period: " + formatCurrency(st.distributionsPaid) + (st.feeIsSet ? "" : ". Management fee not set on this owner (0%)."),
+  notes: "From the general ledger: " + ownerProps.length + " propert" + (ownerProps.length === 1 ? "y" : "ies") + " (" + ownerProps.map(p => p.short_name || p.address).join("; ") + "). Rent billed " + formatCurrency(st.rentBilled) + ", collected " + formatCurrency(st.rentCollected) + ", unpaid " + formatCurrency(st.rentUnpaid) + ". Fee and net distribution are on collected rent. Expenses " + formatCurrency(st.totalExpenses) + " (net after expenses " + formatCurrency(st.netAfterExpenses) + "). Distributions paid in period: " + formatCurrency(st.distributionsPaid) + (st.feeIsSet ? "" : ". Management fee not set on this owner (0%)."),
   status: "draft",
   }]);
   if (error) { pmError("PM-8006", { raw: error, context: "generate owner statement" }); return; }
@@ -585,10 +609,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   </div>
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-positive-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income (billed)</div><div className="text-lg font-bold text-positive-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
   <div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-danger-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-highlight-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee (on collected)</div><div className="text-lg font-bold text-highlight-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner (collected)</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
   {(() => { const items = statementCategories(viewStatement); return items.map((cat, ci) => (
@@ -839,10 +863,10 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   </div>
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-positive-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income (billed)</div><div className="text-lg font-bold text-positive-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
   <div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-danger-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-highlight-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee (on collected)</div><div className="text-lg font-bold text-highlight-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You (collected)</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
   {(() => { const items = statementCategories(viewStatement); return items.map((cat, ci) => (

@@ -4,10 +4,12 @@
 // bundle (webpack interops module.exports), by api/stripe.js (the Stripe
 // webhook require()s it) and by tests/owners.test.mjs in plain node.
 //
-// Everything above runOwnerDistributionAccrual is pure. That one function does
-// I/O, but only through the Supabase client and the posting functions it is
-// handed, so the browser (autoOwnerDistribution) and the webhook run the one
-// implementation with their own client and their own journal-entry poster.
+// Everything here is pure except tenantRentChargeInMonth and
+// syncOwnerAccruals, which do I/O only through the Supabase client they are
+// handed. The owner ACCRUAL itself lives in SQL -- owner_accrual_sync
+// (supabase/migrations/20260928170000_owner_accrual_rpc.sql): rent-first,
+// oldest-first allocation of receipts to rent charges under a per-tenant
+// lock, kept in step by triggers on every receipt, charge and void.
 //
 // Why this exists:
 //  * properties.owner_id was never written by the app, so nothing keyed on it
@@ -69,15 +71,6 @@ function mgmtFeeCents(incomeCents, pct) {
 }
 
 // ─── REFERENCES + KINDS ───────────────────────────────────────────────────
-// The fee accrual posted when rent is received (DR 4000 / CR 4200 / CR 2200).
-// Deterministic so a retry of the same receipt collides on the unique
-// (company_id, reference) index instead of accruing twice.
-function ownerAccrualReference({ ownerId, tenantName, date, cents }) {
-  const tenantSlug = String(tenantName || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
-  const refDate = String(date || "").replace(/-/g, "");
-  return "ODIST-" + ownerId + "-" + tenantSlug + "-" + refDate + "-" + cents;
-}
-
 // A payout to the owner (DR 2200 / CR Checking). The user's "Reference #"
 // (a check number, an ACH trace) used to BE the journal reference, so typing
 // "1001" collided with any other entry referenced "1001" and the payout was
@@ -153,15 +146,32 @@ function accountClass(acct) {
   return null;
 }
 
-// lines: [{ account_id, debit, credit, memo, class_id,
-//           acct_journal_entries: { date, reference, description, status, property } }]
+// OWNER STATEMENT -- "billed, but show collected" (owner decision 1,
+// 2026-09-29).
+//  * Income and expenses come from the general ledger for the properties the
+//    owner owned at the time (the loader applies property_owner_history).
+//  * Rent is shown three ways: BILLED (rent-income credits in the period),
+//    COLLECTED (rent the owner accrued in the period -- the ODIST accruals
+//    dated in the period), UNPAID (billed this period and not yet collected).
+//  * The management fee and the Net Distribution to Owner are computed on
+//    COLLECTED rent only: they are the sums of the owner's accruals in the
+//    period, so they equal what was booked to 4200 / 2200 for the period.
+//  * Late fees and other income appear as billed income; they are not part
+//    of the distribution (nothing books them to 2200). Expenses are listed;
+//    "net after expenses" is shown for information only.
+//
+// lines:    GL lines [{ id, journal_entry_id, account_id, debit, credit, memo,
+//             acct_journal_entries: { date, reference, description, status } }]
 // accounts: [{ id, code, name, type }]
-// payouts: owner_distributions rows (any kind; only live payouts are used)
-function buildOwnerStatement({ lines, accounts, feeRule, payouts, startDate, endDate }) {
+// accruals: the owner's live accrual rows [{ amount, rent_amount, date,
+//             charge_je_id, voided_at, kind }] (any date)
+// payouts:  owner_distributions rows (only live payouts in period are used)
+function buildOwnerStatement({ lines, accounts, feeRule, accruals, payouts, startDate, endDate }) {
   const byId = new Map((accounts || []).map(a => [String(a.id), a]));
   const seen = new Set();
   const income = [], expenses = [];
   let incomeCents = 0, expenseCents = 0, rentCents = 0;
+  const rentChargeJes = new Set();
   for (const l of lines || []) {
     if (!l) continue;
     const je = Array.isArray(l.acct_journal_entries) ? l.acct_journal_entries[0] : l.acct_journal_entries;
@@ -180,7 +190,7 @@ function buildOwnerStatement({ lines, accounts, feeRule, payouts, startDate, end
     if (cls === "income") {
       const c = cr - dr; if (!c) continue;
       incomeCents += c; income.push({ date: d, description: desc, amount: c / 100 });
-      if (isRentIncomeAccount(acct)) rentCents += c;
+      if (isRentIncomeAccount(acct)) { rentCents += c; if (l.journal_entry_id) rentChargeJes.add(String(l.journal_entry_id)); }
     } else if (cls === "expense") {
       const c = dr - cr; if (!c) continue;
       expenseCents += c; expenses.push({ date: d, description: desc, amount: -c / 100 });
@@ -189,20 +199,35 @@ function buildOwnerStatement({ lines, accounts, feeRule, payouts, startDate, end
   const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   income.sort(byDate); expenses.sort(byDate);
   const rule = feeRule || { pct: 0, isSet: false, source: "none" };
-  const feeCents = mgmtFeeCents(rentCents, rule.pct);
-  const netCents = incomeCents - expenseCents - feeCents;
+  // Collected = the owner's accruals dated in the period (== 4200 / 2200).
+  const live = (accruals || []).filter(a => a && !a.voided_at && (a.kind === undefined || a.kind === "accrual"));
+  let collectedCents = 0, feeCents = 0, netCents = 0, collectedForPeriodCharges = 0;
+  for (const a of live) {
+    const d = String(a.date || "").slice(0, 10);
+    const rent = toCents(a.rent_amount), net = toCents(a.amount);
+    if ((!startDate || d >= startDate) && (!endDate || d <= endDate)) {
+      collectedCents += rent; netCents += net; feeCents += rent - net;
+    }
+    if (a.charge_je_id && rentChargeJes.has(String(a.charge_je_id))) collectedForPeriodCharges += rent;
+  }
+  const unpaidCents = Math.max(0, rentCents - collectedForPeriodCharges);
   const paid = (payouts || []).filter(isLivePayout).filter(p => {
     const d = String(p.date || "").slice(0, 10);
     return (!startDate || d >= startDate) && (!endDate || d <= endDate);
   });
   const paidCents = paid.reduce((s, p) => s + toCents(p.amount), 0);
-  const rentStr = (rentCents / 100).toFixed(2);
+  const money = (c) => (c / 100).toFixed(2);
   const feeDesc = rule.isSet
-    ? rule.pct + "% of rent " + rentStr + " (late fees and other income carry no fee)"
+    ? rule.pct + "% of collected rent " + money(collectedCents) + " (late fees and other income carry no fee)"
     : (rule.source === "company"
-        ? "Fee not set on owner — company default " + rule.pct + "% of rent " + rentStr
+        ? "Fee not set on owner — company default " + rule.pct + "% of collected rent " + money(collectedCents)
         : "Fee not set on owner — 0%");
   const lineItems = [];
+  lineItems.push({ category: "Rent Summary", items: [
+    { key: "billed", date: endDate, description: "Rent billed", amount: rentCents / 100 },
+    { key: "collected", date: endDate, description: "Rent collected", amount: collectedCents / 100 },
+    { key: "unpaid", date: endDate, description: "Rent unpaid (billed this period, not yet collected)", amount: unpaidCents / 100 },
+  ] });
   if (income.length) lineItems.push({ category: "Income", items: income });
   if (expenses.length) lineItems.push({ category: "Expenses", items: expenses });
   lineItems.push({ category: "Management Fee", items: [{ date: endDate, description: feeDesc, amount: -feeCents / 100 }] });
@@ -213,14 +238,28 @@ function buildOwnerStatement({ lines, accounts, feeRule, payouts, startDate, end
   }
   return {
     totalIncome: incomeCents / 100,
-    rentIncome: rentCents / 100,
+    rentIncome: rentCents / 100,            // rent billed
+    rentBilled: rentCents / 100,
+    rentCollected: collectedCents / 100,
+    rentUnpaid: unpaidCents / 100,
+    otherIncome: (incomeCents - rentCents) / 100,
     totalExpenses: expenseCents / 100,
-    managementFee: feeCents / 100,
-    netToOwner: netCents / 100,
+    managementFee: feeCents / 100,          // on collected rent (= 4200)
+    netToOwner: netCents / 100,             // collected rent - fee (= 2200)
+    netAfterExpenses: (netCents - expenseCents) / 100,
     distributionsPaid: paidCents / 100,
     feePct: rule.pct, feeIsSet: rule.isSet,
     lineItems,
   };
+}
+
+// Pull the rent summary back out of a stored statement's line items (print,
+// Excel, portal). Older statements have none: null.
+function statementRentSummary(cats) {
+  const c = (cats || []).find(x => x && x.category === "Rent Summary");
+  if (!c || !Array.isArray(c.items)) return null;
+  const get = (k) => { const it = c.items.find(i => i && i.key === k); return it ? Number(it.amount) || 0 : 0; };
+  return { billed: get("billed"), collected: get("collected"), unpaid: get("unpaid") };
 }
 
 // ─── OWNER PICKER: resolve a typed / imported owner name ──────────────────
@@ -247,63 +286,10 @@ function propertyOwnerName(property, ownersById) {
   return property.owner_name || "";
 }
 
-// ─── RENT RECEIPT -> OWNER FEE ACCRUAL (I/O through the given client) ─────
-// Is there a rent charge on the tenant's own AR in `month`? The id-based
-// check from accounting.js#checkAccrualExists, runnable with any client. A
-// failed read answers TRUE ("could not tell"), as the original does.
-// The tenant's rent CHARGED in `month`, in cents: debits of a rent-charge
-// family (RECUR-, RENT1-, PRORENT-, ...) on the tenant's own AR accounts,
-// voided entries excluded. null when the read fails ("could not tell").
-async function tenantRentChargedCentsInMonth(sb, companyId, month, tenantId) {
-  const { data: arAccts, error: arErr } = await sb.from("acct_accounts")
-    .select("id").eq("company_id", companyId).eq("tenant_id", tenantId);
-  if (arErr) return null;
-  const arIds = (arAccts || []).map(a => String(a.id));
-  if (arIds.length === 0) return 0;
-  const { start, end } = monthBounds(month);
-  const { data: lines, error: lErr } = await sb.from("acct_journal_lines")
-    .select("account_id, debit, acct_journal_entries!inner(reference, date, status)")
-    .eq("company_id", companyId).in("account_id", arIds.slice(0, 100)).gt("debit", 0)
-    .neq("acct_journal_entries.status", "voided")
-    .gte("acct_journal_entries.date", start).lte("acct_journal_entries.date", end)
-    .limit(1000);
-  if (lErr) return null;
-  let cents = 0;
-  for (const l of lines || []) {
-    if (hasRentChargeInMonth([l], arIds, month)) cents += toCents(l.debit);
-  }
-  return cents;
-}
-
-// Rent already accrued for this owner + tenant in `month` (the DR Rental
-// Income on earlier live ODIST- entries), in cents. null on a failed read.
-async function rentAccruedCentsInMonth(sb, companyId, ownerId, tenantName, month) {
-  const prefix = ownerAccrualReference({ ownerId, tenantName, date: month.replace("-", "") + "01", cents: 0 })
-    .replace(/01-0$/, "");  // ODIST-<owner>-<slug>-<yyyymm>
-  const pattern = prefix.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
-  const { data, error } = await sb.from("acct_journal_entries")
-    .select("id, reference, acct_journal_lines(debit)")
-    .eq("company_id", companyId).like("reference", pattern).neq("status", "voided").limit(1000);
-  if (error) return null;
-  let cents = 0;
-  for (const je of data || []) {
-    if (!String(je.reference || "").startsWith(prefix)) continue;
-    for (const l of je.acct_journal_lines || []) cents += toCents(l.debit);
-  }
-  return cents;
-}
-
-// RENT-FIRST: a receipt is applied to the tenant's rent for the month before
-// anything else. The fee-bearing, reclassified part of a receipt is
-//   min(receipt, rent charged this month - rent already accrued this month)
-// and the rest (late fees, other charges, prepayment) accrues NOTHING here:
-// it stays in its own income account and reaches the owner through the
-// statement, which passes non-rent income through with no fee.
-function rentPortionCents(paymentCents, chargedCents, accruedCents) {
-  const open = Math.max(0, (chargedCents || 0) - (accruedCents || 0));
-  return Math.max(0, Math.min(paymentCents, open));
-}
-
+// ─── RENT RECEIPT -> OWNER ACCRUAL (SQL) ──────────────────────────────────
+// Is there a rent charge on the tenant's own AR in `month`? Used by
+// accounting.js#checkAccrualExists. A failed read answers TRUE ("could not
+// tell").
 async function tenantRentChargeInMonth(sb, companyId, month, tenantId) {
   const { data: arAccts, error: arErr } = await sb.from("acct_accounts")
     .select("id").eq("company_id", companyId).eq("tenant_id", tenantId);
@@ -321,83 +307,19 @@ async function tenantRentChargeInMonth(sb, companyId, month, tenantId) {
   return hasRentChargeInMonth(lines, arIds, month);
 }
 
-// Given a posted rent receipt, accrue the owner's share: DR Rental Income /
-// CR Management Fee Income (fee) / CR Owner Distributions Payable (net), and
-// record an owner_distributions row of kind 'accrual'. Never throws.
-//
-// deps:
-//   postJournalEntry({ companyId, date, description, reference, property, lines })
-//       -> truthy JE id, or null / { error } on failure. Lines carry BARE
-//          account codes ("4000", "4200", "2200"); the poster resolves them.
-//   resolveClassId(propertyAddress) -> class id or null
-//   rentChargeExists(month) -> boolean (defaults to tenantRentChargeInMonth)
-//   companyDefaultFeePct -> optional (see resolveMgmtFeePct)
-// Returns { posted, skipped, error, reference, ownerNet, mgmtFee }.
-async function runOwnerDistributionAccrual(sb, args, deps) {
-  const { companyId, propertyAddress, amount, date, tenantName, tenantId } = args || {};
-  const d = deps || {};
+// Bring a tenant's owner accruals up to date: the SQL function
+// owner_accrual_sync allocates every receipt to the tenant's rent charges,
+// oldest first, in one transaction under a per-tenant lock, and posts / voids
+// the ODIST- entries to match. Idempotent -- safe to call after any receipt;
+// triggers also run it on every receipt, charge and void. Never throws.
+async function syncOwnerAccruals(sb, companyId, tenantId) {
+  if (!companyId || tenantId === null || tenantId === undefined || tenantId === "") return { skipped: "missing tenant" };
+  const tid = Number(tenantId);
+  if (!Number.isInteger(tid)) return { skipped: "missing tenant" };
   try {
-    if (!companyId || !propertyAddress || !date) return { skipped: "missing input" };
-    const paymentCents = toCents(amount);
-    if (!(paymentCents > 0)) return { skipped: "no amount" };
-    const { data: prop, error: pErr } = await sb.from("properties")
-      .select("id, owner_id").eq("company_id", companyId).eq("address", propertyAddress).is("archived_at", null).maybeSingle();
-    if (pErr) return { error: "property lookup failed: " + pErr.message };
-    if (!prop || !prop.owner_id) return { skipped: "no owner" };
-    const { data: owner, error: oErr } = await sb.from("owners")
-      .select("id, name, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
-    if (oErr) return { error: "owner lookup failed: " + oErr.message };
-    if (!owner) return { skipped: "owner not found" };
-    const month = String(date).slice(0, 7);
-    const reference = ownerAccrualReference({ ownerId: owner.id, tenantName, date, cents: paymentCents });
-    // Already accrued (a retried webhook, a second click): nothing to do.
-    const { data: live, error: liveErr } = await sb.from("acct_journal_entries").select("id")
-      .eq("company_id", companyId).eq("reference", reference).neq("status", "voided").limit(1);
-    if (liveErr) return { error: "reference check failed: " + liveErr.message };
-    if (live && live.length) return { skipped: "already accrued", reference };
-    // Only RENT is reclassified and carries the fee (fee base = rent only).
-    // Rent-first: the part of this receipt that pays rent charged this month
-    // and not yet accrued. With a tenant id that is measured from the
-    // tenant's own AR; a failed read falls back to the whole receipt (the
-    // old behaviour). Without a tenant id (legacy callers) the receipt is
-    // treated as rent when a rent charge exists this month.
-    let rentC;
-    if (tenantId !== null && tenantId !== undefined && tenantId !== "") {
-      const charged = d.rentChargedCents ? await d.rentChargedCents(month) : await tenantRentChargedCentsInMonth(sb, companyId, month, tenantId);
-      if (charged === 0) return { skipped: "no rent charge this month" };
-      const accrued = await rentAccruedCentsInMonth(sb, companyId, owner.id, tenantName, month);
-      rentC = charged === null || accrued === null ? paymentCents : rentPortionCents(paymentCents, charged, accrued);
-    } else {
-      const hasCharge = d.rentChargeExists ? await d.rentChargeExists(month) : false;
-      if (!hasCharge) return { skipped: "no rent charge this month" };
-      rentC = paymentCents;
-    }
-    if (!(rentC > 0)) return { skipped: "no unaccrued rent this month (receipt pays other charges)", reference };
-    const rule = resolveMgmtFeePct(owner, d.companyDefaultFeePct);
-    const feeC = mgmtFeeCents(rentC, rule.pct);
-    const netC = rentC - feeC;
-    const classId = d.resolveClassId ? await d.resolveClassId(propertyAddress) : null;
-    const gross = (paymentCents / 100).toFixed(2), rentPart = (rentC / 100).toFixed(2), fee = (feeC / 100).toFixed(2), net = (netC / 100).toFixed(2);
-    const passThrough = ((paymentCents - rentC) / 100).toFixed(2);
-    const { data: distRow, error: distErr } = await sb.from("owner_distributions").insert([{
-      company_id: companyId, owner_id: owner.id, kind: "accrual",
-      amount: netC / 100, date, reference, method: "accrual",
-      notes: "Rent from " + (tenantName || "tenant") + " at " + propertyAddress + " — receipt " + gross + " · rent " + rentPart + " · mgmt fee " + rule.pct + "% of rent" + (rule.isSet ? "" : " (not set)") + " (" + fee + ") · net " + net + (rentC < paymentCents ? " · " + passThrough + " non-rent, no fee (on the statement)" : ""),
-    }]).select("id").maybeSingle();
-    if (distErr) return { error: "owner_distributions insert failed: " + distErr.message };
-    const lines = [{ account_id: "4000", account_name: "Rental Income", debit: rentC / 100, credit: 0, class_id: classId, memo: "Reclassify to owner dist — " + (tenantName || "tenant") }];
-    if (feeC > 0) lines.push({ account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: feeC / 100, class_id: classId, memo: "Mgmt fee " + rule.pct + "% — " + owner.name });
-    if (netC > 0) lines.push({ account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: netC / 100, class_id: classId, memo: "Net to " + owner.name });
-    const posted = await d.postJournalEntry({
-      companyId, date, reference, property: propertyAddress, lines,
-      description: "Owner distribution accrual — " + owner.name + " — " + (tenantName || "tenant"),
-    });
-    const jeId = posted && typeof posted === "object" ? posted.id : posted;
-    if (!jeId) {
-      if (distRow && distRow.id) await sb.from("owner_distributions").delete().eq("id", distRow.id).eq("company_id", companyId);
-      return { error: "journal entry not posted" + (posted && posted.error ? ": " + posted.error : "") + " — accrual row rolled back", reference };
-    }
-    return { posted: true, reference, jeId, rentPortion: rentC / 100, ownerNet: netC / 100, mgmtFee: feeC / 100, feePct: rule.pct };
+    const { data, error } = await sb.rpc("owner_accrual_sync", { p_company_id: companyId, p_tenant_id: tid });
+    if (error) return { error: error.message };
+    return data || {};
   } catch (e) {
     return { error: (e && e.message) || String(e) };
   }
@@ -405,10 +327,10 @@ async function runOwnerDistributionAccrual(sb, args, deps) {
 
 module.exports = {
   isFeeSet, resolveMgmtFeePct, feeLabel, parseFeeInput, mgmtFeeCents, toCents,
-  ownerAccrualReference, payoutReference, DISTRIBUTION_KINDS,
+  payoutReference, DISTRIBUTION_KINDS,
   distributionKindFromReference, distributionKind, isLivePayout, sumPayouts,
   INCOME_TYPES, EXPENSE_TYPES, OWNER_MACHINERY_PREFIXES, MGMT_FEE_INCOME_CODE,
-  accountClass, isRentIncomeAccount, buildOwnerStatement, rentPortionCents,
+  accountClass, isRentIncomeAccount, buildOwnerStatement, statementRentSummary,
   normOwnerName, findOwnerByName, propertyOwnerName,
-  tenantRentChargeInMonth, tenantRentChargedCentsInMonth, rentAccruedCentsInMonth, runOwnerDistributionAccrual,
+  tenantRentChargeInMonth, syncOwnerAccruals,
 };

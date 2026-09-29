@@ -4,7 +4,7 @@ import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 import { RENT_CHARGE_PREFIXES, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
-import { runOwnerDistributionAccrual, tenantRentChargeInMonth } from "./ownerRules";
+import { syncOwnerAccruals, tenantRentChargeInMonth } from "./ownerRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
 import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
@@ -297,26 +297,22 @@ export async function checkAccrualExists(companyId, month, tenantName, tenantId)
 }
 
 // ============ OWNER DISTRIBUTION AUTOMATION ============
-// When rent is received for an owner-managed property, accrue the owner's
-// share: DR Rental Income / CR Mgmt Fee Income (fee) + CR Owner Dist Payable
-// (net), plus an owner_distributions row of kind 'accrual'.
+// After a rent receipt on an owner-managed property, bring the tenant's owner
+// accruals up to date (DR rent income / CR 4200 fee / CR 2200 net, one
+// owner_distributions 'accrual' row per receipt-to-charge allocation).
 //
-// The logic lives in utils/ownerRules.js#runOwnerDistributionAccrual so the
-// Stripe webhook (api/stripe.js) runs the SAME code server side. Here it gets
-// the browser client, this module's poster (period lock, code resolution,
-// numbering) and the legacy-aware rent-charge check. Every rent-receipt path
-// calls this: autopay Run Now, the manual ledger payment (Tenants.js) and --
-// through the shared function -- the Stripe webhook. The fee rule is
-// resolveMgmtFeePct: 0 means 0; unset means "not set" (0%, flagged in the UI).
+// The work is the SQL function owner_accrual_sync (migration 20260928170000):
+// rent-first, oldest-first allocation of every receipt to the tenant's rent
+// charges in any month, in one transaction under a per-tenant lock, keyed by
+// tenant_id + receipt entry + charge entry -- never by name or calendar
+// month. Triggers already run it on every receipt, charge and void; this call
+// (autopay Run Now, manual ledger payments, Banking deposits; the Stripe
+// webhook calls the same RPC) returns the result and is idempotent. The
+// property, amount, date and name arguments are kept for the callers'
+// signature; only the tenant id matters.
 export async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName, tenantId) {
-  const res = await runOwnerDistributionAccrual(supabase, {
-    companyId, propertyAddress, amount: paymentAmount, date: paymentDate, tenantName, tenantId,
-  }, {
-    postJournalEntry: (je) => autoPostJournalEntry(je),
-    resolveClassId: (addr) => getPropertyClassId(addr, companyId),
-    rentChargeExists: (month) => checkAccrualExists(companyId, month, tenantName, tenantId),
-  });
-  if (res.error) pmError("PM-6004", { raw: { message: res.error }, context: "auto owner distribution", silent: true });
+  const res = await syncOwnerAccruals(supabase, companyId, tenantId);
+  if (res.error) pmError("PM-6004", { raw: { message: res.error }, context: "owner accrual sync", silent: true });
   return res;
 }
 

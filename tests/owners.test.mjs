@@ -9,10 +9,13 @@
 //  4. "Distributed (YTD)" summed fee accruals AND payouts.
 //  5. Only autopay Run Now accrued the owner's share; manual ledger payments,
 //     the Stripe webhook and Banking-page deposits did not.
-//  Owner decision (2026-09-28): the fee base is RENT ONLY -- late fees and
-//  other income pass through with no fee. A receipt is applied rent-first:
-//  only the part paying this month's not-yet-accrued rent is reclassified
-//  and charged the fee; the rest reaches the owner via the statement.
+//  Owner decisions: the fee base is RENT ONLY (2026-09-28); statements are
+//  "billed, but show collected" -- fee and net distribution on collected
+//  rent, equal to 4200 / 2200 -- and each accrual / billed month belongs to
+//  whoever owned the property then (2026-09-29). The accrual is the SQL
+//  function owner_accrual_sync (migration 20260928170000): receipts are
+//  allocated oldest-first to rent charges in any month, under a per-tenant
+//  lock, kept in step by triggers on receipts, charges and voids.
 //
 // Part 1 tests the pure rules (src/utils/ownerRules.js).
 // Part 2 holds the code paths to them statically.
@@ -61,7 +64,6 @@ assert("fee cents: 8% of $1234.56 = $98.76; 0% = 0; negative income = 0",
 
 console.log("\n🧮 REFERENCES + KINDS");
 const oid = "0f1e2d3c-aaaa-bbbb-cccc-000000000001";
-assert("accrual ref is ODIST- and deterministic", R.ownerAccrualReference({ ownerId: oid, tenantName: "Jo Smith", date: "2026-09-05", cents: 150000 }) === "ODIST-" + oid + "-jo_smith-20260905-150000");
 const pr = R.payoutReference({ ownerId: oid, date: "2026-09-28", cents: 100000, userRef: "Chk #1001" });
 assert("payout ref is generated, not the user's text", pr === "DIST-0f1e2d3c-20260928-100000-CHK1001" && pr !== "Chk #1001", pr);
 assert("payout ref: same inputs -> same ref (double-post collides)", pr === R.payoutReference({ ownerId: oid, date: "2026-09-28", cents: 100000, userRef: "chk 1001" }));
@@ -104,28 +106,40 @@ const glLines = [
   { id: 3, account_id: "x5300", debit: 300, credit: 0, acct_journal_entries: je("BILL-1") },  // fetched twice
   { id: 10, account_id: "l2200", debit: 1000, credit: 0, acct_journal_entries: je("DIST-y") },
 ];
-const st = R.buildOwnerStatement({ lines: glLines, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: 8 }),
+// Billed, but show collected (owner decision 1): accruals are the owner's
+// collected rent -- the fee and the net distribution come from them.
+const accr = [
+  { kind: "accrual", rent_amount: 700, amount: 644, date: "2026-09-05", charge_je_id: "C1" },
+  { kind: "accrual", rent_amount: 500, amount: 460, date: "2026-09-12", charge_je_id: "C1" },
+  { kind: "accrual", rent_amount: 300, amount: 276, date: "2026-10-02", charge_je_id: "C1" },      // collected after the period
+  { kind: "accrual", rent_amount: 999, amount: 900, date: "2026-09-12", charge_je_id: "C1", voided_at: "x" },
+  { kind: "accrual", rent_amount: 400, amount: 368, date: "2026-09-03", charge_je_id: "OLD" },     // August rent paid in September
+];
+const glC = glLines.map(l => ({ ...l, journal_entry_id: l.id === 1 ? "C1" : "J" + l.id }));
+const st = R.buildOwnerStatement({ lines: glC, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: 8 }), accruals: accr,
   payouts: [{ kind: "payout", amount: 1000, date: "2026-09-20", method: "check" }, { kind: "accrual", amount: 644, date: "2026-09-05" }], startDate: "2026-09-01", endDate: "2026-09-30" });
-assert("income = rent + late fee (ODIST reclass and 4200 excluded)", st.totalIncome === 1550, String(st.totalIncome));
+assert("income billed = rent + late fee (ODIST reclass and 4200 excluded)", st.totalIncome === 1550, String(st.totalIncome));
 assert("expenses = posted, in period, de-duplicated (voided / last month excluded)", st.totalExpenses === 420.5, String(st.totalExpenses));
-assert("fee = 8% of RENT only (late fee carries no fee)", st.managementFee === 120 && st.rentIncome === 1500, String(st.managementFee));
-assert("net = income - expenses - fee", st.netToOwner === 1009.5, String(st.netToOwner));
-assert("fee line reads 'x% of rent'", /^8% of rent 1500\.00/.test(st.lineItems.find(c => c.category === "Management Fee").items[0].description));
+assert("rent billed 1500; collected = live accruals dated in period (700+500+400 = 1600)", st.rentBilled === 1500 && st.rentCollected === 1600, JSON.stringify([st.rentBilled, st.rentCollected]));
+assert("unpaid = billed this period - collected against this period's charges, as of now (1500 - 1500 = 0)", st.rentUnpaid === 0, String(st.rentUnpaid));
+assert("fee and net are the accruals' (= 4200 / 2200): fee 56+40+32 = 128, net 644+460+368 = 1472", st.managementFee === 128 && st.netToOwner === 1472, st.managementFee + " / " + st.netToOwner);
+assert("net after expenses is information only", st.netAfterExpenses === 1472 - 420.5);
+assert("fee line reads 'x% of collected rent'", /^8% of collected rent 1600\.00/.test(st.lineItems.find(c => c.category === "Management Fee").items[0].description));
+assert("Rent Summary section, readable back by statementRentSummary", JSON.stringify(R.statementRentSummary(st.lineItems)) === JSON.stringify({ billed: 1500, collected: 1600, unpaid: 0 }));
 assert("distributions paid = payouts only", st.distributionsPaid === 1000);
-assert("categories: Income, Expenses, Management Fee, Distributions Paid", st.lineItems.map(c => c.category).join(",") === "Income,Expenses,Management Fee,Distributions Paid");
-const st0 = R.buildOwnerStatement({ lines: glLines, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: 0 }), payouts: [], startDate: "2026-09-01", endDate: "2026-09-30" });
-assert("0% owner is charged 0", st0.managementFee === 0 && st0.netToOwner === 1129.5);
-const stN = R.buildOwnerStatement({ lines: glLines, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: null }), payouts: [], startDate: "2026-09-01", endDate: "2026-09-30" });
+assert("categories: Rent Summary, Income, Expenses, Management Fee, Distributions Paid", st.lineItems.map(c => c.category).join(",") === "Rent Summary,Income,Expenses,Management Fee,Distributions Paid");
+const stU = R.buildOwnerStatement({ lines: glC, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: 8 }), accruals: [accr[0]], payouts: [], startDate: "2026-09-01", endDate: "2026-09-30" });
+assert("partly paid: unpaid 800", stU.rentUnpaid === 800 && stU.rentCollected === 700);
+const st0 = R.buildOwnerStatement({ lines: glC, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: 0 }), accruals: [{ kind: "accrual", rent_amount: 1500, amount: 1500, date: "2026-09-05", charge_je_id: "C1" }], payouts: [], startDate: "2026-09-01", endDate: "2026-09-30" });
+assert("0% owner is charged 0", st0.managementFee === 0 && st0.netToOwner === 1500);
+const stN = R.buildOwnerStatement({ lines: glC, accounts: accts, feeRule: R.resolveMgmtFeePct({ management_fee_pct: null }), accruals: [], payouts: [], startDate: "2026-09-01", endDate: "2026-09-30" });
 assert("unset fee -> 0, and the statement says 'Fee not set'", stN.managementFee === 0 && /Fee not set/.test(stN.lineItems.find(c => c.category === "Management Fee").items[0].description));
+assert("older statements (no Rent Summary) -> null", R.statementRentSummary([{ category: "Income", items: [] }]) === null);
 
-console.log("\n🧮 RENT ONLY + RENT FIRST");
+console.log("\n🧮 RENT ACCOUNT");
 assert("rent account: code 4000 / 4000-xx / named Rental Income",
   R.isRentIncomeAccount({ code: "4000" }) && R.isRentIncomeAccount({ code: "4000-01" }) && R.isRentIncomeAccount({ code: "4050", name: "Rental Income - Unit B" }) &&
   !R.isRentIncomeAccount({ code: "4010", name: "Late Fee Income" }) && !R.isRentIncomeAccount({ code: "4100", name: "Other Income" }) && !R.isRentIncomeAccount({ code: "40001" }));
-assert("rent-first: receipt within open rent -> all rent", R.rentPortionCents(70000, 150000, 0) === 70000);
-assert("rent-first: receipt beyond open rent -> capped at open rent", R.rentPortionCents(130000, 120000, 0) === 120000);
-assert("rent-first: rent already accrued -> nothing (late fee / other)", R.rentPortionCents(5000, 150000, 150000) === 0);
-assert("rent-first: partly accrued", R.rentPortionCents(80000, 150000, 70000) === 80000 && R.rentPortionCents(90000, 150000, 70000) === 80000);
 
 console.log("\n🧮 OWNER NAMES");
 const ownerList = [{ id: "a", name: "Jane  Doe" }, { id: "b", name: "Twin" }, { id: "c", name: "twin" }, { id: "d", name: "Gone", archived_at: "x" }];
@@ -147,17 +161,32 @@ const imp = read("src/components/PropertyImport.js");
 const docs = read("src/components/Documents.js");
 const ownUtil = read("src/utils/owners.js");
 const MIG = read("supabase/migrations/20260928100000_owner_distribution_kind.sql");
+const MIG2 = read("supabase/migrations/20260928170000_owner_accrual_rpc.sql");
 assert("no `|| 10` fee default left in Owners.js", !/management_fee_pct\s*\|\|\s*10/.test(owners) && !/feePct\s*=\s*owner\.management_fee_pct\s*\|\|/.test(owners));
 assert("Owners.js resolves the fee with resolveMgmtFeePct", owners.includes("resolveMgmtFeePct(owner)"));
-assert("statement built from the ledger (loadOwnerLedger + buildOwnerStatement), not payments/work_orders",
-  owners.includes("loadOwnerLedger(companyId, ownerProps, startDate, endDate)") && owners.includes("buildOwnerStatement(") && !owners.includes('from("payments")') && !/work_orders"\)\.select\("\*"\)\.eq\("company_id", companyId\)\.in\("property", propAddresses\)/.test(owners));
-assert("statement lines are paged (fetchAllPaged), no .limit(500)", ownUtil.includes("fetchAllPaged(() => base().in(\"class_id\"") && !owners.includes(".limit(500)"));
+assert("statement from the ledger for the owner AT THE TIME (loadOwnerStatementData + buildOwnerStatement with accruals)",
+  owners.includes("loadOwnerStatementData(companyId, owner.id, startDate, endDate)") && owners.includes("accruals: gl.accruals") && !owners.includes('from("payments")'));
+assert("statement reads property_owner_history, paged, no .limit(500)", ownUtil.includes('from("property_owner_history")') && ownUtil.includes('fetchAllPaged(() => base().eq("class_id", prop.class_id)') && !owners.includes(".limit(500)"));
+assert("print + Excel show billed / collected / unpaid; net = collected less fee", owners.includes("statementRentSummary(cats)") && owners.includes("Net Distribution to Owner (collected rent less fee)") && owners.includes("rentRows.collected"));
 assert("YTD stat counts payouts only", owners.includes("sumPayouts(distributions, { year:"));
 assert("Pay Owner: kind payout + generated reference, user text kept as memo",
   owners.includes('kind: "payout"') && owners.includes("payoutReference({ ownerId: owner.id") && !owners.includes("distForm.reference || \"DIST-\""));
-assert("accrual writer sets kind accrual", read("src/utils/ownerRules.js").includes('kind: "accrual"'));
-assert("autoOwnerDistribution runs the shared function", acct.includes("runOwnerDistributionAccrual(supabase,"));
-assert("Stripe webhook runs the same shared function", api.includes('require("../src/utils/ownerRules")') && api.includes("runOwnerDistributionAccrual(sb,"));
+assert("accruals are written only by SQL (owner_accrual_sync), kind 'accrual'", /INSERT INTO owner_distributions[\s\S]{0,600}'accrual'/.test(MIG2) && !read("src/utils/ownerRules.js").includes('kind: "accrual"'));
+assert("autoOwnerDistribution calls the SQL function", acct.includes("syncOwnerAccruals(supabase, companyId, tenantId)") && read("src/utils/ownerRules.js").includes('sb.rpc("owner_accrual_sync"'));
+assert("Stripe webhook calls the same SQL function", api.includes('require("../src/utils/ownerRules")') && api.includes("syncOwnerAccruals(sb, companyId, tenantId)") && !api.includes("postJournalEntryWithCodes"));
+assert("migration: advisory lock per tenant; tenant_id + receipt + charge reference; rent by rent-income credit, not prefix",
+  MIG2.includes("pg_advisory_xact_lock(hashtext('owner_accrual:' || p_company_id), p_tenant_id)") && MIG2.includes("v_ref := 'ODIST-' || p_tenant_id || '-' || d_rc[k] || '-' || d_ch[k]") && MIG2.includes("owner_is_rent_income_account(a.code, a.name)") && !/RECUR-/.test(MIG2.replace(/^--.*$/mg, "")));
+assert("migration: deferred triggers on lines + entry status keep accruals in step", /CREATE CONSTRAINT TRIGGER trg_owner_accrual_after_line[\s\S]{0,160}DEFERRABLE INITIALLY DEFERRED/.test(MIG2) && /CREATE CONSTRAINT TRIGGER trg_owner_accrual_after_je_status[\s\S]{0,160}DEFERRABLE INITIALLY DEFERRED/.test(MIG2));
+assert("migration: every new SECURITY DEFINER function is revoked from PUBLIC, anon", (() => {
+  const body = MIG2.replace(/^--.*$/mg, "");
+  const defs = [...body.matchAll(/FUNCTION public\.(\w+)\(([^)]*)\)\s*RETURNS [\s\S]{0,120}?SECURITY DEFINER/g)].map(m => m[1]);
+  return defs.length >= 7 && defs.every(n => new RegExp("REVOKE ALL ON FUNCTION public\\." + n + "\\([^)]*\\) FROM PUBLIC, anon").test(body));
+})());
+assert("migration: sync checks company staff; fee CHECK 0..100; kind immutable; gate on UPDATE / DELETE",
+  MIG2.includes("PERFORM public._assert_company_staff(p_company_id)") && MIG2.includes("CHECK (management_fee_pct IS NULL OR (management_fee_pct >= 0 AND management_fee_pct <= 100))") &&
+  MIG2.includes("trg_owner_distribution_kind_immutable") && MIG2.includes("CREATE TRIGGER trg_mgmt_gate_upd BEFORE UPDATE ON public.owner_distributions") && MIG2.includes("CREATE TRIGGER trg_mgmt_gate_del BEFORE DELETE ON public.owner_distributions"));
+assert("migration: ownership history table + trigger; accrual owner = owner on the charge date",
+  MIG2.includes("CREATE TABLE IF NOT EXISTS public.property_owner_history") && MIG2.includes("AFTER INSERT OR UPDATE OF owner_id ON public.properties") && MIG2.includes("public.property_owner_on(v_prop.id, r.date)"));
 assert("manual ledger payment accrues the owner's share", /newCharge\.type === "payment" && arLegIsPerTenant\)[\s\S]{0,80}autoOwnerDistribution\(companyId, selectedTenant\.property, Math\.abs\(amount\), today, selectedTenant\.name, selectedTenant\.id\)/.test(ten));
 assert("Banking: add + split deposits run the owner accrual after a successful post",
   (read("src/components/Banking.js").match(/if \(isInflow\) await accrueOwnerShareForBankDeposit\(companyId, \{ date: txn\.posted_date/g) || []).length === 2);
@@ -171,7 +200,7 @@ assert("assignPropertyOwner derives owner_name from the record", /update\(\{ own
 assert("portal shows payouts only", owners.includes("setDistributions((d.data || []).filter(isLivePayout))"));
 assert("migration: kind check + NOT NULL + backfill from reference", /CHECK \(kind IN \('accrual','payout'\)\)/.test(MIG) && /SET kind = CASE WHEN reference LIKE 'ODIST-%'/.test(MIG) && /ALTER COLUMN kind SET NOT NULL/.test(MIG));
 assert("migration: void follows the journal entry", /AFTER UPDATE OF status ON public\.acct_journal_entries/.test(MIG));
-assert("migration: gate on payouts only; no SECURITY DEFINER added", /= 'payout' THEN\s+v_destructive := true; v_action := 'record an owner payout'/.test(MIG) && !/SECURITY DEFINER/.test(MIG.replace(/^--.*$/mg, "")));
+assert("migration 100000: gate on payouts only; no SECURITY DEFINER added", /= 'payout' THEN\s+v_destructive := true; v_action := 'record an owner payout'/.test(MIG) && !/SECURITY DEFINER/.test(MIG.replace(/^--.*$/mg, "")));
 assert("migration: new functions revoked from PUBLIC, anon", (MIG.match(/REVOKE ALL ON FUNCTION public\.owner_distribution_\w+\(\) FROM PUBLIC, anon;/g) || []).length === 2);
 
 // ─── 3. TEST DB ───────────────────────────────────────────────────────────
@@ -187,7 +216,7 @@ async function cleanupCompany(CO, userIds = []) {
   for (let i = 0; i < ids.length; i += 100) await sb.from("acct_journal_lines").delete().in("journal_entry_id", ids.slice(i, i + 100));
   for (const tb of ["bank_feed_transaction_link", "bank_posting_decision_line", "bank_posting_decision", "bank_feed_transaction", "bank_import_batch", "bank_account_feed",
                     "acct_journal_lines", "acct_journal_entries", "owner_distributions", "owner_statements", "payments", "ledger_entries",
-                    "notification_queue", "notifications", "tenants", "properties", "owners", "acct_accounts", "acct_classes",
+                    "notification_queue", "notifications", "tenants", "property_owner_history", "properties", "owners", "acct_accounts", "acct_classes",
                     "company_members", "audit_trail", "error_log"]) {
     await sb.from(tb).delete().eq("company_id", CO);
   }
@@ -196,7 +225,7 @@ async function cleanupCompany(CO, userIds = []) {
 }
 async function leftovers(CO) {
   const out = {};
-  for (const tb of ["bank_feed_transaction", "bank_account_feed", "acct_journal_entries", "acct_journal_lines", "owner_distributions", "owner_statements", "payments", "tenants", "properties", "owners", "acct_accounts", "acct_classes", "company_members"]) {
+  for (const tb of ["bank_feed_transaction", "bank_account_feed", "acct_journal_entries", "acct_journal_lines", "owner_distributions", "owner_statements", "payments", "tenants", "property_owner_history", "properties", "owners", "acct_accounts", "acct_classes", "company_members"]) {
     const { count } = await sb.from(tb).select("id", { count: "exact", head: true }).eq("company_id", CO);
     if (count) out[tb] = count;
   }
@@ -258,7 +287,7 @@ try {
 
   // Five properties; P5 has no owner (control).
   const P = {};
-  for (const [k, n] of [["P1", 101], ["P2", 102], ["P3", 103], ["P4", 104], ["P5", 105], ["P6", 106], ["P7", 107]]) {
+  for (const [k, n] of [["P1", 101], ["P2", 102], ["P3", 103], ["P4", 104], ["P5", 105], ["P6", 106], ["P7", 107], ["P8", 108]]) {
     const row = ok(await sb.from("properties").insert([{ company_id: CO, address_line_1: `${n} ${TAG} Way`, city: "Testville", state: "MD", zip: "20001", address: `${n} ${TAG} Way, Testville, MD 20001`, type: "Single Family", status: "occupied" }]).select("*").single(), "property " + k);
     const cls = ok(await sb.from("acct_classes").insert([{ id: crypto.randomUUID(), company_id: CO, name: row.address, is_active: true }]).select("id").single(), "class " + k);
     ok(await sb.from("properties").update({ class_id: cls.id }).eq("id", row.id), "class link " + k);
@@ -274,12 +303,12 @@ try {
 
   // Link through the picker's write path (assignPropertyOwner, as the
   // wizard's post-commit step and the property page call it).
-  for (const [k, o] of [["P1", O8], ["P2", O8], ["P3", O0], ["P4", ON], ["P6", O8], ["P7", O8]]) {
+  for (const [k, o] of [["P1", O8], ["P2", O8], ["P3", O0], ["P4", ON], ["P6", O8], ["P7", O8], ["P8", O8]]) {
     const r = await OU.assignPropertyOwner(CO, P[k].id, o.id);
     assert(`${k} linked to ${o.name}`, r.ok, r.error);
   }
   const { data: linked } = await sb.from("properties").select("id, owner_id, owner_name").eq("company_id", CO).order("id");
-  assert("owner_id written and owner_name derived from the record", linked.filter(p => p.owner_id).length === 6 && linked.every(p => !p.owner_id || p.owner_name === [O8, O0, ON].find(o => o.id === p.owner_id).name));
+  assert("owner_id written and owner_name derived from the record", linked.filter(p => p.owner_id).length === 7 && linked.every(p => !p.owner_id || p.owner_name === [O8, O0, ON].find(o => o.id === p.owner_id).name));
   const un = await OU.assignPropertyOwner(CO, P.P5.id, null);
   assert("clearing an owner writes null + ''", un.ok && (await sb.from("properties").select("owner_id, owner_name").eq("id", P.P5.id).single()).data.owner_id === null);
   const bad = await OU.assignPropertyOwner(CO, P.P5.id, crypto.randomUUID());
@@ -295,32 +324,45 @@ try {
 
   // Tenants + their own AR + this month's rent charge (RECUR-).
   const T = {};
-  const tenantsSpec = [["T1", "P1", 1500], ["T2", "P2", 1200], ["T3", "P3", 1000], ["T4", "P4", 900], ["T5", "P7", 300], ["T6", "P6", 600]];
+  const tenantsSpec = [["T1", "P1", 1500], ["T2", "P2", 1200], ["T3", "P3", 1000], ["T4", "P4", 900], ["T5", "P7", 300], ["T6", "P6", 600], ["T7", "P8", 500]];
   let seq = 0;
   for (const [k, pk, rent] of tenantsSpec) {
     const t = ok(await sb.from("tenants").insert([{ company_id: CO, name: `${TAG} Tenant ${k}`, property: P[pk].address, lease_status: "active", balance: 0, rent, email: `${CO}-${k.toLowerCase()}@example.com` }]).select("*").single(), "tenant " + k);
     const ar = await mkAcct("1100-" + (++seq).toString().padStart(3, "0"), "AR - " + t.name, "Asset", { tenant_id: t.id, parent_id: acc["1100"].id });
-    T[k] = { ...t, ar, rent, pk };
     const jeId = await A.autoPostJournalEntry({ companyId: CO, date: startDate, reference: `RECUR-${crypto.randomBytes(4).toString("hex")}-${month}`, description: "Rent " + t.name, property: P[pk].address,
       lines: [{ account_id: ar.id, account_name: ar.name, debit: rent, credit: 0, class_id: P[pk].class_id, memo: "rent" }, { account_id: acc["4000"].id, account_name: "Rental Income", debit: 0, credit: rent, class_id: P[pk].class_id, memo: "rent" }] });
     assert(`rent charge posted for ${k}`, !!jeId);
+    T[k] = { ...t, ar, rent, pk, chargeJe: jeId };
   }
 
   // ── receipts, one per path ──
+  // The accrual itself is the SQL function owner_accrual_sync, run by a
+  // deferred trigger when each receipt commits and again (idempotently) by
+  // the app's own call. So the checks read the accrual ROWS, not the call.
+  const live = async (tid) => (await sb.from("owner_distributions").select("*").eq("company_id", CO).eq("tenant_id", tid).eq("kind", "accrual").is("voided_at", null)).data || [];
+  const sumOf = (rows, f) => Math.round(rows.reduce((s, r) => s + Number(r[f] || 0), 0) * 100) / 100;
+  const tot = async (tid) => { const rows = await live(tid); const rent = sumOf(rows, "rent_amount"), net = sumOf(rows, "amount"); return { rows, rent, net, fee: Math.round((rent - net) * 100) / 100 }; };
   // (a) Manual ledger payment -- Tenants.js addLedgerEntry, type "payment".
-  const manual = async (k, amt) => {
+  const manualJE = async (k, amt, date = today) => {
     const t = T[k];
-    const res = await A.atomicPostJEAndLedger({ companyId: CO, date: today, description: "Manual payment — " + t.name, reference: "MANUAL-" + crypto.randomBytes(4).toString("hex"), property: t.property,
+    const res = await A.atomicPostJEAndLedger({ companyId: CO, date, description: "Manual payment — " + t.name, reference: "MANUAL-" + crypto.randomBytes(4).toString("hex"), property: t.property,
       lines: [{ account_id: acc["1000"].id, account_name: "Checking Account", debit: amt, credit: 0, class_id: P[t.pk].class_id, memo: t.name }, { account_id: t.ar.id, account_name: t.ar.name, debit: 0, credit: amt, class_id: P[t.pk].class_id, memo: "payment" }],
-      ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: today, description: "payment", amount: -amt, type: "payment", balance: 0 }, balanceUpdate: null });
-    assert(`manual receipt posted (${k})`, !!res.jeId, res.error);
-    return A.autoOwnerDistribution(CO, t.property, amt, today, t.name, t.id);
+      ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date, description: "payment", amount: -amt, type: "payment", balance: 0 }, balanceUpdate: null });
+    assert(`manual receipt posted (${k} ${amt})`, !!res.jeId, res.error);
+    const call = await A.autoOwnerDistribution(CO, t.property, amt, date, t.name, t.id);
+    return { jeId: res.jeId, call };
   };
-  const m1 = await manual("T1", 700);
-  assert("manual ledger payment accrues the owner's share (8%)", m1.posted && m1.mgmtFee === 56 && m1.ownerNet === 644, JSON.stringify(m1));
+  const m1 = await manualJE("T1", 700);
+  const a1 = await tot(T.T1.id);
+  assert("manual ledger payment accrues 8% of the rent: rent 700, fee 56, net 644", a1.rent === 700 && a1.fee === 56 && a1.net === 644, JSON.stringify(a1));
+  const r1 = a1.rows[0] || {};
+  assert("accrual row carries tenant_id, receipt / charge entry, charge month and the owner then",
+    r1.tenant_id === T.T1.id && r1.receipt_je_id === m1.jeId && r1.charge_je_id === T.T1.chargeJe && r1.charge_month === startDate && r1.owner_id === O8.id, JSON.stringify(r1));
+  assert("reference = ODIST-<tenant id>-<receipt entry>-<charge entry> (no names)", r1.reference === `ODIST-${T.T1.id}-${m1.jeId}-${T.T1.chargeJe}`, r1.reference);
+  assert("the app's own call after the trigger is a no-op that reports the total", m1.call && !m1.call.error && Number(m1.call.accrued_rent) === 700, JSON.stringify(m1.call));
   // (b) Autopay Run Now -- Payments.js runNow. A MIXED receipt: T2 also owes
-  // a $100 other charge (4100), and pays $1,300. Rent-first: $1,200 is rent
-  // (fee 8% = 96), the $100 is other income, no fee, not accrued.
+  // a $100 other charge (4100) and pays $1,300: $1,200 is rent (fee 96); the
+  // $100 is other income -- no fee, not accrued.
   {
     const t0 = T.T2;
     const oc = await A.autoPostJournalEntry({ companyId: CO, date: startDate, reference: "MANUAL-" + crypto.randomBytes(4).toString("hex"), description: "Other charge " + t0.name, property: t0.property,
@@ -333,19 +375,19 @@ try {
       lines: [{ account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: P.P2.class_id, memo: "Autopay" }, { account_id: t.ar.id, account_name: t.ar.name, debit: 0, credit: amt, class_id: P.P2.class_id, memo: "AR settlement" }],
       ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: today, description: "Autopay payment (ach)", amount: -amt, type: "payment", balance: 0 }, balanceUpdate: null });
     assert("autopay receipt posted", !!res.jeId, res.error);
-    const a2 = await A.autoOwnerDistribution(CO, t.property, amt, today, t.name, t.id);
-    assert("mixed autopay receipt $1,300: fee on the $1,200 rent only (96), net 1104", a2.posted && a2.rentPortion === 1200 && a2.mgmtFee === 96 && a2.ownerNet === 1104, JSON.stringify(a2));
-    const { data: a2Lines } = await sb.from("acct_journal_lines").select("debit").eq("journal_entry_id", a2.jeId).gt("debit", 0);
-    assert("…and only the rent ($1,200) is reclassified out of Rental Income", (a2Lines || []).length === 1 && Number(a2Lines[0].debit) === 1200);
-    const { data: a2Dist } = await sb.from("owner_distributions").select("notes").eq("company_id", CO).eq("reference", a2.reference).single();
-    assert("…and the accrual notes the $100 non-rent part", /100\.00 non-rent, no fee/.test(a2Dist?.notes || ""), a2Dist?.notes);
+    await A.autoOwnerDistribution(CO, t.property, amt, today, t.name, t.id);
+    const a2 = await tot(t.id);
+    assert("mixed autopay receipt $1,300: rent 1200, fee 96, net 1104", a2.rent === 1200 && a2.fee === 96 && a2.net === 1104, JSON.stringify(a2));
+    const { data: a2Je } = await sb.from("acct_journal_entries").select("id, acct_journal_lines(debit)").eq("company_id", CO).eq("reference", a2.rows[0]?.reference).neq("status", "voided");
+    const drs = (a2Je?.[0]?.acct_journal_lines || []).filter(l => Number(l.debit) > 0);
+    assert("…and only the rent ($1,200) is reclassified out of Rental Income", drs.length === 1 && Number(drs[0].debit) === 1200);
     const again = await A.autoOwnerDistribution(CO, t.property, amt, today, t.name, t.id);
-    assert("the same receipt twice accrues once", again.skipped === "already accrued", JSON.stringify(again));
+    assert("calling again posts nothing (idempotent)", again.posted === 0 && (await live(t.id)).length === 1, JSON.stringify(again));
   }
   // (c) Stripe webhook -- the real handler, only Stripe itself faked.
   {
     const t = T.T1, rentCents = 80000, pi = "pi_" + CO.replace(/-/g, "_") + "_1";
-    const event = { type: "payment_intent.succeeded", data: { object: { id: pi, metadata: { company_id: CO, tenant_id: String(t.id), rent_cents: String(rentCents), tenant_name: t.name, property: t.property } } } };
+    const event = { type: "payment_intent.succeeded", data: { object: { id: pi, metadata: { company_id: CO, tenant_id: String(t.id), rent_cents: String(rentCents), tenant_name: t.name + " (stale name)", property: t.property } } } };
     const Module = require("module");
     const origLoad = Module._load;
     const FakeStripe = function () { return { webhooks: { constructEvent: (_raw, sig) => { if (sig !== "valid") throw new Error("bad sig"); return event; } } }; };
@@ -372,62 +414,73 @@ try {
     const r = await call();
     Object.assign(process.env, saved);
     assert("Stripe webhook posted the receipt", r.status === 200 && !r.body?.error, JSON.stringify(r));
-    const { data: sj } = await sb.from("acct_journal_entries").select("id, date").eq("company_id", CO).eq("reference", "STRIPE-" + pi);
-    const sDate = sj?.[0]?.date;
-    const { data: sAcc } = await sb.from("owner_distributions").select("*").eq("company_id", CO).eq("kind", "accrual").like("reference", "ODIST-" + O8.id + "-%-" + String(sDate || "").replace(/-/g, "") + "-" + rentCents);
-    assert("Stripe webhook accrues the owner's share server side (8% of $800 -> $736 net)", (sAcc || []).length === 1 && Number(sAcc[0].amount) === 736, JSON.stringify(sAcc));
+    const a = await tot(t.id);
+    assert("Stripe receipt accrues server side, keyed on tenant_id (stale metadata name irrelevant): T1 rent 700 + 800 = 1500, fee 120", a.rent === 1500 && a.fee === 120 && a.rows.length === 2, JSON.stringify(a));
     const r2 = await call();
-    assert("a replayed webhook is idempotent (no second accrual)", r2.status === 200 && r2.body?.idempotent === true);
+    assert("a replayed webhook is idempotent (no second accrual)", r2.status === 200 && r2.body?.idempotent === true && (await live(t.id)).length === 2);
   }
-  // T1's rent is now fully accrued (700 + 800 = 1,500): a further $50 (the
-  // late fee) is not rent -- no accrual, no fee.
+  // T1: late fee charged, then a $50 receipt. Rent is fully collected, so the
+  // $50 is not rent -- nothing accrues, no fee.
   {
-    const late = await manual("T1", 50);
-    assert("a receipt beyond this month's rent (late fee) accrues nothing, charges no fee", late.skipped && /no unaccrued rent/.test(late.skipped), JSON.stringify(late));
+    const t = T.T1;
+    const id = await A.autoPostJournalEntry({ companyId: CO, date: today, reference: "LATEFEE-" + t.id + "-" + month.replace("-", ""), description: "Late fee", property: t.property,
+      lines: [{ account_id: t.ar.id, account_name: t.ar.name, debit: 50, credit: 0, class_id: P.P1.class_id, memo: "late" }, { account_id: acc["4010"].id, account_name: "Late Fee Income", debit: 0, credit: 50, class_id: P.P1.class_id, memo: "late" }] });
+    assert("late fee posted", !!id);
+    await manualJE("T1", 50);
+    const a = await tot(t.id);
+    assert("a receipt beyond the rent (pays the late fee) accrues nothing: T1 rent still 1500", a.rent === 1500 && a.rows.length === 2, JSON.stringify(a));
   }
   // (d) 0% owner and (e) unset-fee owner.
-  const m3 = await manual("T3", 1000);
-  assert("0% owner: charged 0, full amount to the owner", m3.posted && m3.mgmtFee === 0 && m3.ownerNet === 1000 && m3.feePct === 0, JSON.stringify(m3));
-  const { data: m3Lines } = await sb.from("acct_journal_lines").select("account_id").eq("journal_entry_id", m3.jeId);
-  assert("0% owner: the accrual has no management-fee line", (m3Lines || []).length === 2 && !(m3Lines || []).some(l => l.account_id === acc["4200"].id));
-  const m4 = await manual("T4", 900);
-  assert("unset-fee owner: 0 charged", m4.posted && m4.mgmtFee === 0 && m4.ownerNet === 900, JSON.stringify(m4));
-  const { data: m4Dist } = await sb.from("owner_distributions").select("notes, kind").eq("company_id", CO).eq("reference", m4.reference).single();
-  assert("unset-fee owner: accrual row flagged '(not set)'", m4Dist?.kind === "accrual" && /\(not set\)/.test(m4Dist.notes), JSON.stringify(m4Dist));
+  await manualJE("T3", 1000);
+  const a3 = await tot(T.T3.id);
+  assert("0% owner: charged 0, full rent to the owner", a3.rent === 1000 && a3.fee === 0 && a3.net === 1000, JSON.stringify(a3));
+  const { data: a3Je } = await sb.from("acct_journal_entries").select("acct_journal_lines(account_id)").eq("company_id", CO).eq("reference", a3.rows[0]?.reference).neq("status", "voided");
+  assert("0% owner: the accrual has no management-fee line", (a3Je?.[0]?.acct_journal_lines || []).length === 2 && !(a3Je[0].acct_journal_lines).some(l => l.account_id === acc["4200"].id));
+  await manualJE("T4", 900);
+  const a4 = await tot(T.T4.id);
+  assert("unset-fee owner: 0 charged, row flagged '(not set)'", a4.rent === 900 && a4.fee === 0 && /\(not set\)/.test(a4.rows[0]?.notes || ""), JSON.stringify(a4));
   // (f) Banking page: a deposit categorised to a tenant's AR through the real
-  // post_bank_transaction RPC, then the post-success hook Banking.js runs
-  // (accrueOwnerShareForBankDeposit) -- 'add' and 'split'.
+  // post_bank_transaction RPC, then the post-success hook Banking.js runs.
   {
     const feed = ok(await sb.from("bank_account_feed").insert([{ company_id: CO, gl_account_id: acc["1000"].id, account_name: TAG + " feed", masked_number: "***0000", account_type: "checking", institution_name: "QA Bank", connection_type: "csv", status: "active" }]).select("id").single(), "feed");
     const mkTxn = async (n, amt) => ok(await sb.from("bank_feed_transaction").insert([{ company_id: CO, bank_account_feed_id: feed.id, source_type: "csv", provider_transaction_id: CO + "-" + n,
       posted_date: today, amount: amt, direction: "inflow", bank_description_raw: "DEPOSIT " + n, bank_description_clean: "DEPOSIT " + n, payee_normalized: "Tenant", fingerprint_hash: CO + "-fp-" + n, status: "for_review" }]).select("*").single(), "bank txn " + n);
-    // 'add': $650 to T6's AR (rent $600) -> rent-first: $600 rent, fee 48, net 552.
     const t6 = T.T6, x1 = await mkTxn(1, 650);
-    const { data: r1, error: e1 } = await sb.rpc("post_bank_transaction", { p_company_id: CO, p_txn_id: x1.id, p_kind: "add", p_description: "DEPOSIT 1", p_property: P.P6.address,
+    const { data: b1r, error: e1 } = await sb.rpc("post_bank_transaction", { p_company_id: CO, p_txn_id: x1.id, p_kind: "add", p_description: "DEPOSIT 1", p_property: P.P6.address,
       p_lines: [{ account_id: acc["1000"].id, account_name: "Checking Account", debit: 650, credit: 0, class_id: P.P6.class_id, memo: "dep", entity_type: "customer", entity_id: String(t6.id), entity_name: t6.name },
                 { account_id: t6.ar.id, account_name: t6.ar.name, debit: 0, credit: 650, class_id: P.P6.class_id, memo: "dep", entity_type: "customer", entity_id: String(t6.id), entity_name: t6.name }],
       p_decision: { payee: "Tenant", memo: "", header_class_id: P.P6.class_id }, p_decision_lines: [{ gl_account_id: t6.ar.id, gl_account_name: t6.ar.name, amount: 650, entry_side: "credit", memo: "" }] });
-    assert("bank 'add' deposit posted by post_bank_transaction", !e1 && r1?.je_id, e1?.message);
-    const b1 = await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t6.ar.id, amount: 650 }] });
-    assert("bank 'add' deposit accrues rent only: 600 rent, fee 48, net 552", b1.length === 1 && b1[0].posted && b1[0].rentPortion === 600 && b1[0].mgmtFee === 48 && b1[0].ownerNet === 552, JSON.stringify(b1));
-    const b1again = await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t6.ar.id, amount: 650 }] });
-    assert("bank hook re-run is idempotent (same ODIST- reference)", b1again[0]?.skipped === "already accrued" && b1again[0]?.reference === b1[0].reference);
-    // 'split': $325 -> $300 to T5's AR (rent $300) + $25 Other Income.
+    assert("bank 'add' deposit posted by post_bank_transaction", !e1 && b1r?.je_id, e1?.message);
+    await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t6.ar.id, amount: 650 }] });
+    const b6 = await tot(t6.id);
+    assert("bank 'add' $650 against $600 rent: rent 600, fee 48, net 552 (the $50 waits for the next charge)", b6.rent === 600 && b6.fee === 48 && b6.net === 552, JSON.stringify(b6));
+    await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t6.ar.id, amount: 650 }] });
+    assert("bank hook re-run is idempotent", (await live(t6.id)).length === 1);
     const t5 = T.T5, x2 = await mkTxn(2, 325);
-    const { data: r2, error: e2 } = await sb.rpc("post_bank_transaction", { p_company_id: CO, p_txn_id: x2.id, p_kind: "split", p_description: "Split — DEPOSIT 2", p_property: P.P7.address,
+    const { data: b2r, error: e2 } = await sb.rpc("post_bank_transaction", { p_company_id: CO, p_txn_id: x2.id, p_kind: "split", p_description: "Split — DEPOSIT 2", p_property: P.P7.address,
       p_lines: [{ account_id: acc["1000"].id, account_name: "Checking Account", debit: 325, credit: 0, class_id: null, memo: "Split transaction" },
                 { account_id: t5.ar.id, account_name: t5.ar.name, debit: 0, credit: 300, class_id: P.P7.class_id, memo: "rent" },
                 { account_id: acc["4100"].id, account_name: "Other Income", debit: 0, credit: 25, class_id: P.P7.class_id, memo: "laundry" }],
       p_decision: { memo: "Split into 2 lines" }, p_decision_lines: [
         { line_no: 1, gl_account_id: t5.ar.id, gl_account_name: t5.ar.name, amount: 300, entry_side: "credit", memo: "rent", class_id: P.P7.class_id },
         { line_no: 2, gl_account_id: acc["4100"].id, gl_account_name: "Other Income", amount: 25, entry_side: "credit", memo: "laundry", class_id: P.P7.class_id }] });
-    assert("bank 'split' deposit posted by post_bank_transaction", !e2 && r2?.je_id, e2?.message);
-    const b2 = await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t5.ar.id, amount: 300 }, { accountId: acc["4100"].id, amount: 25 }] });
-    assert("bank 'split': only the tenant-AR leg accrues (300 rent, fee 24, net 276); the $25 other income does not",
-      b2.length === 1 && b2[0].posted && b2[0].rentPortion === 300 && b2[0].mgmtFee === 24 && b2[0].ownerNet === 276, JSON.stringify(b2));
+    assert("bank 'split' deposit posted by post_bank_transaction", !e2 && b2r?.je_id, e2?.message);
+    await OU.accrueOwnerShareForBankDeposit(CO, { date: today, lines: [{ accountId: t5.ar.id, amount: 300 }, { accountId: acc["4100"].id, amount: 25 }] });
+    const b5 = await tot(t5.id);
+    assert("bank 'split': only the tenant-AR leg accrues (rent 300, fee 24, net 276)", b5.rent === 300 && b5.fee === 24 && b5.net === 276, JSON.stringify(b5));
+    // Rent charged onto an existing credit balance: T6 prepaid $50; next
+    // month's charge accrues that $50 when it posts (trigger).
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nm = `${nextMonth.getFullYear()}-${pad(nextMonth.getMonth() + 1)}-01`;
+    const c2 = await A.autoPostJournalEntry({ companyId: CO, date: nm, reference: `RECUR-${crypto.randomBytes(4).toString("hex")}-${nm.slice(0, 7)}`, description: "Rent " + t6.name, property: P.P6.address,
+      lines: [{ account_id: t6.ar.id, account_name: t6.ar.name, debit: 600, credit: 0, class_id: P.P6.class_id, memo: "rent" }, { account_id: acc["4000"].id, account_name: "Rental Income", debit: 0, credit: 600, class_id: P.P6.class_id, memo: "rent" }] });
+    const b6b = await tot(t6.id);
+    assert("rent charged onto a credit balance accrues when the charge posts ($50 of next month's rent)", !!c2 && b6b.rent === 650 && b6b.rows.some(r => r.charge_je_id === c2 && Number(r.rent_amount) === 50 && r.charge_month === nm), JSON.stringify(b6b.rows.map(r => [r.charge_month, r.rent_amount])));
   }
+  // T7: billed 500, paid 200 -> 300 unpaid on the statement.
+  await manualJE("T7", 200);
   const noOwner = await A.autoOwnerDistribution(CO, P.P5.address, 100, today, "x", null);
-  assert("no owner -> nothing accrued", noOwner.skipped === "no owner");
+  assert("no tenant id -> nothing to do", !!noOwner.skipped);
 
   // ── expenses of several kinds (and noise that must not count) ──
   const exp = async (code, amt, pk, { classless = false, date = today, voided = false } = {}) => {
@@ -437,20 +490,13 @@ try {
     assert(`expense posted (${acc[code].name} ${amt}${classless ? ", no class" : ""}${voided ? ", voided" : ""})`, !!id);
   };
   await exp("5300", 300, "P1");                       // repairs
-  await exp("5400", 120.5, "P2");                     // utilities
-  await exp("5500", 200, "P2", { classless: true });  // HOA -- no class, entry property text only
+  await exp("5400", 120.5, "P2", { date: startDate }); // utilities
+  await exp("5500", 200, "P2", { classless: true, date: startDate });  // HOA -- no class, entry property text only
   await exp("5600", 400, "P1");                       // property tax
-  await exp("5700", 250.25, "P2");                    // mortgage interest
+  await exp("5700", 250.25, "P2", { date: startDate }); // mortgage interest
   await exp("5300", 999, "P1", { voided: true });     // voided: excluded
   await exp("5300", 55, "P1", { date: prevDate });    // last month: excluded
   await exp("5300", 777, "P5");                       // not this owner's: excluded
-  // late fee income on P1
-  {
-    const t = T.T1;
-    const id = await A.autoPostJournalEntry({ companyId: CO, date: today, reference: "LATEFEE-" + t.id + "-" + month.replace("-", ""), description: "Late fee", property: t.property,
-      lines: [{ account_id: t.ar.id, account_name: t.ar.name, debit: 50, credit: 0, class_id: P.P1.class_id, memo: "late" }, { account_id: acc["4010"].id, account_name: "Late Fee Income", debit: 0, credit: 50, class_id: P.P1.class_id, memo: "late" }] });
-    assert("late fee posted", !!id);
-  }
 
   // ── payout: Owners.js payOwner, with a user reference that already exists ──
   const collide = await A.autoPostJournalEntry({ companyId: CO, date: today, reference: "1001", description: "unrelated entry referenced 1001", property: "",
@@ -458,74 +504,122 @@ try {
   assert("an unrelated entry already uses reference 1001", !!collide);
   const payAmt = 1000, userRef = "1001";
   const distRef = R.payoutReference({ ownerId: O8.id, date: today, cents: R.toCents(payAmt), userRef });
-  const { data: dupJe } = await sb.from("acct_journal_entries").select("id").eq("company_id", CO).eq("reference", distRef).neq("status", "voided").limit(1);
-  assert("payout pre-check finds no duplicate", (dupJe || []).length === 0);
   const distRow = ok(await sb.from("owner_distributions").insert([{ company_id: CO, owner_id: O8.id, kind: "payout", amount: payAmt, method: "check", reference: distRef, date: today, notes: "Ref #" + userRef }]).select("id").maybeSingle(), "payout row");
   const payRes = await A.atomicPostJEAndLedger({ companyId: CO, date: today, description: `Owner distribution — ${O8.name} (ref ${userRef})`, reference: distRef, property: "",
     lines: [{ account_id: "2200", account_name: "Owner Distributions Payable", debit: payAmt, credit: 0, class_id: P.P1.class_id, memo: "Distribution (ref 1001)" }, { account_id: "1000", account_name: "Checking Account", debit: 0, credit: payAmt, class_id: P.P1.class_id, memo: "Paid (ref 1001)" }], requireJE: false });
   assert("payout posted despite the user's '1001' (generated reference)", !!payRes.jeId && distRef !== "1001" && !!distRow?.id, JSON.stringify(payRes));
 
-  // ── statement vs a direct GL query ──
-  const ownerProps = [P.P1, P.P2, P.P6, P.P7];
-  const gl = await OU.loadOwnerLedger(CO, ownerProps, startDate, endDate);
-  const { data: allDists } = await sb.from("owner_distributions").select("*").eq("company_id", CO);
-  const stmt = R.buildOwnerStatement({ lines: gl.lines, accounts: gl.accounts, feeRule: R.resolveMgmtFeePct(O8), payouts: allDists.filter(d => d.owner_id === O8.id), startDate, endDate });
-  // Direct: every posted line in the period in the company, joined by hand.
-  const { data: raw } = await sb.from("acct_journal_lines").select("id, account_id, debit, credit, class_id, acct_journal_entries!inner(date, reference, status, property)").eq("company_id", CO);
-  const byAcct = new Map((await sb.from("acct_accounts").select("id, code, type").eq("company_id", CO)).data.map(a => [a.id, a]));
-  const cls = new Set(ownerProps.map(p => p.class_id)), addrs = new Set(ownerProps.map(p => p.address));
-  let dInc = 0, dExp = 0, dRent = 0;
-  for (const l of raw) {
-    const j = l.acct_journal_entries;
-    if (j.status !== "posted" || j.date < startDate || j.date > endDate) continue;
-    if (!(cls.has(l.class_id) || (l.class_id === null && addrs.has(j.property)))) continue;
-    if (/^O?DIST-/.test(j.reference)) continue;
-    const a = byAcct.get(l.account_id);
-    if (a.code === "4200") continue;
-    if (a.type === "Revenue") dInc += Math.round((l.credit - l.debit) * 100);
-    if (a.type === "Revenue" && a.code === "4000") dRent += Math.round((l.credit - l.debit) * 100);
-    if (a.type === "Expense") dExp += Math.round((l.debit - l.credit) * 100);
-  }
-  console.log(`     statement: income ${stmt.totalIncome} · rent ${stmt.rentIncome} · expenses ${stmt.totalExpenses} · fee ${stmt.managementFee} · net ${stmt.netToOwner} · paid ${stmt.distributionsPaid}`);
-  console.log(`     direct GL: income ${dInc / 100} · rent ${dRent / 100} · expenses ${dExp / 100}`);
-  assert("statement income = direct GL income", !gl.failed && stmt.totalIncome === dInc / 100);
-  assert("statement expenses = direct GL expenses", stmt.totalExpenses === dExp / 100);
-  assert("statement rent = direct GL rent (4000)", stmt.rentIncome === dRent / 100);
-  assert("statement fee = 8% of direct GL rent", stmt.managementFee === Math.round(dRent * 8 / 100) / 100);
-  assert("expected figures: income 3775 (rent 1500+1200+600+300, late fee 50, other 100+25)", stmt.totalIncome === 3775, String(stmt.totalIncome));
-  assert("expected figures: expenses 1270.75 (repairs, utilities, HOA via property text, tax, interest)", stmt.totalExpenses === 1270.75, String(stmt.totalExpenses));
-  assert("fee 8% of rent 3600 = 288 (not of 3775), net 2216.25", stmt.rentIncome === 3600 && stmt.managementFee === 288 && stmt.netToOwner === 2216.25, stmt.managementFee + " / " + stmt.netToOwner);
-  assert("statement fee line reads '8% of rent 3600.00'", /^8% of rent 3600\.00/.test(stmt.lineItems.find(c => c.category === "Management Fee").items[0].description));
+  // ── statement ("billed, but show collected") vs a direct GL query ──
+  const stmtFor = async (owner) => {
+    const d = await OU.loadOwnerStatementData(CO, owner.id, startDate, endDate);
+    return { d, st: R.buildOwnerStatement({ lines: d.lines, accounts: d.accounts, feeRule: R.resolveMgmtFeePct(owner), accruals: d.accruals, payouts: d.payouts, startDate, endDate }) };
+  };
+  const directFor = async (props, ownerId) => {
+    const { data: raw } = await sb.from("acct_journal_lines").select("id, account_id, debit, credit, class_id, acct_journal_entries!inner(date, reference, status, property)").eq("company_id", CO);
+    const byAcct = new Map((await sb.from("acct_accounts").select("id, code, type").eq("company_id", CO)).data.map(a => [a.id, a]));
+    const cls = new Set(props.map(p => p.class_id)), addrs = new Set(props.map(p => p.address));
+    const { data: accr } = await sb.from("owner_distributions").select("reference, date").eq("company_id", CO).eq("owner_id", ownerId).eq("kind", "accrual").is("voided_at", null).gte("date", startDate).lte("date", endDate);
+    const refs = new Set((accr || []).map(a => a.reference));
+    let inc = 0, ex = 0, rent = 0, fee4200 = 0, net2200 = 0, rent4000dr = 0;
+    for (const l of raw) {
+      const j = l.acct_journal_entries;
+      if (j.status !== "posted" || j.date < startDate || j.date > endDate) continue;
+      const a = byAcct.get(l.account_id);
+      if (refs.has(j.reference)) {
+        if (a.code === "4200") fee4200 += Math.round((l.credit - l.debit) * 100);
+        if (a.code === "2200") net2200 += Math.round((l.credit - l.debit) * 100);
+        if (a.code === "4000") rent4000dr += Math.round((l.debit - l.credit) * 100);
+        continue;
+      }
+      if (!(cls.has(l.class_id) || (l.class_id === null && addrs.has(j.property)))) continue;
+      if (/^O?DIST-/.test(j.reference) || a.code === "4200") continue;
+      if (a.type === "Revenue") inc += Math.round((l.credit - l.debit) * 100);
+      if (a.type === "Revenue" && a.code === "4000") rent += Math.round((l.credit - l.debit) * 100);
+      if (a.type === "Expense") ex += Math.round((l.debit - l.credit) * 100);
+    }
+    return { inc: inc / 100, ex: ex / 100, rent: rent / 100, fee: fee4200 / 100, net: net2200 / 100, collected: rent4000dr / 100 };
+  };
+  const o8Props = [P.P1, P.P2, P.P6, P.P7, P.P8];
+  const { d: gl, st: stmt } = await stmtFor(O8);
+  const dir = await directFor(o8Props, O8.id);
+  console.log(`     statement: billed ${stmt.rentBilled} · collected ${stmt.rentCollected} · unpaid ${stmt.rentUnpaid} · income ${stmt.totalIncome} · expenses ${stmt.totalExpenses} · fee ${stmt.managementFee} · net ${stmt.netToOwner} · paid ${stmt.distributionsPaid}`);
+  console.log(`     direct GL: rent ${dir.rent} · income ${dir.inc} · expenses ${dir.ex} · ODIST DR 4000 ${dir.collected} · CR 4200 ${dir.fee} · CR 2200 ${dir.net}`);
+  assert("statement: billed rent / income / expenses = direct GL", !gl.failed && stmt.rentBilled === dir.rent && stmt.totalIncome === dir.inc && stmt.totalExpenses === dir.ex);
+  assert("statement fee = 4200 booked for the period; net distribution = 2200 booked; collected = rent reclassified", stmt.managementFee === dir.fee && stmt.netToOwner === dir.net && stmt.rentCollected === dir.collected);
+  assert("expected: billed 4100 (1500+1200+600+300+500), collected 3800, unpaid 300", stmt.rentBilled === 4100 && stmt.rentCollected === 3800 && stmt.rentUnpaid === 300, JSON.stringify([stmt.rentBilled, stmt.rentCollected, stmt.rentUnpaid]));
+  assert("expected: fee 8% of COLLECTED 3800 = 304, net distribution 3496, expenses 1270.75", stmt.managementFee === 304 && stmt.netToOwner === 3496 && stmt.totalExpenses === 1270.75, stmt.managementFee + " / " + stmt.netToOwner + " / " + stmt.totalExpenses);
+  assert("statement shows Rent Summary + fee line on collected rent", R.statementRentSummary(stmt.lineItems)?.unpaid === 300 && /^8% of collected rent 3800\.00/.test(stmt.lineItems.find(c => c.category === "Management Fee").items[0].description));
   assert("distributions paid in period = the payout only (1000)", stmt.distributionsPaid === 1000);
-  const st0db = R.buildOwnerStatement({ ...(await OU.loadOwnerLedger(CO, [P.P3], startDate, endDate)), feeRule: R.resolveMgmtFeePct(O0), payouts: [], startDate, endDate });
-  assert("0% owner's statement: income 1000, fee 0", st0db.totalIncome === 1000 && st0db.managementFee === 0);
-  const stNdb = R.buildOwnerStatement({ ...(await OU.loadOwnerLedger(CO, [P.P4], startDate, endDate)), feeRule: R.resolveMgmtFeePct(ON), payouts: [], startDate, endDate });
+  const st0db = (await stmtFor(O0)).st;
+  assert("0% owner's statement: billed 1000, collected 1000, fee 0", st0db.rentBilled === 1000 && st0db.rentCollected === 1000 && st0db.managementFee === 0);
+  const stNdb = (await stmtFor(ON)).st;
   assert("unset-fee owner's statement: fee 0, marked 'Fee not set'", stNdb.managementFee === 0 && stNdb.feeIsSet === false);
-  // owner_statements accepts what generateStatement writes
   const ins = await sb.from("owner_statements").insert([{ company_id: CO, owner_id: O8.id, owner_name: O8.name, period: month, start_date: startDate, end_date: endDate,
     total_income: stmt.totalIncome, total_expenses: stmt.totalExpenses, management_fee: stmt.managementFee, net_to_owner: stmt.netToOwner, line_items: JSON.stringify(stmt.lineItems), notes: "x", status: "draft" }]);
   assert("owner_statements insert accepted", !ins.error, ins.error?.message);
 
   // ── YTD counts payouts once ──
-  const o8d = allDists.filter(d => d.owner_id === O8.id);
+  const { data: allDists } = await sb.from("owner_distributions").select("*").eq("company_id", CO);
+  const o8d = allDists.filter(d => d.owner_id === O8.id && !d.voided_at);
   const naive = o8d.reduce((s, d) => s + Number(d.amount), 0);
   const ytd = R.sumPayouts(allDists, { year: today.slice(0, 4) });
   console.log(`     owner_distributions for the 8% owner: ${o8d.length} rows (${o8d.filter(d => d.kind === "accrual").length} accruals); old YTD sum ${naive}, new ${ytd}`);
   assert("YTD = payouts only (1000), not accruals + payouts", ytd === 1000 && naive > 1000, `naive ${naive}`);
-  // An old client (no kind) still gets the right kind from the reference.
-  const legacy = ok(await sb.from("owner_distributions").insert([{ company_id: CO, owner_id: O8.id, amount: 1, reference: "ODIST-legacy-" + CO, date: today }]).select("kind").single(), "legacy insert");
-  assert("insert without kind: ODIST- becomes 'accrual' (trigger)", legacy.kind === "accrual");
-  await sb.from("owner_distributions").delete().eq("company_id", CO).eq("reference", "ODIST-legacy-" + CO);
   // Voiding the payout's journal entry voids the distribution.
   if (!KEEP) {
     ok(await sb.from("acct_journal_entries").update({ status: "voided" }).eq("id", payRes.jeId), "void payout JE");
     const { data: vd } = await sb.from("owner_distributions").select("voided_at").eq("id", distRow.id).single();
     const { data: after } = await sb.from("owner_distributions").select("*").eq("company_id", CO);
-    assert("voiding the DIST- entry marks the distribution void", !!vd.voided_at);
-    assert("…and YTD drops it", R.sumPayouts(after, { year: today.slice(0, 4) }) === 0);
+    assert("voiding the DIST- entry marks the distribution void; YTD drops it", !!vd.voided_at && R.sumPayouts(after, { year: today.slice(0, 4) }) === 0);
     ok(await sb.from("acct_journal_entries").update({ status: "posted" }).eq("id", payRes.jeId), "un-void payout JE");
     const { data: uv } = await sb.from("owner_distributions").select("voided_at").eq("id", distRow.id).single();
     assert("un-voiding clears it", uv.voided_at === null);
+  }
+
+  // ── reassignment: whoever owned it then (decision 8) ──
+  const OB = (await OU.createOwner(CO, { name: TAG + " Buyer", management_fee_pct: 10 })).owner;
+  if (today > startDate) {
+    const o8Before = await tot(T.T2.id);
+    ok(await sb.from("properties").update({ owner_id: OB.id, owner_name: OB.name }).eq("id", P.P2.id), "reassign P2");
+    const { data: hist } = await sb.from("property_owner_history").select("owner_id, from_date, to_date").eq("property_id", P.P2.id).order("id");
+    assert("ownership history: old owner closed today, new owner from today", hist.length === 2 && hist[0].owner_id === O8.id && hist[0].to_date && hist[1].owner_id === OB.id && hist[1].from_date === hist[0].to_date && !hist[1].to_date, JSON.stringify(hist));
+    const c3 = await A.autoPostJournalEntry({ companyId: CO, date: hist[1].from_date, reference: `RECUR-${crypto.randomBytes(4).toString("hex")}-new`, description: "Rent after sale", property: P.P2.address,
+      lines: [{ account_id: T.T2.ar.id, account_name: T.T2.ar.name, debit: 1200, credit: 0, class_id: P.P2.class_id, memo: "rent" }, { account_id: acc["4000"].id, account_name: "Rental Income", debit: 0, credit: 1200, class_id: P.P2.class_id, memo: "rent" }] });
+    await manualJE("T2", 1200, hist[1].from_date);
+    const rows = await live(T.T2.id);
+    assert("after the sale: the old owner's accrual is untouched, the new rent accrues to the new owner (stamped)",
+      rows.some(r => r.owner_id === O8.id && Number(r.rent_amount) === 1200 && r.id === o8Before.rows[0].id) && rows.some(r => r.owner_id === OB.id && r.charge_je_id === c3 && Number(r.rent_amount) === 1200 && Number(r.amount) === 1080), JSON.stringify(rows.map(r => [r.owner_id === O8.id ? "O8" : "OB", r.rent_amount, r.amount])));
+    const stA = (await stmtFor(O8)).st, stB = (await stmtFor(OB)).st;
+    assert("old owner's statement keeps the rent billed before the sale (billed still 4100, collected 3800)", stA.rentBilled === 4100 && stA.rentCollected === 3800, JSON.stringify([stA.rentBilled, stA.rentCollected]));
+    assert("new owner's statement starts at the change date (billed 1200, collected 1200, fee 10% = 120)", stB.rentBilled === 1200 && stB.rentCollected === 1200 && stB.managementFee === 120, JSON.stringify([stB.rentBilled, stB.rentCollected, stB.managementFee]));
+  } else {
+    console.log("     (first of the month: reassignment check skipped -- needs a day between charge and sale)");
+  }
+
+  // ── voiding a receipt re-allocates (any path) ──
+  {
+    ok(await sb.from("acct_journal_entries").update({ status: "voided" }).eq("id", m1.jeId), "void T1 receipt");
+    const a = await tot(T.T1.id);
+    const { data: old } = await sb.from("owner_distributions").select("voided_at, reference").eq("company_id", CO).eq("receipt_je_id", m1.jeId);
+    const { data: oldJe } = await sb.from("acct_journal_entries").select("status").eq("company_id", CO).eq("reference", old?.[0]?.reference || "none");
+    assert("voiding the $700 receipt voids its accrual (row and ODIST entry)", !!old?.[0]?.voided_at && oldJe?.every(j => j.status === "voided"), JSON.stringify([old, oldJe]));
+    assert("…and re-allocates: the $800 Stripe + $50 receipt now pay rent -> T1 rent accrued 850", a.rent === 850 && a.rows.length === 2, JSON.stringify(a.rows.map(r => r.rent_amount)));
+  }
+
+  // ── archived owner: stops accruing ──
+  {
+    ok(await sb.from("owners").update({ archived_at: new Date().toISOString() }).eq("id", ON.id), "archive owner");
+    const c4 = await A.autoPostJournalEntry({ companyId: CO, date: today, reference: `RECUR-${crypto.randomBytes(4).toString("hex")}-arch`, description: "Rent", property: P.P4.address,
+      lines: [{ account_id: T.T4.ar.id, account_name: T.T4.ar.name, debit: 900, credit: 0, class_id: P.P4.class_id, memo: "rent" }, { account_id: acc["4000"].id, account_name: "Rental Income", debit: 0, credit: 900, class_id: P.P4.class_id, memo: "rent" }] });
+    await manualJE("T4", 900);
+    const a = await tot(T.T4.id);
+    assert("archived owner: a new rent receipt accrues nothing (earlier accrual kept)", !!c4 && a.rent === 900 && a.rows.length === 1, JSON.stringify(a));
+  }
+  // ── fee CHECK 0..100 ──
+  {
+    const bad150 = await sb.from("owners").insert([{ company_id: CO, name: TAG + " Bad fee", management_fee_pct: 150 }]);
+    const badNeg = await sb.from("owners").insert([{ company_id: CO, name: TAG + " Neg fee", management_fee_pct: -1 }]);
+    assert("DB refuses a fee above 100 or below 0", !!bad150.error && !!badNeg.error, (bad150.error?.message || "150 accepted") + " / " + (badNeg.error?.message || "-1 accepted"));
   }
 
   // ── as real users: owner portal (RLS) and the office-assistant gate ──
@@ -541,21 +635,37 @@ try {
     return c;
   };
   const ownerClient = await mkUser(O8.email, "owner");
+  const { data: nowProps } = await sb.from("properties").select("id").eq("company_id", CO).eq("owner_id", O8.id);
   const { data: seen, error: seenErr } = await ownerClient.from("properties").select("id").eq("company_id", CO);
   const seenIds = (seen || []).map(p => p.id).sort((a, b) => a - b);
-  assert("owner portal: the owner sees exactly their four properties", !seenErr && JSON.stringify(seenIds) === JSON.stringify(ownerProps.map(p => p.id).sort((a, b) => a - b)), JSON.stringify(seenIds) + " " + (seenErr?.message || ""));
+  assert("owner portal: the owner sees exactly the properties they own now", !seenErr && seenIds.length > 0 && JSON.stringify(seenIds) === JSON.stringify(nowProps.map(p => p.id).sort((a, b) => a - b)), JSON.stringify(seenIds) + " " + (seenErr?.message || ""));
   const { data: od } = await ownerClient.from("owner_distributions").select("owner_id, kind").eq("company_id", CO);
   assert("owner portal: only their own distributions", (od || []).length > 0 && od.every(d => d.owner_id === O8.id));
   const { data: os } = await ownerClient.from("owner_statements").select("owner_id").eq("company_id", CO);
   assert("owner portal: sees their statement", (os || []).length === 1 && os[0].owner_id === O8.id);
+  const { data: oh } = await ownerClient.from("property_owner_history").select("owner_id").eq("company_id", CO);
+  assert("owner portal: sees only their own ownership history", (oh || []).length > 0 && oh.every(h => h.owner_id === O8.id));
   const { data: others } = await ownerClient.from("properties").select("id").in("id", [P.P3.id, P.P4.id, P.P5.id]);
   assert("owner portal: cannot see other owners' / company properties", (others || []).length === 0);
 
   const oa = await mkUser(CO + "-oa@example.com", "office_assistant");
   const accIns = await oa.from("owner_distributions").insert([{ company_id: CO, owner_id: O8.id, kind: "accrual", amount: 1, reference: "ODIST-oa-" + CO, date: today }]);
-  assert("office assistant: an ACCRUAL (rent receipt) is allowed through the gate", !accIns.error, accIns.error?.message);
+  assert("office assistant: cannot hand-enter an accrual", !!accIns.error && /recorded automatically/.test(accIns.error.message), accIns.error?.message);
   const payIns = await oa.from("owner_distributions").insert([{ company_id: CO, owner_id: O8.id, kind: "payout", amount: 1, reference: "DIST-oa-" + CO, date: today }]);
-  assert("office assistant: a PAYOUT is still refused (management tier only)", !!payIns.error && /manager, owner, or admin/.test(payIns.error.message), payIns.error?.message);
+  assert("office assistant: cannot record a payout", !!payIns.error && /manager, owner, or admin/.test(payIns.error.message), payIns.error?.message);
+  const anAccrual = (await live(T.T3.id))[0];
+  const kindUpd = await oa.from("owner_distributions").update({ kind: "payout" }).eq("id", anAccrual.id).select("id");
+  assert("office assistant: cannot turn an accrual into a payout (kind immutable / gated)", !!kindUpd.error, kindUpd.error?.message || JSON.stringify(kindUpd.data));
+  const hide = await oa.from("owner_distributions").update({ voided_at: new Date().toISOString() }).eq("id", distRow.id).select("id");
+  const del = await oa.from("owner_distributions").delete().eq("id", distRow.id).select("id");
+  assert("office assistant: cannot void or delete a payout", !!hide.error && !!del.error, (hide.error?.message || "void ALLOWED") + " / " + (del.error?.message || "delete ALLOWED"));
+  const kindSvc = await sb.from("owner_distributions").update({ kind: "payout" }).eq("id", anAccrual.id).select("id");
+  assert("kind is immutable for everyone (service role too)", !!kindSvc.error, kindSvc.error?.message);
+  const oaSync = await oa.rpc("owner_accrual_sync", { p_company_id: CO, p_tenant_id: T.T3.id });
+  assert("office assistant's own client can run the accrual RPC", !oaSync.error && Number(oaSync.data?.accrued_rent) === 1000, oaSync.error?.message || JSON.stringify(oaSync.data));
+  const anon = createClient(SB_URL, ANON, { auth: { persistSession: false } });
+  const anonSync = await anon.rpc("owner_accrual_sync", { p_company_id: CO, p_tenant_id: T.T3.id });
+  assert("anon cannot call the accrual RPC", !!anonSync.error, JSON.stringify(anonSync.data));
 } catch (e) {
   assert("owners TEST-DB scenario ran", false, e.stack || e.message);
 } finally {

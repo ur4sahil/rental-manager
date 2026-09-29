@@ -64,9 +64,9 @@ const {
   refundReference, disputeReference, disputeWonReference, disputeEventAction,
   chargeDateInPeriod, nextChargeDateAfterPeriod, paymentStatusBlockers, autopayRunCompanyIds,
 } = require("../src/utils/paymentRules");
-// Owner fee accrual on a rent receipt -- the same function the browser runs
-// (utils/accounting.js#autoOwnerDistribution), given this server's client.
-const { runOwnerDistributionAccrual } = require("../src/utils/ownerRules");
+// Owner accrual on a rent receipt -- the same SQL function (owner_accrual_sync)
+// the browser calls through utils/accounting.js#autoOwnerDistribution.
+const { syncOwnerAccruals } = require("../src/utils/ownerRules");
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -353,38 +353,6 @@ async function postJournalEntry(sb, { companyId, date, description, reference, p
     return { error: "JE lines insert failed: " + linesErr.message };
   }
   return { id: je.id };
-}
-
-// postJournalEntry for lines that carry BARE account codes ("4000", "4200",
-// "2200") -- what runOwnerDistributionAccrual builds. Each code resolves to the
-// company's account with that code (active first); a missing 4200 / 2200 is
-// created, as the browser's resolveAccountId does.
-const OWNER_ACCRUAL_ACCOUNTS = {
-  "4000": { name: "Rental Income", type: "Revenue" },
-  "4200": { name: "Management Fee Income", type: "Revenue" },
-  "2200": { name: "Owner Distributions Payable", type: "Liability" },
-};
-async function postJournalEntryWithCodes(sb, je) {
-  const lines = [];
-  for (const l of je.lines || []) {
-    if (!/^\d{4}$/.test(String(l.account_id || ""))) { lines.push(l); continue; }
-    const code = String(l.account_id);
-    const { data: found, error } = await sb.from("acct_accounts").select("id, name, is_active")
-      .eq("company_id", je.companyId).eq("code", code).order("is_active", { ascending: false }).limit(1);
-    if (error) return { error: "account " + code + " lookup failed: " + error.message };
-    let acct = found && found[0];
-    if (!acct) {
-      const spec = OWNER_ACCRUAL_ACCOUNTS[code];
-      if (!spec) return { error: "account " + code + " not found" };
-      const ins = await sb.from("acct_accounts").insert({
-        company_id: je.companyId, code, name: spec.name, type: spec.type, is_active: true, old_text_id: je.companyId + "-" + code,
-      }).select("id, name").maybeSingle();
-      if (ins.error || !ins.data) return { error: "account " + code + " could not be created: " + (ins.error?.message || "unknown") };
-      acct = ins.data;
-    }
-    lines.push({ ...l, account_id: acct.id, account_name: acct.name || l.account_name });
-  }
-  return postJournalEntry(sb, { ...je, lines });
 }
 
 // The tenant's OWN AR account for a Stripe receipt, via the stripe_tenant_ar
@@ -1096,22 +1064,13 @@ async function handleWebhook(req, res) {
       }
     }
 
-    // Owner-managed property: accrue the owner's share and the management
-    // fee, exactly as a manual or autopay receipt does in the browser. Same
-    // function (utils/ownerRules.js), deterministic ODIST- reference, so a
-    // retried webhook cannot accrue twice. Non-fatal: the receipt itself is
-    // already posted, and a failure here is logged, not retried.
-    if (credit.settlesAr) try {
-      const od = await runOwnerDistributionAccrual(sb, {
-        companyId, propertyAddress: md.property || "", amount: rentDollars, date: today,
-        tenantName: md.tenant_name || "", tenantId: Number(tenantId),
-      }, {
-        postJournalEntry: (entry) => postJournalEntryWithCodes(sb, entry),
-        resolveClassId: (addr) => resolvePropertyClassId(sb, companyId, addr),
-      });
-      if (od.error) console.warn("[stripe webhook] owner distribution accrual failed (non-fatal):", od.error);
-    } catch (e) {
-      console.warn("[stripe webhook] owner distribution accrual threw (non-fatal):", e.message);
+    // Owner-managed property: bring the tenant's owner accruals up to date
+    // (owner_accrual_sync -- the same SQL the browser paths call; a trigger
+    // also runs it when this entry commits). Idempotent, tenant_id keyed, so
+    // a replay or stale tenant_name metadata cannot accrue twice. Non-fatal.
+    if (credit.settlesAr) {
+      const od = await syncOwnerAccruals(sb, companyId, tenantId);
+      if (od.error) console.warn("[stripe webhook] owner accrual sync failed (non-fatal):", od.error);
     }
 
     // Email + push notifications. The worker drains notification_queue
