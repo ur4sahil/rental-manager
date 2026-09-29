@@ -223,6 +223,20 @@ export default function PropertyImport({ companyId, companyName, properties = []
   const NO_CREDS = { username_encrypted: null, password_encrypted: null,
                      encryption_iv: null, encryption_salt: null, encryption_iv_username: null };
 
+  // Re-importing a sheet over EXISTING rows: a blank login or website cell
+  // means "not in this sheet", not "erase it". Writing the nulls onto the
+  // stored row wiped every saved login on a bulk-edit round trip. So on an
+  // UPDATE, drop the credential keys when the sheet carried no login, and the
+  // website key when its cell was blank. (New rows still get the nulls.)
+  const LOGIN_KEYS = ["username_encrypted", "password_encrypted", "encryption_iv",
+                      "encryption_iv_username", "encryption_salt", "credential_key_fp"];
+  function keepStoredLoginOnBlank(row) {
+    const out = { ...row };
+    if (!out.username_encrypted || !out.password_encrypted) for (const k of LOGIN_KEYS) delete out[k];
+    if (out.website == null || out.website === "") delete out.website;
+    return out;
+  }
+
   // Credentials are encrypted by /api/encrypt. When that call fails --
   // the endpoint down, a network blip, or a dev server that does not
   // serve /api at all -- encryptCredential throws, and it used to take
@@ -234,16 +248,27 @@ export default function PropertyImport({ companyId, companyName, properties = []
   // without it and collect the names, rather than losing 41 properties
   // over a password.
   const credFailures = [];
-  async function encryptCreds(row, whatFor) {
-    const username = cellString(row.username), password = cellString(row.password);
-    if (!username && !password) return NO_CREDS;
+  // `salt`: reuse a row's existing salt. hoa_payments keeps ONE salt for its
+  // three logins, so a new association login encrypted under a fresh salt
+  // would make the stored management / payment-portal logins undecryptable.
+  async function encryptCreds(row, whatFor, salt = null) {
+    const username = cellString(row.username).trim(), password = cellString(row.password);
+    // Whitespace is not a login; one half without the other is refused with
+    // a message naming the row, instead of storing half a login.
+    const hasU = username.trim() !== "", hasP = password.trim() !== "";
+    if (!hasU && !hasP) return NO_CREDS;
+    if (hasU !== hasP) {
+      credFailures.push(`${whatFor || "a login"}${row && row._row ? " (sheet row " + row._row + ")" : ""}: the ${hasU ? "password" : "username"} is missing — fill in both or neither`);
+      return NO_CREDS;
+    }
     try {
-      const u = await encryptCredential(username, companyId);
+      const u = await encryptCredential(username, companyId, salt || null);
       const pw = await encryptCredential(password, companyId, u.salt);
       return {
         username_encrypted: u.encrypted, password_encrypted: pw.encrypted,
         encryption_iv: pw.iv || null, encryption_salt: u.salt || null,
         encryption_iv_username: u.iv || null,
+        credential_key_fp: u.keyFp || pw.keyFp || null,
       };
     } catch (e) {
       credFailures.push(whatFor || "a login");
@@ -364,7 +389,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
       if (hit) keepIfBlank.forEach(k => { if (patch[k] === null || patch[k] === undefined || patch[k] === "") delete patch[k]; });
       if (hit && beforeUpdate) beforeUpdate(patch, hit);
       const { error } = hit
-        ? await supabase.from(table).update(patch).eq("id", hit.id).eq("company_id", companyId)
+        ? await supabase.from(table).update(keepStoredLoginOnBlank(patch)).eq("id", hit.id).eq("company_id", companyId)
         : await supabase.from(table).insert([{ ...onInsert, ...row, company_id: companyId, property: address, ...match }]);
       if (error) failures.push(`${table}: ${error.message}`);
     }
@@ -379,7 +404,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         responsibility: u.responsibility, website: u.website,
         username_encrypted: u.username_encrypted, password_encrypted: u.password_encrypted,
         encryption_iv: u.encryption_iv, encryption_iv_username: u.encryption_iv_username,
-        encryption_salt: u.encryption_salt,
+        encryption_salt: u.encryption_salt, credential_key_fp: u.credential_key_fp,
       }, { onInsert: { status: "pending" }, keepIfBlank: ["amount", "due", "responsibility", "website"] });
     }
     for (const h of recs.hoas) {
@@ -388,12 +413,25 @@ export default function PropertyImport({ companyId, companyName, properties = []
       // as it was (the plan already warned).
       const due = hoaDue(h.due_date);
       if (due?.bad) failures.push(`HOA "${h.hoa_name}": due date "${due.bad}" not understood -- left as it was`);
+      // A new association login on an HOA that already exists: encrypt it
+      // under the row's STORED salt, or its management / payment-portal
+      // logins (same salt column) stop decrypting.
+      if (h.username_encrypted) {
+        const { data: stored } = await supabase.from("hoa_payments").select("encryption_salt")
+          .eq("company_id", companyId).eq("property", address).eq("hoa_name", h.hoa_name)
+          .is("archived_at", null).limit(1);
+        const keptSalt = stored?.[0]?.encryption_salt || null;
+        const src = (plan.extras?.hoas || []).find(r => r._address === address && cellString(r.hoa_name) === h.hoa_name);
+        if (keptSalt && src && keptSalt !== h.encryption_salt) {
+          Object.assign(h, await encryptCreds(src, `${h.hoa_name} (HOA)`, keptSalt));
+        }
+      }
       await put("hoa_payments", { hoa_name: h.hoa_name }, {
         property_id: Number.isFinite(idNum) ? idNum : null,
         amount: h.amount, frequency: h.frequency, due_date: due?.date || null, notes: h.notes,
         website: h.website, username_encrypted: h.username_encrypted,
         password_encrypted: h.password_encrypted, encryption_iv: h.encryption_iv,
-        encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt,
+        encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt, credential_key_fp: h.credential_key_fp,
       }, {
         keepIfBlank: ["amount", "frequency", "due_date", "notes", "website"],
         beforeUpdate: (patch, hit) => { if (due?.day) patch.due_date = mergeDueDay(hit.due_date, due.day); },

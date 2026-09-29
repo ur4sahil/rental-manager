@@ -1052,6 +1052,27 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   // --- Transaction Actions ---
+  // One place that turns a bank RPC failure into the message the user
+  // sees. These RPCs are all-or-nothing, so any error here means NOTHING
+  // was changed -- say why instead of carrying on as the old chained
+  // writes did.
+  function reportBankRpcError(error, context) {
+    const msg = error?.message || "";
+    if (error?.hint === "already_processed") {
+      showToast("This transaction has already been processed.", "warning");
+      refreshData();
+    } else if (error?.hint === "period_locked" || /period is locked/i.test(msg)) {
+      showToast(msg || "This falls in a locked accounting period.", "error");
+    } else if (error?.code === "42501") {
+      // trg_mgmt_gate (e.g. an office assistant voiding) or not staff.
+      showToast(msg || "Your role can't do this.", "error");
+    } else if (["unbalanced", "no_matching_line", "already_linked", "bad_entry", "no_gl", "reconciled", "locked", "bad_status", "no_reason", "not_found"].includes(error?.hint)) {
+      showToast(msg, "error");
+    } else {
+      pmError("PM-4002", { raw: error, context });
+    }
+  }
+
   // Post a bank txn's JE + lines + posting decision + link + status in ONE
   // database transaction (post_bank_transaction RPC). These used to be 5-7
   // separate writes; a connection dropping between the header and its lines
@@ -1074,29 +1095,37 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       p_decision_lines: decisionLines || []
     });
     if (!error) return data;
-    if (error.hint === "already_processed") {
-      showToast("This transaction has already been processed.", "warning");
-      refreshData();
-    } else if (error.hint === "unbalanced") {
+    if (error.hint === "unbalanced") {
       showToast("This entry doesn't balance — debits and credits must be equal.", "error");
     } else if (/period is locked/i.test(error.message || "")) {
       pmError("PM-4004", { raw: error, context: `post_bank_transaction ${kind}` });
     } else {
-      pmError("PM-4002", { raw: error, context: `post_bank_transaction ${kind}` });
+      reportBankRpcError(error, `post_bank_transaction ${kind}`);
     }
     return null;
   }
 
+  // post_bank_transaction is idempotent and says which case it hit. Only
+  // 'posted' wrote new amounts; the other two found the entry already on
+  // the books. Tell the user which, rather than "posted" for all three.
+  function postedOutcomeMessage(posted, freshMsg) {
+    if (posted?.outcome === "relinked") return "This transaction had already been posted — linked it to the existing entry. Nothing was posted twice.";
+    if (posted?.outcome === "already_posted") return "This transaction was already posted. Nothing was posted twice.";
+    return freshMsg;
+  }
+
+  // Returns true only when the transaction ended up on the books (posted
+  // now, or found already posted). bulkApply counts on that.
   async function acceptTransaction(txn, accountId, accountName, memo, classId, entityType, entityId, entityName) {
-    if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return; }
+    if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return false; }
     try {
-    if (!accountId) { showToast("Please select a category/account.", "error"); return; }
-    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
+    if (!accountId) { showToast("Please select a category/account.", "error"); return false; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return false; }
     // Verify transaction is still for_review (prevents double-post from concurrent tabs/clicks)
     const { data: freshTxn } = await supabase.from("bank_feed_transaction").select("status").eq("id", txn.id).eq("company_id", companyId).maybeSingle();
-    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); refreshData(); return; }
+    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); refreshData(); return false; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
-    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return false; }
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
     const abs = Math.abs(txn.amount);
     const isInflow = txn.direction === "inflow";
@@ -1121,66 +1150,96 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       decision: { payee: txn.payee_normalized || "", memo: memo || "", header_class_id: classId || null },
       decisionLines: [{ gl_account_id: accountId, gl_account_name: accountName, amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || "" }]
     });
-    if (!posted) return;
+    if (!posted) return false;
 
-    // Audit
-    logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
-    trackCategorizationPattern(txn, accountId, accountName, classId);
+    if (posted.outcome === "posted") {
+      logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
+      trackCategorizationPattern(txn, accountId, accountName, classId);
+    } else {
+      // relinked / already_posted: the category chosen now was NOT applied
+      // -- the entry that already exists stands. Say so.
+      logAudit("update", "banking", `Bank txn already posted (${posted.outcome}): ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
+    }
 
-    showToast("Transaction categorized and posted.", "success");
+    showToast(postedOutcomeMessage(posted, "Transaction categorized and posted."), posted.outcome === "posted" ? "success" : "warning");
     setExpandedTxn(null);
     setAddForm({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
     refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
+    return true;
     } finally { guardRelease("bankAccept", txn.id); }
   }
 
+  // Exclude through exclude_bank_transaction: one transaction that checks
+  // the txn is still For Review, records the decision AND its id on the
+  // txn (so Restore can mark it undone), or changes nothing.
+  // Returns true on success.
   async function excludeTransaction(txn, reason) {
-    if (!guardSubmit("bankExclude", txn.id)) return;
+    if (!guardSubmit("bankExclude", txn.id)) return false;
     try {
-    if (!reason) { showToast("Please select a reason.", "error"); return; }
-    await supabase.from("bank_feed_transaction").update({
-      status: "excluded", exclusion_reason: reason,
-      excluded_at: new Date().toISOString(), excluded_by: userProfile?.email || ""
-    }).eq("id", txn.id).eq("company_id", companyId);
-
-    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      decision_type: "exclude", memo: reason, status: "posted",
-      created_by: userProfile?.email || ""
-    }]);
-    if (decErr) { showToast("Error saving exclusion decision: " + decErr.message, "error"); return; }
+    if (!reason) { showToast("Please select a reason.", "error"); return false; }
+    const { data, error } = await supabase.rpc("exclude_bank_transaction", {
+      p_company_id: companyId, p_txn_id: txn.id, p_reason: reason
+    });
+    if (error) { reportBankRpcError(error, "exclude_bank_transaction"); return false; }
 
     logAudit("update", "banking", `Excluded bank txn: ${txn.bank_description_clean} (${reason})`, txn.id, userProfile?.email, "", companyId);
-    showToast("Transaction excluded.", "success");
+    showToast(data?.outcome === "already_excluded" ? "Transaction was already excluded." : "Transaction excluded.", "success");
     refreshData();
+    return true;
     } finally { guardRelease("bankExclude", txn.id); }
   }
 
   // --- Match: find existing JEs that could be this bank transaction ---
+  // Offers only entries match_bank_transaction will accept: a posted entry
+  // with a line ON THIS FEED'S GL ACCOUNT, on the bank's side (money in =
+  // debit, money out = credit), for exactly the bank amount, not already
+  // claimed by another bank transaction. It used to sum every debit on the
+  // entry, so a same-sized entry that never touched the bank account (a
+  // rent charge, an accrual) scored as an exact match.
+  function matchableBankLine(je, txn, feedGl) {
+    const cents = Math.round(Math.abs(safeNum(txn.amount)) * 100);
+    const inflow = txn.direction === "inflow";
+    return (je.lines || []).find(l =>
+      l.account_id === feedGl
+      && (!l.bank_feed_transaction_id || l.bank_feed_transaction_id === txn.id)
+      && (inflow
+        ? Math.round(safeNum(l.debit) * 100) === cents && !safeNum(l.credit)
+        : Math.round(safeNum(l.credit) * 100) === cents && !safeNum(l.debit))) || null;
+  }
+
   async function findMatches(txn) {
     setMatchLoading(true);
     setMatchCandidates([]);
-    const abs = Math.abs(txn.amount);
+    try {
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     const dateTolerance = 10; // days
-    // Find JEs within date tolerance that have a line matching this amount on the bank account
-    const { data: candidates } = await supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
+    const { data: candidates, error: candErr } = await supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
       .eq("company_id", companyId).eq("status", "posted")
       .gte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() - dateTolerance); return d.toISOString().slice(0, 10); })())
       .lte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() + dateTolerance); return d.toISOString().slice(0, 10); })())
       .order("date", { ascending: false }).limit(50);
-    // Check which JEs are already linked to a bank feed transaction
-    const { data: existingLinks } = await supabase.from("bank_feed_transaction_link").select("linked_object_id")
-      .eq("company_id", companyId).eq("linked_object_type", "journal_entry");
-    const linkedJEIds = new Set((existingLinks || []).map(l => l.linked_object_id));
-    // Score candidates
-    const scored = (candidates || []).filter(je => !linkedJEIds.has(je.id)).map(je => {
-      const jeTotal = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
-      const amountDiff = Math.abs(jeTotal - abs);
+    if (candErr) { pmError("PM-5001", { raw: candErr, context: "find bank match candidates" }); return; }
+    // bank_feed_transaction.journal_entry_id is a uuid column; a legacy
+    // non-uuid entry id can't be matched.
+    const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v));
+    const eligible = (candidates || []).filter(je => isUuid(je.id) && matchableBankLine(je, txn, feed.gl_account_id));
+    // Entries already linked to a bank transaction -- asked for only these
+    // candidates; the old company-wide list ran past PostgREST's row cap.
+    let linkedJEIds = new Set();
+    if (eligible.length > 0) {
+      const { data: existingLinks, error: linkErr } = await supabase.from("bank_feed_transaction_link").select("linked_object_id")
+        .eq("company_id", companyId).eq("linked_object_type", "journal_entry")
+        .in("linked_object_id", eligible.map(je => je.id));
+      if (linkErr) { pmError("PM-5001", { raw: linkErr, context: "find bank match links" }); return; }
+      linkedJEIds = new Set((existingLinks || []).map(l => l.linked_object_id));
+    }
+    const scored = eligible.filter(je => !linkedJEIds.has(je.id)).map(je => {
+      const bankLine = matchableBankLine(je, txn, feed.gl_account_id);
+      const jeTotal = safeNum(bankLine.debit) || safeNum(bankLine.credit);
       const dateDiff = Math.abs(Math.round((new Date(je.date) - new Date(txn.posted_date)) / 86400000));
-      let score = 0;
-      if (amountDiff < 0.01) score += 50; // exact amount
-      else if (amountDiff < 1) score += 30;
+      let score = 50; // exact amount on the bank account, by construction
       if (dateDiff === 0) score += 30; // same day
       else if (dateDiff <= 3) score += 20;
       else if (dateDiff <= 7) score += 10;
@@ -1192,35 +1251,27 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         const matchedWords = words.filter(w => jeDesc.includes(w));
         if (matchedWords.length > 0) score += Math.min(20, matchedWords.length * 5);
       }
-      return { ...je, _score: score, _amountDiff: amountDiff, _dateDiff: dateDiff, _jeTotal: jeTotal };
-    }).filter(c => c._score >= 20).sort((a, b) => b._score - a._score).slice(0, 10);
+      return { ...je, _score: score, _amountDiff: 0, _dateDiff: dateDiff, _jeTotal: jeTotal };
+    }).sort((a, b) => b._score - a._score).slice(0, 10);
     setMatchCandidates(scored);
-    setMatchLoading(false);
+    } finally { setMatchLoading(false); }
   }
 
+  // match_bank_transaction writes the link, the decision, the txn status
+  // and the stamp on the entry's bank line in ONE transaction, under a
+  // lock on the txn (must still be For Review) and on the entry (two bank
+  // transactions can't both claim it), and refuses a locked period or an
+  // entry without an exact line on this bank account.
   async function confirmMatch(txn, targetJE) {
     if (!guardSubmit("bankMatch", txn.id)) return;
     try {
-    // Link bank transaction to existing JE without creating a new one
-    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      linked_object_type: "journal_entry", linked_object_id: targetJE.id,
-      link_role: "matched_to"
-    }]);
-    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
-    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
-      company_id: companyId, bank_feed_transaction_id: txn.id,
-      decision_type: "match", memo: `Matched to ${targetJE.number}`,
-      status: "posted", created_by: userProfile?.email || ""
-    }]);
-    if (decErr) { showToast("Error saving match decision: " + decErr.message, "error"); return; }
-    await supabase.from("bank_feed_transaction").update({
-      status: "matched", accepted_at: new Date().toISOString(),
-      accepted_by: userProfile?.email || "", journal_entry_id: targetJE.id,
-      matched_target_type: "journal_entry", matched_target_id: targetJE.id
-    }).eq("id", txn.id).eq("company_id", companyId);
+    const { data, error } = await supabase.rpc("match_bank_transaction", {
+      p_company_id: companyId, p_txn_id: txn.id, p_je_id: targetJE.id
+    });
+    if (error) { reportBankRpcError(error, "match_bank_transaction"); return; }
     logAudit("update", "banking", `Matched bank txn to ${targetJE.number}: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
-    showToast(`Matched to ${targetJE.number}.`, "success");
+    showToast(data?.outcome === "already_matched" ? `Already matched to ${targetJE.number}.` : `Matched to ${targetJE.number}.`, "success");
+    invalidatePostedDetail(txn.id);
     setExpandedTxn(null); setMatchCandidates([]);
     refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
@@ -1252,8 +1303,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       decision: { memo: memo || "", transfer_gl_account_id: toAccountId }
     });
     if (!posted) return;
-    logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
-    showToast("Transfer posted.", "success");
+    logAudit(posted.outcome === "posted" ? "create" : "update", "banking", `Transfer${posted.outcome === "posted" ? "" : ` (${posted.outcome})`}: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
+    showToast(postedOutcomeMessage(posted, "Transfer posted."), posted.outcome === "posted" ? "success" : "warning");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
     refreshData();
     if (onRefreshAccounting) onRefreshAccounting();
@@ -1324,48 +1375,47 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     } finally { guardRelease("bankSplit", txn.id); }
   }
 
+  // Undo runs as ONE database transaction (undo_bank_transaction). It
+  // branches on how the transaction got its entry:
+  //   * matched to an existing entry (a tenant payment, a bill...) -> the
+  //     link is removed and that entry STAYS POSTED. It used to be voided,
+  //     reversing someone's payment and moving their balance.
+  //   * created by the bank flow (BANK-/XFER-/SPLIT-) -> that entry is voided
+  //   * excluded -> restored
+  // If any step is refused (period lock, a role that may not void, a
+  // reconciled line) nothing at all changes and the reason is shown --
+  // the old chain carried on after a failed void and returned the txn to
+  // For Review with its entry still posted.
   async function undoTransaction(txn) {
     if (!guardSubmit("bankUndo", txn.id)) return;
     try {
     if (txn.status === "locked") { showToast("Cannot undo a locked/reconciled transaction.", "error"); return; }
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction is in a locked accounting period.", "error"); return; }
-    if (!await showConfirm({ message: "Undo this transaction? The linked journal entry will be voided." })) return;
+    const isMatched = txn.status === "matched" || !!txn.matched_target_id;
+    const message = txn.status === "excluded"
+      ? "Restore this transaction to For Review?"
+      : isMatched
+        ? "Unmatch this transaction? The journal entry it was matched to stays posted — only the link to this bank transaction is removed."
+        : "Undo this transaction? The journal entry it created will be voided.";
+    if (!await showConfirm({ message })) return;
 
-    // Void the linked JE if exists
-    if (txn.journal_entry_id) {
-      await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("id", txn.journal_entry_id).eq("company_id", companyId);
-      // Release that entry's lines from this transaction. The JE and its
-      // lines stay as an audit record — only the claim that they belong
-      // to this bank transaction is dropped. Without this, re-categorizing
-      // stamps a second set with the same id and the transaction slowly
-      // accumulates lines from every voided attempt.
-      const { error: relErr } = await supabase.from("acct_journal_lines")
-        .update({ bank_feed_transaction_id: null })
-        .eq("journal_entry_id", txn.journal_entry_id)
-        .eq("company_id", companyId);
-      if (relErr) pmError("PM-4013", { raw: relErr, context: "release journal lines on bank undo", silent: true });
-    }
+    const { data, error } = await supabase.rpc("undo_bank_transaction", { p_company_id: companyId, p_txn_id: txn.id });
+    if (error) { reportBankRpcError(error, "undo_bank_transaction"); return; }
 
-    // Reset transaction status
-    await supabase.from("bank_feed_transaction").update({
-      status: "for_review", accepted_at: null, accepted_by: null,
-      excluded_at: null, excluded_by: null, exclusion_reason: null,
-      journal_entry_id: null, posting_decision_id: null,
-      matched_target_type: null, matched_target_id: null
-    }).eq("id", txn.id).eq("company_id", companyId);
-
-    // Mark decision as undone
-    if (txn.posting_decision_id) {
-      await supabase.from("bank_posting_decision").update({ status: "undone" }).eq("id", txn.posting_decision_id);
-    }
-
-    logAudit("update", "banking", `Undid bank txn: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
-    showToast("Transaction returned to For Review.", "success");
-    // The JE this row resolved to is now voided — drop the cached
-    // posting detail and collapse the row so it can't show a stale one.
+    const outcome = data?.outcome;
+    logAudit("update", "banking", `Undid bank txn (${outcome}): ${txn.bank_description_clean}${data?.je_number ? ` — ${data.je_number}` : ""}`, txn.id, userProfile?.email, "", companyId);
+    showToast(
+      outcome === "unmatched" ? `Unmatched. ${data?.je_number || "The entry"} stays posted; the transaction is back in For Review.`
+      : outcome === "unlinked" ? "Unlinked. The entry was not created by Banking, so it was left posted; the transaction is back in For Review."
+      : outcome === "restored" ? "Transaction restored to For Review."
+      : outcome === "already_for_review" ? "This transaction was already in For Review."
+      : "Transaction returned to For Review.", "success");
+    // The JE this row resolved to changed -- drop the cached posting
+    // detail and collapse the row so it can't show a stale one.
     invalidatePostedDetail(txn.id);
     if (expandedTxn === txn.id) setExpandedTxn(null);
     refreshData();
+    if (onRefreshAccounting && outcome === "voided") onRefreshAccounting();
     } finally { guardRelease("bankUndo", txn.id); }
   }
 
@@ -1895,8 +1945,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     let ok = 0; const failed = [];
     for (const txn of selected) {
       try {
-        await acceptTransaction(txn, accountId, accountName, "", classId || "", entityType || "", entityId || "", entityName || "");
-        ok++;
+        // acceptTransaction reports its own failure and returns false; it
+        // rarely throws, so a bare try/catch counted failures as successes.
+        if (await acceptTransaction(txn, accountId, accountName, "", classId || "", entityType || "", entityId || "", entityName || "")) ok++;
+        else failed.push((txn.bank_description_clean || txn.payee_normalized || txn.id).slice(0, 30));
       } catch (e) {
         failed.push((txn.bank_description_clean || txn.payee_normalized || txn.id).slice(0, 30));
       }
@@ -1925,7 +1977,18 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // between bank accounts, which is not what "recategorise" means.
   // Amounts are never changed: this changes where a figure is classified,
   // not what it is.
+  // A live entry whose reference says the bank flow created it
+  // (post_bank_transaction: BANK-/XFER-/SPLIT-<txn id>).
+  async function isBankCreatedEntry(jeId) {
+    const { data: hdr, error } = await supabase.from("acct_journal_entries")
+      .select("reference, status").eq("company_id", companyId).eq("id", jeId).maybeSingle();
+    if (error) throw error;
+    return !!hdr && hdr.status !== "voided" && /^(BANK|XFER|SPLIT)-/.test(hdr.reference || "");
+  }
+
   async function bulkAmend({ accountId, accountName, classId, entityType, entityId, entityName }) {
+    // Matched rows are selectable so the skip can be reported, but are
+    // never amended -- see the matched branch below.
     const selected = transactions.filter(t => selectedTxns.has(t.id)
       && ["categorized", "matched", "posted"].includes(t.status));
     if (selected.length === 0) { showToast("Select categorised transactions to re-categorise.", "warning"); return; }
@@ -1942,6 +2005,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           // Categorised without a journal entry: nothing to amend, and
           // guessing which entry it meant would be worse than saying so.
           skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (no journal entry)`);
+        } else if (txn.status === "matched" || txn.matched_target_id) {
+          // A MATCHED transaction points at an entry created elsewhere -- a
+          // tenant payment, a bill. Rewriting its "category leg" would move
+          // that tenant's balance or recode the bill. Only entries the bank
+          // flow created are Banking's to recategorise.
+          skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (matched to an existing entry)`);
+        } else if (!(await isBankCreatedEntry(txn.journal_entry_id))) {
+          // Same rule for a categorised row whose entry wasn't created by
+          // the bank flow (older data, a manual re-link): not ours to amend.
+          skipped.push(`${(txn.bank_description_clean || txn.id).slice(0, 24)} (entry not created by Banking)`);
         } else {
           const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
           const { data: lines, error: lErr } = await supabase.from("acct_journal_lines")
@@ -2013,7 +2086,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     setBulkBusy({ done: 0, total: selected.length });
     let ok = 0; const failed = [];
     for (const txn of selected) {
-      try { await excludeTransaction(txn, reason); ok++; }
+      try {
+        if (await excludeTransaction(txn, reason)) ok++;
+        else failed.push((txn.bank_description_clean || txn.id).slice(0, 30));
+      }
       catch (e) { failed.push((txn.bank_description_clean || txn.id).slice(0, 30)); }
       setBulkBusy(b => (b ? { ...b, done: b.done + 1 } : b));
     }
@@ -2254,10 +2330,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
         // 2. Fall back to journal_entry_id for anything path 1 missed
         //    (matched rows link to a JE they didn't create).
+        //    A match now stamps only the entry's BANK line, so path 1 finds
+        //    one line of a matched entry; show the whole entry instead.
         const byId = {};
         for (const id of wanted) {
           const txn = transactions.find(t => t.id === id);
-          if (!linesByTxn[id] && txn?.journal_entry_id) byId[txn.journal_entry_id] = id;
+          const matched = txn?.status === "matched" || !!txn?.matched_target_id;
+          if ((!linesByTxn[id] || matched) && txn?.journal_entry_id) {
+            if (matched) delete linesByTxn[id];
+            byId[txn.journal_entry_id] = id;
+          }
         }
         const fallbackJeIds = Object.keys(byId);
         if (fallbackJeIds.length > 0) {
@@ -2291,9 +2373,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         for (const id of wanted) {
           const all = linesByTxn[id] || [];
           // A transaction can carry lines from SEVERAL journal entries:
-          // undoTransaction voids the JE it created but leaves that JE's
-          // lines stamped with this bank_feed_transaction_id, so every
-          // categorize→undo cycle leaves another set behind. Showing them
+          // undo used to void the JE it created but leave that JE's lines
+          // stamped with this bank_feed_transaction_id (undo_bank_transaction
+          // now releases them, but older cycles left sets behind). Showing them
           // all would list voided history as the current posting and
           // multiply the totals, so pick the single entry that represents
           // this transaction today:

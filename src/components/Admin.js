@@ -8,6 +8,8 @@ import { logAudit } from "../utils/audit";
 import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
 import { queueNotification } from "../utils/notifications";
 import { COMPANY_DEFAULTS } from "../config";
+import { fetchAllPaged } from "../utils/accounting";
+import { loadLoginMissingRows, buildLoginMissingTasks } from "../utils/loginMissing";
 import { Spinner } from "./shared";
 import AdminNotificationRules from "./AdminNotificationRules";
 
@@ -55,6 +57,22 @@ const NAV_CHILD_IDS = new Set(ALL_NAV.flatMap(n => (n.children || []).map(c => c
 
 
 // ============ REUSABLE ARCHIVED ITEMS COMPONENT ============
+// A work order with accounting entries or vendor invoices cannot be
+// permanently deleted (DB trigger + FK RESTRICT): deleting it used to unlink
+// its invoice, so paying the invoice expensed the repair a second time.
+// Same for a vendor with invoices: deleting it used to cascade its invoices
+// away, so a paid repair could be expensed again.
+function bookedDeleteMessage(table, error) {
+  if (!error) return null;
+  if (table === "work_orders" && (error.hint === "work_order_booked" || error.code === "23503")) {
+    return "This work order has accounting entries or vendor invoices, so it can't be permanently deleted. It stays archived; its history is kept for the books.";
+  }
+  if (table === "vendors" && (error.hint === "vendor_has_invoices" || error.code === "23503")) {
+    return "This vendor has invoices, so it can't be permanently deleted. It stays archived; its invoices are kept for the books.";
+  }
+  return null;
+}
+
 function ArchivedItems({ tableName, label, fields, companyId, addNotification, onRestore, showConfirm, userProfile, userRole }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +98,8 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   async function permanentDelete(item) {
   if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
+  const booked = bookedDeleteMessage(tableName, error);
+  if (booked) { addNotification("⚠️", booked); return; }
   if (error) { pmError("PM-8006", { raw: error, context: "permanently deleting " + label.toLowerCase() }); return; }
   logAudit("delete", tableName, "Permanently deleted " + label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", "Deleted " + label);
@@ -600,6 +620,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   async function permanentDelete(item) {
   if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
+  const booked = bookedDeleteMessage(item._table, error);
+  if (booked) { showToast(booked, "error"); return; }
   if (error) { pmError("PM-8006", { raw: error, context: "permanent delete" }); return; }
   logAudit("delete", item._table, "Permanently deleted " + item._label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", `Permanently deleted ${item._label}`);
@@ -825,7 +847,7 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
   );
 }
 
-function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification }) {
+function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification, allowedPages }) {
   const [loading, setLoading] = useState(true);
   const [approvals, setApprovals] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -933,6 +955,15 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
       });
     }
   }
+  // LOGIN MISSING: utilities / insurance / loans / HOAs saved without a
+  // portal login. Computed from the records, so a to-do vanishes as soon as a
+  // login is saved. Paged -- a company can exceed PostgREST's 1000-row cap.
+  // Only record types whose page this viewer can open: a manager or office
+  // assistant has Tasks but not Loans / Insurance, and a to-do linking there
+  // just lands them back on the dashboard. No allowedPages = no filter.
+  const loginRows = await loadLoginMissingRows(supabase, companyId, { allowedPages, pageAll: fetchAllPaged });
+  const propIdByAddr = new Map((props.data || []).map(p => [p.address, p.id]));
+  allTasks.push(...buildLoginMissingTasks(loginRows, propIdByAddr, { allowedPages }));
   // Cache open doc_exception requests keyed on address + doc_type so
   // the TasksList can badge "Exception pending review" on the right
   // step without refetching per row. Must live inside the try block

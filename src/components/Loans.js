@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, MoneyInput, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanTypeOptions} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
-import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
-function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   const [loans, setLoans] = useState([]);
+  // An OWNER member (invited into a PM's company) sees their own properties'
+  // loans read-only, through owner_loans_readonly -- no login columns, no
+  // edits. The tables themselves are staff-only.
+  const readOnly = userRole === "owner";
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState(null);
@@ -21,6 +25,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const emptyPortfolioForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", account_number: "", loan_start_date: "", maturity_date: "", escrow_included: false, escrow_amount: "", status: "active", notes: "", website: "", username: "", password: "", properties: [] };
   const [portfolioLoans, setPortfolioLoans] = useState([]);
   const [portfolioProps, setPortfolioProps] = useState([]);
+  const [pfLoaded, setPfLoaded] = useState(false);
   const [showPortfolioForm, setShowPortfolioForm] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState(null);
   const [portfolioForm, setPortfolioForm] = useState(emptyPortfolioForm);
@@ -30,6 +35,36 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const [origLoanPortfolioId, setOrigLoanPortfolioId] = useState("");
 
   useEffect(() => { fetchLoans(); fetchPortfolioLoans(); }, [companyId]);
+
+  function openEditLoan(l) {
+  setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true);
+  }
+  // Deep link from Tasks & Approvals ("login missing"): open that loan's
+  // edit form once the list has loaded. Handled once per action object.
+  const handledAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editRecordId;
+  if (!id || handledAction.current === initialAction || loading) return;
+  const rec = loans.find(x => String(x.id) === String(id));
+  handledAction.current = initialAction;
+  // Loaded, and not among this company's live records: say so.
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
+  openEditLoan(rec);
+  }, [initialAction, loans, loading]);
+
+  function openEditPortfolio(l) {
+  setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true);
+  }
+  // Same deep link for a portfolio (blanket) loan: {editPortfolioId}.
+  const handledPfAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editPortfolioId;
+  if (!id || handledPfAction.current === initialAction || !pfLoaded) return;
+  const rec = portfolioLoans.find(x => String(x.id) === String(id));
+  handledPfAction.current = initialAction;
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
+  openEditPortfolio(rec);
+  }, [initialAction, portfolioLoans, portfolioProps, pfLoaded]);
 
   // Load the current portfolio attachment for whichever property the loan form
   // is on, so the dropdown reflects reality and save can detach/attach.
@@ -44,7 +79,19 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     return () => { cancelled = true; };
   }, [showForm, form.property, companyId]);
 
+  async function fetchOwnerLoans() {
+  const { data, error } = await supabase.rpc("owner_loans_readonly", { p_company_id: companyId });
+  if (error) pmError("PM-2007", { raw: error, context: "owner loans (read-only)", phase: "read", silent: true });
+  const d = data || {};
+  setLoans(d.loans || []);
+  setPortfolioLoans(d.portfolio_loans || []);
+  setPortfolioProps(d.portfolio_props || []);
+  setPfLoaded(true);
+  setLoading(false);
+  }
+
   async function fetchLoans() {
+  if (readOnly) return fetchOwnerLoans();
   const { data } = await supabase.from("property_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
   setLoans(data || []);
   setLoading(false);
@@ -67,9 +114,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   // that fills only one field would otherwise write a broken half-credential and
   // the whole save would fail the constraint).
   let creds = null;
-  if (form.username && form.password) {
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username, companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password, companyId, resU.salt);
       if (resU.encrypted && resP.encrypted) {
         creds = {
@@ -78,13 +126,14 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
           encryption_iv: resP.iv || resU.iv,
           encryption_iv_username: resU.iv || null,
           encryption_salt: resU.salt || resP.salt,
+          credential_key_fp: resU.keyFp || resP.keyFp || null,
         };
       }
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   const nb = v => (v && v !== "" ? v : null); // null-if-blank: '' violates the not-blank constraint
   if (editingLoan) {
-  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: creds ? creds.username_encrypted : nb(editingLoan.username_encrypted), password_encrypted: creds ? creds.password_encrypted : nb(editingLoan.password_encrypted), encryption_iv: creds ? creds.encryption_iv : nb(editingLoan.encryption_iv), encryption_iv_username: creds ? creds.encryption_iv_username : nb(editingLoan.encryption_iv_username), encryption_salt: creds ? creds.encryption_salt : nb(editingLoan.encryption_salt) }).eq("id", editingLoan.id).eq("company_id", companyId);
+  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: creds ? creds.username_encrypted : nb(editingLoan.username_encrypted), password_encrypted: creds ? creds.password_encrypted : nb(editingLoan.password_encrypted), encryption_iv: creds ? creds.encryption_iv : nb(editingLoan.encryption_iv), encryption_iv_username: creds ? creds.encryption_iv_username : nb(editingLoan.encryption_iv_username), encryption_salt: creds ? creds.encryption_salt : nb(editingLoan.encryption_salt), credential_key_fp: creds ? creds.credential_key_fp : (editingLoan.credential_key_fp || null) }).eq("id", editingLoan.id).eq("company_id", companyId);
   if (loanErr) { showToast("Error updating loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan updated: ${form.lender_name}`);
   logAudit("update", "loans", `Loan updated: ${form.lender_name} ${formatCurrency(form.original_amount)}`, editingLoan.id, userProfile?.email, userRole, companyId);
@@ -95,7 +144,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     password_encrypted: creds ? creds.password_encrypted : null,
     encryption_iv: creds ? creds.encryption_iv : null,
     encryption_iv_username: creds ? creds.encryption_iv_username : null,
-    encryption_salt: creds ? creds.encryption_salt : null };
+    encryption_salt: creds ? creds.encryption_salt : null,
+    credential_key_fp: creds ? creds.credential_key_fp : null };
   delete insPayload.username; delete insPayload.password;
   const { error: loanErr } = await supabase.from("property_loans").insert([insPayload]);
   if (loanErr) { showToast("Error saving loan: " + loanErr.message, "error"); return; }
@@ -131,46 +181,36 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   } finally { guardRelease("deleteLoan"); }
   }
 
+  // Record payment only TRACKS the loan (reduces the balance). It posts no
+  // journal entry: the books are cash basis, and the payment is booked when
+  // its bank transaction is categorized or matched in Banking. Posting here
+  // as well is how the same mortgage payment used to be expensed twice
+  // (owner decision, 2026-09-28; see utils/expenseRules.js).
   async function recordPayment(loan) {
   if (!guardSubmit("recordLoanPayment")) return;
   try {
-  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(loan.monthly_payment)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
-  const today = formatLocalDate(new Date());
-  const classId = await getPropertyClassId(loan.property, companyId);
   const amt = safeNum(loan.monthly_payment);
   if (amt <= 0) { showToast("Monthly payment amount must be greater than zero.", "error"); return; }
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: today,
-  description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
-  // Date-qualified: idx_je_company_reference_unique made `LOAN-<id>`
-  // single-use, so a loan could only ever have ONE payment recorded.
-  // Every subsequent month 409'd and the balance was never updated.
-  reference: `LOAN-${loan.id}-${today}`,
-  property: loan.property,
-  lines: [
-  { account_id: "5600", account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
-  // Update current balance only if JE succeeded
+  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(amt)} for ${loan.lender_name}?\n\nThis reduces the loan balance only. No accounting entry is posted — the payment is booked when its bank transaction is categorized in Banking.`, confirmText: "Record Payment" })) return;
   const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
   const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
   if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); return; }
-  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}`);
-  logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
+  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} (balance only)`);
+  logAudit("update", "loans", `Loan payment recorded (balance only, no journal entry): ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}; balance ${formatCurrency(safeNum(loan.current_balance))} -> ${formatCurrency(newBalance)}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("recordLoanPayment"); }
   }
 
   async function fetchPortfolioLoans() {
+  if (readOnly) return; // loaded with the owner's loans
+
   const [{ data: pl }, { data: pp }] = await Promise.all([
     supabase.from("portfolio_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
     supabase.from("portfolio_loan_properties").select("*").eq("company_id", companyId),
   ]);
   setPortfolioLoans(pl || []);
   setPortfolioProps(pp || []);
+  setPfLoaded(true);
   }
 
   async function savePortfolioLoan() {
@@ -188,9 +228,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     escrow_included: portfolioForm.escrow_included, escrow_amount: portfolioForm.escrow_included ? Number(portfolioForm.escrow_amount || 0) : 0,
     status: portfolioForm.status, notes: portfolioForm.notes || "", website: portfolioForm.website || "",
   };
-  if (portfolioForm.username && portfolioForm.password) {
+  if (isHalfLogin(portfolioForm.username, portfolioForm.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
+  if (formLogin(portfolioForm.username, portfolioForm.password)) {
     try {
-      const resU = await encryptCredential(portfolioForm.username || "", companyId);
+      const resU = await encryptCredential(String(portfolioForm.username || "").trim(), companyId);
       const resP = await encryptCredential(portfolioForm.password || "", companyId, resU.salt);
       base.username_encrypted = resU.encrypted; base.password_encrypted = resP.encrypted;
       base.encryption_iv_username = resU.iv || null; base.encryption_iv = resP.iv || resU.iv; base.encryption_salt = resU.salt || resP.salt;
@@ -201,7 +242,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     const { error } = await supabase.from("portfolio_loans").update({ ...base, updated_at: new Date().toISOString() }).eq("id", editingPortfolio.id).eq("company_id", companyId);
     if (error) { showToast("Error updating portfolio loan: " + error.message, "error"); return; }
   } else {
-    const { data, error } = await supabase.from("portfolio_loans").insert([{ ...base, company_id: companyId }]).select("id").single();
+    // No login: NULL, never the '' column default.
+    const noLogin = base.username_encrypted ? {} : { username_encrypted: null, password_encrypted: null, encryption_iv: null, encryption_iv_username: null, encryption_salt: null };
+    const { data, error } = await supabase.from("portfolio_loans").insert([{ ...base, ...noLogin, company_id: companyId }]).select("id").single();
     if (error) { showToast("Error saving portfolio loan: " + error.message, "error"); return; }
     loanId = data.id;
   }
@@ -264,7 +307,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <Select filter value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </Select>
-  <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>
+  {!readOnly && <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>}
   </div>
 
   {/* Stats */}
@@ -345,13 +388,13 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "portal", label: "Portal", className: "text-xs",
         render: l => (<>
           {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-            {l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
+            {!readOnly && l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
             {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
         </>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
-        render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : (<>
+        render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : readOnly ? <span className="text-xs text-neutral-300">View only</span> : (<>
           {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
-            <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="brand" size="xs" onClick={() => openEditLoan(l)} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
         </>) },
     ]}
@@ -367,7 +410,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
   <div><h2 className="text-lg font-display font-bold text-neutral-800">Portfolio Loans</h2>
   <p className="text-xs text-neutral-400">One loan covering multiple properties — entered once, tracked at the portfolio level (no per-property split).</p></div>
-  <Btn variant="success-fill" className="md:ml-auto" onClick={() => { setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); }}>+ Add Portfolio Loan</Btn>
+  {!readOnly && <Btn variant="success-fill" className="md:ml-auto" onClick={() => { setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); }}>+ Add Portfolio Loan</Btn>}
   </div>
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
@@ -382,8 +425,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "monthly", label: "Monthly", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.monthly_payment)}</>) },
       { key: "balance", label: "Balance", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.current_balance)}</>) },
       { key: "maturity", label: "Maturity", className: "text-neutral-400", render: l => (<>{fmtDate(l.maturity_date) || "\u2014"}</>) },
-      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => (<>
-        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => { setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true); }}>Edit</TextLink>
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => readOnly ? <span className="text-xs text-neutral-300">View only</span> : (<>
+        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => openEditPortfolio(l)}>Edit</TextLink>
         <TextLink tone="danger" size="xs" onClick={() => deletePortfolioLoan(l.id)}>Delete</TextLink>
       </>) },
     ]}

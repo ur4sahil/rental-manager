@@ -35,16 +35,32 @@ const read = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 const props = read("src/components/Properties.js");
 const imp = read("src/components/PropertyImport.js");
 const util = read("src/utils/propertyImport.js");
-const MIG = "20260928140000_wizard_keep_existing_data.sql";
+// The latest body lives in 20260929030000 (round-2 fixes on top of 140000).
+const MIG = "20260929030000_wizard_bridge_fixes.sql";
 const mig = read("supabase/migrations/" + MIG);
 const body = mig.slice(mig.indexOf("CREATE OR REPLACE FUNCTION public.commit_property_wizard"));
+const bridge = mig.slice(mig.indexOf("CREATE OR REPLACE FUNCTION public.bridge_utility_account"), mig.indexOf("END $$;"));
 
 console.log("\n=== STATIC: commit_property_wizard ===");
 {
   const dir = path.join(__dirname, "..", "supabase", "migrations");
   const hits = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort()
     .filter(f => /CREATE OR REPLACE FUNCTION public\.commit_property_wizard\(/.test(fs.readFileSync(path.join(dir, f), "utf8")));
-  assert("140000 is the latest definition of commit_property_wizard", hits[hits.length - 1] === MIG, hits.slice(-2).join(", "));
+  assert("030000 is the latest definition of commit_property_wizard", hits[hits.length - 1] === MIG, hits.slice(-2).join(", "));
+  const bh = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort()
+    .filter(f => /CREATE OR REPLACE FUNCTION public\.bridge_utility_account\(/.test(fs.readFileSync(path.join(dir, f), "utf8")));
+  assert("030000 is the latest definition of bridge_utility_account", bh[bh.length - 1] === MIG, bh.slice(-2).join(", "));
+}
+assert("bridge: an account with a DIFFERENT non-empty number is never adopted",
+  /AND \(NULLIF\(btrim\(a\.account_number\), ''\) IS NULL\s+OR NULLIF\(btrim\(NEW\.account_number\), ''\) IS NULL\s+OR lower\(btrim\(a\.account_number\)\) = lower\(btrim\(NEW\.account_number\)\)\)/.test(bridge));
+assert("new ciphertext writes its own key fingerprint as-is (NULL included)",
+  !/COALESCE\(NULLIF\(v_(u|loan|insurance|h)->>'credential_key_fp',''\), credential_key_fp\)/.test(body)
+  && /THEN NULLIF\(v_u->>'credential_key_fp',''\) ELSE credential_key_fp END/.test(body));
+assert("the HOA salt is written whenever ANY of the three login sets arrives",
+  /encryption_salt = CASE WHEN \(NULLIF\(v_h->>'username_encrypted',''\) IS NOT NULL\s+OR NULLIF\(v_h->>'mgmt_username_encrypted',''\) IS NOT NULL\s+OR NULLIF\(v_h->>'pay_username_encrypted',''\) IS NOT NULL\)/.test(body));
+assert("property_taxes is staff-only (member-wide policies dropped)",
+  /DROP POLICY IF EXISTS property_taxes_select/.test(mig) && /CREATE POLICY property_taxes_staff ON public\.property_taxes\s+FOR ALL TO authenticated USING \(public\.is_company_staff\(company_id\)\)/.test(mig));
+{
 }
 assert("keeps SECURITY DEFINER and the same signature",
   /FUNCTION public\.commit_property_wizard\(p_payload jsonb\)\s+RETURNS jsonb\s+LANGUAGE plpgsql\s+SECURITY DEFINER/.test(body));
@@ -124,6 +140,10 @@ assert("tenant late fee is read back so a save carries it",
   /late_fee_amount: primary\.late_fee_amount \?\? ""/.test(props));
 
 console.log("\n=== STATIC: property import ===");
+assert("re-import: a new HOA association login is encrypted under the row's STORED salt",
+  /encryptCreds\(src, `\$\{h\.hoa_name\} \(HOA\)`, keptSalt\)/.test(imp) && /encryptCredential\(username, companyId, salt \|\| null\)/.test(imp));
+assert("the wizard sends a key fingerprint with a management / portal login too",
+  /credential_key_fp: hoaCreds\?\.credential_key_fp \|\| mgmtRaw\?\.credential_key_fp \|\| payRaw\?\.credential_key_fp/.test(props));
 assert("the create path goes through importCreatePayload (enabled flags)", /importCreatePayload\(recs,/.test(imp));
 assert("loans past the first are written for a NEW property", /const moreLoans = \(recs\.loans \|\| \[\]\)\.slice\(1\)/.test(imp));
 assert("re-import never resets a utility's status or a loan's status",
@@ -565,6 +585,39 @@ if (authErr) {
     const { error: e9 } = await rpc(ph);
     const oAfter = (await svc.from("property_loans").select("lender_name, archived_at").eq("id", oLoan.id).single()).data;
     assert("another property's loan id is ignored", !e9 && oAfter.lender_name === `${TAG} Other Bank` && !oAfter.archived_at, (e9?.message || "") + JSON.stringify(oAfter));
+
+    // (h2) the utility-account bridge: removing a meter and adding a NEW one of
+    // the same provider must not hand the old account (number, history) to the
+    // new row, nor invent a final bill; the SAME meter re-added keeps its
+    // account.
+    {
+      const acctOf = async (uid) => (await svc.from("utility_accounts").select("id, account_number, legacy_utility_id, archived_at")
+        .eq("company_id", CID).eq("legacy_utility_id", uid)).data?.[0];
+      const fA = await loadForm();
+      const pow = fA.utilities.find(u => u.id === uPow.id);
+      const oldAcct = await acctOf(uPow.id);
+      fA.utilities = fA.utilities.filter(u => u.id !== uPow.id);
+      fA.utilities.push({ provider: `${TAG} Power`, type: "Electric", account_number: "A-9-NEW", due_date: 7, responsibility: "tenant_pays", website: "" });
+      const { error: eA } = await rpc(buildPayload(fA));
+      const rows = (await svc.from("utilities").select("*").eq("company_id", CID).eq("property", ADDR2).eq("provider", `${TAG} Power`)).data;
+      const nu = rows.find(r => r.account_number === "A-9-NEW");
+      const nuAcct = nu && await acctOf(nu.id);
+      const oldAfter = (await svc.from("utility_accounts").select("*").eq("id", oldAcct.id).single()).data;
+      assert("bridge: a new meter of the same provider gets its OWN account; the old one keeps its number and is archived",
+        !eA && nuAcct && nuAcct.id !== oldAcct.id && oldAfter.account_number === oldAcct.account_number && !!oldAfter.archived_at,
+        (eA?.message || "") + JSON.stringify({ oldAfter: { n: oldAfter.account_number, a: oldAfter.archived_at, l: oldAfter.legacy_utility_id }, nuAcct }));
+      assert("bridge: no bogus owner final bill is created", !rows.some(r => r.is_final_bill && !r.archived_at), JSON.stringify(rows.map(r => [r.id, r.account_number, r.is_final_bill])));
+      // Same meter back (same number): the archived account is re-linked, not duplicated.
+      const fB = await loadForm();
+      fB.utilities = fB.utilities.filter(u => u.account_number !== "A-9-NEW");
+      fB.utilities.push({ provider: `${TAG} Power`, type: "Electric", account_number: "A-9-NEW", due_date: 7, responsibility: "tenant_pays", website: "" });
+      const { error: eB } = await rpc(buildPayload(fB));
+      const again = (await svc.from("utilities").select("id").eq("company_id", CID).eq("property", ADDR2).eq("account_number", "A-9-NEW").is("archived_at", null)).data?.[0];
+      const againAcct = again && await acctOf(again.id);
+      assert("bridge: the SAME meter removed and re-added keeps its account (relink by number)",
+        !eB && againAcct && againAcct.id === nuAcct.id && !againAcct.archived_at, (eB?.message || "") + JSON.stringify({ againAcct, nuAcct }));
+      void pow;
+    }
 
     // (i) rows written by OTHER pages often hold NULL where the form holds
     // "" / 0 / false. A no-change save must not turn one into the other.

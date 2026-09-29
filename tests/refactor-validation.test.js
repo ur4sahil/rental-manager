@@ -85,7 +85,15 @@ function testFileStructure() {
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 26, `src/utils/ has 8..26 files (found ${actualUtilFiles.length})`);
+  // 27 on 2026-09-28: + loginMissing.js (import-free "login missing" to-do rules for
+  // Tasks & Approvals, run directly in node by login-missing.test.mjs).
+  // 28 on 2026-09-28 (theme K, one expense booked once): + expenseRules.js
+  // (import-free WO/invoice, mortgage-month and escrow rules, tested directly
+  // and mirrored by the tax cron) and expensePosting.js (the ledger reads and
+  // postings WO completion, invoice payment, Record payment, the recurring
+  // engine and tax-bill generation now share -- no-double-expense.test.mjs).
+  // 29 on 2026-09-29: theme I (loginMissing.js) merged with theme K (two files).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 29, `src/utils/ has 8..29 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -249,11 +257,18 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  // 53350 on 2026-09-29: + audit theme J -- the wizard's per-field payload
-  // builders (WIZ_FIELDS / WIZ_DB_COLS, one builder for both the save and
-  // what the form loaded, so only changed fields are written), import enum /
-  // duplicate-key / HOA-due handling in utils/propertyImport.js.
-  assert(totalLines <= 53350, `Total src lines <= 53350 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53350 on 2026-09-29: +~150 for "login missing" to-dos (src/utils/loginMissing.js incl.
+  // portfolio loans) and the edit deep links on Utilities/Insurance/Loans/HOA.
+  // 53450 on 2026-09-29: +~65 for theme-I round 2 (named-account utility save, half-login refusals,
+  // allowedPages-filtered to-dos, unavailable-record toasts, account-first Fetched Bills).
+  // 53500 on 2026-09-28 (theme K): +~210 for expenseRules.js / expensePosting.js and the
+  // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
+  // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
+  // 53900 on 2026-09-29: theme I round 3 (owner read-only loans, whole-login trimming, badge count) merged with theme K (staging df90dcd).
+  // 54200 on 2026-09-29: + audit theme J (wizard per-field payload builders
+  // WIZ_FIELDS / WIZ_DB_COLS so only changed fields are written; import enum /
+  // duplicate-key / HOA-due handling, import HOA salt reuse) merged with staging 4f3dcb6 (53900).
+  assert(totalLines <= 54200, `Total src lines <= 54200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

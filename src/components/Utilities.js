@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
@@ -52,7 +53,7 @@ function billAge(row, today) {
   return days;
 }
 
-function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   function exportUtilities() {
   exportToCSV(utilities, [
   { label: "Property", key: "property" },
@@ -105,6 +106,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // === Utility Automation ===
   const [utilTab, setUtilTab] = useState("bills"); // bills / automation / jobs
   const [utilAccounts, setUtilAccounts] = useState([]);
+  // Set once fetchAutomationData has filled utilAccounts: the deep link must
+  // not decide "archived" before the accounts are actually loaded.
+  const [acctsLoaded, setAcctsLoaded] = useState(false);
   const [accountSearch, setAccountSearch] = useState("");
   const [autoBills, setAutoBills] = useState([]);
   const [autoJobs, setAutoJobs] = useState([]);
@@ -115,6 +119,33 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" });
 
   useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
+
+  function openEditAccount(acct) {
+    setEditingAccount(acct);
+    setAccountForm({
+      property: acct.property || "", provider: "__keep__", account_number: acct.account_number || "",
+      username: "", password: "", account_type: acct.account_type || "electric",
+      check_frequency: acct.check_frequency || "weekly", two_factor_method: acct.two_factor_method || "none",
+      notes: acct.notes || "", responsibility: acct.responsibility || "owner",
+    });
+    setShowAccountForm(true);
+    const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
+  }
+  // Deep link from Tasks & Approvals ("login missing"). The to-do names the
+  // `utilities` row (what the bill sweep reads); its login is edited on the
+  // linked utility_accounts row, so open that account on the Accounts tab.
+  const handledAction = useRef(null);
+  useEffect(() => {
+    const id = initialAction?.editRecordId;
+    if (!id || handledAction.current === initialAction || !acctsLoaded) return;
+    const acct = utilAccounts.find(a => String(a.legacy_utility_id) === String(id))
+      || utilAccounts.find(a => String(a.id) === String(initialAction.editAccountId || ""));
+    handledAction.current = initialAction;
+    // Loaded, and not among this company's live accounts: say so.
+    if (!acct) { showToast("That record was archived or isn't available.", "error"); return; }
+    setUtilTab("automation");
+    openEditAccount(acct);
+  }, [initialAction, utilAccounts, acctsLoaded]);
 
   async function fetchAutomationData() {
   const [accts, bills, jobs, provs, receipts] = await Promise.all([
@@ -129,23 +160,44 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   setUtilAccounts(accts.data || []);
   const receiptByBill = new Map();
   for (const r of (receipts.data || [])) { if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path); }
-  setAutoBills((bills.data || []).map(b => ({ ...b, receipt_path: receiptByBill.get(b.id) || null })));
+  // One responsibility rule (same as the list and claim_utility_payment): the
+  // ACCOUNT's current responsibility, the bill's snapshot only as fallback --
+  // so "Pay this bill" is never offered on a now-tenant/condo account.
+  const respByAcct = new Map((accts.data || []).map(a => [a.id, a.responsibility]));
+  setAutoBills((bills.data || []).map(b => ({ ...b, responsibility: respByAcct.get(b.utility_account_id) || b.responsibility, receipt_path: receiptByBill.get(b.id) || null })));
   setAutoJobs(jobs.data || []);
   // Approved providers, plus any this company proposed and an admin has not
   // approved yet (usable immediately). A legacy row with no approval_status
   // reads as approved.
   setProviders((provs.data || []).filter(p => p.approval_status !== "pending" || p.requested_company_id === companyId));
+  setAcctsLoaded(true);
   }
 
+  // utility_accounts.account_type -> utilities.type, for the utilities row an
+  // Accounts-tab account needs so the bill sweep can see it.
+  const UTIL_TYPE_FOR_ACCOUNT = { electric: "Electric", gas: "Gas", water_sewer: "Water-Sewer", electric_gas: "Electric", trash: "Trash", internet: "Internet", other: "Other" };
+
+  // The login lives on TWO rows: this utility_accounts row (the Accounts tab)
+  // and its linked `utilities` row (legacy_utility_id), which is what the daily
+  // bill sweep and the portal worker read. A login saved here used to reach
+  // only the first, so the sweep kept signing in with the old one. Both rows
+  // now get the SAME ciphertext in one save.
   async function saveAccount() {
+  // One save at a time: a double click used to race two named-line inserts.
+  if (!guardSubmit("saveUtilityAccount")) return;
+  try { await saveAccountInner(); } finally { guardRelease("saveUtilityAccount"); }
+  }
+  async function saveAccountInner() {
   // Property is always required. Provider + credentials are required only when
   // ADDING; on an edit the account already has them, and the provider Select
-  // keeps the current value (stored accounts carry a provider NAME, not a
-  // reference id, so they don't map back to an option).
+  // keeps the current value ("__keep__").
   if (!accountForm.property) { showToast("Property is required.", "error"); return; }
-  if (!editingAccount && (!accountForm.provider || !accountForm.username || !accountForm.password)) {
+  if (!editingAccount && (!accountForm.provider || !formLogin(accountForm.username, accountForm.password))) {
   showToast("Property, provider, username, and password are required.", "error"); return;
   }
+  // Half a login is refused on edit too: blank-both keeps the stored login,
+  // one half alone would silently keep the OLD login while looking saved.
+  if (isHalfLogin(accountForm.username, accountForm.password)) { showToast(halfLoginMessage("utility portal login"), "error"); return; }
   const providerInfo = (accountForm.provider && accountForm.provider !== "__keep__")
     ? providers.find(p => p.id === accountForm.provider) : null;
   const payload = {
@@ -160,36 +212,102 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   };
   // Only set the provider when a real one was chosen (add, or a deliberate
   // change) — otherwise the existing provider/provider_display are preserved.
+  // Stored as the provider NAME, like every other writer: the wizard, the
+  // sweep and the bridge's re-link (lower(provider) = lower(name)) all key on
+  // the name, and a utility_providers id here matched none of them.
   if (providerInfo) {
-  payload.provider = accountForm.provider;
+  payload.provider = providerInfo.display_name;
   payload.provider_display = providerInfo.display_name;
   payload.login_url = providerInfo.login_url || "";
   }
   // Encrypt + set credentials only when BOTH are supplied. On an edit, leaving
-  // them blank keeps the stored login untouched (AES-256-GCM via Web Crypto).
-  if (accountForm.username && accountForm.password) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
-  const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode((companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0")), { name: "AES-GCM" }, false, ["encrypt"]);
-  const enc = async (pt) => { const c = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keyMaterial, new TextEncoder().encode(pt)); return btoa(String.fromCharCode(...new Uint8Array(c))); };
-  payload.username_encrypted = await enc(accountForm.username);
-  payload.password_encrypted = await enc(accountForm.password);
-  payload.encryption_iv = ivHex;
+  // them blank keeps the stored login untouched. Server-side v3 encryption
+  // (per-row salt, one IV per value, key fingerprint) -- the same helper and
+  // shape as every other credential in the app. All six columns are written
+  // together, so no stale salt or username IV survives an overwrite.
+  let creds = null;
+  if (formLogin(accountForm.username, accountForm.password)) {
+  try {
+    const u = await encryptCredential(String(accountForm.username || "").trim(), companyId);
+    const p = await encryptCredential(accountForm.password, companyId, u.salt);
+    if (!u.encrypted || !p.encrypted) throw new Error("empty ciphertext");
+    creds = {
+      username_encrypted: u.encrypted,
+      password_encrypted: p.encrypted,
+      encryption_iv_username: u.iv || null,
+      encryption_iv: p.iv || null,
+      encryption_salt: u.salt || p.salt || null,
+      credential_key_fp: u.keyFp || p.keyFp || null,
+    };
+  } catch (e) { showToast("Could not encrypt the login — please try again: " + (e.message || e), "error"); return; }
+  Object.assign(payload, creds);
   }
+  const providerName = payload.provider || editingAccount?.provider || "";
+  // What the linked utilities row must agree on. Written FIRST: the bridge
+  // trigger then mirrors it onto the account (and creates the owner closeout
+  // line on an owner->tenant flip), so the account write below changes
+  // nothing it has not already been told.
+  const utilPatch = {
+  property: payload.property,
+  provider: providerName,
+  account_number: accountForm.account_number || null,
+  responsibility: payload.responsibility,
+  ...(creds || {}),
+  };
+  // Moved to another property: let the fill trigger recompute property_id
+  // for the new address instead of keeping the old property's id.
+  if (editingAccount && editingAccount.property !== payload.property) utilPatch.property_id = null;
   let error;
-  if (editingAccount) {
-  ({ error } = await supabase.from("utility_accounts").update(payload).eq("id", editingAccount.id).eq("company_id", companyId));
-  // Keep the property wizard's legacy row in agreement (responsibility +
-  // account number), so the two never drift.
-  if (!error && editingAccount.legacy_utility_id) {
-  await supabase.from("utilities").update({ responsibility: payload.responsibility, account_number: accountForm.account_number || null })
-    .eq("id", editingAccount.legacy_utility_id).eq("company_id", companyId);
+  let legacyId = editingAccount?.legacy_utility_id || null;
+  if (legacyId) {
+  // Only a LIVE linked row counts; a link to an archived row is treated as
+  // no row at all (below), so the account gets a live line again.
+  const { data: updRows, error: updErr } = await supabase.from("utilities").update(utilPatch)
+    .eq("id", legacyId).eq("company_id", companyId).is("archived_at", null).select("id");
+  error = updErr;
+  if (!error && !(updRows || []).length) legacyId = null;
   }
+  if (!error && !legacyId) {
+  // No live utilities row behind this account (added here, never through the
+  // wizard) -- so the sweep could not see it. Create one. The RPC NAMES the
+  // account the row belongs to (null = a brand-new account) in the same
+  // transaction, so the bridge links exactly that one and never adopts a
+  // different account at the same property + provider.
+  const { data: newId, error: insErr } = await supabase.rpc("save_utility_line_for_account", {
+    p_company_id: companyId,
+    p_account_id: editingAccount?.id || null,
+    p_row: {
+      ...utilPatch,
+      type: UTIL_TYPE_FOR_ACCOUNT[payload.account_type] || "Electric",
+      amount: 0, status: "pending",
+      website: payload.login_url || editingAccount?.login_url || editingAccount?.website || "",
+    },
+  });
+  error = insErr;
+  if (!error) legacyId = newId;
+  }
+  if (error) {
+  if (/duplicate key|unique/i.test(error.message || "")) showToast("That provider and account number are already on another utility line.", "error");
+  else pmError("PM-4002", { raw: error, context: "saving utility account (utilities row)" });
+  return;
+  }
+  let acctId = editingAccount?.id || null;
+  if (!acctId) {
+  // The bridge created (or re-linked) the account for the new utilities row.
+  const { data: linked } = await supabase.from("utility_accounts").select("id")
+    .eq("company_id", companyId).eq("legacy_utility_id", legacyId).order("id", { ascending: false }).limit(1);
+  acctId = linked?.[0]?.id || null;
+  }
+  if (acctId) {
+  // The link itself was made by the bridge (named account); this writes the
+  // account-only fields.
+  ({ error } = await supabase.from("utility_accounts").update(payload)
+    .eq("id", acctId).eq("company_id", companyId));
   } else {
-  ({ error } = await supabase.from("utility_accounts").insert([payload]));
+  error = { message: "the new utility line was saved but no account was linked to it" };
   }
   if (error) { pmError("PM-4002", { raw: error, context: "saving utility account" }); return; }
-  logAudit("update", "utilities", `${editingAccount ? "Edited" : "Added"} utility account: ${providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider} at ${accountForm.property} (${respLabel(payload.responsibility)})`, String(editingAccount?.id || ""), userProfile?.email, userRole, companyId);
+  logAudit("update", "utilities", `${editingAccount ? "Edited" : "Added"} utility account: ${providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider} at ${accountForm.property} (${respLabel(payload.responsibility)})${creds ? " — login updated" : ""}`, String(acctId || ""), userProfile?.email, userRole, companyId);
   addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || editingAccount?.provider_display || accountForm.provider));
   setShowAccountForm(false);
   setEditingAccount(null);
@@ -197,11 +315,41 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   fetchAutomationData();
   }
 
+  // Deleting an account must also stop the automation reading it: the sweep
+  // and the portal worker read the linked `utilities` row, which used to stay
+  // live -- and the next wizard save re-linked (un-archived) the account.
+  // archived_reason marks it as a person's decision so the bridge leaves it.
   async function deleteAccount(acct) {
   if (!await showConfirm({ message: "Delete this utility account? Automation will stop for this account.", variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("utility_accounts").update({ archived_at: new Date().toISOString() }).eq("id", acct.id).eq("company_id", companyId);
+  const archivedAt = new Date().toISOString();
+  const { error } = await supabase.from("utility_accounts").update({ archived_at: archivedAt, archived_reason: "user_deleted" }).eq("id", acct.id).eq("company_id", companyId);
+  if (error) { pmError("PM-4002", { raw: error, context: "archiving utility account" }); return; }
+  if (acct.legacy_utility_id) {
+  const { error: uErr } = await supabase.from("utilities").update({ archived_at: archivedAt, archived_by: userProfile?.email || null })
+    .eq("id", acct.legacy_utility_id).eq("company_id", companyId).is("archived_at", null);
+  if (uErr) pmError("PM-4002", { raw: uErr, context: "archiving the utility line behind a deleted account" });
+  }
+  logAudit("delete", "utilities", `Deleted utility account: ${acct.provider_display || acct.provider} at ${acct.property}`, String(acct.id), userProfile?.email, userRole, companyId);
   addNotification("📦", "Utility account archived: " + acct.provider_display);
   fetchAutomationData();
+  }
+
+  // Open a stored portal login for display. Current rows are v3 (per-row
+  // salt). Rows saved on the Accounts tab before this fix used a browser-side
+  // key -- (companyId + "_propmanager_cred_key") padded to 32 bytes, one IV
+  // shared by username and password, no salt -- which is byte-for-byte the
+  // server's "teller" legacy scheme, so those still open: try it when a
+  // saltless row does not open under the default legacy scheme.
+  async function loadPortalLogin(u) {
+    const ivUser = u.encryption_iv_username || u.encryption_iv;
+    let user = await decryptCredential(u.username_encrypted, ivUser, companyId, u.encryption_salt || null, null, u.credential_key_fp || null);
+    let pass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt || null, null, u.credential_key_fp || null);
+    if ((user == null || pass == null) && !u.encryption_salt) {
+      user = await decryptCredential(u.username_encrypted, ivUser, companyId, null, "teller");
+      pass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, null, "teller");
+    }
+    u._decUser = user;
+    u._decPass = pass;
   }
 
   async function triggerManualCheck(acct) {
@@ -451,6 +599,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       encryption_iv: a.encryption_iv,
       encryption_iv_username: a.encryption_iv_username,
       encryption_salt: a.encryption_salt,
+      credential_key_fp: a.credential_key_fp || null,
     };
   });
 
@@ -631,15 +780,17 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const row = { ...form, amount: Number(form.amount), company_id: companyId };
   delete row.username; delete row.password; // don't store plaintext
   row.website = form.website || "";
-  if (form.username || form.password) {
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("utility portal login"), "error"); return; }
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-      row.username_encrypted = resU.encrypted;
-      row.password_encrypted = resP.encrypted;
+      row.username_encrypted = resU.encrypted || null; // null, never '' (chk_utilities_creds_not_blank)
+      row.password_encrypted = resP.encrypted || null;
       row.encryption_iv_username = resU.iv || null;
-      row.encryption_iv = resP.iv || resU.iv;
-      row.encryption_salt = resU.salt || resP.salt;
+      row.encryption_iv = resP.iv || resU.iv || null;
+      row.encryption_salt = resU.salt || resP.salt || null;
+      row.credential_key_fp = resU.keyFp || resP.keyFp || null;
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   const { error } = await supabase.from("utilities").insert([row]);
@@ -795,17 +946,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
   <TextLink tone="brand" size="xs" underline={false} onClick={() => triggerManualCheck(acct)} className="border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</TextLink>
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => {
-    setEditingAccount(acct);
-    setAccountForm({
-      property: acct.property || "", provider: "__keep__", account_number: acct.account_number || "",
-      username: "", password: "", account_type: acct.account_type || "electric",
-      check_frequency: acct.check_frequency || "weekly", two_factor_method: acct.two_factor_method || "none",
-      notes: acct.notes || "", responsibility: acct.responsibility || "owner",
-    });
-    setShowAccountForm(true);
-    const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
-  }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openEditAccount(acct)} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>
@@ -1078,7 +1219,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       <div className="absolute right-0 top-9 z-20 w-56 bg-white border border-neutral-200 rounded-xl shadow-pop p-1">
         {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <button onClick={() => { setMenuOpenId(null); setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Record manual payment</button>}
         <button onClick={() => { setMenuOpenId(null); setHistoryFor(u.id); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Bill history</button>
-        {u.username_encrypted && <button onClick={async () => { setMenuOpenId(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
+        {u.username_encrypted && <button onClick={async () => { setMenuOpenId(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } await loadPortalLogin(u); s.add(u.id); setShowCreds(new Set(s)); }} className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
         {payablePortalFor(u.provider_display || u.provider) && <button onClick={() => { setMenuOpenId(null); setPayingBill({ ...u, __enroll: true }); }} title="Sign in to the provider in a secure browser so Housy can fetch bills automatically" className="w-full text-left text-sm text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-50">Re-authenticate portal</button>}
         <div className="border-t border-neutral-100 my-1" />
         <button onClick={() => { setMenuOpenId(null); openAuditLog(u); }} className="w-full text-left text-sm text-neutral-500 px-3 py-2 rounded-lg hover:bg-neutral-50">Audit trail</button>
@@ -1151,8 +1292,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             <TextLink tone="brand" size="xs" className="shrink-0" onClick={async () => {
               const s = new Set(showCreds);
               if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); return; }
-              u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt);
-              u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt);
+              await loadPortalLogin(u);
               s.add(u.id); setShowCreds(new Set(s));
             }}>{showCreds.has(u.id) ? "Hide" : "Login"}</TextLink>
           )}
@@ -1195,7 +1335,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       <div className="fixed z-50 w-56 bg-white border border-neutral-200 rounded-xl shadow-pop p-1" style={{ top: tableMenu.top, right: tableMenu.right }}>
         {u.bill_id && !["paid","settled","excluded"].includes(u.status) && <button className={item} onClick={() => { setTableMenu(null); setPayBill(u); setPayForm({ amount: String(safeNum(u.amount) || ""), paid_on: formatLocalDate(new Date()), bank_account_id: "", confirmation: "", method: "", recharge: u.responsibility === "tenant" }); loadBankAccounts(); }}>Record manual payment</button>}
         <button className={item} onClick={() => { setTableMenu(null); setHistoryFor(u.id); }}>Bill history</button>
-        {u.username_encrypted && <button className={item} onClick={async () => { setTableMenu(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}>{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
+        {u.username_encrypted && <button className={item} onClick={async () => { setTableMenu(null); const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(new Set(s)); return; } await loadPortalLogin(u); s.add(u.id); setShowCreds(new Set(s)); }}>{showCreds.has(u.id) ? "Hide portal login" : "Portal login"}</button>}
         {payablePortalFor(u.provider_display || u.provider) && <button className={item} onClick={() => { setTableMenu(null); setPayingBill({ ...u, __enroll: true }); }}>Re-authenticate portal</button>}
         <div className="border-t border-neutral-100 my-1" />
         <button className={item + " text-neutral-500"} onClick={() => { setTableMenu(null); openAuditLog(u); }}>Audit trail</button>

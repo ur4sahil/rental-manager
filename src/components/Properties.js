@@ -7,6 +7,7 @@ import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, short
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
+import { formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
@@ -1290,9 +1291,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     // The salt is per ROW either way, so this changes nothing about the
     // guarantee: one compromised plaintext still does not unlock another row.
     async function encryptRow(hasCreds, username, password, reuseSalt = null) {
-      if (!hasCreds) return null;
-      const u = await encryptCredential(username || '', companyId, reuseSalt || null);
-      const p = await encryptCredential(password || '', companyId, u.salt);
+      // A whitespace-only username or password is not a login.
+      const lg = hasCreds ? formLogin(username, password) : null;
+      if (!lg) return null;
+      const u = await encryptCredential(lg.username, companyId, reuseSalt || null);
+      const p = await encryptCredential(lg.password, companyId, u.salt);
       // NULL, never '': an empty ciphertext is indistinguishable from a
       // real one in every IS NOT NULL and COUNT() check, which is how this
       // table came to report stored logins for utilities that had none.
@@ -1321,6 +1324,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           ...(creds || {}),
         });
       }
+      // The salt already on each live HOA row. commit_property_wizard carries a
+      // set the form leaves blank forward from the stored row, still encrypted
+      // under THAT row's salt -- so a set entered now must reuse it too, or
+      // changing one of the three logins breaks the other two.
+      // Keyed by ROW ID: an HOA renamed in the same save as a login change must
+      // still find its row's salt. By name only for a form row with no id.
+      const storedHoaSaltById = {};
+      const storedHoaSaltByName = {};
+      if (savedAddress) {
+        const { data: liveHoas } = await supabase.from('hoa_payments').select('id, hoa_name, encryption_salt')
+          .eq('company_id', companyId).eq('property', savedAddress).is('archived_at', null);
+        for (const r of (liveHoas || [])) {
+          if (!r.encryption_salt) continue;
+          storedHoaSaltById[String(r.id)] = r.encryption_salt;
+          if (r.hoa_name) storedHoaSaltByName[r.hoa_name.trim()] = r.encryption_salt;
+        }
+      }
       for (const h of hoas.filter(x => x.hoa_name.trim())) {
         // Only a NEW HOA must carry an amount. An existing one stored with 0 or
         // none (entered elsewhere) used to block every save of the wizard.
@@ -1336,8 +1356,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         // decrypt to nothing. The first set that exists establishes the salt
         // and the others reuse it, exactly as username and password already
         // do within one set. Each set still gets its own IV.
-        const hoaCreds  = await encryptRow(!!(h.username && h.password), h.username, h.password);
-        const rowSalt   = hoaCreds?.encryption_salt || null;
+        const keptSalt  = (h.id != null ? storedHoaSaltById[String(h.id)] : storedHoaSaltByName[h.hoa_name.trim()]) || null;
+        const hoaCreds  = await encryptRow(!!(h.username && h.password), h.username, h.password, keptSalt);
+        const rowSalt   = keptSalt || hoaCreds?.encryption_salt || null;
 
         const mgmtRaw   = await encryptRow(!!(h.mgmt_username && h.mgmt_password), h.mgmt_username, h.mgmt_password, rowSalt);
         const mgmtSalt  = rowSalt || mgmtRaw?.encryption_salt || null;
@@ -1351,6 +1372,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           ...(hoaCreds || {}),
           // One salt for the row, whichever set produced it.
           ...(salt ? { encryption_salt: salt } : {}),
+          // And one key fingerprint: the RPC writes it whenever ANY of the
+          // three sets is new, so it must come with a management / portal
+          // login too, not only the association one.
+          ...((hoaCreds || mgmtRaw || payRaw) ? { credential_key_fp: hoaCreds?.credential_key_fp || mgmtRaw?.credential_key_fp || payRaw?.credential_key_fp || null } : {}),
 
           ...(mgmtRaw ? {
             mgmt_username_encrypted: mgmtRaw.username_encrypted,
@@ -1375,7 +1400,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           ...(loan.id ? withOrig("loan", loan._loaded, loan._db) : {}),
           ...WIZ_FIELDS.loan(loan),
           escrow_covers: loan.escrow_included ? loan.escrow_covers : {},
-          setup_recurring: !!loan.setup_recurring,
+          // Never: mortgage payments are booked on a cash basis from the bank
+          // feed, so the wizard creates no recurring mortgage entry (owner
+          // decision 2026-09-28; commit_property_wizard ignores the flag).
+          setup_recurring: false,
           ...(creds || {}),
         };
       }
@@ -2362,10 +2390,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
                     <Textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." />
                   </div>
-                  <label className="flex items-center gap-2 text-sm pt-1">
-                    <Checkbox checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
-                    <span className="font-medium text-neutral-700">Set up recurring mortgage payment</span>
-                  </label>
                   <div className="border-t border-neutral-100 pt-2 mt-2">
                     <p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
@@ -2936,7 +2960,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div className="text-xs text-neutral-500">
                       <div>{loan.lender_name} — {loan.loan_type}</div>
                       <div>Payment: ${Number(loan.monthly_payment || 0).toLocaleString()}/mo {loan.escrow_included ? "(incl. escrow)" : ""}</div>
-                      {loan.setup_recurring && <div className="text-positive-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
                   ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
                   {portfolioLoanId && (() => { const pl = portfolioLoans.find(x => x.id === portfolioLoanId); return <div className="text-xs text-neutral-500 mt-1">Part of portfolio loan: <span className="font-medium text-neutral-700">{pl ? pl.lender_name : "\u2014"}</span>{pl && pl.current_balance ? ` \u2014 ${formatCurrency(pl.current_balance)} balance` : ""}</div>; })()}
