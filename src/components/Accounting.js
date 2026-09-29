@@ -52,6 +52,7 @@ const REF_LABELS = [
   ["WOFF-", "Work Order Write-Off"],
   ["WO-", "Work Order"],
   ["VINV-", "Vendor Invoice"],
+  ["VPAY-", "Vendor Payment"],
   ["BANK-", "Bank Import"],
   ["XFER-", "Bank Transfer"],
   ["SPLIT-", "Bank Split"],

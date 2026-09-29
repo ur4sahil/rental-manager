@@ -85,7 +85,12 @@ function testFileStructure() {
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 26, `src/utils/ has 8..26 files (found ${actualUtilFiles.length})`);
+  // 28 on 2026-09-28 (theme K, one expense booked once): + expenseRules.js
+  // (import-free WO/invoice, mortgage-month and escrow rules, tested directly
+  // and mirrored by the tax cron) and expensePosting.js (the ledger reads and
+  // postings WO completion, invoice payment, Record payment, the recurring
+  // engine and tax-bill generation now share -- no-double-expense.test.mjs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 28, `src/utils/ has 8..28 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -249,7 +254,9 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  assert(totalLines <= 53200, `Total src lines <= 53200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53500 on 2026-09-28 (theme K): +~210 for expenseRules.js / expensePosting.js and the
+  // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
+  assert(totalLines <= 53500, `Total src lines <= 53500 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

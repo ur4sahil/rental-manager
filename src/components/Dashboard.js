@@ -1,4 +1,5 @@
 import { fetchAllPaged } from "../utils/accounting";
+import { escrowedTaxProperties } from "../utils/expensePosting";
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { PageHeader, TextLink, EmptyState} from "../ui";
@@ -81,7 +82,10 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const taxWindow = new Date(Date.now() + (companySettings.tax_bill_upcoming_window_days || 30) * 86400000).toISOString().slice(0, 10);
   const { data: taxData, error: taxErr } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
   if (taxErr) pmError("PM-8006", { raw: taxErr, context: "dashboard tax bills fetch", silent: true });
-  setTaxBillsDue(taxData || []);
+  // Escrowed properties are paid by the lender -- not a bill the owner owes.
+  // If the escrow lookup fails, show everything rather than hide a real bill.
+  const escrowedProps = await escrowedTaxProperties(companyId);
+  setTaxBillsDue((taxData || []).filter(b => !escrowedProps || !escrowedProps.has(b.property)));
   // Pull financials from accounting module. Scope to year-to-date so
   // the Revenue / Expenses / Net Income cards match the "This Year"
   // figures shown on the Accounting page (Accounting.js:3638). Without

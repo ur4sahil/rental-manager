@@ -6,7 +6,7 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
-import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
+import { recordLoanPayment } from "../utils/expensePosting";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
 function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -134,32 +134,28 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   async function recordPayment(loan) {
   if (!guardSubmit("recordLoanPayment")) return;
   try {
-  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(loan.monthly_payment)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
-  const today = formatLocalDate(new Date());
-  const classId = await getPropertyClassId(loan.property, companyId);
   const amt = safeNum(loan.monthly_payment);
   if (amt <= 0) { showToast("Monthly payment amount must be greater than zero.", "error"); return; }
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: today,
-  description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
-  // Date-qualified: idx_je_company_reference_unique made `LOAN-<id>`
-  // single-use, so a loan could only ever have ONE payment recorded.
-  // Every subsequent month 409'd and the balance was never updated.
-  reference: `LOAN-${loan.id}-${today}`,
-  property: loan.property,
-  lines: [
-  { account_id: "5600", account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-  ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
-  // Update current balance only if JE succeeded
+  const today = formatLocalDate(new Date());
+  const month = today.slice(0, 7);
+  if (loan.last_payment_month === month) { showToast(`A payment for ${loan.lender_name} is already recorded for ${month}.`, "error"); return; }
+  if (!await showConfirm({ message: `Record the ${month} payment of ${formatCurrency(amt)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
+  // One loan payment per calendar month (utils/expenseRules.js). If the
+  // property's monthly mortgage recurring entry has already booked this
+  // month, nothing new is posted -- the payment is recorded against the
+  // loan (balance, month stamp) only. Otherwise LOAN-<id>-YYYY-MM is posted
+  // and the recurring engine then skips this month for the property.
+  const res = await recordLoanPayment({ companyId, loan, date: today, month });
+  if (res.action === "failed") { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
+  if (res.action === "already_recorded") { showToast(`A payment for ${loan.lender_name} is already recorded for ${month}.`, "error"); return; }
+  // Update current balance only once the month is booked
   const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
-  const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
+  const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance, last_payment_month: month }).eq("id", loan.id).eq("company_id", companyId);
   if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); return; }
-  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}`);
-  logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
+  const note = res.action === "settle_recurring" ? " (already booked by the monthly mortgage entry, so no second expense was posted)" : "";
+  if (note) showToast("Payment recorded" + note + ".", "success");
+  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}${note}`);
+  logAudit("update", "loans", `Loan payment recorded for ${month}: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}${note}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("recordLoanPayment"); }
   }

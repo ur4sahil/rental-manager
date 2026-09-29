@@ -6,7 +6,8 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
+import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
+import { postWorkOrderCompletion, postVendorInvoicePayment } from "../utils/expensePosting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 import { ArchivedItems } from "./Admin";
 
@@ -180,30 +181,17 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   async function updateStatus(wo, newStatus) {
   const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId).eq("id", wo.id);
   if (error) { pmError("PM-7005", { raw: error, context: "updating work order status" }); return; }
-  // AUTO-POST TO ACCOUNTING when completed with a cost (with duplicate guard)
+  // AUTO-POST TO ACCOUNTING when completed with a cost. The accrual is
+  // DR Repairs / CR Accounts Payable (reference WO-<id>); paying a vendor
+  // invoice linked to this work order later clears that payable instead of
+  // expensing the repair a second time. If a linked invoice was already paid
+  // (and so already expensed), only the uncovered remainder is accrued.
+  // See utils/expenseRules.js.
   if (newStatus === "completed" && safeNum(wo.cost) > 0) {
-  const { data: existingWoJE } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", "WO-" + wo.id).limit(1);
-  if (existingWoJE && existingWoJE.length > 0) { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
-  const classId = await getPropertyClassId(wo.property, companyId);
-  const amt = safeNum(wo.cost);
-  // WO completion posts as a bill received, not as cash-out. Default CR
-  // to 2110 Accounts Payable — the PM can mark it paid later via bank
-  // reconciliation. Previous default of 1000 Checking overstated
-  // cash-out and ignored any non-cash payment (credit card, owner
-  // reimbursement, vendor on account).
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: formatLocalDate(new Date()),
-  description: `Maintenance: ${wo.issue} — ${wo.property}`,
-  reference: `WO-${wo.id}`,
-  property: wo.property,
-  lines: [
-  { account_id: "5300", account_name: "Repairs & Maintenance", debit: amt, credit: 0, class_id: classId, memo: `${wo.issue} — ${wo.assigned || "unassigned"}` },
-  { account_id: "2110", account_name: "Accounts Payable", debit: 0, credit: amt, class_id: classId, memo: `AP owed for: ${wo.issue}${wo.assigned ? " (" + wo.assigned + ")" : ""}` },
-  ]
-  });
-  if (!_jeOk) { pmError("PM-4001", { raw: new Error("JE post failed"), context: "posting work order accounting entry" }); }
-
+  const res = await postWorkOrderCompletion({ companyId, wo, date: formatLocalDate(new Date()) });
+  if (res.reason === "already_posted") { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
+  if (res.reason === "already_expensed_by_invoice") addNotification("ℹ️", "Not posted: the vendor invoice paid for this work order already booked the repair expense");
+  else if (res.reason === "read_failed" || res.reason === "post_failed") { pmError("PM-4001", { raw: new Error("JE post failed: " + res.reason), context: "posting work order accounting entry" }); }
   }
   addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
   logAudit("update", "maintenance", `Work order status: ${wo.issue} → ${newStatus}${safeNum(wo.cost) > 0 ? " ($" + safeNum(wo.cost) + ")" : ""}`, wo.id, userProfile?.email, userRole, companyId);
@@ -866,6 +854,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   // Clean empty strings for UUID columns to avoid "invalid input syntax for type uuid"
   const cleanForm = { ...invoiceForm };
   if (!cleanForm.work_order_id) delete cleanForm.work_order_id;
+  else cleanForm.work_order_id = Number(cleanForm.work_order_id);
   if (!cleanForm.vendor_id) delete cleanForm.vendor_id;
   const { error } = await supabase.from("vendor_invoices").insert([{
   ...cleanForm,
@@ -890,10 +879,19 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   if (inv.status === "paid") { showToast("This invoice is already paid.", "error"); return; }
   if (!await showConfirm({ message: "Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?" })) return;
   const today = formatLocalDate(new Date());
+  // Post FIRST, under the deterministic reference VPAY-<invoice id>, then
+  // mark paid. If the post fails the invoice stays payable and can be
+  // retried; a retry after a half-finished attempt finds the entry and does
+  // not post it again. For an invoice linked to a completed work order the
+  // entry clears the payable that completion accrued (DR Accounts Payable)
+  // rather than expensing the repair twice -- see utils/expenseRules.js.
+  const res = await postVendorInvoicePayment({ companyId, inv, date: today });
+  if (!res.jeId) { showToast("Accounting entry failed, so the invoice was NOT marked paid. Please try again or check the accounting module.", "error"); return; }
   const { error: invErr } = await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
-  if (invErr) { showToast("Error marking invoice as paid: " + invErr.message, "error"); return; }
-  // Update vendor total_paid
-  const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
+  if (invErr) { showToast("Payment was posted but the invoice could not be marked paid: " + invErr.message, "error"); return; }
+  // Update vendor total_paid (skipped when an earlier attempt already posted
+  // this payment, so the totals are not counted twice either).
+  const vendor = !res.already && vendors.find(v => String(v.id) === String(inv.vendor_id));
   if (vendor) {
   // Atomic increment via RPC (prevents concurrent update race)
   try {
@@ -913,22 +911,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   }
   }
   }
-  // Post to accounting
-  const classId = await getPropertyClassId(inv.property, companyId);
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: today,
-  description: "Vendor payment — " + inv.vendor_name + " — " + (inv.description || inv.invoice_number),
-  reference: "VINV-" + shortId(),
-  property: inv.property || "",
-  lines: [
-  { account_id: "5300", account_name: "Repairs & Maintenance", debit: safeNum(inv.amount), credit: 0, class_id: classId, memo: inv.vendor_name + ": " + inv.description },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
-  ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
+  logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name + (res.plan?.ap > 0 ? " (cleared $" + res.plan.ap + " work-order payable)" : ""), inv.id, userProfile?.email, userRole, companyId);
   fetchData();
   } finally { guardRelease("payInvoice"); }
   }
@@ -1035,6 +1018,13 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </Select>
   </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
+  <div className="col-span-2"><label className="text-xs text-neutral-400 mb-1 block">Work order (if this invoice bills one)</label>
+  <Select value={invoiceForm.work_order_id} onChange={e => { const w = workOrders.find(x => String(x.id) === String(e.target.value)); setInvoiceForm({ ...invoiceForm, work_order_id: e.target.value, property: w ? (w.property || invoiceForm.property) : invoiceForm.property, amount: w && !invoiceForm.amount && safeNum(w.cost) > 0 ? String(w.cost) : invoiceForm.amount, description: w && !invoiceForm.description ? (w.issue || "") : invoiceForm.description }); }} className="truncate">
+  <option value="">None</option>
+  {workOrders.filter(w => !invoiceForm.property || w.property === invoiceForm.property || String(w.id) === String(invoiceForm.work_order_id)).map(w => <option key={w.id} value={w.id}>#{w.id} {w.issue}{w.property ? " — " + w.property.split(",")[0] : ""}{safeNum(w.cost) > 0 ? " ($" + safeNum(w.cost).toLocaleString() + ")" : ""}{w.status === "completed" ? " · completed" : ""}</option>)}
+  </Select>
+  <div className="text-2xs text-neutral-400 mt-1">Linking stops the repair being expensed twice: paying this invoice clears the payable the completed work order already booked.</div>
+  </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Amount ($) *</label><MoneyInput placeholder="500.00" value={invoiceForm.amount} onChange={v => setInvoiceForm({...invoiceForm, amount: v})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Invoice #</label><Input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Invoice Date</label><Input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} /></div>
@@ -1122,6 +1112,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
   {inv.property && <div><span className="text-neutral-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
+  {inv.work_order_id && <div><span className="text-neutral-400">Work order:</span> <span className="font-medium">#{inv.work_order_id}</span></div>}
   <div><span className="text-neutral-400">Date:</span> <span className="font-medium">{fmtDate(inv.invoice_date)}</span></div>
   {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-danger-600" : "")}>{fmtDate(inv.due_date)}</span></div>}
   {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-positive-600">{fmtDate(inv.paid_date)}</span></div>}

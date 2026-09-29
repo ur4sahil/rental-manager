@@ -5,6 +5,8 @@ import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
+import { isMortgageSchedule } from "./expenseRules";
+import { mortgageMonthAlreadyPaid } from "./expensePosting";
 import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
@@ -914,6 +916,9 @@ export async function autoPostRecurringEntries(companyId) {
   // Skip if this RECUR ref was already posted (idempotent)
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+  // A mortgage month the Loans page's "Record payment" already booked is not
+  // booked again here (expenseRules: one loan payment per month).
+  if (!isTenantSchedule && isMortgageSchedule(entry) && await mortgageMonthAlreadyPaid({ companyId: cid, entry, month: monthStr })) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
   // Rent debits the tenant's OWN AR account. A schedule pointing anywhere
   // else is corrected here and stays corrected.
   if (!debitAcct) {
