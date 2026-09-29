@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
@@ -203,16 +203,31 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   address: "", management_fee_pct: "", payment_method: "check", notes: "",
   });
 
-  useEffect(() => { fetchData(); }, [companyId]);
+  // Accruals that could not be synced at the time (a lock-wait timeout, an
+  // error, a bulk write past its commit budget) are NEEDS_SYNC markers. The
+  // page renders straight away and drains them in the background (bounded
+  // batches, see drainOwnerAccruals); when anything was synced the
+  // distributions are re-read so the numbers catch up. The nightly integrity
+  // cron drains them too. A company switch / unmount discards a stale result.
+  const drainRun = useRef(0);
+  useEffect(() => {
+    fetchData();
+    const run = ++drainRun.current;
+    const cid = companyId;
+    if (cid) {
+      syncPendingOwnerAccruals(cid).then(res => {
+        if (run !== drainRun.current || !res || res.error || !(res.synced > 0)) return;
+        return fetchAllPaged(() => supabase.from("owner_distributions").select("*").eq("company_id", cid).order("date", { ascending: false }).order("id"), "owner distributions")
+          .then(d => { if (run === drainRun.current && d && !d.failed) setDistributions(d.rows || []); });
+      }).catch(() => { /* retried on the next visit and nightly */ });
+    }
+    return () => { drainRun.current++; };
+  }, [companyId]);
 
   async function fetchData() {
   setLoading(true);
   // The income side of a statement comes from the general ledger at
   // generation time (generateStatement), not from a capped payments list.
-  // Accruals that could not be synced at the time (a lock-wait timeout, an
-  // error) are recorded as NEEDS_SYNC markers; bring them up to date first.
-  // Best effort -- the nightly integrity cron drains them too.
-  try { await syncPendingOwnerAccruals(companyId); } catch (_e) { /* retried nightly */ }
   const [o, p, s, d] = await Promise.all([
   supabase.from("owners").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),

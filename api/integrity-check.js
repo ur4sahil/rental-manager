@@ -151,18 +151,6 @@ module.exports = async function handler(req, res) {
 
     let totals = { companies: 0, unbalancedJEs: 0, recurringTemplates: 0, tenantBalance: 0, errors: 0 };
 
-    // Owner accruals that could not be synced when their receipt / charge /
-    // void committed (a lock-wait timeout, an error) are NEEDS_SYNC markers in
-    // owner_accrual_queue; drain them for every company (service role).
-    // The RPC works in bounded batches; drainOwnerAccruals loops until none
-    // remain (or a batch makes no progress -- those stay marked for tomorrow).
-    try {
-      const pend = await drainOwnerAccruals(supabase, null);
-      if (pend.error) console.error("integrity-check: owner_accrual_sync_pending failed", pend.error);
-      totals.ownerAccrualsSynced = pend.synced || 0;
-      totals.ownerAccrualsPending = pend.remaining || 0;
-    } catch (e) { console.error("integrity-check: owner_accrual_sync_pending threw", e.message); }
-
     for (const companyId of companyIds) {
       totals.companies++;
       try {
@@ -174,6 +162,20 @@ module.exports = async function handler(req, res) {
         console.error(`integrity-check: ${companyId} failed`, e.message);
       }
     }
+
+    // AFTER the integrity checks, so a long backlog can never starve them
+    // (vercel.json gives this function the plan's 300s maxDuration).
+    // Owner accruals that could not be synced when their receipt / charge /
+    // void committed (a lock-wait timeout, an error) are NEEDS_SYNC markers in
+    // owner_accrual_queue; drain them for every company (service role).
+    // The RPC works in bounded batches; drainOwnerAccruals loops until none
+    // remain (or a batch makes no progress -- those stay marked for tomorrow).
+    try {
+      const pend = await drainOwnerAccruals(supabase, null);
+      if (pend.error) console.error("integrity-check: owner_accrual_sync_pending failed", pend.error);
+      totals.ownerAccrualsSynced = pend.synced || 0;
+      totals.ownerAccrualsPending = pend.remaining || 0;
+    } catch (e) { console.error("integrity-check: owner_accrual_sync_pending threw", e.message); }
 
     return res.status(200).json({ ok: true, ...totals, at: new Date().toISOString() });
   } catch (e) {

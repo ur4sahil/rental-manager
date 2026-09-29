@@ -28,6 +28,11 @@
 --     integrity cron loop until none remain (or a batch makes no progress).
 --  4. No NEEDS_SYNC markers (and no sync work) for tenants no owner is
 --     involved with: _owner_accrual_tenant_relevant().
+--  5. (QA round 5) _wizard_get_tenant_ar numbers the next 1100-NNN from
+--     numeric codes only; a code like 1100-W8ea9 failed every wizard commit.
+--
+-- Independent of 20260929030000 / 060000 / 070000 (no shared objects); it
+-- needs 20260928100000 and 20260928170000 first.
 
 -- ── 4: is any owner involved with this tenant? ───────────────────────────
 CREATE OR REPLACE FUNCTION public._owner_accrual_tenant_relevant(p_company_id text, p_tenant_id integer)
@@ -685,5 +690,46 @@ BEGIN
 
   RETURN v_je_id;
 END $$;
+
+-- ── 5: the wizard's tenant AR code (QA round 5) ──────────────────────────
+-- The next 1100-NNN number was MAX(split_part(code, '-', 2)::int) over every
+-- code LIKE '1100-%', so one tenant AR with a non-numeric suffix (1100-W8ea9,
+-- written by other paths) failed every wizard commit with "invalid input
+-- syntax for type integer". Only codes matching ^1100-\d+$ count now (as in
+-- _late_fee_tenant_ar), and the number is padded only when shorter than 3
+-- (lpad(.., 3) would cut 1000 down to 100). Otherwise unchanged: same
+-- lookup by name, same insert, same (SECURITY INVOKER) function and grants.
+CREATE OR REPLACE FUNCTION public._wizard_get_tenant_ar(p_company_id text, p_tenant_name text, p_tenant_id bigint)
+ RETURNS uuid
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_id uuid;
+  v_parent uuid;
+  v_next_seq bigint;
+  v_code text;
+BEGIN
+  IF p_tenant_name IS NULL OR p_tenant_name = '' THEN
+    RETURN _wizard_resolve_account(p_company_id, '1100');
+  END IF;
+  SELECT id INTO v_id FROM acct_accounts
+  WHERE company_id = p_company_id AND type = 'Asset' AND name = 'AR - ' || p_tenant_name
+  LIMIT 1;
+  IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+  v_parent := _wizard_resolve_account(p_company_id, '1100');
+  SELECT COALESCE(MAX(CAST(substring(code FROM '^1100-(\d+)$') AS bigint)), 0) + 1 INTO v_next_seq
+  FROM acct_accounts
+  WHERE company_id = p_company_id AND code ~ '^1100-\d+$';
+  v_code := '1100-' || lpad(v_next_seq::text, greatest(3, length(v_next_seq::text)), '0');
+  -- acct_accounts.tenant_id is uuid; tenants.id is bigint. Don't write
+  -- it — the AR account is identified by name "AR - <tenant_name>"
+  -- everywhere else, and the column is NULL across every live row.
+  INSERT INTO acct_accounts (company_id, code, name, type, is_active, old_text_id, parent_id)
+  VALUES (p_company_id, v_code, 'AR - ' || p_tenant_name, 'Asset', true,
+          p_company_id || '-' || v_code, v_parent)
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$function$;
 REVOKE ALL ON FUNCTION public.post_je_and_ledger(text, text, text, text, text, text, jsonb, text, bigint, text, numeric, text, text, numeric) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.post_je_and_ledger(text, text, text, text, text, text, jsonb, text, bigint, text, numeric, text, text, numeric) TO authenticated, service_role;

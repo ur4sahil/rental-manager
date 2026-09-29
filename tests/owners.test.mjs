@@ -209,6 +209,18 @@ assert("follow-ups: post_je_and_ledger and the owner sync claim JE numbers (per-
 assert("follow-ups: bounded drain returns remaining; callers loop", MIG3.includes("p_max integer DEFAULT 50") && MIG3.includes("'remaining', v_remaining") && ownUtil.includes("return drainOwnerAccruals(supabase, companyId);") && read("api/integrity-check.js").includes("await drainOwnerAccruals(supabase, null)"));
 assert("follow-ups: no markers / sync for tenants no owner is involved with", MIG3.includes("IF NOT public._owner_accrual_tenant_relevant(p_company_id, p_tenant_id) THEN RETURN; END IF;") && MIG3.includes("CONTINUE WHEN NOT v_rel;"));
 assert("follow-ups: every new SECURITY DEFINER function is revoked from PUBLIC and anon", ["_owner_accrual_tenant_relevant(text, integer)", "_je_number_claim(text, bigint)", "owner_accrual_sync_pending(text, integer)", "_owner_accrual_mark_pending(text, integer, text, boolean)", "_owner_accrual_queue_run()", "_owner_accrual_enqueue_lines()", "_owner_accrual_sync_core(text, integer)"].every(f => MIG3.includes("REVOKE ALL ON FUNCTION public." + f + " FROM PUBLIC, anon")) && /REVOKE ALL ON FUNCTION public\.post_je_and_ledger\([^)]*\) FROM PUBLIC, anon;/.test(MIG3));
+{
+  const ownersPage = read("src/components/Owners.js");
+  const cron = read("api/integrity-check.js");
+  const vercel = JSON.parse(read("vercel.json"));
+  assert("Owners page renders without waiting for the drain (fired, not awaited; distributions re-read when it synced)",
+    !/await syncPendingOwnerAccruals/.test(ownersPage) && /syncPendingOwnerAccruals\(cid\)\.then\(/.test(ownersPage) && ownersPage.includes("run !== drainRun.current"));
+  assert("nightly cron drains owner accruals AFTER the integrity checks, with the plan's 300s maxDuration",
+    cron.indexOf("await drainOwnerAccruals(supabase, null)") > cron.indexOf("checkTenantBalanceVsLedger(supabase, companyId)") &&
+    vercel.functions && vercel.functions["api/integrity-check.js"] && vercel.functions["api/integrity-check.js"].maxDuration === 300);
+  assert("wizard AR numbering reads numeric 1100-NNN codes only (1100-W8ea9 no longer breaks the wizard)",
+    MIG3.includes("CREATE OR REPLACE FUNCTION public._wizard_get_tenant_ar(") && MIG3.includes("WHERE company_id = p_company_id AND code ~ '^1100-\\d+$';") && MIG3.includes("substring(code FROM '^1100-(\\d+)$')"));
+}
 assert("manual ledger payment accrues the owner's share", /newCharge\.type === "payment" && arLegIsPerTenant\)[\s\S]{0,80}autoOwnerDistribution\(companyId, selectedTenant\.property, Math\.abs\(amount\), today, selectedTenant\.name, selectedTenant\.id\)/.test(ten));
 assert("Banking: add + split deposits run the owner accrual after a successful post",
   (read("src/components/Banking.js").match(/if \(isInflow\) await accrueOwnerShareForBankDeposit\(companyId, \{ date: txn\.posted_date/g) || []).length === 2);
@@ -819,6 +831,13 @@ try {
     assert("12 parallel post_je_and_ledger calls all post with distinct JE numbers (claimed, not raced)", !errs.length && nums.length === new Set(nums.map(n => n.number)).size, errs.join(" | "));
     const dupRef = await adm.rpc("post_je_and_ledger", { p_company_id: CO, p_date: today, p_description: "dup", p_reference: refs[0], p_property: "", p_status: "posted", p_lines: [] });
     assert("a duplicate reference is reported as the unique violation it is (not 'Could not generate unique JE number')", !!dupRef.error && dupRef.error.code === "23505", JSON.stringify(dupRef.error));
+  }
+  {
+    // QA round 5: a tenant AR code with a non-numeric suffix no longer breaks the wizard's AR numbering
+    await mkAcct("1100-W8ea9", "AR - odd suffix", "Asset", { parent_id: acc["1100"].id });
+    const w = await sb.rpc("_wizard_get_tenant_ar", { p_company_id: CO, p_tenant_name: TAG + " Wizard AR", p_tenant_id: null });
+    const { data: wa } = w.data ? await sb.from("acct_accounts").select("code").eq("id", w.data).single() : { data: null };
+    assert("wizard AR numbering skips a 1100-W8ea9 code and takes the next numeric 1100-NNN", !w.error && /^1100-\d{3,}$/.test(wa?.code || ""), (w.error?.message || "") + " " + JSON.stringify(wa));
   }
   // round 4 gates: every money / link column; owner_accrual_since; owner correction
   {
