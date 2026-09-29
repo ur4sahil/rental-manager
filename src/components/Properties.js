@@ -3151,7 +3151,57 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const canReviewAny = isAdmin || userRole === "owner" || isManager;
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null); // { tenantName, tenantId, property, rent, leaseStart, leaseEnd }
 
-  useEffect(() => { fetchProperties(); fetchChangeRequests(); fetchArchivedProperties(); }, [companyId]);
+  useEffect(() => { fetchProperties(); fetchChangeRequests(); fetchArchivedProperties(); fetchPendingDeletions(); }, [companyId]);
+
+  // Deletes / restores whose journal-entry step did not finish (a dropped
+  // connection between chunks, a period locked mid-way). The server keeps
+  // each one resumable; this lists them so they are not left silent.
+  const [pendingDeletions, setPendingDeletions] = useState([]);
+  async function fetchPendingDeletions() {
+  const { data, error } = await supabase.rpc("property_deletions_pending", { p_company_id: companyId });
+  if (!error) setPendingDeletions(Array.isArray(data) ? data : []);
+  }
+  // Re-post the entries a deletion voided, in chunks. Stops -- instead of
+  // spinning -- when a locked period blocks what is left.
+  async function unvoidDeletion(deletionId) {
+  for (let i = 0; i < 1000; i++) {
+    const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: deletionId, p_limit: 200 });
+    if (uErr) return { error: uErr.message || "server error" };
+    if (!u || u.remaining === 0) return { error: null, remaining: 0 };
+    if (!u.unvoided) return { error: null, remaining: u.remaining, blocked: u.blocked_by_lock || [] };
+  }
+  return { error: "gave up after 1000 rounds" };
+  }
+  async function voidDeletion(deletionId) {
+  let voided = 0;
+  for (let i = 0; i < 1000; i++) {
+    const { data: v, error: vErr } = await supabase.rpc("property_delete_void_chunk", { p_deletion_id: deletionId, p_limit: 200 });
+    if (vErr) return { error: vErr.message || "server error", voided };
+    voided += v?.voided || 0;
+    if (!v || v.remaining === 0) return { error: null, voided };
+  }
+  return { error: "gave up after 1000 rounds", voided };
+  }
+  const describeUndo = (u) => u.error ? `re-posting them failed (${u.error})`
+    : u.remaining ? `${u.remaining} could not be re-posted because their period is now locked (${(u.blocked || []).slice(0, 5).map(e => "#" + (e.number || "?") + " " + e.date).join(", ")}${(u.blocked || []).length > 5 ? ", …" : ""}); unlock it and use "Cancel delete" in the banner`
+    : "they were re-posted";
+  async function resolvePending(pd, action) {
+  if (!guardSubmit("resolvePendingDeletion")) return;
+  try {
+  if (action === "finish_delete") {
+    const v = await voidDeletion(pd.deletion_id);
+    if (v.error) { showToast("Could not finish the delete: " + v.error, "error"); return; }
+    const { error } = await supabase.rpc("archive_property_cascade", { p_company_id: companyId, p_property_id: Number(pd.property_id), p_deletion_id: pd.deletion_id });
+    if (error) { showToast("Could not finish the delete: " + (error.message || "server error"), "error"); return; }
+    logAudit("delete", "properties", `DELETED property (resumed): ${pd.address}`, pd.property_id, userProfile?.email, userRole, companyId);
+    showToast("Delete finished: " + pd.address, "success");
+  } else {
+    const u = await unvoidDeletion(pd.deletion_id);
+    if (u.error || u.remaining) { showToast(`Not finished for ${pd.address}: ${describeUndo(u)}.`, "error"); }
+    else showToast((action === "cancel_delete" ? "Delete cancelled; entries re-posted: " : "Restore finished: ") + pd.address, "success");
+  }
+  } finally { guardRelease("resolvePendingDeletion"); fetchPendingDeletions(); fetchProperties(); fetchArchivedProperties(); }
+  }
 
   async function fetchArchivedProperties() {
   const { data } = await supabase.from("properties").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200);
@@ -3177,18 +3227,22 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   if (stamped.length > 0) {
   restoreTenants = await showConfirm({ message: `This property was deleted with ${stamped.length} tenant(s): ${stamped.map(t => t.name).join(", ")}\n\nRestore them and their leases too? Autopay and recurring charges come back paused.` });
   }
-  // Re-post the voided entries in chunks first (a busy property has >1,000).
-  if (pv?.deletion_id && pv.entries_to_unvoid > 300) {
-    for (let i = 0; i < 1000; i++) {
-      const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: pv.deletion_id, p_limit: 200 });
-      if (uErr) { pmError("PM-2010", { raw: uErr, context: "restore un-void" }); showToast("Could not re-post the property's journal entries: " + (uErr.message || "server error") + ". The property is still deleted; try Restore again.", "error"); return; }
-      if (!u || u.remaining === 0) break;
-    }
-  }
   const { data: res, error } = await supabase.rpc("restore_property_cascade", {
     p_company_id: companyId, p_property_id: Number(prop.id), p_restore_tenants: restoreTenants,
   });
   if (error) { pmError("PM-2010", { raw: error, context: "restore property" }); showToast("Could not restore: " + (error.message || "server error"), "error"); return; }
+  // The property and its records are back (one transaction), along with up
+  // to 300 of its entries. A busier property's remaining entries are
+  // re-posted now; if that is interrupted the property is live with some
+  // entries still voided, and the banner offers "Finish restore".
+  if (pv?.deletion_id && res?.restored?.journal_entries_pending > 0) {
+    const u = await unvoidDeletion(pv.deletion_id);
+    if (u.error || u.remaining) {
+      pmError("PM-2010", { raw: { message: u.error || "locked" }, context: "restore un-void", silent: true });
+      showToast(`Property restored, but its journal entries are not all back yet: ${describeUndo(u)}. Use "Finish restore" in the banner to retry.`, "error");
+    }
+  }
+  fetchPendingDeletions();
   // Only a property deleted before 2026-09-29 (no deletion record) falls
   // back to the old prompt; for any newer delete the server knows exactly
   // which tenants the delete took.
@@ -3633,7 +3687,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const tenantNames = (propertyTenants || []).map(t => t.name);
   const archiveBy = userProfile?.email || "admin";
 
-  // ── SOFT DELETE, entirely server-side (migrations 20260929010000 + 050000).
+  // ── SOFT DELETE, entirely server-side (migrations 20260929100000 + 110000).
   // 1. property_delete_begin: role check, and a refusal -- listing them -- if
   //    any of the property's entries sits in a LOCKED accounting period
   //    (those cannot be voided, so nothing is touched).
@@ -3666,35 +3720,24 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
     return;
   }
   const deletionId = begun.deletion_id;
-  const undoVoids = async () => {
-    for (let i = 0; i < 100; i++) {
-      const { data: u, error: uErr } = await supabase.rpc("property_delete_unvoid_chunk", { p_deletion_id: deletionId, p_limit: 200 });
-      if (uErr) return uErr.message || "server error";
-      if (!u || u.remaining === 0) return null;
-    }
-    return "gave up after 100 rounds";
-  };
-  let voided = 0;
-  for (let i = 0; i < 1000; i++) {
-    const { data: v, error: vErr } = await supabase.rpc("property_delete_void_chunk", { p_deletion_id: deletionId, p_limit: 200 });
-    if (vErr) {
-      pmError("PM-2003", { raw: vErr, context: "property_delete_void_chunk for " + address, silent: true });
-      const undoErr = await undoVoids();
-      showToast(`Could not void this property's journal entries (${vErr.message || "server error"}). Nothing was deleted`
-        + (undoErr ? `, but re-posting the ${voided} already voided failed (${undoErr}) -- try Delete again to finish, or contact support.` : "; the entries voided so far were re-posted."), "error");
-      return;
-    }
-    voided += v?.voided || 0;
-    if (!v || v.remaining === 0) break;
+  const vres = await voidDeletion(deletionId);
+  const voided = vres.voided;
+  if (vres.error) {
+    pmError("PM-2003", { raw: { message: vres.error }, context: "property_delete_void_chunk for " + address, silent: true });
+    const u = await unvoidDeletion(deletionId);
+    showToast(`Could not void this property's journal entries (${vres.error}). The property was NOT deleted; of the ${voided} entries already voided, ${describeUndo(u)}.`, "error");
+    fetchPendingDeletions();
+    return;
   }
   const { data: out, error: cascadeErr } = await supabase.rpc("archive_property_cascade", {
     p_company_id: companyId, p_property_id: Number(id), p_deletion_id: deletionId,
   });
   if (cascadeErr) {
     pmError("PM-2003", { raw: cascadeErr, context: "archive_property_cascade for " + address });
-    const undoErr = await undoVoids();
+    const u = await unvoidDeletion(deletionId);
     showToast("Could not delete this property: " + (cascadeErr.message || "server error")
-      + (undoErr ? `. ${voided} journal entries are still voided (${undoErr}) -- try Delete again.` : ". Nothing was changed."), "error");
+      + `. The property was NOT deleted; of the ${voided} journal entries voided, ${describeUndo(u)}.`, "error");
+    fetchPendingDeletions();
     return;
   }
   const jeCount = out?.archived?.journal_entries_voided ?? voided;
@@ -4485,6 +4528,21 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
 
   return (
   <div>
+  {pendingDeletions.length > 0 && (
+  <div className="mb-4 rounded-2xl border border-warn-200 bg-warn-50 p-3 text-sm text-warn-800">
+  <div className="font-semibold mb-1">Unfinished property {pendingDeletions.some(p => p.kind === "delete") ? "deletes" : "restores"}</div>
+  {pendingDeletions.map(pd => (
+  <div key={pd.deletion_id} className="flex flex-wrap items-center gap-2 py-1">
+  <span>{pd.kind === "delete"
+    ? `Delete of ${pd.address} stopped part-way: ${pd.voided - pd.pending} of ${pd.voided} voided entries remain voided while the property is still live.`
+    : `Restore of ${pd.address}: ${pd.pending} journal entr${pd.pending === 1 ? "y is" : "ies are"} still voided.`}</span>
+  {pd.kind === "delete" && canManage(userRole) && <Btn size="sm" variant="danger" onClick={() => resolvePending(pd, "finish_delete")}>Finish delete</Btn>}
+  {pd.kind === "delete" && canManage(userRole) && <Btn size="sm" variant="secondary" onClick={() => resolvePending(pd, "cancel_delete")}>Cancel delete</Btn>}
+  {pd.kind === "restore" && canManage(userRole) && <Btn size="sm" variant="primary" onClick={() => resolvePending(pd, "finish_restore")}>Finish restore</Btn>}
+  </div>
+  ))}
+  </div>
+  )}
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
   <PageHeader title="Properties" />
   <div className="flex items-center gap-3">

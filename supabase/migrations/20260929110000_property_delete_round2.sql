@@ -1,4 +1,4 @@
--- Property delete, round 2 (independent QA of 20260929010000).
+-- Property delete, round 2 (independent QA of 20260929100000).
 --
 --  1. Journal entries are voided SERVER-side, in chunks, before the archive
 --     (property_delete_begin -> property_delete_void_chunk* ->
@@ -139,27 +139,39 @@ END
 $do$;
 
 -- ─── 3. cascade flag in the follow-triggers (inserted, bodies otherwise untouched)
+-- Each patch is skipped (with a NOTICE) when the function is not installed.
+-- _owner_accrual_enqueue_entries exists only once the owners work
+-- (20260928170000, branch fix/owners) is applied: THAT migration must carry
+-- the same first line itself --
+--   IF current_setting('app.property_cascade', true) = 'on' THEN RETURN NULL; END IF;
+-- -- or a property delete applied after it would rewrite owner accruals.
 DO $do$
 DECLARE src text; n int;
 BEGIN
-  SELECT prosrc INTO src FROM pg_proc WHERE oid = 'public._vpay_follow_void()'::regprocedure;
-  IF position('app.property_cascade' IN src) = 0 THEN
+  src := (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public._vpay_follow_void()'));
+  IF src IS NULL THEN
+    RAISE NOTICE 'public._vpay_follow_void() is not installed here; cascade flag not added';
+  ELSIF position('app.property_cascade' IN src) = 0 THEN
     n := length(src);
     src := regexp_replace(src, '\mBEGIN\M', E'BEGIN\n  -- A property delete/restore voids and un-voids its own entries; the\n  -- invoice is archived with the property and must stay as it was.\n  IF current_setting(''app.property_cascade'', true) = ''on'' THEN RETURN NEW; END IF;', '');
     IF length(src) = n THEN RAISE EXCEPTION '_vpay_follow_void: BEGIN not found'; END IF;
     EXECUTE format('CREATE OR REPLACE FUNCTION public._vpay_follow_void() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''public'', ''pg_temp'' AS %L', src);
   END IF;
 
-  SELECT prosrc INTO src FROM pg_proc WHERE oid = 'public._owner_accrual_enqueue_entries()'::regprocedure;
-  IF position('app.property_cascade' IN src) = 0 THEN
+  src := (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public._owner_accrual_enqueue_entries()'));
+  IF src IS NULL THEN
+    RAISE NOTICE 'public._owner_accrual_enqueue_entries() is not installed here; cascade flag not added';
+  ELSIF position('app.property_cascade' IN src) = 0 THEN
     n := length(src);
     src := regexp_replace(src, '\mBEGIN\M', E'BEGIN\n  IF current_setting(''app.property_cascade'', true) = ''on'' THEN RETURN NULL; END IF;', '');
     IF length(src) = n THEN RAISE EXCEPTION '_owner_accrual_enqueue_entries: BEGIN not found'; END IF;
     EXECUTE format('CREATE OR REPLACE FUNCTION public._owner_accrual_enqueue_entries() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''public'', ''pg_temp'' AS %L', src);
   END IF;
 
-  SELECT prosrc INTO src FROM pg_proc WHERE oid = 'public.trg_sync_balance_from_je_status()'::regprocedure;
-  IF position('app.property_cascade' IN src) = 0 THEN
+  src := (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.trg_sync_balance_from_je_status()'));
+  IF src IS NULL THEN
+    RAISE NOTICE 'public.trg_sync_balance_from_je_status() is not installed here; cascade flag not added';
+  ELSIF position('app.property_cascade' IN src) = 0 THEN
     n := length(src);
     src := regexp_replace(src, '\mBEGIN\M', E'BEGIN\n  -- The property cascade recomputes each affected tenant once per chunk.\n  IF current_setting(''app.property_cascade'', true) = ''on'' THEN RETURN NEW; END IF;', '');
     IF length(src) = n THEN RAISE EXCEPTION 'trg_sync_balance_from_je_status: BEGIN not found'; END IF;
@@ -168,8 +180,10 @@ BEGIN
 
   -- Tenant rows archived/restored by the cascade re-derive the property's
   -- occupancy once at the end, not twice per row (4,000 tenants timed out).
-  SELECT prosrc INTO src FROM pg_proc WHERE oid = 'public.trg_tenants_sync_property()'::regprocedure;
-  IF position('app.property_cascade' IN src) = 0 THEN
+  src := (SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.trg_tenants_sync_property()'));
+  IF src IS NULL THEN
+    RAISE NOTICE 'public.trg_tenants_sync_property() is not installed here; cascade flag not added';
+  ELSIF position('app.property_cascade' IN src) = 0 THEN
     n := length(src);
     src := regexp_replace(src, '\mBEGIN\M', E'BEGIN\n  IF current_setting(''app.property_cascade'', true) = ''on'' THEN RETURN NULL; END IF;', '');
     IF length(src) = n THEN RAISE EXCEPTION 'trg_tenants_sync_property: BEGIN not found'; END IF;
@@ -378,6 +392,7 @@ SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_del property_deletions%ROWTYPE;
+  v_addr text;
   v_ids text[];
   v_left int;
 BEGIN
@@ -388,6 +403,18 @@ BEGIN
     RAISE EXCEPTION 'Deletion % is %, not in progress', p_deletion_id, v_del.status USING ERRCODE = 'P0001';
   END IF;
   PERFORM set_config('app.property_cascade', 'on', true);
+
+  -- A rename between chunks moves the entries to the new address; follow it.
+  -- FOR UPDATE also keeps a rename from running while this chunk works.
+  SELECT address INTO v_addr FROM properties
+   WHERE company_id = v_del.company_id AND id = v_del.property_id AND archived_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Property % is no longer live', v_del.property_id USING ERRCODE = 'P0002';
+  END IF;
+  IF v_addr IS DISTINCT FROM v_del.address THEN
+    UPDATE property_deletions SET address = v_addr WHERE id = p_deletion_id;
+    v_del.address := v_addr;
+  END IF;
 
   v_ids := ARRAY(SELECT id FROM acct_journal_entries
                   WHERE company_id = v_del.company_id AND property = v_del.address AND status <> 'voided'
@@ -423,11 +450,14 @@ DECLARE
   v_done text[];
   v_left int;
   v_skipped jsonb;
+  v_blocked jsonb := '[]'::jsonb;
 BEGIN
   SELECT * INTO v_del FROM property_deletions WHERE id = p_deletion_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Unknown deletion %', p_deletion_id USING ERRCODE = 'P0002'; END IF;
   PERFORM public._assert_property_manager(v_del.company_id);
-  IF v_del.status NOT IN ('voiding', 'archived') THEN
+  -- voiding  = cancelling an unfinished delete (property still live)
+  -- archived = before a restore; restored = finishing a restore's backlog
+  IF v_del.status NOT IN ('voiding', 'archived', 'restored') THEN
     RAISE EXCEPTION 'Deletion % is %; nothing to un-void', p_deletion_id, v_del.status USING ERRCODE = 'P0001';
   END IF;
   PERFORM set_config('app.property_cascade', 'on', true);
@@ -439,6 +469,21 @@ BEGIN
 
   -- Left voided, and said so: an entry now in a locked period, one whose
   -- reference a live entry has since taken, or one someone else un-voided.
+  -- Cancelling an unfinished delete must not give up on an entry because its
+  -- period was locked meanwhile: that would leave a LIVE property with half its
+  -- books voided. Locked entries stay pending (reported as blocked) so a later
+  -- cancel -- after unlocking -- re-posts them. A restore, by contrast, leaves
+  -- them voided for good: the closed period already reflects the void.
+  IF v_del.status = 'voiding' AND v_lock IS NOT NULL THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', je.id, 'number', je.number, 'date', je.date)), '[]'::jsonb)
+      INTO v_blocked
+      FROM property_deletion_voids v JOIN acct_journal_entries je ON je.id = v.je_id
+     WHERE v.deletion_id = p_deletion_id AND v.restored_at IS NULL AND je.status = 'voided' AND je.date <= v_lock;
+    v_ids := ARRAY(SELECT x FROM unnest(v_ids) x
+                    WHERE NOT EXISTS (SELECT 1 FROM acct_journal_entries je
+                                       WHERE je.id = x AND je.status = 'voided' AND je.date <= v_lock));
+  END IF;
+
   WITH s AS (
     UPDATE property_deletion_voids v SET restored_at = now(),
            note = CASE WHEN je.id IS NULL THEN 'entry no longer exists'
@@ -470,8 +515,10 @@ BEGIN
   IF v_left = 0 AND v_del.status = 'voiding' THEN
     UPDATE property_deletions SET status = 'aborted' WHERE id = p_deletion_id;
   END IF;
+  -- 'blocked' entries are still pending: remaining > 0 with nothing done
+  -- means stop and ask for the period to be unlocked.
   RETURN jsonb_build_object('unvoided', COALESCE(array_length(v_done, 1), 0), 'remaining', v_left,
-                            'left_voided', v_skipped);
+                            'left_voided', v_skipped, 'blocked_by_lock', v_blocked);
 END;
 $function$;
 
@@ -562,8 +609,26 @@ BEGIN
   SELECT COALESCE(array_agg(id), '{}') INTO v_tenant_ids FROM t;
   v_counts := v_counts || jsonb_build_object('tenants', COALESCE(array_length(v_tenant_ids, 1), 0));
   -- Their AR sub-accounts leave the pickers; restore re-activates them.
-  UPDATE acct_accounts SET is_active = false
-   WHERE company_id = p_company_id AND tenant_id = ANY (v_tenant_ids::bigint[]) AND is_active;
+  -- guard_no_deactivate_nonzero_ledger refuses to hide a ledger that still
+  -- holds a posted balance (for instance from an entry not tagged to this
+  -- property, so not voided here). That must not make the property
+  -- undeletable: such a ledger stays active and is reported.
+  WITH bal AS (
+    SELECT a.id, a.name, COALESCE((SELECT sum(COALESCE(l.debit,0) - COALESCE(l.credit,0))
+                                     FROM acct_journal_lines l JOIN acct_journal_entries je ON je.id::text = l.journal_entry_id::text
+                                    WHERE l.account_id::text = a.id::text AND l.company_id = a.company_id
+                                      AND je.status = 'posted'), 0) AS b
+      FROM acct_accounts a
+     WHERE a.company_id = p_company_id AND a.tenant_id = ANY (v_tenant_ids::bigint[]) AND a.is_active)
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('account', name, 'balance', round(b, 2))) FILTER (WHERE abs(b) > 0.005), '[]'::jsonb)
+    INTO r FROM bal;
+  v_counts := v_counts || jsonb_build_object('ar_accounts_left_active', r);
+  UPDATE acct_accounts a SET is_active = false
+   WHERE a.company_id = p_company_id AND a.tenant_id = ANY (v_tenant_ids::bigint[]) AND a.is_active
+     AND abs(COALESCE((SELECT sum(COALESCE(l.debit,0) - COALESCE(l.credit,0))
+                         FROM acct_journal_lines l JOIN acct_journal_entries je ON je.id::text = l.journal_entry_id::text
+                        WHERE l.account_id::text = a.id::text AND l.company_id = a.company_id
+                          AND je.status = 'posted'), 0)) <= 0.005;
 
   UPDATE leases SET status = 'terminated', updated_at = now()
    WHERE company_id = p_company_id AND archived_at IS NULL AND status = 'active'
@@ -682,7 +747,7 @@ BEGIN
 
   SELECT count(*) INTO n FROM property_deletion_voids WHERE deletion_id = p_deletion_id;
   v_counts := v_counts || jsonb_build_object('journal_entries_voided', n);
-  UPDATE property_deletions SET status = 'archived', archived = v_counts WHERE id = p_deletion_id;
+  UPDATE property_deletions SET status = 'archived', archived = v_counts, address = v_addr WHERE id = p_deletion_id;
 
   RETURN jsonb_build_object('success', true, 'deletion_id', p_deletion_id, 'archived_at', v_ts, 'address', v_addr,
                             'matched_by_address', v_use_addr, 'archived', v_counts);
@@ -782,16 +847,20 @@ BEGIN
 
   -- Un-void what the delete voided. Large sets are un-voided first by the
   -- caller in chunks; a small remainder is finished here.
+  -- The books: up to 300 entries are re-posted here, in this transaction; a
+  -- busier property's remainder is re-posted by property_delete_unvoid_chunk
+  -- AFTER this commits (the property is live by then, so a failure half-way
+  -- leaves a live property with some entries still voided -- listed by
+  -- property_deletions_pending and resumable -- never a deleted property with
+  -- live books).
   IF v_del.id IS NOT NULL THEN
     SELECT count(*) INTO v_left FROM property_deletion_voids WHERE deletion_id = v_del.id AND restored_at IS NULL;
-    IF v_left > 300 THEN
-      RAISE EXCEPTION '% journal entries still to un-void; call property_delete_unvoid_chunk first', v_left USING ERRCODE = 'P0001';
-    END IF;
-    WHILE v_left > 0 LOOP
+    IF v_left > 0 AND v_left <= 300 THEN
       r := public.property_delete_unvoid_chunk(v_del.id, 300);
       v_left := (r->>'remaining')::int;
-    END LOOP;
-    v_counts := v_counts || jsonb_build_object('journal_entries_left_voided',
+    END IF;
+    v_counts := v_counts || jsonb_build_object('journal_entries_pending', v_left,
+      'journal_entries_left_voided',
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', je_id, 'why', note)) FROM property_deletion_voids
                  WHERE deletion_id = v_del.id AND note IS NOT NULL), '[]'::jsonb));
   END IF;
@@ -922,6 +991,35 @@ BEGIN
   RETURN jsonb_build_object('success', true, 'address', v_addr, 'legacy', v_del.id IS NULL, 'restored', v_counts);
 END;
 $function$;
+
+-- ─── 3e. unfinished deletes / restores, surfaced on the Properties page ──
+-- A dropped connection between chunks leaves a delete half-voided (status
+-- 'voiding', property live) or a restore with entries still to re-post
+-- (status 'restored', pending voids). Both are resumable; this lists them.
+CREATE OR REPLACE FUNCTION public.property_deletions_pending(p_company_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  PERFORM public._assert_company_staff(p_company_id);
+  RETURN COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+             'deletion_id', d.id, 'property_id', d.property_id, 'address', d.address,
+             'kind', CASE WHEN d.status = 'voiding' THEN 'delete' ELSE 'restore' END,
+             'started_by', d.created_by, 'started_at', d.created_at,
+             'voided', (SELECT count(*) FROM property_deletion_voids v WHERE v.deletion_id = d.id),
+             'pending', (SELECT count(*) FROM property_deletion_voids v WHERE v.deletion_id = d.id AND v.restored_at IS NULL))
+           ORDER BY d.id)
+      FROM property_deletions d
+     WHERE d.company_id = p_company_id
+       AND ((d.status = 'voiding' AND EXISTS (SELECT 1 FROM property_deletion_voids v WHERE v.deletion_id = d.id AND v.restored_at IS NULL))
+         OR (d.status = 'restored' AND EXISTS (SELECT 1 FROM property_deletion_voids v WHERE v.deletion_id = d.id AND v.restored_at IS NULL)))), '[]'::jsonb);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.property_deletions_pending(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.property_deletions_pending(text) TO authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.property_delete_begin(text, bigint) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.property_delete_void_chunk(bigint, int) FROM PUBLIC, anon;

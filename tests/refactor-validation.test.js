@@ -268,7 +268,9 @@ function testFileStructure() {
   // 54200 on 2026-09-29: + audit theme J (wizard per-field payload builders
   // WIZ_FIELDS / WIZ_DB_COLS so only changed fields are written; import enum /
   // duplicate-key / HOA-due handling, import HOA salt reuse) merged with staging 4f3dcb6 (53900).
-  assert(totalLines <= 54200, `Total src lines <= 54200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 54400 on 2026-09-29: + audit theme L (property delete: chunked server-side void
+  // helpers, unfinished-delete banner with Finish/Cancel, restore preview).
+  assert(totalLines <= 54400, `Total src lines <= 54400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
