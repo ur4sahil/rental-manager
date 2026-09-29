@@ -38,7 +38,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     let cancelled = false;
     (async () => {
       const { data } = await supabase.from("portfolio_loan_properties").select("portfolio_loan_id")
-        .eq("company_id", companyId).eq("property", form.property).maybeSingle();
+        .eq("company_id", companyId).eq("property", form.property).is("archived_at", null).maybeSingle();
       if (!cancelled) { const id = data?.portfolio_loan_id || ""; setLoanPortfolioId(id); setOrigLoanPortfolioId(id); }
     })();
     return () => { cancelled = true; };
@@ -108,7 +108,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       await supabase.from("portfolio_loan_properties").delete().eq("company_id", companyId).eq("portfolio_loan_id", origLoanPortfolioId).eq("property", form.property);
     }
     if (loanPortfolioId) {
-      await supabase.from("portfolio_loan_properties").upsert({ company_id: companyId, portfolio_loan_id: loanPortfolioId, property: form.property }, { onConflict: "portfolio_loan_id,property" });
+      await supabase.from("portfolio_loan_properties").upsert({ company_id: companyId, portfolio_loan_id: loanPortfolioId, property: form.property, archived_at: null }, { onConflict: "portfolio_loan_id,property" });
     }
     fetchPortfolioLoans();
   }
@@ -167,7 +167,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   async function fetchPortfolioLoans() {
   const [{ data: pl }, { data: pp }] = await Promise.all([
     supabase.from("portfolio_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
-    supabase.from("portfolio_loan_properties").select("*").eq("company_id", companyId),
+    // Links to a deleted property are archived with it (archive_property_cascade).
+    supabase.from("portfolio_loan_properties").select("*").eq("company_id", companyId).is("archived_at", null),
   ]);
   setPortfolioLoans(pl || []);
   setPortfolioProps(pp || []);
@@ -206,9 +207,13 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     loanId = data.id;
   }
   // Replace the property links with the current selection.
-  await supabase.from("portfolio_loan_properties").delete().eq("portfolio_loan_id", loanId).eq("company_id", companyId);
-  const links = portfolioForm.properties.map(p => ({ company_id: companyId, portfolio_loan_id: loanId, property: p }));
-  if (links.length) { const { error: le } = await supabase.from("portfolio_loan_properties").insert(links); if (le) { showToast("Loan saved, but attaching properties failed: " + le.message, "error"); } }
+  // Only LIVE links are replaced: a link archived with a deleted property is
+  // kept so restoring that property re-attaches it. Upsert, not insert, so a
+  // re-selected address revives its archived link instead of colliding with
+  // the (portfolio_loan_id, property) unique index.
+  await supabase.from("portfolio_loan_properties").delete().eq("portfolio_loan_id", loanId).eq("company_id", companyId).is("archived_at", null);
+  const links = portfolioForm.properties.map(p => ({ company_id: companyId, portfolio_loan_id: loanId, property: p, archived_at: null }));
+  if (links.length) { const { error: le } = await supabase.from("portfolio_loan_properties").upsert(links, { onConflict: "portfolio_loan_id,property" }); if (le) { showToast("Loan saved, but attaching properties failed: " + le.message, "error"); } }
   addNotification("\ud83c\udfe6", `Portfolio loan ${editingPortfolio ? "updated" : "added"}: ${portfolioForm.lender_name}`);
   logAudit(editingPortfolio ? "update" : "create", "loans", `Portfolio loan: ${portfolioForm.lender_name} across ${portfolioForm.properties.length} propert${portfolioForm.properties.length === 1 ? "y" : "ies"}`, loanId, userProfile?.email, userRole, companyId);
   setShowPortfolioForm(false); setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm);

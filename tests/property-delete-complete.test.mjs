@@ -1,0 +1,357 @@
+// Deleting a property stops everything that acts in the future; restoring it
+// brings back exactly what the delete took.
+//
+// Audit theme L ("deleting is incomplete"). Deleting a property left its
+// utility accounts + unpaid utility bills, property taxes + pending tax bills,
+// licences and portfolio-loan links live, so the portal sweep and the
+// tax-bill cron kept running for a property the app reports as gone.
+// archive_property_cascade (migration 20260929010000) now archives all of it
+// in one transaction, stamping every row with the property's own archived_at;
+// restore_property_cascade brings back only rows carrying that stamp.
+//
+// Part 1: static checks on the migration, Properties.js, Loans.js and the
+//         three unattended jobs (tax-bill cron, licence reminders, sweep).
+// Part 2: the cron/sweep "property archived?" helper, against a fake client.
+// Part 3: LIVE on the TEST project: a throwaway company tagged QA-DEL gets a
+//         fully populated property, which is deleted, checked table by table,
+//         restored, checked again, and then removed without leftovers.
+import fs from "fs";
+import path from "path";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+require("./sandbox-env");   // TEST project only -- never production
+const root = path.join(import.meta.dirname, "..");
+const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
+
+let pass = 0, fail = 0;
+function assert(name, cond, detail) {
+  if (cond) { pass++; console.log("  ✅ " + name); }
+  else { fail++; console.log("  ❌ " + name + (detail ? "\n     " + detail : "")); }
+}
+function fnBody(text, signature) {
+  const i = text.indexOf(signature);
+  if (i < 0) return "";
+  const rest = text.slice(i + signature.length);
+  const next = rest.search(/\n\s*(?:export\s+)?async function |\n\s*function /);
+  return next < 0 ? rest : rest.slice(0, next);
+}
+const stripComments = (s) => s.replace(/^\s*--.*$/gm, "").replace(/\/\/.*$/gm, "");
+
+// ─── 1. STATIC ────────────────────────────────────────────────────────────
+console.log("\n📜 MIGRATION");
+const mig = read("supabase/migrations/20260929010000_property_delete_complete.sql");
+const sqlFn = (name) => {
+  const i = mig.indexOf("FUNCTION public." + name + "(");
+  const j = mig.indexOf("$function$;", i);
+  return i < 0 ? "" : stripComments(mig.slice(i, j));
+};
+const arc = sqlFn("archive_property_cascade"), rst = sqlFn("restore_property_cascade");
+assert("archive_property_cascade defined", arc.length > 0);
+assert("restore_property_cascade defined", rst.length > 0);
+for (const [n, f] of [["archive", arc], ["restore", rst]]) {
+  assert(`${n}: SECURITY DEFINER with pinned search_path`, /SECURITY DEFINER\s+SET search_path TO 'public', 'pg_temp'/.test(f));
+  assert(`${n}: company-staff check`, /_assert_company_staff\(p_company_id\)/.test(f));
+  assert(`${n}: management-tier check (the gate trigger cannot see the caller in a definer)`, /is_management_tier\(p_company_id\)/.test(f));
+}
+assert("REVOKE ALL ... FROM PUBLIC, anon on both",
+  /REVOKE ALL ON FUNCTION public\.archive_property_cascade\(text, bigint, text\) FROM PUBLIC, anon/.test(mig)
+  && /REVOKE ALL ON FUNCTION public\.restore_property_cascade\(text, bigint, boolean\) FROM PUBLIC, anon/.test(mig));
+const MUST_ARCHIVE = ["properties", "tenants", "leases", "autopay_schedules", "recurring_journal_entries", "work_orders",
+  "vendor_invoices", "documents", "inspections", "payments", "hoa_payments", "property_loans", "property_insurance",
+  "property_licenses", "property_taxes", "property_tax_bills", "utility_accounts", "utilities", "utility_bills",
+  "portfolio_loan_properties", "property_setup_wizard"];
+for (const t of MUST_ARCHIVE) {
+  assert(`archive covers ${t}`, new RegExp("UPDATE " + t + "\\b").test(arc));
+}
+assert("every archive uses the one transaction stamp v_ts",
+  !/archived_at = now\(\)/.test(arc) && (arc.match(/archived_at = v_ts/g) || []).length >= 19);
+assert("utility bills: unpaid only (paid_at null, nothing paid, not paid/partial)",
+  /UPDATE utility_bills[\s\S]*?paid_at IS NULL AND COALESCE\(b\.amount_paid, 0\) = 0[\s\S]*?NOT IN \('paid', 'partial', 'settled'\)/.test(arc));
+assert("tax bills: pending only", /UPDATE property_tax_bills[^;]*status = 'pending' AND paid_date IS NULL/.test(arc));
+assert("utility_accounts tagged archived_reason = 'property_deleted'", /UPDATE utility_accounts SET archived_at = v_ts, archived_reason = 'property_deleted'/.test(arc));
+assert("utility_accounts archived BEFORE utilities (bridge trigger would stamp them reasonless)",
+  arc.indexOf("UPDATE utility_accounts") < arc.indexOf("UPDATE utilities "));
+assert("autopay disabled", /UPDATE autopay_schedules SET enabled = false/.test(arc));
+assert("recurring entries inactivated", /UPDATE recurring_journal_entries SET status = 'inactive'/.test(arc));
+assert("archive never touches the books or deposits",
+  !/acct_journal|journal_lines|ledger_entries|deposit|forfeit|2100|4150/i.test(arc));
+assert("address match falls back to id when another LIVE property shares the address",
+  /v_use_addr := NOT EXISTS/.test(arc));
+assert("restore only brings back rows stamped with the property's archived_at",
+  (rst.match(/archived_at = v_ts/g) || []).length >= 18 && !/archived_at IS NOT NULL/.test(rst));
+assert("restore of utility accounts requires archived_reason = 'property_deleted'",
+  /UPDATE utility_accounts SET archived_at = NULL, archived_reason = NULL[\s\S]*?archived_reason = 'property_deleted'/.test(rst));
+assert("restore never re-enables autopay or recurring charges",
+  !/enabled = true/.test(rst) && !/status = 'active'[^;]*recurring/.test(rst) && !/UPDATE recurring_journal_entries SET[^;]*status/.test(rst));
+assert("restore reactivates only leases of tenants it restored", /tenant_id = ANY \(v_tenant_ids\)/.test(rst));
+assert("restore refuses when a live property already has the address", /A live property already has the address/.test(rst));
+assert("portfolio_loan_properties gains archived_at", /ALTER TABLE public\.portfolio_loan_properties\s+ADD COLUMN IF NOT EXISTS archived_at timestamptz/.test(mig));
+
+console.log("\n🏠 Properties.js / Loans.js");
+const props = read("src/components/Properties.js");
+const del = fnBody(props, "async function deleteProperty(id, address) {");
+assert("deleteProperty calls archive_property_cascade", /rpc\("archive_property_cascade"/.test(del));
+assert("…and stops before voiding anything if it fails",
+  del.indexOf('rpc("archive_property_cascade"') < del.indexOf('update({ status: "voided" })')
+  && /if \(cascadeErr\) \{[\s\S]*?return;\s*\}/.test(del));
+assert("deleteProperty no longer archives operational tables row-by-row from the browser",
+  !/from\("(utilities|work_orders|hoa_payments|property_loans|property_insurance|documents|inspections|payments|autopay_schedules|recurring_journal_entries|leases|tenants)"\)\.update\(/.test(stripComments(del)));
+assert("deleteProperty posts nothing for deposits (owner decision)",
+  !/atomicPostJEAndLedger|autoPostJournalEntry|4150|deposit_status/.test(stripComments(del)));
+const res = fnBody(props, "async function restoreProperty(prop) {");
+assert("restoreProperty calls restore_property_cascade", /rpc\("restore_property_cascade"/.test(res));
+assert("restoreProperty offers only tenants stamped by the delete", /\.eq\("archived_at", prop\.archived_at\)/.test(res));
+assert("wizard's portfolio-link lookup ignores archived links",
+  /from\("portfolio_loan_properties"\)\.select\("portfolio_loan_id"\)\s*\.eq\("company_id", companyId\)\.eq\("property", savedAddress\)\.is\("archived_at", null\)/.test(props));
+const loans = read("src/components/Loans.js");
+assert("Loans page lists only live portfolio links",
+  /from\("portfolio_loan_properties"\)\.select\("\*"\)\.eq\("company_id", companyId\)\.is\("archived_at", null\)/.test(loans));
+assert("Loans save replaces only LIVE links and revives on re-select",
+  /portfolio_loan_properties"\)\.delete\(\)\.eq\("portfolio_loan_id", loanId\)\.eq\("company_id", companyId\)\.is\("archived_at", null\)/.test(loans)
+  && /upsert\(links, \{ onConflict: "portfolio_loan_id,property" \}\)/.test(loans));
+
+console.log("\n⏰ UNATTENDED JOBS skip archived properties");
+const tax = read("api/_tax-bill-reminders-impl.js");
+assert("tax cron loads the archive index", /require\("\.\/_archived-properties"\)/.test(tax) && /loadPropertyArchiveIndex\(supabase, bills\.map/.test(tax));
+assert("tax cron skips a bill whose property is archived, first thing in the loop",
+  /for \(const b of bills\) \{\s*if \(propIndex\.isArchived\(b\)\) \{ skippedPropertyArchived\+\+; continue; \}/.test(tax));
+assert("tax rollforward still only generates for live properties",
+  /from\("properties"\)[\s\S]{0,80}\.is\("archived_at", null\)/.test(tax));
+const lic = read("api/_license-expiry-reminders-impl.js");
+assert("licence reminders skip an archived property",
+  /select\("address, archived_at"\)/.test(lic) && /if \(propertyAddress === null\) \{ skippedPropertyArchived\+\+; continue; \}/.test(lic));
+const ai = read("api/ai.js");
+const seg = (a, b) => ai.slice(ai.indexOf(a), ai.indexOf(b, ai.indexOf(a) + 1));
+const st = seg('if (action === "sweep-targets")', 'if (action === "portal-credentials")');
+const pc = seg('if (action === "portal-credentials")', 'if (action === "claim")');
+assert("sweep-targets filters archived properties", /loadPropertyArchiveIndex\(sb, \[cid\]\)/.test(st) && /filter\(t => !propIndex\.isArchived\(t, cid\)\)/.test(st));
+assert("portal-credentials filters archived properties", /loadPropertyArchiveIndex\(sb, \[cid\]\)/.test(pc) && /filter\(c => !propIndex\.isArchived\(c, cid\)\)/.test(pc));
+assert("ai.js imports the helper", /const \{ loadPropertyArchiveIndex \} = require\("\.\/_archived-properties"\)/.test(ai));
+
+// ─── 2. HELPER ────────────────────────────────────────────────────────────
+console.log("\n🧮 loadPropertyArchiveIndex");
+const { loadPropertyArchiveIndex } = require("../api/_archived-properties.js");
+function fakeSb(rows, { error = null } = {}) {
+  return { from() {
+    const q = { _cids: null,
+      select() { return q; }, order() { return q; },
+      in(_c, v) { q._cids = v; return q; },
+      range(a, b) {
+        if (error) return Promise.resolve({ data: null, error });
+        const d = rows.filter(r => q._cids.includes(r.company_id)).slice(a, b + 1);
+        return Promise.resolve({ data: d, error: null });
+      } };
+    return q;
+  } };
+}
+{
+  const rows = [
+    { id: 1, company_id: "A", address: "1 Gone St", archived_at: "2026-01-01" },
+    { id: 2, company_id: "A", address: "2 Live St", archived_at: null },
+    { id: 3, company_id: "A", address: "3 Reused St", archived_at: "2026-01-01" },
+    { id: 4, company_id: "A", address: "3 Reused St", archived_at: null },
+    { id: 5, company_id: "B", address: "1 Gone St", archived_at: null },
+  ];
+  const ix = await loadPropertyArchiveIndex(fakeSb(rows), ["A", "B"]);
+  assert("ok on a good read", ix.ok === true);
+  assert("record at an archived address -> archived", ix.isArchived({ company_id: "A", property: "1 Gone St" }));
+  assert("record at a live address -> live", !ix.isArchived({ company_id: "A", property: "2 Live St" }));
+  assert("address re-used by a live property -> live (the re-added property keeps its reminders)",
+    !ix.isArchived({ company_id: "A", property: "3 Reused St" }));
+  assert("same address in ANOTHER company is not confused", !ix.isArchived({ company_id: "B", property: "1 Gone St" }));
+  assert("property_id of an archived property, no address -> archived", ix.isArchived({ company_id: "A", property_id: 1 }));
+  assert("companyId argument used when the record has none", ix.isArchived({ property: "1 Gone St" }, "A"));
+  assert("unknown property -> not filtered", !ix.isArchived({ company_id: "A", property: "9 Nowhere" }));
+  const many = Array.from({ length: 2500 }, (_, i) => ({ id: i + 10, company_id: "A", address: "p" + i, archived_at: i === 2400 ? "x" : null }));
+  const ix2 = await loadPropertyArchiveIndex(fakeSb(many), ["A"]);
+  assert("pages past 1000 rows", ix2.isArchived({ company_id: "A", property: "p2400" }) && !ix2.isArchived({ company_id: "A", property: "p5" }));
+  const ix3 = await loadPropertyArchiveIndex(fakeSb(rows, { error: { message: "boom" } }), ["A"]);
+  assert("read error -> filters nothing (second net must not silence the run)", ix3.ok === false && !ix3.isArchived({ company_id: "A", property: "1 Gone St" }));
+}
+
+// ─── 3. LIVE (TEST project) ───────────────────────────────────────────────
+console.log("\n🧪 LIVE on TEST — throwaway company QA-DEL");
+const url = process.env.TEST_SUPABASE_URL, key = process.env.TEST_SUPABASE_SERVICE_KEY;
+if (!url || !key) {
+  console.log("  (skipped: no TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_KEY)");
+} else {
+  const { createClient } = require("@supabase/supabase-js");
+  const sb = createClient(url, key, { auth: { persistSession: false } });
+  const CID = "qa-del-" + Date.now().toString(36);
+  // properties.address is DERIVED from its components by a trigger.
+  const comp = (line1) => ({ address_line_1: line1, city: "Testville", state: "MD", zip: "20000" });
+  let ADDR, OTHER;
+  const must = async (label, p) => { const r = await p; if (r.error) throw new Error(label + ": " + r.error.message); return r.data; };
+  const ids = {};
+  try {
+    await must("company", sb.from("companies").insert({ id: CID, name: "QA-DEL throwaway " + CID }));
+    const [prop] = await must("property", sb.from("properties").insert([{ company_id: CID, ...comp("QA-DEL 1 Test St"), type: "Single Family", status: "occupied", county: "Montgomery" }]).select("id, address"));
+    const [ctrl] = await must("control property", sb.from("properties").insert([{ company_id: CID, ...comp("QA-DEL 2 Control Ave"), type: "Single Family", status: "occupied" }]).select("id, address"));
+    ADDR = prop.address; OTHER = ctrl.address;
+    ids.prop = prop.id; ids.ctrl = ctrl.id;
+    const P = { company_id: CID, property: ADDR };
+    // A tenant who has moved out (live row, lease terminated earlier) and a current one.
+    const [tMoved] = await must("moved-out tenant", sb.from("tenants").insert([{ ...P, name: "QA-DEL Moved Out", lease_status: "past", move_out: "2026-06-30" }]).select("id"));
+    const [tCur] = await must("current tenant", sb.from("tenants").insert([{ ...P, name: "QA-DEL Current", lease_status: "active", balance: 100 }]).select("id"));
+    await must("old lease", sb.from("leases").insert([{ ...P, tenant_id: tMoved.id, tenant_name: "QA-DEL Moved Out", status: "terminated", start_date: "2025-07-01", end_date: "2026-06-30", rent_amount: 1000 }]));
+    await must("current lease", sb.from("leases").insert([{ ...P, tenant_id: tCur.id, tenant_name: "QA-DEL Current", status: "active", start_date: "2026-07-01", end_date: "2027-06-30", rent_amount: 1200 }]));
+    await must("autopay", sb.from("autopay_schedules").insert([{ ...P, tenant: "QA-DEL Current", tenant_id: tCur.id, amount: 1200, enabled: true }]));
+    await must("recurring", sb.from("recurring_journal_entries").insert([{ ...P, description: "Monthly rent QA-DEL", tenant_name: "QA-DEL Current", tenant_id: tCur.id, amount: 1200, status: "active" }]));
+    const [util] = await must("utility", sb.from("utilities").insert([{ ...P, provider: "QA-DEL Power", amount: 80, status: "pending", account_number: "QA1" }]).select("id"));
+    await must("standalone utility account", sb.from("utility_accounts").insert([{ ...P, provider: "QA-DEL Water", provider_display: "QA-DEL Water", account_number: "QA2" }]));
+    const accts = await must("accounts", sb.from("utility_accounts").select("id, provider, legacy_utility_id").eq("company_id", CID));
+    const acctId = accts[0].id;
+    await must("bills", sb.from("utility_bills").insert([
+      { ...P, utility_account_id: acctId, provider: "QA-DEL Power", amount: 80, status: "pending_review" },
+      { ...P, utility_account_id: acctId, provider: "QA-DEL Power", amount: 75, status: "paid", paid_at: new Date().toISOString(), amount_paid: 75 },
+    ]));
+    await must("taxes", sb.from("property_taxes").insert([{ ...P, property_id: prop.id, county: "Montgomery", annual_tax_amount: 5000 }]));
+    const soon = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+    await must("tax bills", sb.from("property_tax_bills").insert([
+      { ...P, property_id: prop.id, tax_year: 2026, installment_label: "Annual (MD)", due_date: soon, status: "pending" },
+      { ...P, property_id: prop.id, tax_year: 2025, installment_label: "Annual (MD)", due_date: "2025-09-30", status: "paid", paid_date: "2025-09-15", paid_amount: 5000 },
+    ]));
+    await must("hoa", sb.from("hoa_payments").insert([{ ...P, hoa_name: "QA-DEL HOA", amount: 50, status: "pending" }]));
+    await must("insurance", sb.from("property_insurance").insert([{ ...P, property_id: String(prop.id), provider: "QA-DEL Ins" }]));
+    await must("loan", sb.from("property_loans").insert([{ ...P, property_id: String(prop.id), lender_name: "QA-DEL Bank" }]));
+    const [pl] = await must("portfolio loan", sb.from("portfolio_loans").insert([{ company_id: CID, lender_name: "QA-DEL Blanket" }]).select("id"));
+    ids.pl = pl.id;
+    await must("portfolio links", sb.from("portfolio_loan_properties").insert([
+      { company_id: CID, portfolio_loan_id: pl.id, property: ADDR, property_id: prop.id },
+      { company_id: CID, portfolio_loan_id: pl.id, property: OTHER, property_id: ctrl.id }]));
+    await must("licence", sb.from("property_licenses").insert([{ company_id: CID, property_id: prop.id, license_type: "rental", expiry_date: soon }]));
+    await must("work orders", sb.from("work_orders").insert([{ ...P, issue: "QA-DEL leak", status: "open" }]));
+    // Archived SEPARATELY by the user, earlier: restore must NOT bring it back.
+    await must("user-archived WO", sb.from("work_orders").insert([{ ...P, issue: "QA-DEL old user-archived", status: "closed", archived_at: "2026-01-01T00:00:00Z", archived_by: "user" }]));
+    await must("control utility", sb.from("utilities").insert([{ company_id: CID, property: OTHER, provider: "QA-DEL Power", amount: 10, status: "pending" }]));
+
+    const TABLES = [
+      ["tenants", "property"], ["leases", "property"], ["autopay_schedules", "property"], ["recurring_journal_entries", "property"],
+      ["utilities", "property"], ["utility_accounts", "property"], ["utility_bills", "property"], ["property_taxes", "property"],
+      ["property_tax_bills", "property"], ["hoa_payments", "property"], ["property_insurance", "property"], ["property_loans", "property"],
+      ["portfolio_loan_properties", "property"], ["work_orders", "property"],
+    ];
+    const snapshot = async () => {
+      const out = {};
+      for (const [t, col] of TABLES) {
+        const rows = await must(t, sb.from(t).select("*").eq("company_id", CID).eq(col, ADDR));
+        out[t] = { live: rows.filter(r => !r.archived_at).length, archived: rows.filter(r => r.archived_at).length, rows };
+      }
+      const lics = await must("lic", sb.from("property_licenses").select("*").eq("company_id", CID).eq("property_id", ids.prop));
+      out.property_licenses = { live: lics.filter(r => !r.archived_at).length, archived: lics.filter(r => r.archived_at).length, rows: lics };
+      return out;
+    };
+    const before = await snapshot();
+    assert("setup: bridge created an account for the utility", before.utility_accounts.live === 2, JSON.stringify(before.utility_accounts.live));
+
+    // anon cannot call it at all
+    const anonKey = process.env.TEST_SUPABASE_ANON_KEY;
+    if (anonKey) {
+      const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+      const { error: aErr } = await anon.rpc("archive_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_user_email: "x" });
+      assert("anon cannot execute archive_property_cascade", !!aErr, "no error");
+      const { error: rErr } = await anon.rpc("restore_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_restore_tenants: true });
+      assert("anon cannot execute restore_property_cascade", !!rErr, "no error");
+    }
+
+    // ── DELETE ──
+    const out = await must("archive_property_cascade", sb.rpc("archive_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_user_email: "qa-del@test" }));
+    const after = await snapshot();
+    console.log("     table                      live before → after   archived after");
+    for (const k of Object.keys(after)) console.log("     " + k.padEnd(27) + String(before[k].live).padStart(4) + " → " + String(after[k].live).padEnd(8) + String(after[k].archived).padStart(6));
+    const [pAfter] = await must("prop", sb.from("properties").select("archived_at").eq("id", ids.prop));
+    const TS = pAfter.archived_at;
+    assert("property archived", !!TS);
+    const liveNow = (t) => after[t].live;
+    for (const t of ["tenants", "leases", "autopay_schedules", "recurring_journal_entries", "utilities", "utility_accounts", "property_taxes",
+                     "hoa_payments", "property_insurance", "property_loans", "portfolio_loan_properties", "work_orders", "property_licenses"]) {
+      assert(`${t}: nothing live after delete`, liveNow(t) === 0, "live=" + liveNow(t));
+    }
+    assert("utility_bills: the PAID bill stays live (history), the unpaid one is archived",
+      after.utility_bills.rows.find(b => b.status === "paid" && !b.archived_at) && after.utility_bills.rows.find(b => b.status === "pending_review" && b.archived_at));
+    assert("tax bills: the PAID bill stays live (history), the pending one is archived",
+      after.property_tax_bills.rows.find(b => b.status === "paid" && !b.archived_at) && after.property_tax_bills.rows.find(b => b.status === "pending" && b.archived_at));
+    assert("utility accounts tagged property_deleted", after.utility_accounts.rows.every(a => a.archived_reason === "property_deleted"));
+    assert("autopay disabled", after.autopay_schedules.rows.every(a => a.enabled === false));
+    assert("recurring rent inactive", after.recurring_journal_entries.rows.every(r => r.status === "inactive"));
+    assert("current lease terminated, moved-out lease untouched in status",
+      after.leases.rows.find(l => l.tenant_id === tCur.id).status === "terminated" && after.leases.rows.find(l => l.tenant_id === tMoved.id).status === "terminated");
+    const stamped = Object.values(after).flatMap(v => v.rows).filter(r => r.archived_at && r.issue !== "QA-DEL old user-archived");
+    assert("every archived row carries the property's own archived_at", stamped.every(r => new Date(r.archived_at).getTime() === new Date(TS).getTime()),
+      stamped.filter(r => new Date(r.archived_at).getTime() !== new Date(TS).getTime()).map(r => r.id).join(","));
+    const ctrlUtil = await must("ctrl", sb.from("utilities").select("archived_at").eq("company_id", CID).eq("property", OTHER));
+    const ctrlLink = await must("ctrl link", sb.from("portfolio_loan_properties").select("archived_at").eq("company_id", CID).eq("property", OTHER));
+    assert("control property's utility + portfolio link untouched", ctrlUtil.every(u => !u.archived_at) && ctrlLink.every(u => !u.archived_at));
+    assert("function reported counts", out?.archived?.utility_bills_pending === 1 && out?.archived?.property_tax_bills_pending === 1, JSON.stringify(out?.archived));
+
+    // What the unattended jobs see now:
+    const lookback = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const lookahead = new Date(Date.now() + 31 * 86400000).toISOString().slice(0, 10);
+    const cronBills = await must("cron query", sb.from("property_tax_bills").select("id").eq("company_id", CID).is("archived_at", null).eq("status", "pending").gte("due_date", lookback).lte("due_date", lookahead));
+    assert("tax cron query finds nothing for the deleted property", cronBills.length === 0, cronBills.length + " rows");
+    const lics = await must("licence query", sb.from("property_licenses").select("id").eq("company_id", CID).is("archived_at", null));
+    assert("licence cron query finds nothing", lics.length === 0);
+    const targets = await must("sweep-targets query", sb.from("utilities").select("id, property").eq("company_id", CID).is("archived_at", null).eq("property", ADDR));
+    assert("sweep-targets query finds nothing for the deleted property", targets.length === 0);
+    // Second net: a row written AFTER the delete is still filtered by the jobs.
+    await must("stray bill", sb.from("property_tax_bills").insert([{ ...P, property_id: ids.prop, tax_year: 2027, installment_label: "stray", due_date: soon, status: "pending" }]));
+    const ix = await loadPropertyArchiveIndex(sb, [CID]);
+    const stray = await must("stray", sb.from("property_tax_bills").select("id, company_id, property, property_id").eq("company_id", CID).eq("installment_label", "stray"));
+    assert("second net: a live bill under the deleted property is skipped by the cron filter", ix.ok && stray.length === 1 && ix.isArchived(stray[0]));
+    assert("second net: the control property is not filtered", !ix.isArchived({ company_id: CID, property: OTHER }));
+    await must("drop stray", sb.from("property_tax_bills").delete().eq("company_id", CID).eq("installment_label", "stray"));
+
+    // ── RESTORE ──
+    const rOut = await must("restore_property_cascade", sb.rpc("restore_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_restore_tenants: true }));
+    const back = await snapshot();
+    console.log("     table                      live after restore");
+    for (const k of Object.keys(back)) console.log("     " + k.padEnd(27) + String(back[k].live).padStart(4));
+    for (const t of ["utilities", "utility_accounts", "property_taxes", "hoa_payments", "property_insurance", "property_loans",
+                     "portfolio_loan_properties", "property_licenses", "leases", "autopay_schedules", "recurring_journal_entries"]) {
+      assert(`${t}: back to its live count`, back[t].live === before[t].live, `${back[t].live} vs ${before[t].live}`);
+    }
+    assert("utility bills + tax bills all live again", back.utility_bills.live === 2 && back.property_tax_bills.live === 2);
+    assert("utility accounts' archived_reason cleared", back.utility_accounts.rows.every(a => a.archived_reason == null));
+    assert("user-archived work order stays archived; the other comes back",
+      back.work_orders.rows.find(w => w.issue === "QA-DEL old user-archived").archived_at && !back.work_orders.rows.find(w => w.issue === "QA-DEL leak").archived_at);
+    assert("both tenants back", back.tenants.live === 2);
+    assert("current tenant active again; moved-out tenant stays past",
+      back.tenants.rows.find(t => t.id === tCur.id).lease_status === "active" && back.tenants.rows.find(t => t.id === tMoved.id).lease_status === "past");
+    assert("current lease active again; the old terminated lease stays terminated",
+      back.leases.rows.find(l => l.tenant_id === tCur.id).status === "active" && back.leases.rows.find(l => l.tenant_id === tMoved.id).status === "terminated");
+    assert("autopay comes back PAUSED", back.autopay_schedules.rows.every(a => a.enabled === false));
+    assert("recurring rent comes back PAUSED", back.recurring_journal_entries.rows.every(r => r.status === "inactive"));
+    const [pBack] = await must("prop", sb.from("properties").select("archived_at").eq("id", ids.prop));
+    assert("property live again", pBack.archived_at === null, JSON.stringify(rOut));
+
+    // Restore refuses when the address has been re-used by a live property.
+    await must("re-delete", sb.rpc("archive_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_user_email: "qa" }));
+    const [dup] = await must("dup", sb.from("properties").insert([{ company_id: CID, ...comp("QA-DEL 1 Test St"), type: "Single Family" }]).select("id"));
+    ids.dup = dup.id;
+    const { error: dupErr } = await sb.rpc("restore_property_cascade", { p_company_id: CID, p_property_id: ids.prop, p_restore_tenants: false });
+    assert("restore refuses while a live property has the same address", !!dupErr && /already has the address/.test(dupErr.message), dupErr?.message);
+  } catch (e) {
+    fail++; console.log("  ❌ live run aborted: " + e.message);
+  } finally {
+    // Zero leftovers. Throwaway TEST rows only, all scoped to CID.
+    const T = ["utility_bills", "utility_payments", "utility_accounts", "utilities", "property_tax_bills", "property_taxes", "hoa_payments",
+      "property_insurance", "property_loans", "portfolio_loan_properties", "portfolio_loans", "property_licenses", "work_orders",
+      "recurring_journal_entries", "autopay_schedules", "leases", "tenants", "documents", "payments", "property_setup_wizard",
+      "property_owner_history", "notification_queue", "properties", "companies",
+      // LAST: the audit triggers write a row for every delete above.
+      "audit_trail"];
+    const left = [];
+    for (const t of T) {
+      const col = t === "companies" ? "id" : "company_id";
+      const { error } = await sb.from(t).delete().eq(col, CID);
+      if (error && !/does not exist|column/.test(error.message)) left.push(t + ": " + error.message);
+      const { count } = await sb.from(t).select("*", { count: "exact", head: true }).eq(col, CID);
+      if (count) left.push(t + ": " + count + " left");
+    }
+    assert("cleanup: zero QA-DEL rows left", left.length === 0, left.join("; "));
+  }
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

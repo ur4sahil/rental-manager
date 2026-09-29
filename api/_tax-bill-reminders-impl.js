@@ -11,6 +11,7 @@
 // Auth: Bearer CRON_SECRET (matches teller-sync-transactions pattern).
 const { createClient } = require("@supabase/supabase-js");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
+const { loadPropertyArchiveIndex } = require("./_archived-properties");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
@@ -279,7 +280,7 @@ module.exports = async function handler(req, res) {
     const lookaheadIso = new Date(Date.now() + 31 * 86_400_000).toISOString().slice(0, 10);
     const { data: bills, error } = await supabase
       .from("property_tax_bills")
-      .select("id, company_id, property, tax_year, installment_label, due_date, expected_amount, status, last_reminder_day_bucket")
+      .select("id, company_id, property, property_id, tax_year, installment_label, due_date, expected_amount, status, last_reminder_day_bucket")
       .is("archived_at", null)
       .eq("status", "pending")
       .gte("due_date", lookbackIso)
@@ -288,6 +289,12 @@ module.exports = async function handler(req, res) {
       console.error("tax-bill-reminders: fetch failed", error.message);
       return res.status(500).json({ error: "Fetch failed" });
     }
+
+    // Never remind about a DELETED property's bill. Deleting a property now
+    // archives its pending bills, but a bill under an archived property can
+    // still be live (deleted before that, or written afterwards).
+    const propIndex = await loadPropertyArchiveIndex(supabase, bills.map(b => b.company_id));
+    let skippedPropertyArchived = 0;
 
     let scanned = bills.length;
     let queued = 0;
@@ -315,6 +322,7 @@ module.exports = async function handler(req, res) {
     }
 
     for (const b of bills) {
+      if (propIndex.isArchived(b)) { skippedPropertyArchived++; continue; }
       const d = daysBetween(todayIso, b.due_date);
       const bucket = chooseBucket(d);
       if (bucket === null) { skippedOutOfWindow++; continue; }
@@ -372,6 +380,7 @@ module.exports = async function handler(req, res) {
       skipped_already_sent: skippedAlreadySent,
       skipped_out_of_window: skippedOutOfWindow,
       skipped_no_recipients: skippedNoRecipients,
+      skipped_property_archived: skippedPropertyArchived,
       errors,
     });
   } catch (e) {

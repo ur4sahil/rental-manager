@@ -30,6 +30,7 @@ const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
 const { embed, toVectorLiteral } = require("./_ai-embed");
 const { extractLicense } = require("./_ai-extract");
+const { loadPropertyArchiveIndex } = require("./_archived-properties");
 
 // Actions the WORKER calls. These carry no companyId -- the worker serves
 // every company -- and are authenticated by a shared secret instead.
@@ -1024,7 +1025,7 @@ module.exports = async function handler(req, res) {
       const { companyId: cid, providers = [] } = body;
       if (!cid) return res.status(400).json({ error: "companyId is required" });
       let q = sb.from("utilities")
-        .select("id, provider, property, account_number, responsibility")
+        .select("id, provider, property, property_id, account_number, responsibility")
         .eq("company_id", cid)
         // Archived rows are duplicates or retired accounts -- never swept.
         .is("archived_at", null)
@@ -1043,7 +1044,11 @@ module.exports = async function handler(req, res) {
       if (providers.length) q = q.in("provider", providers);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      const targets = data || [];
+      // Never sweep an account whose PROPERTY is deleted (second net: the
+      // delete archives its utilities, but one written afterwards, or under
+      // a property deleted before that, would still log into the portal).
+      const propIndex = await loadPropertyArchiveIndex(sb, [cid]);
+      const targets = (data || []).filter(t => !propIndex.isArchived(t, cid));
 
       // Attach the date of each account's most recent bill so the sweep can
       // SKIP an account whose current statement is already on file. Utility
@@ -1084,7 +1089,7 @@ module.exports = async function handler(req, res) {
       const { companyId: cid, provider = null } = body;
       if (!cid) return res.status(400).json({ error: "companyId is required" });
       let q = sb.from("utilities")
-        .select("id, provider, account_number, username_encrypted, password_encrypted, "
+        .select("id, provider, property, property_id, account_number, username_encrypted, password_encrypted, "
               + "encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
         .eq("company_id", cid)
         .not("username_encrypted", "is", null)
@@ -1095,7 +1100,10 @@ module.exports = async function handler(req, res) {
       if (provider) q = q.ilike("provider", `%${String(provider)}%`);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      return res.status(200).json({ ok: true, credentials: data || [] });
+      // A deleted property's logins are not offered to the worker.
+      const propIndex = await loadPropertyArchiveIndex(sb, [cid]);
+      const credentials = (data || []).filter(c => !propIndex.isArchived(c, cid));
+      return res.status(200).json({ ok: true, credentials });
     }
 
     // ---- worker claims one job -----------------------------------------

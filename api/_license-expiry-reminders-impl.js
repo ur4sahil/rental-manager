@@ -78,6 +78,7 @@ module.exports = async function handler(req, res) {
     let skippedNoBucket = 0;
     let skippedAlreadySent = 0;
     let skippedNoRecipients = 0;
+    let skippedPropertyArchived = 0;
     let errors = 0;
 
     // Cache property + member lookups per company to avoid N×M queries.
@@ -100,10 +101,12 @@ module.exports = async function handler(req, res) {
       // Resolve property address (cached)
       let propertyAddress = propCache.get(lic.property_id);
       if (propertyAddress === undefined) {
-        const { data: p } = await supabase.from("properties").select("address").eq("id", lic.property_id).maybeSingle();
-        propertyAddress = p?.address || "(property)";
+        const { data: p } = await supabase.from("properties").select("address, archived_at").eq("id", lic.property_id).maybeSingle();
+        // null = the property is deleted: never remind about its licence.
+        propertyAddress = p?.archived_at ? null : (p?.address || "(property)");
         propCache.set(lic.property_id, propertyAddress);
       }
+      if (propertyAddress === null) { skippedPropertyArchived++; continue; }
 
       // Resolve recipients (cached) — admins, owners, PMs, office assistants
       let recipients = memberCache.get(lic.company_id);
@@ -172,6 +175,7 @@ module.exports = async function handler(req, res) {
       skipped_out_of_window: skippedNoBucket,
       skipped_already_sent: skippedAlreadySent,
       skipped_no_recipients: skippedNoRecipients,
+      skipped_property_archived: skippedPropertyArchived,
       errors,
     });
   } catch (e) {
