@@ -113,9 +113,9 @@ async function testProrationMath() {
   assert(accountingJs.includes('runOwnerDistributionAccrual(supabase,'), 'autoOwnerDistribution delegates to the shared ownerRules implementation');
   assert(ownerRulesJs.includes('const paymentCents = toCents(amount);'), 'Owner distribution computes paymentCents');
   assert(ownerRulesJs.includes('Math.round(n * 100)'), 'paymentCents uses Math.round');
-  assert(ownerRulesJs.includes('return Math.round(incomeCents * Number(pct) / 100);') && ownerRulesJs.includes('const feeC = mgmtFeeCents(paymentCents, rule.pct);'), 'mgmtFeeCents computed from integer cents * percentage');
+  assert(ownerRulesJs.includes('return Math.round(incomeCents * Number(pct) / 100);') && ownerRulesJs.includes('const feeC = mgmtFeeCents(rentC, rule.pct);'), 'mgmtFeeCents computed from integer cents * percentage');
   assert(ownerRulesJs.includes('feeC / 100'), 'mgmtFee converted back from cents');
-  assert(ownerRulesJs.includes('const netC = paymentCents - feeC;') && ownerRulesJs.includes('amount: netC / 100'), 'ownerNet computed from cents difference');
+  assert(ownerRulesJs.includes('const netC = rentC - feeC;') && ownerRulesJs.includes('amount: netC / 100'), 'ownerNet computed from cents difference');
 
   // No raw floating-point multiplication for financial percentages
   // (paymentAmount * feePct without cents would be a bug)

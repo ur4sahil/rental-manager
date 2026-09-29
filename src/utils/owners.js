@@ -9,7 +9,7 @@
 // still show text).
 import { supabase } from "../supabase";
 import { findOwnerByName } from "./ownerRules";
-import { fetchAllPaged } from "./accounting";
+import { fetchAllPaged, autoOwnerDistribution } from "./accounting";
 
 // Set (ownerId) or clear (null) a property's owner. Returns { ok, error, owner }.
 export async function assignPropertyOwner(companyId, propertyId, ownerId) {
@@ -93,3 +93,32 @@ export async function loadOwnerLedger(companyId, ownerProps, startDate, endDate)
   return { failed: false, lines, accounts: a.rows };
 }
 
+
+// A bank deposit categorised on the Banking page (post_bank_transaction
+// 'add' / 'split') to a tenant's own AR account is a rent receipt too: run the
+// same owner accrual (autoOwnerDistribution -> ownerRules.runOwnerDistribution-
+// Accrual, same deterministic ODIST- reference, same rent-first rule). `lines`
+// are the deposit's credit legs, [{ accountId, amount }]; legs on the same
+// tenant are combined so a split into two rent lines accrues once.
+export async function accrueOwnerShareForBankDeposit(companyId, { date, lines }) {
+  const legs = (lines || []).filter(l => l && l.accountId && Number(l.amount) > 0);
+  if (!companyId || !date || !legs.length) return [];
+  const ids = [...new Set(legs.map(l => String(l.accountId)))].slice(0, 100);
+  const { data: accts, error } = await supabase.from("acct_accounts").select("id, tenant_id")
+    .eq("company_id", companyId).in("id", ids).not("tenant_id", "is", null);
+  if (error || !accts || !accts.length) return [];
+  const byTenant = new Map();
+  for (const l of legs) {
+    const a = accts.find(x => String(x.id) === String(l.accountId));
+    if (!a) continue;
+    byTenant.set(String(a.tenant_id), (byTenant.get(String(a.tenant_id)) || 0) + Math.round(Number(l.amount) * 100));
+  }
+  const out = [];
+  for (const [tenantId, cents] of byTenant) {
+    const { data: t } = await supabase.from("tenants").select("id, name, property")
+      .eq("company_id", companyId).eq("id", tenantId).maybeSingle();
+    if (!t || !t.property) continue;
+    out.push(await autoOwnerDistribution(companyId, t.property, cents / 100, date, t.name, t.id));
+  }
+  return out;
+}

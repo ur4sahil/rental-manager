@@ -252,7 +252,8 @@ function testFileStructure() {
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
   // 53700 on 2026-09-28 (owners): +~390 -- ownerRules.js (fee rule, references, GL statement builder, the accrual shared with the Stripe webhook), owners.js, OwnerPicker.js, owner-linking in the wizard / property page / import, statement Excel export.
-  assert(totalLines <= 53700, `Total src lines <= 53700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53800 on 2026-09-28 (owners follow-up): rent-only fee base + rent-first receipt rule in ownerRules.js, and the Banking-page deposit accrual hook (utils/owners.js).
+  assert(totalLines <= 53800, `Total src lines <= 53800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

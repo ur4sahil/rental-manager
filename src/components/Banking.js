@@ -7,6 +7,7 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { checkPeriodLock, rpcAllPaged } from "../utils/accounting";
+import { accrueOwnerShareForBankDeposit } from "../utils/owners";
 import { Spinner } from "./shared";
 import { HOUSY, queueHousyJob } from "../utils/housy";
 import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
@@ -1122,6 +1123,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       decisionLines: [{ gl_account_id: accountId, gl_account_name: accountName, amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || "" }]
     });
     if (!posted) return;
+    // A deposit to a tenant's own AR on an owner-managed property accrues the
+    // owner's share, like every other rent receipt (utils/owners.js).
+    if (isInflow) await accrueOwnerShareForBankDeposit(companyId, { date: txn.posted_date, lines: [{ accountId, amount: abs }] }).catch(e => pmError("PM-6004", { raw: e, context: "bank deposit owner accrual", silent: true }));
 
     // Audit
     logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
@@ -1310,6 +1314,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       }))
     });
     if (!posted) return;
+    // Owner accrual for tenant-AR legs of a split deposit (same rule and
+    // idempotent reference as every rent receipt; utils/owners.js).
+    if (isInflow) await accrueOwnerShareForBankDeposit(companyId, { date: txn.posted_date, lines: validLines.map(l => ({ accountId: l.accountId, amount: safeNum(l.amount) })) }).catch(e => pmError("PM-6004", { raw: e, context: "bank split owner accrual", silent: true }));
     if (posted.outcome !== "posted") {
       showToast("This transaction was already split and posted — linked it to the existing entry.", "success");
       setExpandedTxn(null);
