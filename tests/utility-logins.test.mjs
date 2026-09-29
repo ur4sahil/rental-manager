@@ -201,7 +201,7 @@ assert("the HOA page reuses the row salt when the association login changes",
   /encryptCredential\(String\(form\.username \|\| ""\)\.trim\(\), companyId, \(editingHoa && editingHoa\.encryption_salt\) \|\| null\)/.test(hoa));
 const imp = read("src/components/PropertyImport.js");
 assert("re-import leaves stored logins/websites alone when the sheet cell is blank",
-  /update\(keepStoredLoginOnBlank\(row\)\)/.test(imp) && /function keepStoredLoginOnBlank/.test(imp));
+  /update\(keepStoredLoginOnBlank\((row|patch)\)\)/.test(imp) && /function keepStoredLoginOnBlank/.test(imp));
 const ai = read("api/ai.js");
 const pc = ai.slice(ai.indexOf('if (action === "portal-credentials")'), ai.indexOf('if (action === "claim")'));
 assert("portal-credentials returns only live, non-closeout rows",

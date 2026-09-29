@@ -745,6 +745,7 @@ export function buildImportPlan({
 
   const attached = { utilities: [], hoas: [], loan: [], insurance: [], taxes: [], recurring: [] };
   const singleSeen = new Map();
+  const manySeen = new Map();
   const bySheet = { utilities, hoas, loan, insurance, taxes, recurring };
 
   for (const { sheet, key, many, columns } of EXTRA_SHEETS) {
@@ -781,6 +782,15 @@ export function buildImportPlan({
             message: `${where}: ${u ? "username with no password" : "password with no username"} — the login will not be usable.` });
         }
       }
+      // A value the import cannot map is left blank rather than written raw:
+      // say so, so it can be fixed in the sheet.
+      for (const [col, kind] of Object.entries(IMPORT_ENUM_COLUMNS[key] || {})) {
+        const raw = cellString(r[col]).trim();
+        if (raw && importEnumValue(kind, raw) === null) {
+          warnings.push({ sheet, row: r._row, kind: "value",
+            message: `${where}: "${raw}" is not a value this column understands -- it will be left blank.` });
+        }
+      }
       // An HOA with no name is named after its property, so the row
       // survives and still has a stable key to match on next time.
       const row = { ...r };
@@ -799,6 +809,22 @@ export function buildImportPlan({
         warnings.push({ sheet, row: r._row, kind: "pendency",
           message: `${where}: no annual amount — the other details are saved only if this property already has a tax record.` });
       }
+      // The key a re-import matches an existing row on. Two rows with the same
+      // key would both land on ONE stored row -- the second silently
+      // overwriting the first -- so the second is refused instead.
+      const dupKey = key === "utilities" ? `${cellString(row.provider).trim().toLowerCase()}|${cellString(row.account_number).trim().toLowerCase()}`
+        : key === "hoas" ? cellString(row.hoa_name).trim().toLowerCase()
+        : key === "loan" ? cellString(row.lender_name).trim().toLowerCase() : null;
+      if (dupKey !== null) {
+        const k = `${key}|${norm(target.address)}|${dupKey}`;
+        if (manySeen.has(k)) {
+          const what = key === "utilities" ? "provider and account number" : key === "hoas" ? "HOA name" : "lender";
+          errors.push({ sheet, row: r._row, field: "Property",
+            message: `${where}: same property and ${what} as row ${manySeen.get(k)}. Give each its own ${key === "utilities" ? "account number" : what}, or remove one.` });
+          continue;
+        }
+        manySeen.set(k, r._row);
+      }
       attached[key].push({ ...row, _address: target.address, _propertyId: target.id || null,
                            _creating: !!target.creating });
     }
@@ -813,11 +839,13 @@ export function buildImportPlan({
   // row will be added to it" -- on every single row. That was 132 of one
   // real import's 195 approvals, it told the user nothing they did not
   // already know, and it was false: nothing was being added at all.
+  // The same holds for a property this file CREATES: the tenant it would
+  // post against does not exist yet when the property is written, so the
+  // row was dropped there too -- silently, because only existing properties
+  // were warned about.
   for (const r of attached.recurring) {
-    if (!r._creating) {
-      warnings.push({ sheet: SHEET_RECURRING, row: r._row, kind: "pendency",
-        message: `${r._address}: recurring rent must be set on the property itself — this row is not imported.` });
-    }
+    warnings.push({ sheet: SHEET_RECURRING, row: r._row, kind: "pendency",
+      message: `${r._address}: recurring rent must be set on the property itself — this row is not imported.` });
   }
 
   const extraRecords = Object.values(attached).reduce((n, a) => n + a.length, 0);
@@ -839,4 +867,97 @@ export function buildImportPlan({
       pendencies: warnings.length,
     },
   };
+}
+
+// ---- create-path payload -------------------------------------------
+//
+// A NEW property goes through commit_property_wizard, which only acts on a
+// loan / insurance / tax section marked `enabled` -- the wizard's own toggle.
+// The import never set it, so every loan, policy and tax row for a new
+// property was parsed, counted in the preview, and then silently ignored.
+//
+// `recs` is what PropertyImport's subRecordsFor built for one address.
+// `report(why)` receives anything that could not be sent.
+export function importCreatePayload(recs, report = () => {}) {
+  const { loans: _all, ...rest } = recs || {};
+  const out = { ...rest };
+  out.utilities = rest.utilities || [];
+  out.loan = rest.loan ? { ...rest.loan, enabled: true } : null;
+  out.insurance = rest.insurance ? { ...rest.insurance, enabled: true } : null;
+  // annual_tax_amount is NOT NULL: a tax row without one would fail the
+  // whole property. Skip just the tax row, and say so.
+  const t = rest.taxes;
+  const noAmount = !!t && (t.annual_tax_amount === null || t.annual_tax_amount === undefined || t.annual_tax_amount === "");
+  if (noAmount) report("Property tax row not saved: a new tax record needs an Annual Tax Amount");
+  out.taxes = t && !noAmount ? { ...t, enabled: true } : null;
+  // HOA: the "Due Date" column is free text -- "15" / "15th" is a day of the
+  // month, a date is a date, anything else is left blank and reported. A new
+  // HOA needs an amount: without one the row is skipped and reported rather
+  // than failing the whole property.
+  out.hoas = [];
+  for (const h of rest.hoas || []) {
+    if (h.amount === null || h.amount === undefined || h.amount === "") {
+      report(`HOA "${h.hoa_name}" not saved: a new HOA needs an Amount`);
+      continue;
+    }
+    const due = hoaDue(h.due_date);
+    if (due?.bad) report(`HOA "${h.hoa_name}": due date "${due.bad}" not understood -- left blank`);
+    out.hoas.push({ ...h, due_date: due?.date || null, ...(due?.day ? { due_day: due.day } : {}) });
+  }
+  return out;
+}
+
+// ---- label -> token ----------------------------------------------
+//
+// The spreadsheet shows friendly labels; the database stores lowercase
+// tokens. property_taxes.billing_frequency is a CHECK constraint --
+// 'annual', 'semi_annual', 'quarterly', 'monthly' -- so "Annually"
+// was rejected outright and every one of a 40-row tax sheet was lost.
+// The rest have no constraint but do have a house style, and writing
+// "Monthly" beside "monthly" quietly splits the data in two.
+export const IMPORT_ENUMS = {
+  responsibility:    { owner: "owner", tenant: "tenant", "condo fee": "condo_fee", condo_fee: "condo_fee" },
+  hoaFrequency:      { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+  premiumFrequency:  { monthly: "monthly", quarterly: "quarterly", annually: "annual", annual: "annual" },
+  loanType:          { mortgage: "mortgage", heloc: "heloc", private: "private", commercial: "commercial" },
+  taxFrequency:      { annually: "annual", annual: "annual", "semi-annually": "semi_annual",
+                       semi_annual: "semi_annual", quarterly: "quarterly", monthly: "monthly" },
+};
+// Who pays a utility, read the way people actually type it: "Owner pays",
+// "Landlord", "TENANT", "condo fee". Checked in this order so "condo fee paid
+// by owner" is still a condo fee.
+const responsibilityOf = (raw) => {
+  const s = raw.toLowerCase();
+  if (/condo/.test(s)) return "condo_fee";
+  if (/owner|landlord/.test(s)) return "owner";
+  if (/tenant/.test(s)) return "tenant";
+  return null;
+};
+// Never writes raw text: an unrecognised value is null (left blank), and
+// buildImportPlan warns about it so it can be corrected in the sheet.
+export const importEnumValue = (kind, v) => {
+  const raw = cellString(v).trim();
+  if (!raw) return null;
+  if (kind === "responsibility") return responsibilityOf(raw);
+  return IMPORT_ENUMS[kind][raw.toLowerCase()] || null;
+};
+// Which enum each sheet column is read through.
+export const IMPORT_ENUM_COLUMNS = {
+  utilities: { responsibility: "responsibility" },
+  hoas: { frequency: "hoaFrequency" },
+  loan: { loan_type: "loanType" },
+  insurance: { premium_frequency: "premiumFrequency" },
+  taxes: { billing_frequency: "taxFrequency" },
+};
+
+// An HOA "Due Date" cell is free text: "15" or "15th" is a day of the month,
+// a date is a date. Returns { day } / { date } / null (blank) / { bad }.
+export function hoaDue(v) {
+  const s = cellString(v).trim();
+  if (!s) return null;
+  const d = s.match(/^(\d{1,2})(st|nd|rd|th)?$/i);
+  if (d) { const n = Number(d[1]); return n >= 1 && n <= 31 ? { day: n } : { bad: s }; }
+  const iso = cellDate(v);
+  if (typeof iso === "string") return { date: iso };
+  return { bad: s };
 }

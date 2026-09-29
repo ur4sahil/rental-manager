@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
-import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest, canManage, pgrestQuote, ACTIVE_LEASE, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
+import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest, canManage, pgrestQuote, ACTIVE_LEASE, LIVE_TENANCY, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -29,6 +29,115 @@ const respToForm = (r) =>
   : r === "condo_fee" ? "condo_fee"
   : (r === "owner_pays" || r === "tenant_pays") ? r
   : "owner_pays";
+
+// The wizard's due-date inputs take a DAY OF THE MONTH (1-28), but the tables
+// store a full date ("2026-09-15"). Loading the full string into the number
+// box showed nothing, and Number("2026-09-15") is NaN, so every save sent day 1
+// and moved every utility and HOA due date to the 1st. Blank -> null ("not
+// given"), which commit_property_wizard treats as "keep what is stored".
+const dueDayOf = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const m = String(v).match(/^\d{4}-\d{2}-(\d{2})/);
+  if (m) return Number(m[1]);
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 31 ? n : null;
+};
+
+// ── What the wizard sends, and what it was sent FROM ─────────────────────
+// commit_property_wizard writes a field only when the user changed it: every
+// loaded record carries `_orig` (these same fields, built from the form as it
+// was loaded) and `_db` (the stored columns as read). A field equal to its
+// `_orig` is left as it is in the database -- so an edit made on another page
+// while the wizard was open survives -- and a field the user DID change whose
+// column has moved since `_db` was read is refused as "changed since you
+// opened it" instead of silently overwriting the other person's edit.
+// Both the payload and `_orig` go through the SAME builder below, so an
+// untouched field always compares equal.
+const pickCols = (row, cols) => { const o = {}; for (const c of cols) o[c] = row?.[c] ?? null; return o; };
+const WIZ_DB_COLS = {
+  utility: ["provider", "type", "account_number", "due", "responsibility", "website"],
+  hoa: ["hoa_name", "amount", "due_date", "frequency", "notes", "website", "management_company", "mgmt_website",
+        "pay_portal_website", "contact_name", "contact_email", "contact_phone"],
+  loan: ["lender_name", "loan_type", "original_amount", "current_balance", "interest_rate", "monthly_payment",
+         "escrow_included", "escrow_amount", "loan_start_date", "maturity_date", "account_number", "notes", "website"],
+  insurance: ["provider", "policy_number", "premium_amount", "premium_frequency", "coverage_amount", "expiration_date", "notes", "website"],
+  taxes: ["parcel_id", "assessed_value", "tax_year", "annual_tax_amount", "billing_frequency", "next_due_date",
+          "exemptions", "escrow_paid_by_lender", "records_url", "notes"],
+  property: ["address_line_1", "address_line_2", "city", "state", "zip", "county", "type", "status", "notes", "year_built",
+             "tenant", "tenant_2", "tenant_2_email", "tenant_2_phone", "tenant_3", "tenant_3_email", "tenant_3_phone",
+             "tenant_4", "tenant_4_email", "tenant_4_phone", "tenant_5", "tenant_5_email", "tenant_5_phone",
+             "rent", "security_deposit", "lease_start", "lease_end"],
+  tenant: ["name", "first_name", "middle_initial", "last_name", "email", "phone", "rent", "late_fee_amount", "late_fee_type",
+           "lease_start", "lease_end_date", "is_voucher", "voucher_number", "reexam_date", "case_manager_name",
+           "case_manager_email", "case_manager_phone", "voucher_portion", "tenant_portion"],
+  lease: ["start_date", "end_date", "rent_amount", "security_deposit"],
+  recurring: ["amount", "day_of_month", "frequency", "next_post_date"],
+};
+const blankOr = (v) => (v === "" || v === null || v === undefined ? "" : v);
+const WIZ_FIELDS = {
+  utility: (u) => ({
+    provider: (u.provider || "").trim(), type: u.type || "", account_number: u.account_number || "",
+    due_day: dueDayOf(u.due_date), responsibility: u.responsibility, website: u.website || "",
+  }),
+  hoa: (h) => ({
+    hoa_name: (h.hoa_name || "").trim(),
+    amount: (h.amount === "" || h.amount === null || h.amount === undefined) ? null : Number(h.amount),
+    due_day: dueDayOf(h.due_date), frequency: h.frequency || "Monthly", notes: (h.notes || "").trim(), website: h.website || "",
+    management_company: (h.management_company || "").trim(), mgmt_website: h.mgmt_website || "",
+    pay_portal_website: h.pay_portal_website || "",
+    contact_name: (h.contact_name || "").trim(), contact_email: (h.contact_email || "").trim().toLowerCase(),
+    contact_phone: (h.contact_phone || "").trim(),
+  }),
+  loan: (l) => ({
+    lender_name: (l.lender_name || "").trim(), loan_type: l.loan_type,
+    original_amount: Number(l.original_amount) || 0, current_balance: Number(l.current_balance) || 0,
+    interest_rate: Number(l.interest_rate) || 0, monthly_payment: Number(l.monthly_payment),
+    escrow_included: !!l.escrow_included, escrow_amount: l.escrow_included ? (Number(l.escrow_amount) || 0) : 0,
+    loan_start_date: l.loan_start_date || null, maturity_date: l.maturity_date || null,
+    account_number: (l.account_number || "").trim(), notes: (l.notes || "").trim(), website: l.website || "",
+  }),
+  insurance: (i) => ({
+    provider: (i.provider || "").trim(), policy_number: (i.policy_number || "").trim(),
+    premium_amount: Number(i.premium_amount), premium_frequency: i.premium_frequency,
+    coverage_amount: Number(i.coverage_amount) || 0, expiration_date: i.expiration_date || null,
+    notes: (i.notes || "").trim(), website: i.website || "",
+  }),
+  taxes: (t) => ({
+    parcel_id: (t.parcel_id || "").trim(), assessed_value: blankOr(t.assessed_value), tax_year: blankOr(t.tax_year),
+    annual_tax_amount: blankOr(t.annual_tax_amount), billing_frequency: t.billing_frequency || "semi_annual",
+    next_due_date: t.next_due_date || "", exemptions: (t.exemptions || "").trim(),
+    escrow_paid_by_lender: !!t.escrow_paid_by_lender, records_url: (t.records_url || "").trim(), notes: (t.notes || "").trim(),
+  }),
+  property: (p) => ({
+    address_line_1: p.address_line_1, address_line_2: p.address_line_2 || "", city: p.city, state: p.state, zip: p.zip,
+    county: p.county || "", type: p.type, status: p.status,
+    // Drives the pre-1978 lead paint requirement. Empty string would fail the
+    // integer column, so an unset year is null ("unknown").
+    year_built: p.year_built ? Number(p.year_built) : null, notes: p.notes || "",
+  }),
+  tenant: (t) => {
+    const o = {
+      tenant: (t.tenant || "").trim(), tenant_first: (t.tenant_first || "").trim(), tenant_mi: (t.tenant_mi || "").trim(),
+      tenant_last: (t.tenant_last || "").trim(), tenant_email: t.tenant_email || "", tenant_phone: t.tenant_phone || "",
+      rent: blankOr(t.rent), security_deposit: t.security_deposit || 0, lease_start: t.lease_start || "", lease_end: t.lease_end || "",
+      // Blank = keep the tenant's stored terms (the wizard has no field).
+      late_fee_amount: blankOr(t.late_fee_amount), late_fee_type: t.late_fee_type || "",
+      is_voucher: !!t.is_voucher, voucher_number: t.voucher_number || "", reexam_date: t.reexam_date || "",
+      case_manager_name: t.case_manager_name || "", case_manager_email: t.case_manager_email || "",
+      case_manager_phone: t.case_manager_phone || "", voucher_portion: blankOr(t.voucher_portion), tenant_portion: blankOr(t.tenant_portion),
+    };
+    for (const n of [2, 3, 4, 5]) for (const s of ["", "_email", "_phone"]) o[`tenant_${n}${s}`] = t[`tenant_${n}${s}`] || "";
+    return o;
+  },
+  recurring: (r) => ({
+    amount: r.amount, frequency: r.frequency || "monthly", day_of_month: r.day_of_month || 1, start_date: r.start_date || "",
+  }),
+};
+// `loaded` is the form as it was loaded; `db` the stored columns as read.
+const withOrig = (kind, loaded, db) => (loaded ? { _orig: WIZ_FIELDS[kind](loaded), ...(db ? { _db: db } : {}) } : {});
+// Form-row bookkeeping: what this row looked like when loaded, and the row it
+// came from. The row editors spread the row, so these travel with it.
+const loadedRow = (form, db, kind) => ({ ...form, _loaded: form, _db: pickCols(db, WIZ_DB_COLS[kind]) });
 
 const LICENSE_TYPE_OPTIONS = [
   { value: "rental_license", label: "Rental License" },
@@ -213,6 +322,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     return { address_line_1: "", address_line_2: "", city: "", state: "", zip: "", county: "", type: "Single Family", status: "vacant", notes: "" };
   });
   // Tenant & lease details (Step 2, only if occupied)
+  // An empty Tenant & Lease form. Also what a reopened wizard falls back to
+  // when the property has no live tenant (see loadLiveWizardData).
+  const blankTenantForm = () => ({ tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantForm, setTenantForm] = useState(() => {
     if (wizardData.propertyId && wizardData.tenant) {
       return {
@@ -221,7 +333,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" };
+    return blankTenantForm();
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   // The property's owner (owner_id). A wizard resumed from a draft saved
@@ -337,11 +449,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // one commit_property_wizard should update ("" = add a new loan).
   const [loanChoices, setLoanChoices] = useState([]);
   const emptyLoan = { enabled: true, id: "", lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" };
+  // A stored loan as the form holds it, remembering how it was loaded.
+  const loanFormFrom = (l, base = emptyLoan) => loadedRow({
+    ...base, enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional",
+    original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "", interest_rate: l.interest_rate ?? "",
+    monthly_payment: l.monthly_payment ?? "", escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "",
+    escrow_covers: l.escrow_covers || base.escrow_covers || { taxes: false, insurance: false, pmi: false },
+    loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "",
+    notes: l.notes || "", setup_recurring: false, website: l.website || "", username: "", password: "",
+    _loaded: undefined, _db: undefined,
+  }, l, "loan");
   const selectExistingLoan = (id) => {
     if (id === "__new__") { setLoan(emptyLoan); return; }
     const l = loanChoices.find(x => String(x.id) === String(id));
     if (!l) return;
-    setLoan({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "", interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "", escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "", escrow_covers: l.escrow_covers || { taxes: false, insurance: false, pmi: false }, loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false, website: l.website || "", username: "", password: "" });
+    setLoan(loanFormFrom(l));
   };
   // Portfolio loan: this property can be ATTACHED to a loan that spans several
   // properties (created/edited in the Loans page). Tracked, never split.
@@ -478,6 +600,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     async function initWizard() {
       try {
         const addr = savedAddress || wizardData.address || "NEW";
+        let revivedFromDismissed = false;
         // Resume path: prefer in_progress; fall back to dismissed so a
         // user who closed the wizard mid-flow can pick up exactly
         // where they left off. Previously dismissed rows were orphaned
@@ -491,6 +614,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             .eq("company_id", companyId).eq("property_address", addr).eq("status", "dismissed")
             .order("updated_at", { ascending: false }).limit(1).maybeSingle();
           if (dismissedRow) {
+            revivedFromDismissed = true;
             await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", dismissedRow.id).eq("company_id", companyId);
             existing = dismissedRow;
           }
@@ -542,7 +666,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           // commit_property_wizard's replace-all would archive live rows the
           // stale snapshot never held. loadLiveWizardData only overrides when
           // live rows exist, so a genuine new-property draft is left intact.
-          await loadLiveWizardData(addr);
+          // A DISMISSED session brought back is a memory of an old form, not
+          // unsaved work: for a property that already exists, the live rows
+          // win for the property and the tenant too. (6950 Hawthorne,
+          // 2026-09-29: vacant, both tenants archived, but a dismissed
+          // snapshot reopened as "occupied -- Kendall Orebeaux", and saving
+          // it would have written that tenant back.) A genuine in-progress
+          // draft keeps its snapshot.
+          await loadLiveWizardData(addr, revivedFromDismissed ? { refreshProperty: true, tablesWin: true } : {});
           return;
         }
         // Edit mode: check for completed wizard and reopen it
@@ -608,7 +739,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // never been committed and lives nowhere else. For a COMPLETED
             // one the tables are the record and the snapshot is a memory of
             // it, so the tables are read here and override what was just set.
-            await loadLiveWizardData(addr);
+            await loadLiveWizardData(addr, { refreshProperty: true, tablesWin: true });
             }
             return;
           }
@@ -625,7 +756,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // the wizard, which is exactly what "Add Tenant" on a fresh
             // vacant property hits, and where the earlier fix did not reach.
             const _statusForForm = wizardData?.addingTenant ? "occupied" : (existProp.status || "vacant");
-            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "", owner_id: existProp.owner_id || null, owner_name_text: existProp.owner_name || "" };
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "", year_built: existProp.year_built ? String(existProp.year_built) : "", owner_id: existProp.owner_id || null, owner_name_text: existProp.owner_name || "" };
             setPropForm(filledProp);
             // Jump to the requested step (e.g. tenant_lease for Add Tenant).
             if (wizardData?.startAtStep) {
@@ -635,37 +766,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             }
             setSavedPropertyId(wizardData.propertyId);
             setSavedAddress(existProp.address);
-            // Load related data
-            const [utilRes, hoaRes, loanRes, insRes, taxRes] = await Promise.all([
-              supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-              supabase.from("property_taxes").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
-            ]);
-            if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: respToForm(u.responsibility), website: u.website || "", username: u.username || "", password: u.password || "" })));
-            // Credentials are NOT read back: hoa_payments stores only
-            // ciphertext, so h.username has always been undefined here and
-            // the blank boxes are honest. commit_property_wizard carries the
-            // stored ciphertext forward when the form sends none, so leaving
-            // them empty no longer wipes the saved login.
-            if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({
-              enabled: true,
-              hoa_name: h.hoa_name || h.name || "", amount: h.amount || "",
-              due_date: h.due_date || "", frequency: h.frequency || "Monthly",
-              notes: h.notes || "", website: h.website || "",
-              username: "", password: "",
-              management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
-              mgmt_username: "", mgmt_password: "",
-              pay_portal_website: h.pay_portal_website || "",
-              pay_username: "", pay_password: "",
-              contact_name: h.contact_name || "", contact_email: h.contact_email || "",
-              contact_phone: h.contact_phone || "",
-            })));
-            setLoanChoices(loanRes.data || []);
-            if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, id: l.id, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
-            if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
-            if (taxRes.data?.[0]) { const tx = taxRes.data[0]; setTaxes({ enabled: true, assessed_value: tx.assessed_value || "", tax_year: tx.tax_year || new Date().getFullYear(), annual_tax_amount: tx.annual_tax_amount || "", billing_frequency: tx.billing_frequency || "semi_annual", next_due_date: tx.next_due_date || "", parcel_id: tx.parcel_id || "", exemptions: tx.exemptions || "", escrow_paid_by_lender: tx.escrow_paid_by_lender || false, records_url: tx.records_url || "", notes: tx.notes || "", setup_recurring: false }); }
+            // Load related data through the SAME loader the other two paths
+            // use. This path had its own copy and it had drifted: the loan and
+            // insurance loaders dropped `website` (so the save wiped it),
+            // utilities read the unused due_date column instead of `due`, no
+            // row ids were kept, and nothing recorded which rows were seen --
+            // so the merge commit could not tell a removed row from one that
+            // was never loaded.
+            await loadLiveWizardData(existProp.address);
           }
         }
         // Create new wizard entry
@@ -954,6 +1062,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // silently deletes someone else's addition.
   const seenHoaNames = useRef([]);
   const seenUtilProviders = useRef([]);
+  const seenHoaIds = useRef([]);
+  const seenUtilIds = useRef([]);
+  // How the property / tenant / recurring-rent steps looked when loaded.
+  const propLoadedRef = useRef(null);
+  const tenantLoadedRef = useRef(null);
+  const recurringLoadedRef = useRef(null);
   // Once the user has edited utilities/HOAs, the async live-load must NOT
   // overwrite them. The wizard renders the resume step (which can be Utilities)
   // and awaits loadLiveWizardData; a remove/edit made during that gap was being
@@ -961,7 +1075,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const utilTouched = useRef(false);
   const hoaTouched = useRef(false);
 
-  async function loadLiveWizardData(address) {
+  async function loadLiveWizardData(address, { refreshProperty = false, tablesWin = false } = {}) {
     if (!address || !companyId) return;
     const [hoaRes, utilRes] = await Promise.all([
       supabase.from("hoa_payments").select("*")
@@ -976,11 +1090,26 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     const utilRows = utilRes.data || [];
     seenHoaNames.current = hoaRows.map(h => h.hoa_name).filter(Boolean);
     seenUtilProviders.current = utilRows.map(u => u.provider).filter(Boolean);
+    // The ids are what commit_property_wizard merges on: a row is UPDATEd in
+    // place (keeping its status, paid date, amount and id) and only a row
+    // that was seen here and is missing from the save is archived.
+    seenHoaIds.current = hoaRows.map(h => h.id);
+    seenUtilIds.current = utilRows.map(u => u.id);
+
+    // Nothing live any more, but the restored draft still holds rows that came
+    // from the table (they carry an id): those were removed elsewhere since.
+    // Drop them so the form does not show -- or the save try to revive --
+    // records that no longer exist. Rows typed into a draft have no id.
+    if (!hoaRows.length && !hoaTouched.current) setHoas(prev => prev.filter(h => !h.id));
+    if (!utilRows.length && !utilTouched.current) setUtilities(prev => prev.filter(u => !u.id));
 
     // Credential boxes stay blank on purpose: only ciphertext comes back, and
     // the RPC carries the stored ciphertext forward when the form sends none.
-    if (hoaRows.length && !hoaTouched.current) setHoas(hoaRows.map(h => ({
-      hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: h.due_date || 1,
+    // Each row also remembers how it was loaded (_loaded / _db): the commit
+    // writes only what the user changed.
+    if (hoaRows.length && !hoaTouched.current) setHoas(hoaRows.map(h => loadedRow({
+      id: h.id,
+      hoa_name: h.hoa_name || "", amount: h.amount ?? "", due_date: dueDayOf(h.due_date) ?? "",
       frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "",
       username: "", password: "",
       management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
@@ -988,121 +1117,133 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       pay_portal_website: h.pay_portal_website || "", pay_username: "", pay_password: "",
       contact_name: h.contact_name || "", contact_email: h.contact_email || "",
       contact_phone: h.contact_phone || "",
-    })));
+    }, h, "hoa")));
 
-    if (utilRows.length && !utilTouched.current) setUtilities(utilRows.map(u => ({
-      provider: u.provider || "", type: u.type || "Electric",
-      account_number: u.account_number || "", due_date: u.due || u.due_date || 1,
+    if (utilRows.length && !utilTouched.current) setUtilities(utilRows.map(u => loadedRow({
+      id: u.id,
+      provider: u.provider || "", type: u.type || "",
+      account_number: u.account_number || "", due_date: dueDayOf(u.due || u.due_date) ?? "",
       responsibility: respToForm(u.responsibility),
       website: u.website || "", username: "", password: "",
-    })));
+    }, u, "utility")));
 
     // The same staleness applies to every other step that has a live table
-    // behind it. commit_property_wizard writes EIGHT of them, and each one
-    // has a page in this app where the same record can be edited:
-    //
-    //   utilities, hoa_payments        archive-all then re-insert (destructive)
-    //   property_loans                 UPDATE the existing row
-    //   property_insurance             UPDATE the existing row
-    //   property_taxes                 UPDATE the existing row
-    //   tenants, leases                UPDATE the existing row
-    //   recurring_journal_entries      UPDATE the existing rows
-    //
-    // The three property-attached ones are read back here for the same
-    // reason. Tenant, lease and recurring rent are deliberately NOT: the
-    // tenant step drives lease creation, deposit posting and the first
-    // month's rent, so quietly replacing what the form holds would change
-    // what those side effects do. That one needs its own look.
+    // behind it: loans, insurance, taxes, tenant, lease and recurring rent all
+    // have a page of their own where the same record can be edited.
     const [loanRes, insRes, taxRes] = await Promise.all([
       supabase.from("property_loans").select("*").eq("company_id", companyId)
         .eq("property", address).is("archived_at", null).limit(5),
       supabase.from("property_insurance").select("*").eq("company_id", companyId)
-        .eq("property", address).is("archived_at", null).limit(5),
+        .eq("property", address).is("archived_at", null)
+        .order("created_at", { ascending: true }).limit(5),
       supabase.from("property_taxes").select("*").eq("company_id", companyId)
-        .eq("property", address).is("archived_at", null).limit(5),
+        .eq("property", address).is("archived_at", null)
+        .order("created_at", { ascending: true }).limit(5),
     ]);
 
     const loans = loanRes.data || [];
     setLoanChoices(loans);
+    // A read that FAILED is not "there are none": leave the form alone, and
+    // with no id in it the commit leaves the table alone too.
+    const liveLoaded = !loanRes.error && !insRes.error && !taxRes.error;
+    // The draft points at a loan / policy / tax record that has since been
+    // archived elsewhere: clear it rather than let the save revive it.
+    if (liveLoaded && !loans.length) setLoan(prev => (prev.id ? { ...emptyLoan, enabled: false } : prev));
     if (loans.length) setLoan(prev => {
       // Freshen the loan the user is editing (multi-loan picker), not always
       // the first one; fall back to the first if the picked id is gone.
       const l = loans.find(x => String(x.id) === String(prev.id)) || loans[0];
-      return {
-        ...prev, enabled: true, id: l.id,
-        lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional",
-        original_amount: l.original_amount ?? "", current_balance: l.current_balance ?? "",
-        interest_rate: l.interest_rate ?? "", monthly_payment: l.monthly_payment ?? "",
-        escrow_included: !!l.escrow_included, escrow_amount: l.escrow_amount ?? "",
-        loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "",
-        account_number: l.account_number || "", notes: l.notes || "",
-        website: l.website || "", username: "", password: "",
-      };
+      return loanFormFrom(l, prev);
     });
 
     const ins = (insRes.data || [])[0];
-    if (ins) setInsurance(prev => ({
-      ...prev, enabled: true,
-      provider: ins.provider || "", policy_number: ins.policy_number || "",
-      premium_amount: ins.premium_amount ?? "", premium_frequency: ins.premium_frequency || "annual",
-      coverage_amount: ins.coverage_amount ?? "", expiration_date: ins.expiration_date || "",
-      notes: ins.notes || "", website: ins.website || "", username: "", password: "",
-    }));
+    if (liveLoaded && !ins) setInsurance(prev => (prev.id ? { ...prev, enabled: false, id: "", _loaded: undefined, _db: undefined } : prev));
+    if (ins) setInsurance(prev => {
+      const form = {
+        ...prev, enabled: true, id: ins.id,
+        provider: ins.provider || "", policy_number: ins.policy_number || "",
+        premium_amount: ins.premium_amount ?? "", premium_frequency: ins.premium_frequency || "annual",
+        coverage_amount: ins.coverage_amount ?? "", expiration_date: ins.expiration_date || "",
+        notes: ins.notes || "", website: ins.website || "", username: "", password: "",
+        _loaded: undefined, _db: undefined,
+      };
+      return loadedRow(form, ins, "insurance");
+    });
 
-    // TENANT, LEASE AND RECURRING RENT.
-    //
-    // These were left out of the first pass because the deposit and first
-    // month's rent are keyed on the lease start date, so reading a corrected
-    // date would have re-posted them. That hazard is closed above --
-    // those posts now only happen on a first commit -- so the live record can
-    // be read here like everything else.
-    //
-    // Without this, renaming a tenant or fixing a lease date on the Tenants
-    // page and then saving the wizard for any reason wrote the OLD values
-    // back over them.
+    // PROPERTY ROW: read every time. It is what `_orig` / `_db` for the
+    // property step are built from, and it carries the co-tenant slots.
+    const { data: propRow, error: propErr } = await supabase.from("properties")
+      .select(WIZ_DB_COLS.property.join(", ") + ", owner_id, owner_name")
+      .eq("company_id", companyId).eq("address", address).is("archived_at", null).maybeSingle();
+    const pr = propRow || {};
+    if (!propErr && propRow) {
+      const loadedProp = {
+        address_line_1: pr.address_line_1 || "", address_line_2: pr.address_line_2 || "",
+        city: pr.city || "", state: pr.state || "", zip: pr.zip || "", county: pr.county || "",
+        type: pr.type || "Single Family", status: pr.status || "vacant", notes: pr.notes || "",
+        year_built: pr.year_built ? String(pr.year_built) : "",
+      };
+      propLoadedRef.current = { form: loadedProp, db: pickCols(pr, WIZ_DB_COLS.property) };
+      // A completed wizard reopened to edit: propForm came from the
+      // wizard_data snapshot, so a type, note, county, status or year changed
+      // on the Properties page since was written back over on the next save.
+      // The live row wins. ("Add tenant" still opens the form as occupied.)
+      // The owner too: the save re-links propForm.owner_id, so a snapshot
+      // owner would undo a change made on the property page since.
+      if (refreshProperty) setPropForm(prev => ({
+        ...prev, ...loadedProp,
+        status: wizardData?.addingTenant ? "occupied" : loadedProp.status,
+        owner_id: pr.owner_id || null, owner_name_text: pr.owner_name || "",
+      }));
+    }
+
+    // TENANT, LEASE AND RECURRING RENT. A tenant on notice still lives there,
+    // so they load too (LIVE_TENANCY), the active one first.
     const [tenRes, leaseRes, recRes] = await Promise.all([
       supabase.from("tenants")
-        .select("id, name, first_name, middle_initial, last_name, email, phone, rent, security_deposit, lease_start, lease_end_date, late_fee_amount, late_fee_type, is_voucher, voucher_number, reexam_date, case_manager_name, case_manager_email, case_manager_phone, voucher_portion, tenant_portion")
+        .select("id, lease_status, " + WIZ_DB_COLS.tenant.join(", ") + ", security_deposit")
         .eq("company_id", companyId).eq("property", address).is("archived_at", null)
-        .in("lease_status", ACTIVE_LEASE).order("id").limit(5),
+        .in("lease_status", LIVE_TENANCY).order("id").limit(5),
       supabase.from("leases")
-        .select("start_date, end_date, rent_amount, security_deposit")
+        .select(WIZ_DB_COLS.lease.join(", "))
         .eq("company_id", companyId).eq("property", address).eq("status", "active")
         .order("start_date", { ascending: false }).limit(1),
       supabase.from("recurring_journal_entries")
-        .select("amount, day_of_month, frequency, next_post_date")
+        .select(WIZ_DB_COLS.recurring.join(", "))
         .eq("company_id", companyId).eq("property", address).eq("status", "active")
         .is("archived_at", null).like("description", "Monthly rent%").limit(1),
     ]);
 
-    const tenants = tenRes.data || [];
+    const tenants = (tenRes.data || []).slice()
+      .sort((a, b) => (ACTIVE_LEASE.includes(a.lease_status) ? 0 : 1) - (ACTIVE_LEASE.includes(b.lease_status) ? 0 : 1));
     const lease = (leaseRes.data || [])[0];
     const rec = (recRes.data || [])[0];
     const primary = tenants[0];
 
-    if (primary) {
-      // The co-tenant slots live on the PROPERTY row, which is where the
-      // wizard writes them, so they are read from there rather than inferred
-      // from the order tenants happen to come back in.
-      const { data: propRow } = await supabase.from("properties")
-        .select("tenant_2, tenant_2_email, tenant_2_phone, tenant_3, tenant_3_email, tenant_3_phone, tenant_4, tenant_4_email, tenant_4_phone, tenant_5, tenant_5_email, tenant_5_phone")
-        .eq("company_id", companyId).eq("address", address).maybeSingle();
-      const pr = propRow || {};
-      const filled = [2, 3, 4, 5].filter(n => (pr["tenant_" + n] || "").trim()).length;
+    // No one lives there: a snapshot's old tenant must not come back. Only
+    // when the property row exists (the record is authoritative) and the
+    // caller asked the tables to win. "Add tenant" opens a blank form too.
+    if (!primary && tablesWin && propRow) {
+      tenantLoadedRef.current = null;
+      setTenantForm(blankTenantForm());
+    }
 
-      setTenantForm(prev => ({
-        ...prev,
+    if (primary) {
+      const filled = [2, 3, 4, 5].filter(n => (pr["tenant_" + n] || "").trim()).length;
+      const loadedTenant = {
         tenant: primary.name || "",
         tenant_first: primary.first_name || "",
         tenant_mi: primary.middle_initial || "",
         tenant_last: primary.last_name || "",
         tenant_email: primary.email || "",
         tenant_phone: primary.phone || "",
+        // Not shown in the wizard, but carried so a save never blanks them.
+        late_fee_amount: primary.late_fee_amount ?? "",
+        late_fee_type: primary.late_fee_type || "",
         tenant_2: pr.tenant_2 || "", tenant_2_email: pr.tenant_2_email || "", tenant_2_phone: pr.tenant_2_phone || "",
         tenant_3: pr.tenant_3 || "", tenant_3_email: pr.tenant_3_email || "", tenant_3_phone: pr.tenant_3_phone || "",
         tenant_4: pr.tenant_4 || "", tenant_4_email: pr.tenant_4_email || "", tenant_4_phone: pr.tenant_4_phone || "",
         tenant_5: pr.tenant_5 || "", tenant_5_email: pr.tenant_5_email || "", tenant_5_phone: pr.tenant_5_phone || "",
-        tenantCount: 1 + filled,
         // The LEASE is the authority on its own dates and rent; the tenant row
         // carries a denormalised copy that can lag behind it.
         rent: (lease?.rent_amount ?? primary.rent) ?? "",
@@ -1117,32 +1258,44 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         case_manager_phone: primary.case_manager_phone || "",
         voucher_portion: primary.voucher_portion ?? "",
         tenant_portion: primary.tenant_portion ?? "",
-      }));
+      };
+      tenantLoadedRef.current = {
+        form: loadedTenant, db: pickCols(primary, WIZ_DB_COLS.tenant),
+        dbLease: lease ? pickCols(lease, WIZ_DB_COLS.lease) : null,
+      };
+      setTenantForm(prev => ({ ...prev, ...loadedTenant, tenantCount: 1 + filled }));
     }
 
     if (rec) {
-      setRecurring(prev => ({
-        ...prev,
-        amount: rec.amount ?? prev.amount,
-        frequency: rec.frequency || prev.frequency,
-        day_of_month: rec.day_of_month || prev.day_of_month,
-        // Deliberately NOT overwriting start_date from next_post_date: the
-        // form's start_date is the PM's chosen floor and setting it from a
-        // rolling next-post date would drag it forward every save.
-      }));
+      setRecurring(prev => {
+        const next = {
+          ...prev,
+          amount: rec.amount ?? prev.amount,
+          frequency: rec.frequency || prev.frequency,
+          day_of_month: rec.day_of_month || prev.day_of_month,
+          // Deliberately NOT overwriting start_date from next_post_date: the
+          // form's start_date is the PM's chosen floor and setting it from a
+          // rolling next-post date would drag it forward every save.
+        };
+        recurringLoadedRef.current = { form: next, db: pickCols(rec, WIZ_DB_COLS.recurring) };
+        return next;
+      });
     }
 
     const tx = (taxRes.data || [])[0];
-    if (tx) setTaxes(prev => ({
-      ...prev, enabled: true,
+    if (liveLoaded && !tx) setTaxes(prev => (prev.id ? { ...prev, enabled: false, id: "", _loaded: undefined, _db: undefined } : prev));
+    if (tx) setTaxes(prev => loadedRow({
+      ...prev, enabled: true, id: tx.id,
       parcel_id: tx.parcel_id || "", assessed_value: tx.assessed_value ?? "",
-      tax_year: tx.tax_year || new Date().getFullYear(),
+      // NULL stays blank: a save must not invent this year.
+      tax_year: tx.tax_year ?? "",
       annual_tax_amount: tx.annual_tax_amount ?? "",
       billing_frequency: tx.billing_frequency || "semi_annual",
       next_due_date: tx.next_due_date || "", exemptions: tx.exemptions || "",
       escrow_paid_by_lender: !!tx.escrow_paid_by_lender,
       records_url: tx.records_url || "", notes: tx.notes || "",
-    }));
+      _loaded: undefined, _db: undefined,
+    }, tx, "taxes"));
   }
 
   async function commitWizard() {
@@ -1200,12 +1353,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       for (const u of utilities.filter(x => x.provider.trim())) {
         const creds = await encryptRow(!!(u.username && u.password), u.username, u.password);
         pre.utilities.push({
-          provider: u.provider.trim(),
-          type: u.type || 'Electric',
-          account_number: u.account_number || '',
-          due_day: Number(u.due_date) || 1,
-          responsibility: u.responsibility,
-          website: u.website || '',
+          // The row this came from, so an edit UPDATEs it in place, and how it
+          // looked when loaded, so only what the user changed is written.
+          ...(u.id ? { id: u.id, ...withOrig("utility", u._loaded, u._db) } : {}),
+          ...WIZ_FIELDS.utility(u),
           ...(creds || {}),
         });
       }
@@ -1227,7 +1378,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         }
       }
       for (const h of hoas.filter(x => x.hoa_name.trim())) {
-        if (!h.amount || Number(h.amount) <= 0) throw new Error('HOA amount required: ' + h.hoa_name);
+        // Only a NEW HOA must carry an amount. An existing one stored with 0 or
+        // none (entered elsewhere) used to block every save of the wizard.
+        if (!h.id && (!h.amount || Number(h.amount) <= 0)) {
+          throw new Error(`Enter an amount for the new HOA "${h.hoa_name.trim()}", or remove it, before saving.`);
+        }
 
         // THREE credential sets on one row, sharing ONE salt.
         //
@@ -1248,18 +1403,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const salt      = mgmtSalt || payRaw?.encryption_salt || null;
 
         pre.hoas.push({
-          hoa_name: h.hoa_name.trim(),
-          amount: Number(h.amount),
-          due_day: Number(h.due_date) || 1,
-          frequency: h.frequency || 'Monthly',
-          notes: (h.notes || '').trim(),
-          website: h.website || '',
+          ...(h.id ? { id: h.id, ...withOrig("hoa", h._loaded, h._db) } : {}),
+          ...WIZ_FIELDS.hoa(h),
           ...(hoaCreds || {}),
           // One salt for the row, whichever set produced it.
           ...(salt ? { encryption_salt: salt } : {}),
+          // And one key fingerprint: the RPC writes it whenever ANY of the
+          // three sets is new, so it must come with a management / portal
+          // login too, not only the association one.
+          ...((hoaCreds || mgmtRaw || payRaw) ? { credential_key_fp: hoaCreds?.credential_key_fp || mgmtRaw?.credential_key_fp || payRaw?.credential_key_fp || null } : {}),
 
-          management_company: (h.management_company || '').trim(),
-          mgmt_website: h.mgmt_website || '',
           ...(mgmtRaw ? {
             mgmt_username_encrypted: mgmtRaw.username_encrypted,
             mgmt_password_encrypted: mgmtRaw.password_encrypted,
@@ -1267,17 +1420,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             mgmt_encryption_iv_username: mgmtRaw.encryption_iv_username,
           } : {}),
 
-          pay_portal_website: h.pay_portal_website || '',
           ...(payRaw ? {
             pay_username_encrypted: payRaw.username_encrypted,
             pay_password_encrypted: payRaw.password_encrypted,
             pay_encryption_iv: payRaw.encryption_iv,
             pay_encryption_iv_username: payRaw.encryption_iv_username,
           } : {}),
-
-          contact_name: (h.contact_name || '').trim(),
-          contact_email: (h.contact_email || '').trim().toLowerCase(),
-          contact_phone: (h.contact_phone || '').trim(),
         });
       }
       if (loan.enabled) {
@@ -1285,24 +1433,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         pre.loan = {
           enabled: true,
           id: loan.id || null,
-          lender_name: loan.lender_name.trim(),
-          loan_type: loan.loan_type,
-          original_amount: Number(loan.original_amount) || 0,
-          current_balance: Number(loan.current_balance) || 0,
-          interest_rate: Number(loan.interest_rate) || 0,
-          monthly_payment: Number(loan.monthly_payment),
-          escrow_included: !!loan.escrow_included,
-          escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0,
+          ...(loan.id ? withOrig("loan", loan._loaded, loan._db) : {}),
+          ...WIZ_FIELDS.loan(loan),
           escrow_covers: loan.escrow_included ? loan.escrow_covers : {},
-          loan_start_date: loan.loan_start_date || null,
-          maturity_date: loan.maturity_date || null,
-          account_number: (loan.account_number || '').trim(),
-          notes: (loan.notes || '').trim(),
-          website: loan.website || '',
           // Never: mortgage payments are booked on a cash basis from the bank
           // feed, so the wizard creates no recurring mortgage entry (owner
-          // decision 2026-09-28; commit_property_wizard only creates one when
-          // this is true).
+          // decision 2026-09-28; commit_property_wizard ignores the flag).
           setup_recurring: false,
           ...(creds || {}),
         };
@@ -1335,14 +1471,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const creds = await encryptRow(!!(insurance.username && insurance.password), insurance.username, insurance.password);
         pre.insurance = {
           enabled: true,
-          provider: insurance.provider.trim(),
-          policy_number: (insurance.policy_number || '').trim(),
-          premium_amount: Number(insurance.premium_amount),
-          premium_frequency: insurance.premium_frequency,
-          coverage_amount: Number(insurance.coverage_amount) || 0,
-          expiration_date: insurance.expiration_date || null,
-          notes: (insurance.notes || '').trim(),
-          website: insurance.website || '',
+          id: insurance.id || null,
+          ...(insurance.id ? withOrig("insurance", insurance._loaded, insurance._db) : {}),
+          ...WIZ_FIELDS.insurance(insurance),
           ...(creds || {}),
         };
       }
@@ -1372,56 +1503,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       wizard_id: wizardId || null,
       mode: numericPropertyId ? 'edit' : 'fresh',
       property_id_for_edit: numericPropertyId,
+      // commit_property_wizard refuses an edit from a client that does not
+      // send what each record looked like when loaded (a stale bundle).
+      payload_version: 2,
       property: {
         address: compositeAddress,
-        address_line_1: propForm.address_line_1,
-        address_line_2: propForm.address_line_2 || '',
-        city: propForm.city,
-        state: propForm.state,
-        zip: propForm.zip,
-        county: propForm.county || '',
-        type: propForm.type,
-        status: propForm.status,
-        // Drives the pre-1978 lead paint requirement. Empty string would
-        // fail the integer column, so an unset year is null -- and null
-        // means "unknown", which the compliance report reports as such
-        // rather than assuming either side of the cutoff.
-        year_built: propForm.year_built ? Number(propForm.year_built) : null,
-        notes: propForm.notes || '',
+        ...WIZ_FIELDS.property(propForm),
+        ...(propLoadedRef.current ? withOrig("property", propLoadedRef.current.form, propLoadedRef.current.db) : {}),
       },
       tenant: (propForm.status === 'occupied' && tenantForm.tenant.trim()) ? {
-        tenant: tenantForm.tenant.trim(),
-        tenant_first: (tenantForm.tenant_first || '').trim(),
-        tenant_mi: (tenantForm.tenant_mi || '').trim(),
-        tenant_last: (tenantForm.tenant_last || '').trim(),
-        tenant_email: tenantForm.tenant_email,
-        tenant_phone: tenantForm.tenant_phone,
-        rent: tenantForm.rent,
-        security_deposit: tenantForm.security_deposit || 0,
-        lease_start: tenantForm.lease_start || '',
-        lease_end: tenantForm.lease_end || '',
-        late_fee_amount: tenantForm.late_fee_amount || '',
-        late_fee_type: tenantForm.late_fee_type || 'flat',
-        is_voucher: !!tenantForm.is_voucher,
-        voucher_number: tenantForm.voucher_number || '',
-        reexam_date: tenantForm.reexam_date || '',
-        case_manager_name: tenantForm.case_manager_name || '',
-        case_manager_email: tenantForm.case_manager_email || '',
-        case_manager_phone: tenantForm.case_manager_phone || '',
-        voucher_portion: tenantForm.voucher_portion || '',
-        tenant_portion: tenantForm.tenant_portion || '',
-        tenant_2: tenantForm.tenant_2 || '',
-        tenant_2_email: tenantForm.tenant_2_email || '',
-        tenant_2_phone: tenantForm.tenant_2_phone || '',
-        tenant_3: tenantForm.tenant_3 || '',
-        tenant_3_email: tenantForm.tenant_3_email || '',
-        tenant_3_phone: tenantForm.tenant_3_phone || '',
-        tenant_4: tenantForm.tenant_4 || '',
-        tenant_4_email: tenantForm.tenant_4_email || '',
-        tenant_4_phone: tenantForm.tenant_4_phone || '',
-        tenant_5: tenantForm.tenant_5 || '',
-        tenant_5_email: tenantForm.tenant_5_email || '',
-        tenant_5_phone: tenantForm.tenant_5_phone || '',
+        ...WIZ_FIELDS.tenant(tenantForm),
+        ...(tenantLoadedRef.current ? {
+          ...withOrig("tenant", tenantLoadedRef.current.form, tenantLoadedRef.current.db),
+          _db_lease: tenantLoadedRef.current.dbLease,
+        } : {}),
       } : null,
       utilities: pre.utilities,
       hoas: pre.hoas,
@@ -1432,26 +1527,26 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       // as collateral.
       hoas_seen: seenHoaNames.current || [],
       utilities_seen: seenUtilProviders.current || [],
-      loan: pre.loan,
-      insurance: pre.insurance,
+      // The same, by id -- what the RPC actually merges and archives on.
+      hoas_seen_ids: (seenHoaIds.current || []).map(String),
+      utilities_seen_ids: (seenUtilIds.current || []).map(String),
+      // Loan / insurance / tax: a step switched OFF names the one record the
+      // user turned off. Anything else (skipped, never loaded) sends null and
+      // the RPC leaves the table alone -- it used to archive every policy.
+      loan: pre.loan || (loan.id ? { enabled: false, id: loan.id } : null),
+      insurance: pre.insurance || (insurance.id ? { enabled: false, id: insurance.id } : null),
       taxes: taxes.enabled ? {
         enabled: true,
-        parcel_id: (taxes.parcel_id || '').trim(),
-        assessed_value: taxes.assessed_value,
-        tax_year: taxes.tax_year,
-        annual_tax_amount: taxes.annual_tax_amount,
-        billing_frequency: taxes.billing_frequency || 'semi_annual',
-        next_due_date: taxes.next_due_date || '',
-        exemptions: (taxes.exemptions || '').trim(),
-        escrow_paid_by_lender: !!taxes.escrow_paid_by_lender,
-        records_url: (taxes.records_url || '').trim(),
-        notes: (taxes.notes || '').trim(),
-      } : null,
+        id: taxes.id || null,
+        ...(taxes.id ? withOrig("taxes", taxes._loaded, taxes._db) : {}),
+        ...WIZ_FIELDS.taxes(taxes),
+      } : (taxes.id ? { enabled: false, id: taxes.id } : null),
+      // Only a deliberate clear stops the rent schedule; a payload that merely
+      // lacks recurring rent leaves it running.
+      recurring_cleared: !!(propForm.status === 'occupied' && tenantForm.tenant.trim() && !recurring.amount),
       recurring: (propForm.status === 'occupied' && tenantForm.tenant.trim() && recurring.amount) ? {
-        amount: recurring.amount,
-        frequency: recurring.frequency || 'monthly',
-        day_of_month: recurring.day_of_month || 1,
-        start_date: recurring.start_date || '',
+        ...WIZ_FIELDS.recurring(recurring),
+        ...(recurringLoadedRef.current ? withOrig("recurring", recurringLoadedRef.current.form, recurringLoadedRef.current.db) : {}),
       } : null,
     };
 

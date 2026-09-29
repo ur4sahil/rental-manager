@@ -269,10 +269,14 @@ function testFileStructure() {
   // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
   // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
   // 53900 on 2026-09-29: theme I round 3 (owner read-only loans, whole-login trimming, badge count) merged with theme K (staging df90dcd).
-  // 54700 on 2026-09-29: staging (53900) merged with the owners branch (+~720: owner links in
-  // the wizard / property page / import, OwnerPicker + owner correction, ledger statements with
-  // billed / collected / unpaid, ownership-history reads, the SQL-accrual callers).
-  assert(totalLines <= 54700, `Total src lines <= 54700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 54200 on 2026-09-29: + audit theme J (wizard per-field payload builders
+  // WIZ_FIELDS / WIZ_DB_COLS so only changed fields are written; import enum /
+  // duplicate-key / HOA-due handling, import HOA salt reuse) merged with staging 4f3dcb6 (53900).
+  // 55000 on 2026-09-29: staging 81d9128 (54200, theme J) merged with the owners branch (+~720 at
+  // 54700: owner links in the wizard / property page / import, OwnerPicker + owner correction, ledger
+  // statements with billed / collected / unpaid, ownership-history reads, the SQL-accrual callers, and
+  // the Owners page's background drain).
+  assert(totalLines <= 55000, `Total src lines <= 55000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
