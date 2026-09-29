@@ -119,8 +119,12 @@ assert("Cmd+Enter will not save an invalid or undescribed entry",
   /if \(form\.description\.trim\(\) && validation\.isValid\) saveEntry\("posted"\);/.test(accounting));
 assert("Enter on the last line adds a line, otherwise steps down",
   /if \(i === form\.lines\.length - 1\) \{ addLine\(\); focusRow\(i \+ 1\); \}/.test(accounting));
+// The copy spreads `coding` -- the source line minus its id and its bank /
+// reconciliation stamps (a copy is a new line; update_journal_entry keys
+// kept lines by id).
 assert("duplicate copies the coding but never the amounts",
-  /lines\.splice\(i \+ 1, 0, \{ \.\.\.src, debit: "", credit: ""/.test(accounting));
+  /lines\.splice\(i \+ 1, 0, \{ \.\.\.coding, debit: "", credit: ""/.test(accounting) &&
+  /const coding = \{ \.\.\.src \};\s*delete coding\.id; delete coding\.bank_feed_transaction_id; delete coding\.reconciled; delete coding\.reconciled_date;/.test(accounting));
 assert("delete respects the two-line minimum",
   /if \(i === -1 \|\| form\.lines\.length <= 2\) return;/.test(accounting));
 assert("auto-balance does nothing on an already-balanced entry",

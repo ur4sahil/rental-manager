@@ -11,6 +11,7 @@
 import { supabase } from "../supabase";
 import { findCountySchedule } from "./helpers";
 import { pmError } from "./errors";
+import { propertyTaxesEscrowed } from "./expensePosting";
 
 /** YYYY-MM-DD for a local date (no UTC shift). */
 function localISODate(y, m, d) {
@@ -73,6 +74,15 @@ export async function generateBillsForProperty({
     return { created: 0, updated: 0, skipped: 0, reason: "missing_input" };
   }
   const year = Number(taxYear) || new Date().getFullYear();
+  // Escrowed: the lender pays these taxes from the mortgage escrow, so there
+  // is no bill for the owner to pay and none is generated. Existing bills are
+  // left untouched (they are simply no longer shown as due or reminded).
+  // A failed lookup generates nothing -- a missing reminder is recoverable
+  // with "Regenerate"; a bill for something the lender already paid is the
+  // mistake this prevents.
+  const escrowed = await propertyTaxesEscrowed({ companyId, propertyAddress });
+  if (escrowed === null) return { created: 0, updated: 0, skipped: 0, reason: "escrow_check_failed" };
+  if (escrowed) return { created: 0, updated: 0, skipped: 0, reason: "escrowed" };
   // Tolerant lookup. Properties store the county as typed -- "Charles",
   // not "Charles County" -- and an exact key match missed 66 of the 79
   // properties that HAVE a county, generating no bills for any of them

@@ -51,8 +51,8 @@ if (existsSync(built)) {
   // "housify-v4". A test that accepts the exact failure it exists to
   // catch is worse than no test, because it reads as coverage.
   assert("the built cache name is specific to this build",
-    !!bm && !bm[1].includes("__") && /^housify-[0-9a-f]{7,}-/.test(bm[1]),
-    bm ? `got ${bm[1]} — expected housify-<sha>-<stamp>` : "no CACHE_NAME found");
+    !!bm && !bm[1].includes("__") && /^housify-[0-9a-f]{7,}(-[0-9a-z]+)?$/.test(bm[1]),
+    bm ? `got ${bm[1]} — expected housify-<sha> or housify-<sha>-<stamp> (stamp only on a dirty tree)` : "no CACHE_NAME found");
   console.log(`      (built cache name: ${bm && bm[1]})`);
 } else {
   console.log("SKIP  no build/ present — run npm run build to check stamping");

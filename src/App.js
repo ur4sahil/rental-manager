@@ -13,7 +13,8 @@ import { pageUrl, sweptUrl, pageForPath, normalizeLegacyUrl } from "./utils/rout
 import { queueNotification } from "./utils/notifications";
 import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings, clearMembershipCache } from "./utils/company";
 import { COMPANY_DEFAULTS } from "./config";
-import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, ensureDefaultAccounts, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
+import { loadLoginMissingRows, buildLoginMissingTasks } from "./utils/loginMissing";
+import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, fetchAllPaged, autoPostRentCharges, autoPostRecurringEntries, ensureDefaultAccounts, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
 import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
 import PullToRefresh from "./components/PullToRefresh";
 
@@ -1221,7 +1222,12 @@ function AppInner() {
             wizardSteps++;
           }
         }
-        const total = propReqCount + docExcCount + memReqCount + tenantTasks + wizardSteps;
+        // Login-missing to-dos, counted by the same loader and rules as the
+        // Tasks page (only for pages this viewer can open).
+        const badgePages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || [];
+        const lmRows = await loadLoginMissingRows(supabase, cid, { allowedPages: badgePages, pageAll: fetchAllPaged });
+        const loginMissing = buildLoginMissingTasks(lmRows, new Map(), { allowedPages: badgePages }).length;
+        const total = propReqCount + docExcCount + memReqCount + tenantTasks + wizardSteps + loginMissing;
         if (!cancelled) setPendingTasksCount(total);
       } catch (_e) { /* silent — next poll retries */ }
     }
@@ -1230,7 +1236,7 @@ function AppInner() {
     const onFocus = () => poll();
     window.addEventListener("focus", onFocus);
     return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
-  }, [activeCompany?.id, userRole, page, userProfile?.email, currentUser?.email]);
+  }, [activeCompany?.id, userRole, page, userProfile?.email, currentUser?.email, customAllowedPages, companyRole]);
 
   if (screen === "loading") return <><div className="flex items-center justify-center h-dvh safe-y bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;

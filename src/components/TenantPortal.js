@@ -571,21 +571,25 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   notes: maintForm.notes,
   cost: 0,
   }]).select();
-  // Upload photos and link to the work order
+  if (error) { pmError("PM-7001", { raw: error, context: "submit maintenance request" }); return; }
+  // Upload photos and link them to the work order. A failure is reported --
+  // the request itself was saved, so the tenant is told which photos did not
+  // attach instead of assuming they went through.
   if (newWO?.[0] && maintPhotos.length > 0) {
+  const failedPhotos = [];
   for (const photo of maintPhotos) {
   const fileName = shortId() + "-" + sanitizeFileName(photo.name);
   const { error: uploadErr } = await supabase.storage.from("maintenance-photos").upload(fileName, photo);
-  if (!uploadErr) {
-  await supabase.from("work_order_photos").insert([{
+  if (uploadErr) { failedPhotos.push(photo.name); pmError("PM-7001", { raw: uploadErr, context: "upload maintenance photo", silent: true }); continue; }
+  const { error: photoErr } = await supabase.from("work_order_photos").insert([{
   work_order_id: newWO[0].id, property: tenantData.property,
   url: fileName, caption: photo.name,
   company_id: companyId
   }]);
+  if (photoErr) { failedPhotos.push(photo.name); pmError("PM-7001", { raw: photoErr, context: "attach maintenance photo", silent: true }); }
   }
+  if (failedPhotos.length > 0) showToast(`Your request was submitted, but ${failedPhotos.length} photo${failedPhotos.length === 1 ? "" : "s"} could not be attached (${failedPhotos.join(", ")}). Please send them to your property manager.`, "error");
   }
-  }
-  if (error) { pmError("PM-7001", { raw: error, context: "submit maintenance request" }); return; }
   logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant", companyId);
   setMaintForm({ issue: "", priority: "normal", notes: "" });
   setMaintPhotos([]);

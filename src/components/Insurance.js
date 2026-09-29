@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
-function InsuranceTracker({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function InsuranceTracker({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -18,6 +19,23 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   const [showCreds, setShowCreds] = useState(new Set());
 
   useEffect(() => { fetchPolicies(); }, [companyId]);
+
+  function openEditPolicy(p) {
+  setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true);
+  }
+  // Deep link from Tasks & Approvals ("login missing"): open that policy's
+  // edit form once the list has loaded. Handled once per action object.
+  const handledAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editRecordId;
+  if (!id || handledAction.current === initialAction || loading) return;
+  const rec = policies.find(x => String(x.id) === String(id));
+  handledAction.current = initialAction;
+  // Loaded, and not among this company's live records: say so rather than
+  // silently opening nothing.
+  if (!rec) { showToast("That record was archived or isn't available.", "error"); return; }
+  openEditPolicy(rec);
+  }, [initialAction, policies, loading]);
 
   async function fetchPolicies() {
   const { data } = await supabase.from("property_insurance").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
@@ -35,20 +53,21 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   // valid date literal. Coerce blanks to null so INSERT behaves like UPDATE.
   payload.expiration_date = form.expiration_date || null;
   payload.website = form.website || "";
-  if (form.username || form.password) {
+  if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("insurance portal login"), "error"); return; }
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-      payload.username_encrypted = resU.encrypted;
+      payload.username_encrypted = resU.encrypted || null; // null, never '' (chk_*_creds_not_blank)
       // Which key encrypted this. ENCRYPTION_KEY was rotated once with
       // nothing migrating the ciphertext, and every stored credential
       // silently stopped opening. A fingerprint turns the next rotation
       // into "re-enter this" instead of a credential that never works.
       payload.credential_key_fp = resU.keyFp || null;
-      payload.password_encrypted = resP.encrypted;
+      payload.password_encrypted = resP.encrypted || null;
       payload.encryption_iv_username = resU.iv || null;
-      payload.encryption_iv = resP.iv || resU.iv;
-      payload.encryption_salt = resU.salt || resP.salt;
+      payload.encryption_iv = resP.iv || resU.iv || null;
+      payload.encryption_salt = resU.salt || resP.salt || null;
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   if (editingPolicy) {
@@ -181,7 +200,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
         </>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
         render: p => (<>
-          <TextLink tone="brand" size="xs" onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+          <TextLink tone="brand" size="xs" onClick={() => openEditPolicy(p)} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deletePolicy(p.id)}>Delete</TextLink>
         </>) },
     ]}

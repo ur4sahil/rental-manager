@@ -85,8 +85,18 @@ function testFileStructure() {
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
-  // 26 -> 28 on 2026-09-28 (owners): ownerRules.js (pure fee / reference / statement rules shared with api/stripe.js) and owners.js (owner-link + ledger-read helpers).
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 28, `src/utils/ has 8..28 files (found ${actualUtilFiles.length})`);
+  // 27 on 2026-09-28: + loginMissing.js (import-free "login missing" to-do rules for
+  // Tasks & Approvals, run directly in node by login-missing.test.mjs).
+  // 28 on 2026-09-28 (theme K, one expense booked once): + expenseRules.js
+  // (import-free WO/invoice, mortgage-month and escrow rules, tested directly
+  // and mirrored by the tax cron) and expensePosting.js (the ledger reads and
+  // postings WO completion, invoice payment, Record payment, the recurring
+  // engine and tax-bill generation now share -- no-double-expense.test.mjs).
+  // 29 on 2026-09-29: theme I (loginMissing.js) merged with theme K (two files).
+  // 31 on 2026-09-29: staging's 29 merged with the owners branch's two
+  // (ownerRules.js -- the pure fee / statement rules shared with api/stripe.js --
+  // and owners.js -- owner links, statement reads, correction + pending RPCs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 31, `src/utils/ has 8..31 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -251,9 +261,18 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  // 53700 on 2026-09-28 (owners): +~390 -- ownerRules.js (fee rule, references, GL statement builder, the accrual shared with the Stripe webhook), owners.js, OwnerPicker.js, owner-linking in the wizard / property page / import, statement Excel export.
-  // 53800 on 2026-09-28 (owners follow-up): rent-only fee base + rent-first receipt rule in ownerRules.js, and the Banking-page deposit accrual hook (utils/owners.js).
-  assert(totalLines <= 53800, `Total src lines <= 53800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53350 on 2026-09-29: +~150 for "login missing" to-dos (src/utils/loginMissing.js incl.
+  // portfolio loans) and the edit deep links on Utilities/Insurance/Loans/HOA.
+  // 53450 on 2026-09-29: +~65 for theme-I round 2 (named-account utility save, half-login refusals,
+  // allowedPages-filtered to-dos, unavailable-record toasts, account-first Fetched Bills).
+  // 53500 on 2026-09-28 (theme K): +~210 for expenseRules.js / expensePosting.js and the
+  // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
+  // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
+  // 53900 on 2026-09-29: theme I round 3 (owner read-only loans, whole-login trimming, badge count) merged with theme K (staging df90dcd).
+  // 54700 on 2026-09-29: staging (53900) merged with the owners branch (+~720: owner links in
+  // the wizard / property page / import, OwnerPicker + owner correction, ledger statements with
+  // billed / collected / unpaid, ownership-history reads, the SQL-accrual callers).
+  assert(totalLines <= 54700, `Total src lines <= 54700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

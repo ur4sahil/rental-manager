@@ -66,6 +66,11 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     ["tenants", "updated_at"],
     ["payments", "tenant_id"],
     ["documents", "tenant_id"],
+    // Utilities "Accounts" tab delete + login save (20260928130000).
+    ["utility_accounts", "archived_reason"],
+    ["utility_accounts", "credential_key_fp"],
+    ["utilities", "credential_key_fp"],
+    ["property_loans", "credential_key_fp"],
   ];
   for (const [table, col] of required) {
     const { error } = await sb.from(table).select(col).limit(1);

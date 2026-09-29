@@ -10,6 +10,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { markBillPaid, unmarkBillPaid, skipBill, generateBillsForProperty } from "../utils/taxes";
 import { Spinner } from "./shared";
+import { escrowedTaxProperties } from "../utils/expensePosting";
 
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -18,7 +19,9 @@ function daysUntil(dateStr) {
   return Math.round((d - today) / 86400000);
 }
 
-function statusChip(status, dueDate) {
+function statusChip(status, dueDate, escrowed) {
+  // Lender pays from escrow: nothing for the owner to pay, never "overdue".
+  if (status === "pending" && escrowed) return { cls: "bg-neutral-100 text-neutral-500 border-neutral-200", label: "Escrow — lender pays" };
   if (status === "paid") return { cls: "bg-success-50 text-success-700 border-success-200", label: "Paid" };
   if (status === "skipped") return { cls: "bg-neutral-100 text-neutral-500 border-neutral-200", label: "Skipped" };
   if (status === "voided") return { cls: "bg-neutral-100 text-neutral-500 border-neutral-200", label: "Voided" };
@@ -41,6 +44,9 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
   const [markPaidBill, setMarkPaidBill] = useState(null); // { bill, paidDate, paidAmount, paidNotes }
   const [editBill, setEditBill] = useState(null);          // { bill, due_date, expected_amount, installment_label }
   const [generating, setGenerating] = useState(false);
+  // Properties whose taxes the lender pays from mortgage escrow. Their bills
+  // are not open items: no reminder, not counted as due or overdue.
+  const [escrowed, setEscrowed] = useState(new Set());
 
   useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, [companyId]);
 
@@ -55,6 +61,8 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
       if (propsRes.error) pmError("PM-8006", { raw: propsRes.error, context: "load properties for tax bills", silent: true });
       setBills(billsRes.data || []);
       setProperties(propsRes.data || []);
+      const esc = await escrowedTaxProperties(companyId);
+      setEscrowed(esc || new Set());
     } finally {
       setLoading(false);
     }
@@ -85,7 +93,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
     if (!ok) { guardRelease("regenerateTaxBills"); return; }
     try {
       setGenerating(true);
-      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0, ambiguous: 0, retired: 0 };
+      let totals = { created: 0, updated: 0, skipped: 0, noSchedule: 0, noCounty: 0, ambiguous: 0, retired: 0, escrowed: 0, escrowUnknown: 0 };
       const year = new Date().getFullYear();
       for (const p of properties) {
         if (!p.county) { totals.noCounty++; continue; }
@@ -100,12 +108,14 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
         // of area, which is a different and misleading thing.
         if (r.reason === "ambiguous") { totals.ambiguous++; continue; }
         if (r.reason === "no_schedule_for_jurisdiction") { totals.noSchedule++; continue; }
+        if (r.reason === "escrowed") { totals.escrowed++; continue; }
+        if (r.reason === "escrow_check_failed") { totals.escrowUnknown++; continue; }
         totals.created += r.created || 0;
         totals.updated += r.updated || 0;
         totals.skipped += r.skipped || 0;
         totals.retired += r.retired || 0;
       }
-      showToast(`Generated ${totals.created}, backfilled ${totals.updated}${totals.retired ? `, retired ${totals.retired} superseded` : ""}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.ambiguous} ambiguous county, ${totals.noCounty} missing county.`, "success");
+      showToast(`Generated ${totals.created}, backfilled ${totals.updated}${totals.retired ? `, retired ${totals.retired} superseded` : ""}. Skipped: ${totals.skipped} existing, ${totals.noSchedule} out-of-area, ${totals.ambiguous} ambiguous county, ${totals.noCounty} missing county, ${totals.escrowed} paid by lender escrow${totals.escrowUnknown ? `, ${totals.escrowUnknown} not checked (escrow lookup failed)` : ""}.`, "success");
       logAudit("update", "property_tax_bills", `Bulk regeneration for ${year}: +${totals.created}`, "", userProfile?.email, userRole, companyId);
       fetchAll();
     } finally { setGenerating(false); guardRelease("regenerateTaxBills"); }
@@ -194,14 +204,15 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const thirtyDaysOut = new Date(today.getTime() + 30 * 86400000);
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const isOpen = (b) => b.status === "pending" && !escrowed.has(b.property);
   const filtered = bills.filter(b => {
     if (propertyFilter !== "all" && b.property !== propertyFilter) return false;
     if (search && !(b.property || "").toLowerCase().includes(search.toLowerCase()) && !(b.installment_label || "").toLowerCase().includes(search.toLowerCase())) return false;
     const due = b.due_date ? parseLocalDate(b.due_date) : null;
-    if (filter === "open") return b.status === "pending";
-    if (filter === "overdue") return b.status === "pending" && due && due < today;
-    if (filter === "thisMonth") return b.status === "pending" && due && due >= today && due <= monthEnd;
-    if (filter === "next30") return b.status === "pending" && due && due >= today && due <= thirtyDaysOut;
+    if (filter === "open") return isOpen(b);
+    if (filter === "overdue") return isOpen(b) && due && due < today;
+    if (filter === "thisMonth") return isOpen(b) && due && due >= today && due <= monthEnd;
+    if (filter === "next30") return isOpen(b) && due && due >= today && due <= thirtyDaysOut;
     if (filter === "paid") return b.status === "paid";
     if (filter === "all") return true;
     return true;
@@ -215,10 +226,10 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
 
   // Counters for the filter pills
   const counts = {
-    open: bills.filter(b => b.status === "pending").length,
-    overdue: bills.filter(b => b.status === "pending" && b.due_date && parseLocalDate(b.due_date) < today).length,
-    thisMonth: bills.filter(b => b.status === "pending" && b.due_date && parseLocalDate(b.due_date) >= today && parseLocalDate(b.due_date) <= monthEnd).length,
-    next30: bills.filter(b => b.status === "pending" && b.due_date && parseLocalDate(b.due_date) >= today && parseLocalDate(b.due_date) <= thirtyDaysOut).length,
+    open: bills.filter(b => isOpen(b)).length,
+    overdue: bills.filter(b => isOpen(b) && b.due_date && parseLocalDate(b.due_date) < today).length,
+    thisMonth: bills.filter(b => isOpen(b) && b.due_date && parseLocalDate(b.due_date) >= today && parseLocalDate(b.due_date) <= monthEnd).length,
+    next30: bills.filter(b => isOpen(b) && b.due_date && parseLocalDate(b.due_date) >= today && parseLocalDate(b.due_date) <= thirtyDaysOut).length,
     paid: bills.filter(b => b.status === "paid").length,
   };
 
@@ -279,7 +290,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                       {b.paid_amount ? formatCurrency(b.paid_amount) : (b.status === "paid" ? "✓" : "—")}
                     </>) },
                   { key: "status", label: "Status",
-                    render: b => { const chip = statusChip(b.status, b.due_date); return (<>
+                    render: b => { const chip = statusChip(b.status, b.due_date, escrowed.has(b.property)); return (<>
                       <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${chip.cls}`}>{chip.label}</span>
                     </>); } },
                   { key: "actions", label: "Actions", align: "right",
