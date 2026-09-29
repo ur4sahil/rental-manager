@@ -77,8 +77,8 @@ console.log("==============================================");
       let present = false;
       for (const f of migs) {
         const t = fs.readFileSync(path.join(migDir, f), "utf8");
-        if (new RegExp("DROP TRIGGER[\\s\\S]{0,80}ON public\\." + table + "\\b").test(t)) present = false;
-        if (new RegExp("CREATE TRIGGER[\\s\\S]{0,120}ON public\\." + table + "\\b").test(t)) present = true;
+        if (new RegExp("DROP TRIGGER[^;]{0,40}trg_mgmt_gate[^;]{0,80}ON public\\." + table + "\\b").test(t)) present = false;
+        if (new RegExp("CREATE TRIGGER\\s+trg_mgmt_gate[^;]{0,120}ON public\\." + table + "\\b").test(t)) present = true;
       }
       return present;
     };
