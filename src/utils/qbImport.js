@@ -584,10 +584,15 @@ export const GENERATED_CODE_BLOCKS = {
   "Other Expense": 8000,
 };
 
-// Codes the app resolves by convention — never generate onto these.
+// Codes the app resolves by convention — never GENERATE onto these. (A QB
+// account can still be deliberately ASSIGNED into one of them by
+// assignStandardRoles below; that is the point of that function. What must
+// never happen is a sequential code landing on one by accident.) 2110 and
+// 5450 are in _acctCodeToName too; 5450 was reachable by a large
+// Cost of Goods Sold block counting up from 5000.
 export const RESERVED_CODES = new Set([
-  "1000", "1100", "2100", "2200", "3000", "3100", "3200",
-  "4000", "4010", "4100", "4200", "5300", "5400", "5500", "5600", "5610", "5710",
+  "1000", "1100", "2100", "2110", "2200", "3000", "3100", "3200",
+  "4000", "4010", "4100", "4200", "5300", "5400", "5450", "5500", "5600", "5610", "5710",
 ]);
 
 // Tenant receivables live under 1100 to match getOrCreateTenantAR, so AR
@@ -822,6 +827,263 @@ export function inferAccountSubtype({ type, path, leaf, parent, role }) {
   return null;
 }
 
+// ---- standard account slots ----------------------------------------
+//
+// The app finds its working accounts BY CODE: deposits always post to
+// 2100, bank receipts and payments to 1000, rent to 4000, late fees to
+// 4010, HOA dues to 5450, loan payments to 5600 (resolveAccountId,
+// _acctCodeToName and ensureDefaultAccounts in utils/accounting.js,
+// _wizard_resolve_account in SQL). The importer used to keep every QB
+// account OFF those codes, so a freshly imported company ended up with two
+// of everything: QB "Security Deposit" at 2590 holding the whole deposit
+// history, and the app's own empty "2100 Security Deposits Held" next to
+// it receiving every new deposit. Same for the bank (1530 vs 1000),
+// utilities (6220 vs 5400) and loans (interest vs 5600).
+//
+// So each QB account that plays one of these roles is ASSIGNED INTO the
+// standard slot: it takes the app's code (and keeps its QuickBooks name),
+// and the app then finds it exactly where it looks. At most one QB account
+// per slot, chosen by fixed rules; when the rules cannot tell two
+// candidates apart the slot is left alone and the summary says so. It is
+// never guessed.
+//
+// The codes and names mirror _acctCodeToName (utils/accounting.js); a test
+// asserts they stay identical. 1100 is deliberately absent: it is the
+// parent of every per-tenant receivable (1100-NNN), and tenant receivables
+// keep flowing there exactly as before.
+//
+// Each rule sees one QB account { name, type, subtype } and returns true
+// when that account could fill the slot. `exact` lists names that settle a
+// tie between several candidates; `pick: "most-lines"` means the busiest
+// candidate wins a tie (the main bank account is the one that is used).
+const INCOME_TYPES = ["Revenue", "Other Income"];
+const EXPENSE_TYPES = ["Expense", "Other Expense"];
+export const STANDARD_ACCOUNT_ROLES = [
+  { code: "1000", name: "Checking Account", label: "main bank account",
+    types: ["Asset"],
+    test: a => a.subtype === "Bank" && !/savings|money market|escrow|credit card|\bcd\b|petty cash/i.test(a.name),
+    exact: ["checking", "checking account", "operating account"],
+    pick: "most-lines" },
+  { code: "2100", name: "Security Deposits Held", label: "tenant security deposits",
+    types: ["Liability"],
+    test: a => /security\s*deposit|tenant\s*deposit|deposits?\s+held/i.test(a.name),
+    exact: ["security deposit", "security deposits", "tenant security deposits"] },
+  { code: "2110", name: "Accounts Payable", label: "accounts payable",
+    types: ["Liability"],
+    test: a => /\baccounts?\s+payable\b|\ba\/p\b/i.test(a.name),
+    exact: ["accounts payable", "accounts payable a p"] },
+  { code: "2200", name: "Owner Distributions Payable", label: "owner distributions payable",
+    types: ["Liability"],
+    test: a => /owner.*distribution/i.test(a.name),
+    exact: [] },
+  { code: "3000", name: "Opening Balance Equity", label: "opening balance equity",
+    types: ["Equity"],
+    test: a => /opening\s+balance/i.test(a.name),
+    exact: [] },
+  { code: "3100", name: "Owner's Equity", label: "owner's equity",
+    types: ["Equity"],
+    test: a => /^owners?'?s?\s+equity$/i.test(a.name.trim()),
+    exact: [] },
+  { code: "3200", name: "Retained Earnings", label: "retained earnings",
+    types: ["Equity"],
+    test: a => /retained\s+earnings/i.test(a.name),
+    exact: [] },
+  { code: "4000", name: "Rental Income", label: "rent",
+    types: INCOME_TYPES,
+    test: a => /\brent(s|al)?\b/i.test(a.name) && !/late|reimburs|receivable|deposit/i.test(a.name),
+    exact: ["rent", "rents", "rental income", "rent income", "rental revenue", "rent revenue"] },
+  { code: "4010", name: "Late Fee Income", label: "late fees",
+    types: INCOME_TYPES,
+    test: a => /\blate\s*fees?\b|\blate\s+charges?\b/i.test(a.name),
+    exact: ["late fee", "late fees", "late fee income"] },
+  { code: "4100", name: "Other Income", label: "other income",
+    types: INCOME_TYPES,
+    test: a => /^(other|miscellaneous|misc)\s+income$/i.test(a.name.trim()),
+    exact: [] },
+  { code: "4200", name: "Management Fee Income", label: "management fee income",
+    types: INCOME_TYPES,
+    test: a => /management\s+fee/i.test(a.name),
+    exact: [] },
+  { code: "5300", name: "Repairs & Maintenance", label: "repairs and maintenance",
+    types: EXPENSE_TYPES,
+    test: a => /repair|maintenance/i.test(a.name),
+    exact: ["repairs maintenance", "repair maintenance", "repairs and maintenance", "repairs", "maintenance"] },
+  { code: "5400", name: "Utilities Expense", label: "utilities",
+    types: EXPENSE_TYPES,
+    test: a => /utilit/i.test(a.name),
+    exact: ["utilities", "utility", "utilities expense"] },
+  { code: "5450", name: "HOA Fees", label: "HOA dues",
+    types: EXPENSE_TYPES,
+    test: a => /\bhoa\b|home\s*owners?\s+association/i.test(a.name),
+    exact: ["hoa", "hoa fee", "hoa fees", "hoa dues"] },
+  { code: "5500", name: "Bad Debt Expense", label: "bad debt",
+    types: EXPENSE_TYPES,
+    test: a => /bad\s+debt/i.test(a.name),
+    exact: [] },
+  // A loan's BALANCE is a liability and stays one; only an EXPENSE account
+  // for loan payments or loan interest is a candidate here.
+  { code: "5600", name: "Mortgage/Loan Payment", label: "mortgage / loan payments",
+    types: EXPENSE_TYPES,
+    test: a => /mortgage|\bloan\s+payments?\b|\binterest\b/i.test(a.name) && !/\bfees?\b|escrow|insurance|income/i.test(a.name),
+    exact: ["mortgage payment", "mortgage payments", "loan payment", "loan payments", "mortgage loan payment"] },
+  { code: "5610", name: "Legal & Eviction Costs", label: "legal and eviction costs",
+    types: EXPENSE_TYPES,
+    test: a => /evict|\blegal\b/i.test(a.name),
+    exact: ["legal eviction costs", "eviction costs", "eviction"] },
+  { code: "5710", name: "Property Taxes", label: "property taxes",
+    types: EXPENSE_TYPES,
+    test: a => /property\s+tax|real\s+estate\s+tax/i.test(a.name) && !/transfer/i.test(a.name),
+    exact: ["property tax", "property taxes", "real estate taxes", "real estate tax"] },
+];
+export const STANDARD_CODES = new Set(STANDARD_ACCOUNT_ROLES.map(r => r.code));
+
+// Decide which QB account (if any) fills each standard slot.
+//
+//   accounts          the plan's enriched accounts: { path, leaf, parent,
+//                     type, subtype, role, lineCount, action, targetAccountId }
+//   existingAccounts  the company's accounts: { id, code, name, lineCount }.
+//                     lineCount is the number of journal lines on it; when it
+//                     is not a number the account is treated as IN USE.
+//
+// Returns { slots, byPath }:
+//   slots   one entry per role, in role order, for the post-import summary:
+//           { code, name, label, status, qbPath, how, reason, candidates }
+//           status "assigned"   the QB account takes this slot
+//                  "unassigned" candidates exist but none was placed
+//                  "none"       no QB account plays this role
+//   byPath  Map<qbPath, { code, name, replaceAccountId }> for every account
+//           being CREATED into a slot. replaceAccountId is the id of an
+//           empty app default already on that code, which the import
+//           takes over instead of colliding with.
+//
+// Rules, in order:
+//   - Only whole top-level accounts compete: never a tenant receivable
+//     (those stay under 1100), never a sub-account or a parent of
+//     sub-accounts (moving either would break the QB hierarchy).
+//   - One candidate: it wins. Several: a candidate whose name is one of the
+//     role's exact names wins if it is the only such one; for the bank slot
+//     the candidate with strictly the most lines wins. Otherwise nobody.
+//   - An existing account already sitting on the code is replaced only if
+//     it has ZERO journal lines. One with lines is never touched; the QB
+//     account then keeps a generated code and the summary says why.
+export function assignStandardRoles(accounts, existingAccounts = []) {
+  const parentsOfOthers = new Set(accounts.filter(a => a.parent).map(a => a.parent));
+  const eligible = accounts.filter(a =>
+    a.role !== "tenant_ar" && !a.parent && !parentsOfOthers.has(a.path) && a.action !== "skip");
+  const claimed = new Set();
+  const slots = [];
+  const byPath = new Map();
+  const lines = a => Number(a.lineCount) || 0;
+
+  for (const r of STANDARD_ACCOUNT_ROLES) {
+    const slot = { code: r.code, name: r.name, label: r.label, status: "none", qbPath: null, how: null, reason: null, candidates: [] };
+    slots.push(slot);
+    const candidates = eligible.filter(a =>
+      r.types.includes(a.type) && r.test({ name: String(a.leaf || a.path || ""), type: a.type, subtype: a.subtype || "" }));
+    slot.candidates = candidates.map(a => a.path);
+    if (!candidates.length) continue;
+
+    let winner = null, why = "";
+    if (candidates.length === 1) {
+      winner = candidates[0];
+      why = "the only matching QuickBooks account";
+    } else {
+      const exactNames = new Set([normalizeName(r.name), ...r.exact.map(normalizeName)]);
+      const exact = candidates.filter(a => exactNames.has(normalizeName(a.leaf || a.path)));
+      if (exact.length === 1) {
+        winner = exact[0];
+        why = "its name is the standard name for this account";
+      } else if (r.pick === "most-lines") {
+        const sorted = [...candidates].sort((a, b) => lines(b) - lines(a));
+        if (lines(sorted[0]) > lines(sorted[1])) {
+          winner = sorted[0];
+          why = `most activity: ${lines(sorted[0])} lines, next is "${sorted[1].path}" with ${lines(sorted[1])}`;
+        }
+      }
+    }
+    if (!winner) {
+      slot.status = "unassigned";
+      slot.reason = `${candidates.length} QuickBooks accounts could fill it and nothing clearly separates them`;
+      continue;
+    }
+    if (claimed.has(winner.path)) {
+      slot.status = "unassigned";
+      slot.qbPath = winner.path;
+      slot.reason = `"${winner.path}" already fills another standard account`;
+      continue;
+    }
+
+    // Auto-mapped by name onto an account the company already has.
+    if (winner.action === "map") {
+      const target = existingAccounts.find(e => e.id === winner.targetAccountId);
+      claimed.add(winner.path);
+      slot.qbPath = winner.path;
+      if (target && String(target.code) === r.code) {
+        slot.status = "assigned";
+        slot.how = "posted into your existing account of the same name";
+      } else {
+        slot.status = "unassigned";
+        slot.reason = `it matched your existing account "${target ? `${target.code} ${target.name}` : "?"}" by name, so it goes there instead`;
+      }
+      continue;
+    }
+
+    const holder = existingAccounts.find(e => String(e.code || "") === r.code);
+    let replaceAccountId = null;
+    if (holder) {
+      const feedsIt = accounts.find(o => o !== winner && o.action === "map" && o.targetAccountId === holder.id);
+      if (feedsIt) {
+        slot.status = "unassigned";
+        slot.qbPath = winner.path;
+        slot.reason = `QuickBooks "${feedsIt.path}" already goes into your ${r.code} "${holder.name}"`;
+        continue;
+      }
+      if (typeof holder.lineCount !== "number" || holder.lineCount !== 0) {
+        slot.status = "unassigned";
+        slot.qbPath = winner.path;
+        slot.reason = typeof holder.lineCount === "number"
+          ? `your ${r.code} "${holder.name}" already has ${holder.lineCount} journal lines, so it was left untouched`
+          : `your ${r.code} "${holder.name}" could not be confirmed empty, so it was left untouched`;
+        continue;
+      }
+      replaceAccountId = holder.id;
+    }
+    claimed.add(winner.path);
+    slot.status = "assigned";
+    slot.qbPath = winner.path;
+    slot.how = (replaceAccountId ? `took over the empty "${holder.name}"; ` : "") + why;
+    byPath.set(winner.path, { code: r.code, name: r.name, replaceAccountId });
+  }
+  return { slots, byPath };
+}
+
+// Plain-language lines for the post-import summary (and the audit trail).
+// `accounts` is the final plan, so a choice the user changed on the
+// Accounts step (map / skip) is reported as what actually happened.
+export function describeStandardSlots(slots, accounts = []) {
+  const byPath = new Map(accounts.map(a => [a.path, a]));
+  const assigned = [], unassigned = [], absent = [];
+  for (const s of slots || []) {
+    const acct = s.qbPath ? byPath.get(s.qbPath) : null;
+    if (s.status === "assigned") {
+      // What the plan intended for it: created into the slot, or posted
+      // into the existing same-named account that already sits there.
+      const planned = acct && (acct.standardCode ? "create" : "map");
+      if (!acct || acct.action === planned) assigned.push(s);
+      else unassigned.push({ ...s, reason: `"${s.qbPath}" was changed to "${acct.action}" on the Accounts step` });
+    } else if (s.status === "unassigned") {
+      unassigned.push(s);
+    } else {
+      absent.push(s);
+    }
+  }
+  const text = [
+    ...assigned.map(s => `${s.code} ${s.name} <- QuickBooks "${s.qbPath}"`),
+    ...unassigned.map(s => `${s.code} ${s.name}: not assigned (${s.reason}${s.candidates && s.candidates.length > 1 ? "; candidates: " + s.candidates.join(", ") : ""})`),
+  ];
+  return { assigned, unassigned, absent, text };
+}
+
 // ---- mapping suggestions -------------------------------------------
 
 // QuickBooks names bank accounts by process ("Sigma ACH - 0822") while
@@ -910,8 +1172,22 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
     };
   });
 
+  // Accounts that play a standard role take the app's own code for it
+  // (see assignStandardRoles). Everything else is numbered exactly as
+  // before, in blocks that never touch a standard code.
+  const { slots: standardSlots, byPath: standardByPath } = assignStandardRoles(enriched, existingAccounts);
+  for (const a of enriched) {
+    const s = standardByPath.get(a.path);
+    if (!s) continue;
+    a.code = s.code;
+    a.parentCode = null;
+    a.standardCode = s.code;
+    a.standardName = s.name;
+    a.replaceAccountId = s.replaceAccountId;
+  }
+
   const taken = new Set(existingAccounts.map(a => String(a.code || "")));
-  const toCreate = enriched.filter(a => a.action === "create");
+  const toCreate = enriched.filter(a => a.action === "create" && !a.standardCode);
   const { codes } = assignAccountCodes(toCreate, taken);
   for (const a of enriched) {
     const c = codes.get(a.path);
@@ -931,6 +1207,7 @@ export function buildImportPlan({ rows, existingAccounts = [], autoMapThreshold 
 
   return {
     accounts: enriched,
+    standardSlots,
     classes: entities.properties.map(p => ({ name: p.name, lineCount: p.lineCount })),
     properties: entities.properties.map(p => ({ address: p.name, lineCount: p.lineCount })),
     tenants: entities.customers.map(c => ({

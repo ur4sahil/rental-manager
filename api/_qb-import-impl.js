@@ -48,6 +48,16 @@ const MAX_ENTRIES_PER_CALL = 400;
 
 const MAX_COMPANYID_LEN = 64;
 
+// The app's standard account codes a QuickBooks account may be ASSIGNED
+// into (STANDARD_ACCOUNT_ROLES in src/utils/qbImport.js, which is ESM and
+// pulls in exceljs, so it cannot be required here; tests/qb-import.test.js
+// asserts the two lists match). Any other code in an account marked
+// `standardCode` is refused.
+const STANDARD_CODES = new Set([
+  "1000", "2100", "2110", "2200", "3000", "3100", "3200", "4000", "4010",
+  "4100", "4200", "5300", "5400", "5450", "5500", "5600", "5610", "5710",
+]);
+
 // Compares an incoming line against one already stored. Amounts are
 // rounded to cents because Postgres hands numerics back as strings.
 function lineKey(accountId, debit, credit) {
@@ -125,7 +135,7 @@ async function handleQbImport({ action, body, res, userEmail, membershipRole }) 
     if (action === "qb_rollback") return await handleRollback(db, companyId, userEmail, res);
     if (action === "qb_resolve") return await handleResolve(db, companyId, body, res);
     if (action === "qb_entries") return await handleEntries(db, companyId, body, res);
-    if (action === "qb_finalize") return await handleFinalize(db, companyId, userEmail, res);
+    if (action === "qb_finalize") return await handleFinalize(db, companyId, userEmail, res, body);
     return bad(res, 400, "Invalid import action");
   } catch (e) {
     console.error("[qb-import]", action, e);
@@ -207,6 +217,24 @@ async function handleResolve(db, companyId, body, res) {
   const vendors = Array.isArray(body.vendors) ? body.vendors : [];
 
   const created = { accounts: 0, classes: 0, properties: 0, tenants: 0, vendors: 0 };
+
+  // --- standard slots: check before writing anything ----------------
+  // An account marked standardCode goes INTO one of the app's own codes
+  // (2100, 1000, 4000 ...). If the company already has an account there,
+  // it may be taken over only while it has no journal lines -- an empty
+  // default seeded by the app. One with history is never renamed and never
+  // silently merged into: refuse the whole resolve before any write, so the
+  // user can rebuild the plan (which will then leave that slot alone).
+  const standard = accounts.filter(a => a && a.standardCode);
+  const slotState = {};
+  for (const a of standard) {
+    if (a.standardCode !== a.code || !STANDARD_CODES.has(String(a.code))) {
+      return bad(res, 400, `Account "${a.name}" is marked for standard code ${a.standardCode}, which is not a standard code`);
+    }
+    const st = await inspectStandardSlot(db, companyId, a);
+    if (st.conflict) return bad(res, 409, st.conflict);
+    slotState[a.code] = st;
+  }
 
   // --- classes (per property address) -------------------------------
   const classMap = {};
@@ -343,35 +371,90 @@ async function handleResolve(db, companyId, body, res) {
 
   // --- accounts (last: tenant AR accounts need tenant ids) ----------
   const accountMap = {};
-  if (accounts.length) {
-    const rows = accounts.map(a => ({
-      company_id: companyId,
-      code: a.code,
-      name: a.name,
-      type: a.type,
-      subtype: a.subtype || null,
-      is_active: true,
-      // NOT NULL with no default — must be supplied.
-      old_text_id: companyId + "-" + a.code,
-      // bigint column; only set for per-tenant AR accounts.
-      tenant_id: a.tenantName && tenantMap[a.tenantName] ? tenantMap[a.tenantName] : null,
-      description: a.description || "",
-    }));
+  const accountRow = a => ({
+    company_id: companyId,
+    code: a.code,
+    name: a.name,
+    type: a.type,
+    subtype: a.subtype || null,
+    is_active: true,
+    // NOT NULL with no default — must be supplied.
+    old_text_id: companyId + "-" + a.code,
+    // bigint column; only set for per-tenant AR accounts.
+    tenant_id: a.tenantName && tenantMap[a.tenantName] ? tenantMap[a.tenantName] : null,
+    description: a.description || "",
+  });
+
+  // Standard slots first, one at a time (there are at most ~18).
+  for (const a of standard) {
+    let st = slotState[a.code];
+    if (!st.existing) {
+      const { data, error } = await db.from("acct_accounts").insert([accountRow(a)]).select("id").maybeSingle();
+      if (!error && data) { accountMap[a.code] = data.id; continue; }
+      // 23505: something (a login's ensureDefaultAccounts) seeded the code
+      // between the check and now. Re-check it like any other holder.
+      if (!error || error.code !== "23505") throw error || new Error("insert returned no row for " + a.code);
+      st = await inspectStandardSlot(db, companyId, a);
+      if (st.conflict) return bad(res, 409, st.conflict);
+    }
+    if (!st.ours) {
+      // An empty app default: the QuickBooks account takes it over. Same
+      // row and id, so anything already pointing at it keeps working.
+      const { error } = await db.from("acct_accounts")
+        .update({ name: a.name, type: a.type, subtype: a.subtype || null, description: a.description || "", is_active: true })
+        .eq("id", st.existing.id).eq("company_id", companyId);
+      if (error) throw error;
+    }
+    accountMap[a.code] = st.existing.id;
+  }
+
+  const plainAccounts = accounts.filter(a => !(a && a.standardCode));
+  if (plainAccounts.length) {
+    const rows = plainAccounts.map(accountRow);
     for (const batch of chunk(rows, HEADER_BATCH)) {
       const { error } = await db.from("acct_accounts")
         .upsert(batch, { onConflict: "company_id,code", ignoreDuplicates: true });
       if (error) throw error;
     }
-    for (const batch of chunk(accounts.map(a => a.code), IN_CHUNK)) {
+    for (const batch of chunk(plainAccounts.map(a => a.code), IN_CHUNK)) {
       const { data, error } = await db.from("acct_accounts")
         .select("id, code").eq("company_id", companyId).in("code", batch);
       if (error) throw error;
       (data || []).forEach(r => { accountMap[r.code] = r.id; });
     }
-    created.accounts = Object.keys(accountMap).length;
   }
+  created.accounts = Object.keys(accountMap).length;
 
   return res.status(200).json({ ok: true, created, accountMap, classMap, propertyMap, tenantMap, vendorMap });
+}
+
+// Who currently holds a standard code in this company, and may the
+// QuickBooks account `a` have it?
+//   { existing: null }                      free: insert
+//   { existing, ours: true }                already this import's account (a re-run)
+//   { existing, ours: false }               an app account with ZERO lines: take it over
+//   { conflict: "<message>" }               an account with history: never touched
+// "Ours" is recognised by the description the importer writes,
+// "Imported from QuickBooks (<path>)", which is how a retried import finds
+// its own account again after lines have already been posted to it.
+async function inspectStandardSlot(db, companyId, a) {
+  const { data: existing, error } = await db.from("acct_accounts")
+    .select("id, code, name, description")
+    .eq("company_id", companyId).eq("code", a.code).maybeSingle();
+  if (error) throw error;
+  if (!existing) return { existing: null };
+  if (a.description && existing.description === a.description) return { existing, ours: true };
+  const { count, error: cErr } = await db.from("acct_journal_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId).eq("account_id", existing.id);
+  if (cErr) throw cErr;
+  if ((count || 0) > 0) {
+    return {
+      conflict: `Account ${existing.code} "${existing.name}" already has ${count} journal lines, so QuickBooks "${a.name}" `
+        + `cannot take its place. Go back to Files and press Continue to rebuild the plan; that account will be left alone.`,
+    };
+  }
+  return { existing, ours: false };
 }
 
 // ── entries: write one chunk of journal entries + their lines ───────
@@ -536,7 +619,7 @@ async function handleEntries(db, companyId, body, res) {
 }
 
 // ── finalize: verify balances, record the import ────────────────────
-async function handleFinalize(db, companyId, userEmail, res) {
+async function handleFinalize(db, companyId, userEmail, res, body = {}) {
   // Sweeps every tenant in the company. The per-row trigger already kept
   // these current during the load; this both proves it and repairs any
   // pre-existing drift.
@@ -549,9 +632,16 @@ async function handleFinalize(db, companyId, userEmail, res) {
     .select("id", { count: "exact", head: true })
     .eq("company_id", companyId).like("reference", REF_PREFIX + "%");
 
+  // Which QuickBooks account became which standard account, as the wizard
+  // showed it, so the answer is still findable after the tab is closed.
+  const standardLines = (Array.isArray(body.standardAccounts) ? body.standardAccounts : [])
+    .filter(x => typeof x === "string").slice(0, 40).map(x => x.slice(0, 240));
+  const standardNote = standardLines.length ? ". Standard accounts: " + standardLines.join("; ") : "";
+
   await db.from("audit_trail").insert([{
     action: "create", module: "accounting", company_id: companyId,
-    details: `QuickBooks ledger import finalized — ${entries || 0} journal entries, ${balancesUpdated ?? "?"} tenant balances corrected`,
+    details: (`QuickBooks ledger import finalized — ${entries || 0} journal entries, ${balancesUpdated ?? "?"} tenant balances corrected`
+      + standardNote).slice(0, 4000),
     user_email: userEmail, user_role: "admin",
   }]);
 
