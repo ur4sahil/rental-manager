@@ -26,7 +26,7 @@ console.log("\n=== WIZARD / PAGES SYNC ===\n");
 
 // ---- 1. the live tables are read on reopening a completed wizard ---------
 assert("reopening a completed wizard reads the live tables",
-  /await loadLiveWizardData\(addr\)/.test(props),
+  /await loadLiveWizardData\(addr[,)]/.test(props),
   "restoring only from wizard_data is what overwrote newer edits");
 
 for (const [what, needle] of [

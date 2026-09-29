@@ -135,7 +135,7 @@ assert("the never-wizarded path uses the shared loader (no private copy dropping
   /await loadLiveWizardData\(existProp\.address\)/.test(props)
   && !/setInsurance\(\{ enabled: true, provider: i\.provider/.test(props));
 assert("a completed wizard refreshes property details from the live row",
-  /loadLiveWizardData\(addr, \{ refreshProperty: true \}\)/.test(props));
+  /loadLiveWizardData\(addr, \{ refreshProperty: true(, tablesWin: true)? \}\)/.test(props));
 assert("tenant late fee is read back so a save carries it",
   /late_fee_amount: primary\.late_fee_amount \?\? ""/.test(props));
 

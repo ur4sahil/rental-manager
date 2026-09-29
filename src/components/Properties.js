@@ -319,6 +319,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     return { address_line_1: "", address_line_2: "", city: "", state: "", zip: "", county: "", type: "Single Family", status: "vacant", notes: "" };
   });
   // Tenant & lease details (Step 2, only if occupied)
+  // An empty Tenant & Lease form. Also what a reopened wizard falls back to
+  // when the property has no live tenant (see loadLiveWizardData).
+  const blankTenantForm = () => ({ tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantForm, setTenantForm] = useState(() => {
     if (wizardData.propertyId && wizardData.tenant) {
       return {
@@ -327,7 +330,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" };
+    return blankTenantForm();
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
@@ -584,6 +587,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     async function initWizard() {
       try {
         const addr = savedAddress || wizardData.address || "NEW";
+        let revivedFromDismissed = false;
         // Resume path: prefer in_progress; fall back to dismissed so a
         // user who closed the wizard mid-flow can pick up exactly
         // where they left off. Previously dismissed rows were orphaned
@@ -597,6 +601,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             .eq("company_id", companyId).eq("property_address", addr).eq("status", "dismissed")
             .order("updated_at", { ascending: false }).limit(1).maybeSingle();
           if (dismissedRow) {
+            revivedFromDismissed = true;
             await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", dismissedRow.id).eq("company_id", companyId);
             existing = dismissedRow;
           }
@@ -648,7 +653,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           // commit_property_wizard's replace-all would archive live rows the
           // stale snapshot never held. loadLiveWizardData only overrides when
           // live rows exist, so a genuine new-property draft is left intact.
-          await loadLiveWizardData(addr);
+          // A DISMISSED session brought back is a memory of an old form, not
+          // unsaved work: for a property that already exists, the live rows
+          // win for the property and the tenant too. (6950 Hawthorne,
+          // 2026-09-29: vacant, both tenants archived, but a dismissed
+          // snapshot reopened as "occupied -- Kendall Orebeaux", and saving
+          // it would have written that tenant back.) A genuine in-progress
+          // draft keeps its snapshot.
+          await loadLiveWizardData(addr, revivedFromDismissed ? { refreshProperty: true, tablesWin: true } : {});
           return;
         }
         // Edit mode: check for completed wizard and reopen it
@@ -714,7 +726,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // never been committed and lives nowhere else. For a COMPLETED
             // one the tables are the record and the snapshot is a memory of
             // it, so the tables are read here and override what was just set.
-            await loadLiveWizardData(addr, { refreshProperty: true });
+            await loadLiveWizardData(addr, { refreshProperty: true, tablesWin: true });
             }
             return;
           }
@@ -1050,7 +1062,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   const utilTouched = useRef(false);
   const hoaTouched = useRef(false);
 
-  async function loadLiveWizardData(address, { refreshProperty = false } = {}) {
+  async function loadLiveWizardData(address, { refreshProperty = false, tablesWin = false } = {}) {
     if (!address || !companyId) return;
     const [hoaRes, utilRes] = await Promise.all([
       supabase.from("hoa_payments").select("*")
@@ -1191,6 +1203,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     const lease = (leaseRes.data || [])[0];
     const rec = (recRes.data || [])[0];
     const primary = tenants[0];
+
+    // No one lives there: a snapshot's old tenant must not come back. Only
+    // when the property row exists (the record is authoritative) and the
+    // caller asked the tables to win. "Add tenant" opens a blank form too.
+    if (!primary && tablesWin && propRow) {
+      tenantLoadedRef.current = null;
+      setTenantForm(blankTenantForm());
+    }
 
     if (primary) {
       const filled = [2, 3, 4, 5].filter(n => (pr["tenant_" + n] || "").trim()).length;
