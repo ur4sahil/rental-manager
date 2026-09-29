@@ -49,7 +49,12 @@ console.log("\n=== STATIC: commit_property_wizard ===");
   assert("030000 is the latest definition of commit_property_wizard", hits[hits.length - 1] === MIG, hits.slice(-2).join(", "));
   const bh = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort()
     .filter(f => /CREATE OR REPLACE FUNCTION public\.bridge_utility_account\(/.test(fs.readFileSync(path.join(dir, f), "utf8")));
-  assert("030000 is the latest definition of bridge_utility_account", bh[bh.length - 1] === MIG, bh.slice(-2).join(", "));
+  // A later migration may redefine the bridge (20260929070000 added type +
+  // website sync) as long as it keeps this migration's meter guard.
+  const latestBridge = fs.readFileSync(path.join(dir, bh[bh.length - 1]), "utf8");
+  assert("the latest bridge_utility_account keeps the different-meter guard", bh[bh.length - 1] >= MIG &&
+    /AND \(NULLIF\(btrim\(a\.account_number\), ''\) IS NULL\s+OR NULLIF\(btrim\(NEW\.account_number\), ''\) IS NULL\s+OR lower\(btrim\(a\.account_number\)\) = lower\(btrim\(NEW\.account_number\)\)\)/.test(latestBridge),
+    bh.slice(-2).join(", "));
 }
 assert("bridge: an account with a DIFFERENT non-empty number is never adopted",
   /AND \(NULLIF\(btrim\(a\.account_number\), ''\) IS NULL\s+OR NULLIF\(btrim\(NEW\.account_number\), ''\) IS NULL\s+OR lower\(btrim\(a\.account_number\)\) = lower\(btrim\(NEW\.account_number\)\)\)/.test(bridge));
