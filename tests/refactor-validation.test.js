@@ -265,7 +265,10 @@ function testFileStructure() {
   // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
   // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
   // 53900 on 2026-09-29: theme I round 3 (owner read-only loans, whole-login trimming, badge count) merged with theme K (staging df90dcd).
-  assert(totalLines <= 53900, `Total src lines <= 53900 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 54200 on 2026-09-29: + audit theme J (wizard per-field payload builders
+  // WIZ_FIELDS / WIZ_DB_COLS so only changed fields are written; import enum /
+  // duplicate-key / HOA-due handling, import HOA salt reuse) merged with staging 4f3dcb6 (53900).
+  assert(totalLines <= 54200, `Total src lines <= 54200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

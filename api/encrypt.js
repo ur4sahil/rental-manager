@@ -218,12 +218,17 @@ module.exports = async function handler(req, res) {
   // an owner invited into a PM's company reads loans without their logins,
   // and the stream pre-fills the COMPANY's portal login.
   const CRED_ROLES = new Set(["admin", "pm", "manager", "office_assistant"]);
+  // Opening the streamed portal to PAY a bill: CRED_ROLES plus accountant.
+  // The stream pre-fills the login on the VPS -- the accountant never sees
+  // it -- so this does not widen who can read stored credentials (decrypt
+  // below stays CRED_ROLES).
+  const STREAM_ROLES = new Set([...CRED_ROLES, "accountant"]);
 
   if (isStream) {
     // Staff only: the stream signs into the company's utility portal with the
     // stored login (and can pay). A tenant/owner/maintenance member used to be
     // able to mint a token.
-    if (!CRED_ROLES.has(membership.role)) {
+    if (!STREAM_ROLES.has(membership.role)) {
       return res.status(403).json({ error: "Only staff can open the utility portal." });
     }
     const secret = process.env.STREAM_JWT_SECRET;

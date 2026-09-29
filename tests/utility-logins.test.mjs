@@ -201,7 +201,7 @@ assert("the HOA page reuses the row salt when the association login changes",
   /encryptCredential\(String\(form\.username \|\| ""\)\.trim\(\), companyId, \(editingHoa && editingHoa\.encryption_salt\) \|\| null\)/.test(hoa));
 const imp = read("src/components/PropertyImport.js");
 assert("re-import leaves stored logins/websites alone when the sheet cell is blank",
-  /update\(keepStoredLoginOnBlank\(row\)\)/.test(imp) && /function keepStoredLoginOnBlank/.test(imp));
+  /update\(keepStoredLoginOnBlank\((row|patch)\)\)/.test(imp) && /function keepStoredLoginOnBlank/.test(imp));
 const ai = read("api/ai.js");
 const pc = ai.slice(ai.indexOf('if (action === "portal-credentials")'), ai.indexOf('if (action === "claim")'));
 assert("portal-credentials returns only live, non-closeout rows",
@@ -253,8 +253,11 @@ assert("migration: every definer function it defines is revoked from PUBLIC/anon
 {
   const enc3 = read("api/encrypt.js");
   const streamBlock = enc3.slice(enc3.indexOf("if (isStream) {"), enc3.indexOf("const b64 = Buffer.from(JSON.stringify(payload))"));
-  assert("stream-session requires a credential (staff) role before minting a token",
-    /if \(!CRED_ROLES\.has\(membership\.role\)\) \{\s*return res\.status\(403\)/.test(streamBlock));
+  // Accountants may open the pay stream (20260929090000 bookkeeping roles); the
+  // stream pre-fills the login on the VPS, so STREAM_ROLES = CRED_ROLES + accountant.
+  assert("stream-session requires a staff role (CRED_ROLES + accountant, never owner/tenant/maintenance)",
+    /if \(!STREAM_ROLES\.has\(membership\.role\)\) \{\s*return res\.status\(403\)/.test(streamBlock)
+    && /const STREAM_ROLES = new Set\(\[\.\.\.CRED_ROLES, "accountant"\]\)/.test(enc3));
   assert("an enroll stream never creates a payment row",
     /if \(body\.billId && svcKey && body\.enroll !== true\)/.test(streamBlock));
   assert("owner is not a credential role",

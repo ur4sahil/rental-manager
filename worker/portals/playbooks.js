@@ -410,6 +410,12 @@ const PLAYBOOKS = {
     verified: true,
     signInOnly: true,
     mfa: "code-on-signin",
+    // Sign in fresh on every run (owner decision 2026-09-29). BGE drops a saved
+    // session quietly: the "still signed in?" check on the front page passed,
+    // then the bill read hit the login and the run gave up ("session expired")
+    // without ever reaching the sign-in that reads the emailed code. A fresh
+    // sign-in costs one code email per run, read from Mail automatically.
+    noSessionReuse: true,
     selectAccountFirst: { role: "heading", name: /select an account/i },
     entry: "https://secure.bge.com/",
     // `entry` is where you go to SIGN IN. It is not where you go once you
