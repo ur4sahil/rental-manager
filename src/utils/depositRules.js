@@ -36,6 +36,9 @@
 //   started: definite when the description names the tenant, otherwise
 //   AMBIGUOUS -- treated as released (fail closed) with the reason shown.
 
+// Upper bound for the deposit lookups below (PostgREST pages at 1000).
+const DEPOSIT_LOOKUP_CAP = 500;
+
 export const RELEASED_DEPOSIT_STATUSES = ["returned", "partial_return", "forfeited"];
 
 const hasId = (v) => v !== null && v !== undefined && String(v).trim() !== "" && String(v) !== "undefined" && String(v) !== "null";
@@ -246,8 +249,10 @@ export async function depositReleaseStateWith(client, companyId, { tenantId = nu
     let entries = [];
     if (refs.length) {
       const { data, error } = await client.from("acct_journal_entries").select("reference, status, description, acct_journal_lines(debit)")
-        .eq("company_id", companyId).in("reference", refs);
+        .eq("company_id", companyId).in("reference", refs).limit(DEPOSIT_LOOKUP_CAP);
       if (error) return closed(error.message || "journal lookup failed");
+      // A full page could be a truncated one: fail closed rather than guess.
+      if ((data || []).length >= DEPOSIT_LOOKUP_CAP) return closed("too many deposit entries to check");
       entries = (data || []).map(e => ({ reference: e.reference, status: e.status, description: e.description,
         amount: (e.acct_journal_lines || []).reduce((s, l) => s + num(l.debit), 0) }));
     }
@@ -258,8 +263,10 @@ export async function depositReleaseStateWith(client, companyId, { tenantId = nu
     if (props.length) {
       const { data, error } = await client.from("acct_journal_entries").select("reference, status, date, description")
         .eq("company_id", companyId).in("property", props).neq("status", "voided")
-        .or("reference.like.DEP-TFR-%,reference.like.DEPRET-%,reference.like.DEPDED-%,reference.like.DEPFORF-%");
+        .or("reference.like.DEP-TFR-%,reference.like.DEPRET-%,reference.like.DEPDED-%,reference.like.DEPFORF-%")
+        .limit(DEPOSIT_LOOKUP_CAP);
       if (error) return closed(error.message || "legacy release lookup failed");
+      if ((data || []).length >= DEPOSIT_LOOKUP_CAP) return closed("too many legacy deposit entries at this property to check");
       const starts = chain.map(l => l.start_date).filter(Boolean).sort();
       legacy = classifyLegacyReleases(data || [], { names: chain.map(l => l.tenant_name), since: starts[0] || null });
     }
