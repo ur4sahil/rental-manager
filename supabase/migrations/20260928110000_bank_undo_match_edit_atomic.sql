@@ -70,6 +70,22 @@ $function$;
 REVOKE ALL ON FUNCTION public.je_reference_is_system(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.je_reference_is_system(text) TO authenticated, service_role;
 
+-- A journal amount must be a real number. numeric accepts 'NaN',
+-- 'Infinity' and '-Infinity', and NaN = NaN in Postgres, so a NaN line
+-- passes a DR = CR check and poisons every balance it is summed into.
+-- NULL counts as finite (it is read as 0 everywhere).
+CREATE OR REPLACE FUNCTION public.je_amount_is_finite(p_amount numeric)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT p_amount IS NULL OR p_amount NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric);
+$function$;
+-- Executable by everyone: it is pure, and chk_jl_amounts_finite (160000)
+-- calls it for whoever writes a journal line.
+GRANT EXECUTE ON FUNCTION public.je_amount_is_finite(numeric) TO PUBLIC;
+
 -- ---------------------------------------------------------------------------
 -- undo_bank_transaction
 -- ---------------------------------------------------------------------------
@@ -415,34 +431,46 @@ GRANT EXECUTE ON FUNCTION public.match_bank_transaction(text, uuid, text) TO aut
 -- reconciled and reconciled_date; unmatched old lines are deleted; new
 -- lines are inserted clean.
 --
--- p_expected_line_ids is the set of line ids the editor loaded. It must be
--- exactly the entry's current lines: otherwise the save would delete a
--- line the user never saw (an editor that didn't load every line, or an
--- entry someone changed since it was opened). Required.
+-- What the editor loaded must still be what is on the books:
+--   * p_expected_line_ids -- exactly the entry's current line ids, else
+--     the save would delete a line the user never saw (stale_lines);
+--   * p_expected -- the header and lines as the editor loaded them
+--     ({header: {date, description, reference, status, property},
+--       lines: [{id, account_id, debit, credit, class_id, memo}]}). Any
+--     difference means someone else saved in between; refused
+--     (stale_entry) rather than silently overwriting their change.
+-- Both are required.
 --
--- Refused (nothing written):
---   * the editor's lines are not the entry's current lines (stale_lines)
---   * DR <> CR to the cent (each amount rounded to 2 decimals first), a
---     negative amount, an entry whose lines are all zero, fewer than 2 lines
+-- Amounts: must be finite numbers (NaN / Infinity refused -- NaN = NaN in
+-- Postgres, so a NaN entry used to pass every later check), not negative,
+-- and not on both sides of one line. A kept line whose amount is sent
+-- back unchanged keeps its stored amount as is (legacy entries with more
+-- than 2 decimals stay re-savable); every other amount is rounded to
+-- cents. DR must then equal CR exactly, and not be zero.
+--
+-- Also refused (nothing written):
+--   * fewer than 2 lines; a line with no account
 --   * a voided entry, or a status other than draft/posted
 --   * changing a system reference (it is an idempotency key), or changing
---     an ordinary reference INTO a system one (BANK-<txn id> would make
---     post_bank_transaction relink to this entry and Undo void it)
+--     an ordinary reference INTO a system one
 --   * changing the account or amount of a RECONCILED line, removing one,
 --     or moving the date of an entry that has one -- unreconcile first
 --   * changing the account or amount of a line stamped with a bank
 --     transaction, or removing it -- undo that transaction in Banking
 --   * posted -> draft while any line is stamped or reconciled
 --
--- The 4-argument version (no expected ids) is dropped: it was never on
--- production, and leaving it would let a caller skip the line check.
+-- Earlier signatures (no expected ids / no snapshot) are dropped: they
+-- were never on production, and leaving them would let a caller skip the
+-- checks.
 DROP FUNCTION IF EXISTS public.update_journal_entry(text, text, jsonb, jsonb);
+DROP FUNCTION IF EXISTS public.update_journal_entry(text, text, jsonb, jsonb, int[]);
 CREATE OR REPLACE FUNCTION public.update_journal_entry(
   p_company_id        text,
   p_je_id             text,
   p_header            jsonb,
   p_lines             jsonb,
-  p_expected_line_ids int[] DEFAULT NULL
+  p_expected_line_ids int[] DEFAULT NULL,
+  p_expected          jsonb DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -451,7 +479,7 @@ AS $function$
 DECLARE
   v_je        acct_journal_entries%ROWTYPE;
   v_old       acct_journal_lines%ROWTYPE;
-  v_lines     jsonb;                  -- p_lines with debit/credit rounded to cents
+  v_lines     jsonb;                  -- p_lines with the amounts to write
   v_line      jsonb;
   v_ord       bigint;
   v_id        int;
@@ -475,25 +503,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_lines) l WHERE COALESCE(l ->> 'account_id', '') = '') THEN
     RAISE EXCEPTION 'Every line needs an account.' USING HINT = 'no_account';
   END IF;
-  -- Money is cents: round each amount once, here, and use only the rounded
-  -- values from now on (the balance check and the rows written agree).
-  SELECT jsonb_agg(l || jsonb_build_object(
-           'debit',  round(COALESCE(NULLIF(l ->> 'debit', '')::numeric, 0), 2),
-           'credit', round(COALESCE(NULLIF(l ->> 'credit', '')::numeric, 0), 2)) ORDER BY o)
-    INTO v_lines FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l, o);
-  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
-              WHERE (l ->> 'debit')::numeric < 0 OR (l ->> 'credit')::numeric < 0) THEN
-    RAISE EXCEPTION 'Amounts cannot be negative. Put the amount on the other side instead.'
-      USING HINT = 'negative_amount';
-  END IF;
-  SELECT sum((l ->> 'debit')::numeric), sum((l ->> 'credit')::numeric)
-    INTO v_dr, v_cr FROM jsonb_array_elements(v_lines) l;
-  IF v_dr <> v_cr THEN
-    RAISE EXCEPTION 'update_journal_entry: entry out of balance (DR % vs CR %)', v_dr, v_cr
-      USING ERRCODE = 'P0001', HINT = 'unbalanced';
-  END IF;
-  IF v_dr = 0 THEN
-    RAISE EXCEPTION 'Every line of this entry is zero.' USING HINT = 'zero_entry';
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_lines) l
+              WHERE NOT public.je_amount_is_finite(NULLIF(l ->> 'debit', '')::numeric)
+                 OR NOT public.je_amount_is_finite(NULLIF(l ->> 'credit', '')::numeric)) THEN
+    RAISE EXCEPTION 'Every amount must be a number.' USING HINT = 'bad_amount';
   END IF;
 
   SELECT * INTO v_je FROM acct_journal_entries
@@ -513,11 +526,71 @@ BEGIN
                 EXCEPT SELECT unnest(p_expected_line_ids))
      OR EXISTS (SELECT unnest(p_expected_line_ids)
                 EXCEPT SELECT id FROM acct_journal_lines WHERE journal_entry_id = p_je_id)
-     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_lines) l
                  WHERE COALESCE(l ->> 'id', '') <> ''
                    AND (l ->> 'id' !~ '^[0-9]+$' OR NOT ((l ->> 'id')::int = ANY (p_expected_line_ids)))) THEN
     RAISE EXCEPTION 'This entry has changed or didn''t fully load. Reload the page and edit it again.'
       USING HINT = 'stale_lines';
+  END IF;
+
+  -- ...and it must still read the way the editor loaded it (optimistic
+  -- concurrency: a second editor's save in between is not overwritten).
+  IF p_expected IS NULL OR jsonb_typeof(p_expected -> 'lines') IS DISTINCT FROM 'array'
+     OR v_je.date::text IS DISTINCT FROM (p_expected -> 'header' ->> 'date')
+     OR COALESCE(v_je.description, '') <> COALESCE(p_expected -> 'header' ->> 'description', '')
+     OR COALESCE(v_je.reference, '')   <> COALESCE(p_expected -> 'header' ->> 'reference', '')
+     OR COALESCE(v_je.status, '')      <> COALESCE(p_expected -> 'header' ->> 'status', '')
+     OR COALESCE(v_je.property, '')    <> COALESCE(p_expected -> 'header' ->> 'property', '')
+     OR jsonb_array_length(p_expected -> 'lines') <> (SELECT count(*) FROM acct_journal_lines WHERE journal_entry_id = p_je_id)
+     OR EXISTS (
+          SELECT 1 FROM acct_journal_lines jl
+           WHERE jl.journal_entry_id = p_je_id
+             AND NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(p_expected -> 'lines') e
+                    WHERE e ->> 'id' = jl.id::text
+                      AND e ->> 'account_id' IS NOT DISTINCT FROM jl.account_id::text
+                      AND public.je_amount_is_finite(NULLIF(e ->> 'debit', '')::numeric)
+                      AND public.je_amount_is_finite(NULLIF(e ->> 'credit', '')::numeric)
+                      AND COALESCE(NULLIF(e ->> 'debit', '')::numeric, 0)  = COALESCE(jl.debit, 0)
+                      AND COALESCE(NULLIF(e ->> 'credit', '')::numeric, 0) = COALESCE(jl.credit, 0)
+                      AND COALESCE(e ->> 'class_id', '') = COALESCE(jl.class_id, '')
+                      AND COALESCE(e ->> 'memo', '')     = COALESCE(jl.memo, ''))) THEN
+    RAISE EXCEPTION 'This entry changed since you opened it — reload it and make your edit again.'
+      USING HINT = 'stale_entry';
+  END IF;
+
+  -- The amounts to write. A kept line sent back with its stored amounts
+  -- keeps them exactly (a legacy 33.335 is not re-rounded, so a balanced
+  -- legacy entry stays balanced); anything else is rounded to cents.
+  SELECT jsonb_agg(l || jsonb_build_object(
+           'debit',  CASE WHEN o.id IS NOT NULL THEN COALESCE(o.debit, 0)
+                          ELSE round(COALESCE(NULLIF(l ->> 'debit', '')::numeric, 0), 2) END,
+           'credit', CASE WHEN o.id IS NOT NULL THEN COALESCE(o.credit, 0)
+                          ELSE round(COALESCE(NULLIF(l ->> 'credit', '')::numeric, 0), 2) END) ORDER BY x.ord)
+    INTO v_lines
+    FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l, ord)
+    LEFT JOIN acct_journal_lines o
+      ON COALESCE(l ->> 'id', '') ~ '^[0-9]+$' AND o.id = (l ->> 'id')::int AND o.journal_entry_id = p_je_id
+     AND COALESCE(o.debit, 0)  = COALESCE(NULLIF(l ->> 'debit', '')::numeric, 0)
+     AND COALESCE(o.credit, 0) = COALESCE(NULLIF(l ->> 'credit', '')::numeric, 0);
+
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
+              WHERE (l ->> 'debit')::numeric < 0 OR (l ->> 'credit')::numeric < 0) THEN
+    RAISE EXCEPTION 'Amounts cannot be negative. Put the amount on the other side instead.'
+      USING HINT = 'negative_amount';
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l
+              WHERE (l ->> 'debit')::numeric > 0 AND (l ->> 'credit')::numeric > 0) THEN
+    RAISE EXCEPTION 'A line can have a debit or a credit, not both.' USING HINT = 'both_sides';
+  END IF;
+  SELECT sum((l ->> 'debit')::numeric), sum((l ->> 'credit')::numeric)
+    INTO v_dr, v_cr FROM jsonb_array_elements(v_lines) l;
+  IF v_dr <> v_cr THEN
+    RAISE EXCEPTION 'update_journal_entry: entry out of balance (DR % vs CR %)', v_dr, v_cr
+      USING ERRCODE = 'P0001', HINT = 'unbalanced';
+  END IF;
+  IF v_dr = 0 THEN
+    RAISE EXCEPTION 'Every line of this entry is zero.' USING HINT = 'zero_entry';
   END IF;
 
   v_new_date := COALESCE(NULLIF(p_header ->> 'date', '')::date, v_je.date);
@@ -663,5 +736,5 @@ BEGIN
                             'kept', v_kept, 'inserted', v_inserted, 'deleted', v_deleted);
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[]) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[], jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_journal_entry(text, text, jsonb, jsonb, int[], jsonb) TO authenticated, service_role;

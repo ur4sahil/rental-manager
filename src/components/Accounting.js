@@ -5760,11 +5760,21 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   // moving an entry out of a closed period rewrites that period too.
   if (await checkPeriodLock(companyId, header.date) || (orig.date && await checkPeriodLock(companyId, orig.date))) { showToast("Cannot edit a journal entry in a locked period.", "error"); return false; }
   if (!lines || lines.length < 2) { showToast("A journal entry needs at least two lines.", "error"); return false; }
-  // The server rounds every amount to cents and wants DR = CR exactly;
-  // check (and send) the same rounded figures.
+  // Amounts as the server will store them: a kept line whose amounts are
+  // unchanged keeps its stored figures exactly (a legacy 33.335 stays, so
+  // a balanced legacy entry stays balanced); anything else is rounded to
+  // cents. The server then wants DR = CR exactly.
   const toCents = (x) => Math.round(safeNum(x) * 100) / 100;
-  if (lines.some(l => toCents(l.debit) < 0 || toCents(l.credit) < 0)) { showToast("Amounts cannot be negative. Put the amount on the other side instead.", "error"); return false; }
-  const v = validateJE(lines.map(l => ({ debit: toCents(l.debit), credit: toCents(l.credit) })));
+  const origById = new Map((orig.lines || []).map(l => [String(l.id), l]));
+  const amountsOf = (l) => {
+    const o = l.id != null ? origById.get(String(l.id)) : null;
+    if (o && safeNum(o.debit) === safeNum(l.debit) && safeNum(o.credit) === safeNum(l.credit)) return { debit: safeNum(o.debit), credit: safeNum(o.credit) };
+    return { debit: toCents(l.debit), credit: toCents(l.credit) };
+  };
+  const amounts = lines.map(amountsOf);
+  if (amounts.some(a => a.debit < 0 || a.credit < 0)) { showToast("Amounts cannot be negative. Put the amount on the other side instead.", "error"); return false; }
+  if (amounts.some(a => a.debit > 0 && a.credit > 0)) { showToast("A line can have a debit or a credit, not both.", "error"); return false; }
+  const v = validateJE(amounts);
   if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return false; }
   // Entries the system generated for another record (a bank transaction,
   // a Stripe payment, a deposit, a recurring charge ...). Editing is
@@ -5804,18 +5814,25 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     p_header: { date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status },
     // The line id is how the server recognises a kept line (and keeps its
     // stamps). Stamps themselves are never sent -- the server owns them.
-    p_lines: lines.map(l => ({
+    p_lines: lines.map((l, i) => ({
       id: l.id != null && /^\d+$/.test(String(l.id)) ? Number(l.id) : null,
       account_id: l.account_id, account_name: l.account_name || "",
-      debit: toCents(l.debit), credit: toCents(l.credit),
+      debit: amounts[i].debit, credit: amounts[i].credit,
       class_id: l.class_id || null, memo: l.memo || "",
       entity_type: l.entity_type || null, entity_id: l.entity_id ? String(l.entity_id) : null, entity_name: l.entity_name || null,
     })),
     p_expected_line_ids: expectedLineIds,
+    // The entry as this editor loaded it. If anyone saved it since, the
+    // server refuses (stale_entry) instead of overwriting their change.
+    p_expected: {
+      header: { date: orig.date || null, description: orig.description || "", reference: orig.reference || "", status: orig.status || "", property: orig.property || "" },
+      lines: (orig.lines || []).map(l => ({ id: l.id, account_id: l.account_id || null, debit: l.debit ?? 0, credit: l.credit ?? 0, class_id: l.class_id || "", memo: l.memo || "" })),
+    },
   });
   if (error) {
     if (/period is locked/i.test(error.message || "")) pmError("PM-4004", { raw: error, context: "update_journal_entry" });
-    else if (["reconciled_line", "bank_line", "system_reference", "unbalanced", "voided", "too_few_lines", "no_account", "bad_status", "not_found", "stale_lines", "negative_amount", "zero_entry", "posted_to_draft", "cross_company"].includes(error.hint)) showToast(error.message, "error");
+    else if (error.hint === "stale_entry") showToast("This entry changed since you opened it — reload it and make your edit again.", "error");
+    else if (["reconciled_line", "bank_line", "system_reference", "unbalanced", "voided", "too_few_lines", "no_account", "bad_status", "not_found", "stale_lines", "negative_amount", "zero_entry", "posted_to_draft", "cross_company", "bad_amount", "both_sides"].includes(error.hint)) showToast(error.message, "error");
     else pmError("PM-4003", { raw: error, context: "update_journal_entry" });
     fetchAll({ quiet: true });
     return false;
@@ -5856,6 +5873,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { data: voided, error: voidErr } = await supabase.rpc("void_journal_entry", { p_company_id: companyId, p_je_id: String(id) });
   if (voidErr) {
     if (/period is locked/i.test(voidErr.message || "")) pmError("PM-4004", { raw: voidErr, context: "void_journal_entry" });
+    else if (["locked", "reconciled"].includes(voidErr.hint)) showToast(voidErr.message, "error");
     else showToast("Error voiding entry: " + voidErr.message, "error");
     return;
   }

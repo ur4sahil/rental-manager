@@ -139,7 +139,11 @@ assert("QA2 SQL: posted -> draft refused with stamped or reconciled lines", /v_j
 assert("QA3 SQL: an ordinary reference can't be changed INTO a system one", /je_reference_is_system\(v_new_ref\)/.test(updSql));
 assert("QA5 client: sends the ids the editor loaded", /p_expected_line_ids: expectedLineIds/.test(upd));
 assert("QA5 client: the pre-check pages past 1000 lines", /\.range\(from, from \+ 999\)/.test(upd));
-assert("QA6 client: rounds to cents before checking and sending", /const toCents = /.test(upd) && /debit: toCents\(l\.debit\), credit: toCents\(l\.credit\)/.test(upd));
+assert("QA6 client: rounds changed amounts to cents, keeps unchanged kept amounts as stored", /const toCents = /.test(upd) && /const amountsOf = /.test(upd) && /debit: amounts\[i\]\.debit, credit: amounts\[i\]\.credit/.test(upd));
+assert("R2-4 client: sends the entry as loaded (p_expected) and explains stale_entry", /p_expected: \{/.test(upd) && /error\.hint === "stale_entry"/.test(upd) && /changed since you opened it/.test(upd));
+assert("R2-4 SQL: optimistic concurrency on header + lines (stale_entry)", /p_expected IS NULL/.test(updSql) && /HINT = 'stale_entry'/.test(updSql) && /COALESCE\(e ->> 'memo', ''\)/.test(updSql));
+assert("R2-1 SQL: non-finite amounts and two-sided lines refused", /je_amount_is_finite/.test(updSql) && /HINT = 'bad_amount'/.test(updSql) && /HINT = 'both_sides'/.test(updSql));
+assert("R2-5 SQL: an unchanged kept line keeps its stored (legacy) amount", /CASE WHEN o\.id IS NOT NULL THEN COALESCE\(o\.debit, 0\)/.test(updSql));
 assert("client shows the new refusals as plain messages", ["stale_lines", "negative_amount", "zero_entry", "posted_to_draft", "cross_company"].every(h => upd.includes(`"${h}"`)));
 
 // QA1: Void in Accounting goes through one RPC that also drops links/decisions.
@@ -158,6 +162,25 @@ assert("QA1 SQL: void deletes the links, marks decisions undone, returns txns to
 }
 assert("QA1 migration: one-time stale matched_to cleanup is scoped to links whose txn no longer points at them",
   /DELETE FROM bank_feed_transaction_link k[\s\S]*link_role = 'matched_to'[\s\S]*NOT \(t\.status IN \('matched', 'locked'\) AND t\.journal_entry_id IS NOT DISTINCT FROM k\.linked_object_id\)/.test(QA));
+{
+  const pbt = sqlFn(QA, "post_bank_transaction");
+  assert("R2-1 SQL: post_bank_transaction refuses non-finite and two-sided lines", /je_amount_is_finite/.test(pbt) && /HINT = 'bad_amount'/.test(pbt) && /HINT = 'both_sides'/.test(pbt));
+  assert("R2-1 migration: CHECK chk_jl_amounts_finite added NOT VALID, then validated",
+    /ADD CONSTRAINT chk_jl_amounts_finite\s+CHECK \(public\.je_amount_is_finite\(debit\) AND public\.je_amount_is_finite\(credit\)\) NOT VALID/.test(QA) && /VALIDATE CONSTRAINT chk_jl_amounts_finite/.test(QA));
+  assert("R2-2 SQL: post_bank_transaction sets app.bank_posting around its header insert only",
+    /set_config\('app\.bank_posting', 'on', true\);\s+LOOP/.test(pbt) && /END LOOP;\s+PERFORM set_config\('app\.bank_posting', 'off', true\);/.test(pbt));
+  const g = sqlFn(QA, "trg_je_bank_reference_guard");
+  assert("R2-2 SQL: bank references refused without the flag (trimmed, case-insensitive, insert or reference change)",
+    /~\* '\^\\s\*\(BANK\|XFER\|SPLIT\)-'/.test(g) && /TG_OP = 'INSERT' OR NEW\.reference IS DISTINCT FROM OLD\.reference/.test(g) && /current_setting\('app\.bank_posting', true\)/.test(g)
+    && /BEFORE INSERT OR UPDATE OF reference ON public\.acct_journal_entries/.test(QA));
+  assert("R2-3 SQL: void refuses a locked claiming txn and reconciled lines",
+    /HINT = 'locked'/.test(voidSql) && /HINT = 'reconciled'/.test(voidSql) && !/SET reconciled = false/.test(voidSql));
+  // No client or API code writes a BANK-/XFER-/SPLIT- reference itself.
+  const walk = (d) => fs.readdirSync(path.join(root, d), { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const writers = [...walk("src"), ...walk("api")].filter(p => /\.(js|mjs|ts)$/.test(p))
+    .filter(p => /reference:\s*[`"'](BANK|XFER|SPLIT)-/.test(read(p)));
+  assert("R2-2 no client/API code builds a BANK-/XFER-/SPLIT- reference", writers.length === 0, writers.join(", "));
+}
 assert("QA4 migration: journal-line company guard trigger (insert + update)",
   /CREATE TRIGGER trg_jl_scope_guard\s+BEFORE INSERT OR UPDATE ON public\.acct_journal_lines/.test(QA) && (QA.match(/HINT = 'cross_company'/g) || []).length === 3);
 assert("G4a SQL: locks the header", /FROM acct_journal_entries[\s\S]*?FOR UPDATE/.test(updSql));
@@ -353,11 +376,18 @@ async function live() {
     { account_id: fx.g, debit: 50, reconciled: true, reconciled_date: "2026-09-22" },
     { account_id: fx.ex, credit: 30, bank_feed_transaction_id: t8 },
     { account_id: fx.ex2, credit: 20 },
-  ], { refPrefix: "BANK" });
+  ], { refPrefix: "PAY" });
   const [l1, l2, l3] = e.lines;
   const idsOf = async (jeId) => (await linesOf(jeId)).map(l => l.id);
-  const upd = async (jeId, header, lines, expected) => sb.rpc("update_journal_entry", { p_company_id: fx.c, p_je_id: jeId, p_header: header, p_lines: lines,
-    p_expected_line_ids: expected === undefined ? await idsOf(jeId) : expected });
+  // The snapshot an editor would have loaded (what the client sends as p_expected).
+  const snapOf = async (jeId) => {
+    const h = await jeRow(jeId), ls = await linesOf(jeId);
+    return { header: { date: h.date, description: h.description || "", reference: h.reference || "", status: h.status, property: h.property || "" },
+      lines: ls.map(l => ({ id: l.id, account_id: l.account_id, debit: l.debit, credit: l.credit, class_id: l.class_id || "", memo: l.memo || "" })) };
+  };
+  const upd = async (jeId, header, lines, expected, snap) => sb.rpc("update_journal_entry", { p_company_id: fx.c, p_je_id: jeId, p_header: header, p_lines: lines,
+    p_expected_line_ids: expected === undefined ? await idsOf(jeId) : expected,
+    p_expected: snap === undefined ? await snapOf(jeId) : snap });
   r = await upd(e.id, { description: "UVE LIVE E edited" }, [
       { id: l1.id, account_id: fx.g, debit: 50, credit: 0, memo: "memo edit" },
       { id: l2.id, account_id: fx.ex, debit: 0, credit: 30, memo: "stamped memo edit" },
@@ -433,11 +463,26 @@ async function live() {
   const t10 = await mkTxn(fx, 10, 40);
   r = await upd(z.id, { reference: `BANK-${t10}` }, zl.map(l => ({ id: l.id, account_id: l.account_id, debit: l.debit, credit: l.credit })));
   assert("QA3 changing a reference INTO BANK-<txn id> is refused", r.error?.hint === "system_reference", r.error?.message);
-  await sb.from("acct_journal_entries").update({ reference: `BANK-${RUN}-other-txn` }).eq("id", z.id);
-  await sb.from("bank_feed_transaction").update({ status: "categorized", journal_entry_id: z.id }).eq("id", t10);
+  // A BANK- entry that belongs to ANOTHER txn (only post_bank_transaction
+  // can write that reference now), pointed at by t10.
+  const t10b = await mkTxn(fx, "10b", 40);
+  r = await sb.rpc("post_bank_transaction", { p_company_id: fx.c, p_txn_id: t10b, p_kind: "add", p_description: "UVE LIVE other txn", p_property: "",
+    p_lines: [{ account_id: fx.g, debit: 40, credit: 0 }, { account_id: fx.ex, debit: 0, credit: 40 }], p_decision: {}, p_decision_lines: [] });
+  const other = r.data?.je_id; if (other) created.jes.push(other);
+  await sb.from("bank_feed_transaction").update({ status: "categorized", journal_entry_id: other }).eq("id", t10);
   r = await sb.rpc("undo_bank_transaction", { p_company_id: fx.c, p_txn_id: t10 });
   assert("QA3 undo of an entry whose BANK- reference names another txn: unlinked, left posted",
-    r.data?.outcome === "unlinked" && (await jeRow(z.id)).status === "posted", r.error?.message || JSON.stringify(r.data));
+    r.data?.outcome === "unlinked" && (await jeRow(other)).status === "posted", r.error?.message || JSON.stringify(r.data));
+
+  // R2-2: BANK-/XFER-/SPLIT- references come only from post_bank_transaction.
+  for (const pfx of ["BANK-", " bank-", "Xfer-", "SPLIT-"]) {
+    const { error: e2 } = await sb.from("acct_journal_entries").insert({ company_id: fx.c, number: `UVE-${RUN}-m`, date: "2026-09-20", description: "UVE LIVE manual", reference: `${pfx}${t10}`, status: "posted" });
+    assert(`R2-2 a manual entry with reference ${JSON.stringify(pfx)}<txn> is refused`, e2?.hint === "system_reference", e2?.message);
+  }
+  const { error: eRef } = await sb.from("acct_journal_entries").update({ reference: `BANK-${t10}` }).eq("id", z.id);
+  assert("R2-2 a direct update of a reference to BANK-<txn> is refused", eRef?.hint === "system_reference", eRef?.message);
+  const { error: eDesc } = await sb.from("acct_journal_entries").update({ description: "UVE LIVE other txn (renamed)" }).eq("id", other);
+  assert("R2-2 …but a bank entry's other fields still update", !eDesc, eDesc?.message);
 
   // QA4: lines stay inside their company (the trigger, for every path)
   const { data: foreign } = await sb.from("acct_accounts").select("id, company_id").neq("company_id", fx.c).limit(1).single();
@@ -489,6 +534,57 @@ async function live() {
   assert("QA1 …and no stamps left on the voided entry", !(await linesOf(p13.id)).some(l => l.bank_feed_transaction_id));
   r = await sb.rpc("void_journal_entry", { p_company_id: fx.c, p_je_id: p13.id });
   assert("QA1 void retry is a no-op", r.data?.outcome === "already_voided", r.error?.message);
+
+  // R2-1: non-finite amounts and two-sided lines, every path
+  const n = await mkJE(fx, "N", [{ account_id: fx.ex2, debit: 70 }, { account_id: fx.ex, credit: 70 }]);
+  const [n1, n2] = n.lines;
+  for (const bad of ["NaN", "Infinity", "-Infinity"]) {
+    r = await upd(n.id, {}, [{ id: n1.id, account_id: fx.ex2, debit: bad }, { id: n2.id, account_id: fx.ex, credit: bad }]);
+    assert(`R2-1 update_journal_entry refuses ${bad}`, r.error?.hint === "bad_amount", r.error?.message);
+  }
+  r = await upd(n.id, {}, [{ id: n1.id, account_id: fx.ex2, debit: 75, credit: 5 }, { id: n2.id, account_id: fx.ex, credit: 70 }]);
+  assert("R2-1 update_journal_entry refuses a line with both a debit and a credit", r.error?.hint === "both_sides", r.error?.message);
+  assert("R2-1 …the entry is unchanged", (await linesOf(n.id)).every(l => Number(l.debit) === 70 || Number(l.credit) === 70));
+  const t14 = await mkTxn(fx, 14, 70);
+  r = await sb.rpc("post_bank_transaction", { p_company_id: fx.c, p_txn_id: t14, p_kind: "add", p_description: "UVE LIVE nan", p_property: "",
+    p_lines: [{ account_id: fx.g, debit: "NaN", credit: 0 }, { account_id: fx.ex, debit: 0, credit: "NaN" }], p_decision: {}, p_decision_lines: [] });
+  assert("R2-1 post_bank_transaction refuses NaN", r.error?.hint === "bad_amount", r.error?.message);
+  r = await sb.rpc("post_bank_transaction", { p_company_id: fx.c, p_txn_id: t14, p_kind: "add", p_description: "UVE LIVE both", p_property: "",
+    p_lines: [{ account_id: fx.g, debit: 75, credit: 5 }, { account_id: fx.ex, debit: 0, credit: 70 }], p_decision: {}, p_decision_lines: [] });
+  assert("R2-1 post_bank_transaction refuses a two-sided line", r.error?.hint === "both_sides" && (await txnRow(t14)).status === "for_review", r.error?.message);
+  const { error: eNaN } = await sb.from("acct_journal_lines").insert({ journal_entry_id: n.id, company_id: fx.c, account_id: fx.ex, account_name: "x", debit: "NaN", credit: 0 });
+  assert("R2-1 a direct NaN line insert is refused by chk_jl_amounts_finite", /chk_jl_amounts_finite/.test(eNaN?.message || ""), eNaN?.message);
+
+  // R2-4: a second editor's save in between is not overwritten
+  const before = await snapOf(n.id);
+  const r1 = await upd(n.id, {}, [{ id: n1.id, account_id: fx.ex2, debit: 70, memo: "editor A" }, { id: n2.id, account_id: fx.ex, credit: 70 }], undefined, before);
+  const r2 = await upd(n.id, {}, [{ id: n1.id, account_id: fx.ex2, debit: 70, memo: "editor B" }, { id: n2.id, account_id: fx.ex, credit: 70 }], undefined, before);
+  assert("R2-4 first editor saves; the second (same loaded snapshot) is refused as stale_entry", !r1.error && r2.error?.hint === "stale_entry", (r1.error?.message || "") + " / " + (r2.error?.message || ""));
+  assert("R2-4 …editor A's memo is what stays", (await linesOf(n.id)).find(l => l.id === n1.id)?.memo === "editor A");
+  r = await upd(n.id, {}, [{ id: n1.id, account_id: fx.ex2, debit: 70 }, { id: n2.id, account_id: fx.ex, credit: 70 }], undefined, null);
+  assert("R2-4 no snapshot -> refused", r.error?.hint === "stale_entry", r.error?.message);
+
+  // R2-5: a balanced legacy entry with 3-decimal amounts stays re-savable
+  const lg = await mkJE(fx, "LEG", [{ account_id: fx.ex2, debit: 33.335 }, { account_id: fx.ex2, debit: 33.335 }, { account_id: fx.ex2, debit: 33.33 }, { account_id: fx.ex, credit: 100 }]);
+  r = await upd(lg.id, { description: "UVE LIVE LEG memo" }, lg.lines.map(l => ({ id: l.id, account_id: l.account_id, debit: l.debit, credit: l.credit, memo: "m" })));
+  const lgAfter = await linesOf(lg.id);
+  assert("R2-5 memo-only edit of a legacy 33.335 + 33.335 + 33.33 = 100 entry saves, amounts untouched",
+    !r.error && lgAfter.filter(l => Number(l.debit) === 33.335).length === 2, r.error?.message);
+  r = await upd(lg.id, {}, lgAfter.map((l, i) => ({ id: l.id, account_id: l.account_id, debit: i === 0 ? 33.336 : l.debit, credit: l.credit })));
+  assert("R2-5 …but a CHANGED amount is rounded to cents and must balance exactly", r.error?.hint === "unbalanced", r.error?.message);
+
+  // R2-3: void refuses an entry claimed by a locked txn, or with reconciled lines
+  const t15 = await mkTxn(fx, 15, 15);
+  r = await sb.rpc("post_bank_transaction", { p_company_id: fx.c, p_txn_id: t15, p_kind: "add", p_description: "UVE LIVE locked", p_property: "",
+    p_lines: [{ account_id: fx.g, debit: 15, credit: 0 }, { account_id: fx.ex, debit: 0, credit: 15 }], p_decision: {}, p_decision_lines: [] });
+  const je15 = r.data?.je_id; if (je15) created.jes.push(je15);
+  await sb.from("bank_feed_transaction").update({ status: "locked" }).eq("id", t15);
+  r = await sb.rpc("void_journal_entry", { p_company_id: fx.c, p_je_id: je15 });
+  assert("R2-3 void of an entry claimed by a LOCKED txn is refused", r.error?.hint === "locked" && (await jeRow(je15)).status === "posted" && (await txnRow(t15)).journal_entry_id === je15, r.error?.message);
+  const rec = await mkJE(fx, "REC", [{ account_id: fx.g, debit: 16, reconciled: true, reconciled_date: "2026-09-22" }, { account_id: fx.ex, credit: 16 }]);
+  r = await sb.rpc("void_journal_entry", { p_company_id: fx.c, p_je_id: rec.id });
+  assert("R2-3 void of an entry with reconciled lines is refused", r.error?.hint === "reconciled" && (await jeRow(rec.id)).status === "posted", r.error?.message);
+  await sb.from("bank_feed_transaction").update({ status: "categorized" }).eq("id", t15);
 
   // G2: nothing voided while a txn stays linked -- a void refused mid-undo
   // changes nothing (reconciled line on a bank-created entry).
