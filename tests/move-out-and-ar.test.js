@@ -27,7 +27,9 @@ console.log('================================');
 // ─── 1. Move-Out posting model invariants ───────────────────
 console.log('\n1. Move-Out posting model invariants');
 assert(/Deposit transferred to ledger/.test(lifecycleJs), 'Deposit-transfer JE description present');
-assert(/`DEP-TFR-/.test(lifecycleJs), 'DEP-TFR-<id> reference used');
+// Since 2026-09-28 the move-out release uses the shared one-release-per-tenant
+// reference (depositRules.js: DEPRET-T<id> / DEPRET-L<lease>), not a random DEP-TFR-<id>.
+assert(/depositReleaseState\(/.test(lifecycleJs) && !/`DEP-TFR-\$\{/.test(lifecycleJs), 'move-out uses the shared deposit release reference (no random DEP-TFR-)');
 assert(!/DEP-RTN-/.test(lifecycleJs), 'No DEP-RTN- (cash-refund) reference left');
 // Scope to MoveOutWizard body — extract from "function MoveOutWizard"
 // to "function EvictionWorkflow" so the eviction stage-cost JE
