@@ -5,7 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDate
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
-import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
@@ -106,6 +106,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // === Utility Automation ===
   const [utilTab, setUtilTab] = useState("bills"); // bills / automation / jobs
   const [utilAccounts, setUtilAccounts] = useState([]);
+  // Set once fetchAutomationData has filled utilAccounts: the deep link must
+  // not decide "archived" before the accounts are actually loaded.
+  const [acctsLoaded, setAcctsLoaded] = useState(false);
   const [accountSearch, setAccountSearch] = useState("");
   const [autoBills, setAutoBills] = useState([]);
   const [autoJobs, setAutoJobs] = useState([]);
@@ -134,7 +137,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const handledAction = useRef(null);
   useEffect(() => {
     const id = initialAction?.editRecordId;
-    if (!id || handledAction.current === initialAction || loading) return;
+    if (!id || handledAction.current === initialAction || !acctsLoaded) return;
     const acct = utilAccounts.find(a => String(a.legacy_utility_id) === String(id))
       || utilAccounts.find(a => String(a.id) === String(initialAction.editAccountId || ""));
     handledAction.current = initialAction;
@@ -142,7 +145,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     if (!acct) { showToast("That record was archived or isn't available.", "error"); return; }
     setUtilTab("automation");
     openEditAccount(acct);
-  }, [initialAction, utilAccounts, loading]);
+  }, [initialAction, utilAccounts, acctsLoaded]);
 
   async function fetchAutomationData() {
   const [accts, bills, jobs, provs, receipts] = await Promise.all([
@@ -167,6 +170,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // approved yet (usable immediately). A legacy row with no approval_status
   // reads as approved.
   setProviders((provs.data || []).filter(p => p.approval_status !== "pending" || p.requested_company_id === companyId));
+  setAcctsLoaded(true);
   }
 
   // utility_accounts.account_type -> utilities.type, for the utilities row an
@@ -179,11 +183,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // only the first, so the sweep kept signing in with the old one. Both rows
   // now get the SAME ciphertext in one save.
   async function saveAccount() {
+  // One save at a time: a double click used to race two named-line inserts.
+  if (!guardSubmit("saveUtilityAccount")) return;
+  try { await saveAccountInner(); } finally { guardRelease("saveUtilityAccount"); }
+  }
+  async function saveAccountInner() {
   // Property is always required. Provider + credentials are required only when
   // ADDING; on an edit the account already has them, and the provider Select
   // keeps the current value ("__keep__").
   if (!accountForm.property) { showToast("Property is required.", "error"); return; }
-  if (!editingAccount && (!accountForm.provider || !accountForm.username || !accountForm.password)) {
+  if (!editingAccount && (!accountForm.provider || !formLogin(accountForm.username, accountForm.password))) {
   showToast("Property, provider, username, and password are required.", "error"); return;
   }
   // Half a login is refused on edit too: blank-both keeps the stored login,
@@ -217,9 +226,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // shape as every other credential in the app. All six columns are written
   // together, so no stale salt or username IV survives an overwrite.
   let creds = null;
-  if (accountForm.username && accountForm.password) {
+  if (formLogin(accountForm.username, accountForm.password)) {
   try {
-    const u = await encryptCredential(accountForm.username, companyId);
+    const u = await encryptCredential(String(accountForm.username || "").trim(), companyId);
     const p = await encryptCredential(accountForm.password, companyId, u.salt);
     if (!u.encrypted || !p.encrypted) throw new Error("empty ciphertext");
     creds = {
@@ -772,9 +781,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   delete row.username; delete row.password; // don't store plaintext
   row.website = form.website || "";
   if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("utility portal login"), "error"); return; }
-  if (form.username || form.password) {
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       row.username_encrypted = resU.encrypted || null; // null, never '' (chk_utilities_creds_not_blank)
       row.password_encrypted = resP.encrypted || null;

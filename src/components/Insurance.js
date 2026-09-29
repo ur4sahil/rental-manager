@@ -5,7 +5,7 @@ import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, propertyLabel
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
-import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
@@ -54,9 +54,9 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   payload.expiration_date = form.expiration_date || null;
   payload.website = form.website || "";
   if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("insurance portal login"), "error"); return; }
-  if (form.username || form.password) {
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username || "", companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       payload.username_encrypted = resU.encrypted || null; // null, never '' (chk_*_creds_not_blank)
       // Which key encrypted this. ENCRYPTION_KEY was rotated once with

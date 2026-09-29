@@ -9,7 +9,7 @@ import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
 import { queueNotification } from "../utils/notifications";
 import { COMPANY_DEFAULTS } from "../config";
 import { fetchAllPaged } from "../utils/accounting";
-import { LOGIN_MISSING_SOURCES, buildLoginMissingTasks } from "../utils/loginMissing";
+import { loadLoginMissingRows, buildLoginMissingTasks } from "../utils/loginMissing";
 import { Spinner } from "./shared";
 import AdminNotificationRules from "./AdminNotificationRules";
 
@@ -956,16 +956,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   // Only record types whose page this viewer can open: a manager or office
   // assistant has Tasks but not Loans / Insurance, and a to-do linking there
   // just lands them back on the dashboard. No allowedPages = no filter.
-  const canOpenPage = (pg) => !Array.isArray(allowedPages) || allowedPages.includes(pg);
-  const loginRows = {};
-  await Promise.all(LOGIN_MISSING_SOURCES.filter(src => canOpenPage(src.page)).map(async src => {
-    const { rows } = await fetchAllPaged(() => {
-      let q = supabase.from(src.table).select(src.select).eq("company_id", companyId).is("archived_at", null);
-      if (src.kind === "utility") q = q.not("is_final_bill", "is", true);
-      return q.order("id");
-    }, "login missing: " + src.table);
-    loginRows[src.kind] = rows;
-  }));
+  const loginRows = await loadLoginMissingRows(supabase, companyId, { allowedPages, pageAll: fetchAllPaged });
   const propIdByAddr = new Map((props.data || []).map(p => [p.address, p.id]));
   allTasks.push(...buildLoginMissingTasks(loginRows, propIdByAddr, { allowedPages }));
   // Cache open doc_exception requests keyed on address + doc_type so

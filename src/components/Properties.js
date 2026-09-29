@@ -7,6 +7,7 @@ import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, short
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
+import { formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
@@ -1160,9 +1161,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     // The salt is per ROW either way, so this changes nothing about the
     // guarantee: one compromised plaintext still does not unlock another row.
     async function encryptRow(hasCreds, username, password, reuseSalt = null) {
-      if (!hasCreds) return null;
-      const u = await encryptCredential(username || '', companyId, reuseSalt || null);
-      const p = await encryptCredential(password || '', companyId, u.salt);
+      // A whitespace-only username or password is not a login.
+      const lg = hasCreds ? formLogin(username, password) : null;
+      if (!lg) return null;
+      const u = await encryptCredential(lg.username, companyId, reuseSalt || null);
+      const p = await encryptCredential(lg.password, companyId, u.salt);
       // NULL, never '': an empty ciphertext is indistinguishable from a
       // real one in every IS NOT NULL and COUNT() check, which is how this
       // table came to report stored logins for utilities that had none.

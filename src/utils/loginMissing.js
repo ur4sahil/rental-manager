@@ -21,6 +21,34 @@ export const hasPair = (u, p) => hasValue(u) && hasValue(p);
 // Exactly one half typed into a form. Every save refuses this rather than
 // storing half a login that looks saved and never works.
 export const isHalfLogin = (username, password) => hasValue(username) !== hasValue(password);
+// The login a form actually carries: the username trimmed, and only when BOTH
+// halves have something other than whitespace. null = no login to save.
+// (The password is kept byte-for-byte: spaces inside or around a real
+// password can be part of it; a password of ONLY spaces is not one.)
+export function formLogin(username, password) {
+  if (!hasValue(username) || !hasValue(password)) return null;
+  return { username: String(username).trim(), password: String(password) };
+}
+
+// Reads the rows the to-dos are computed from, for the pages the viewer can
+// open. `pageAll(build, label)` is the app's fetchAllPaged, passed in so this
+// module stays import-free. Used by the Tasks page AND the sidebar badge, so
+// the two always count the same thing.
+export async function loadLoginMissingRows(sb, companyId, { allowedPages, pageAll } = {}) {
+  const rowsByKind = {};
+  const sources = LOGIN_MISSING_SOURCES.filter(src => !Array.isArray(allowedPages) || allowedPages.includes(src.page));
+  await Promise.all(sources.map(async src => {
+    const build = () => {
+      let q = sb.from(src.table).select(src.select).eq("company_id", companyId).is("archived_at", null);
+      if (src.kind === "utility") q = q.not("is_final_bill", "is", true);
+      return q.order("id");
+    };
+    const { rows } = await pageAll(build, "login missing: " + src.table);
+    rowsByKind[src.kind] = rows || [];
+  }));
+  return rowsByKind;
+}
+
 export const halfLoginMessage = (what = "portal login") =>
   "Enter both the username and the password for the " + what + ", or leave both blank.";
 

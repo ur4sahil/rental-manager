@@ -159,7 +159,7 @@ const util = read("src/components/Utilities.js");
 const saveAcct = util.slice(util.indexOf("async function saveAccount()"), util.indexOf("async function deleteAccount("));
 const delAcct = util.slice(util.indexOf("async function deleteAccount("), util.indexOf("async function loadPortalLogin("));
 assert("Accounts-tab save uses the standard server encryption, not a browser key",
-  /encryptCredential\(accountForm\.username, companyId\)/.test(saveAcct)
+  /encryptCredential\(String\(accountForm\.username \|\| ""\)\.trim\(\), companyId\)/.test(saveAcct)
   && /encryptCredential\(accountForm\.password, companyId, u\.salt\)/.test(saveAcct)
   && !/crypto\.subtle/.test(saveAcct) && !/_propmanager_cred_key/.test(saveAcct));
 assert("… persists the key fingerprint and all six credential columns",
@@ -198,7 +198,7 @@ assert("the wizard reuses the stored HOA row salt for every login set, keyed by 
   && /encryptRow\(!!\(h\.username && h\.password\), h\.username, h\.password, keptSalt\)/.test(props));
 const hoa = read("src/components/HOA.js");
 assert("the HOA page reuses the row salt when the association login changes",
-  /encryptCredential\(form\.username \|\| "", companyId, \(editingHoa && editingHoa\.encryption_salt\) \|\| null\)/.test(hoa));
+  /encryptCredential\(String\(form\.username \|\| ""\)\.trim\(\), companyId, \(editingHoa && editingHoa\.encryption_salt\) \|\| null\)/.test(hoa));
 const imp = read("src/components/PropertyImport.js");
 assert("re-import leaves stored logins/websites alone when the sheet cell is blank",
   /update\(keepStoredLoginOnBlank\(row\)\)/.test(imp) && /function keepStoredLoginOnBlank/.test(imp));
@@ -247,6 +247,40 @@ assert("migration: every definer function it defines is revoked from PUBLIC/anon
     /responsibility === "condo_fee"/.test(runner) && /toLowerCase\(\)/.test(runner));
   assert("portfolio loan insert writes NULL, not '', when there is no login",
     /noLogin = base\.username_encrypted \? \{\} : \{ username_encrypted: null/.test(read("src/components/Loans.js")));
+}
+
+// Round 3.
+{
+  const enc3 = read("api/encrypt.js");
+  const streamBlock = enc3.slice(enc3.indexOf("if (isStream) {"), enc3.indexOf("const b64 = Buffer.from(JSON.stringify(payload))"));
+  assert("stream-session requires a credential (staff) role before minting a token",
+    /if \(!CRED_ROLES\.has\(membership\.role\)\) \{\s*return res\.status\(403\)/.test(streamBlock));
+  assert("an enroll stream never creates a payment row",
+    /if \(body\.billId && svcKey && body\.enroll !== true\)/.test(streamBlock));
+  assert("owner is not a credential role",
+    /const CRED_ROLES = new Set\(\["admin", "pm", "manager", "office_assistant"\]\)/.test(enc3) && !/CRED_ROLES = new Set\([^)]*"owner"/.test(enc3));
+  const loans3 = read("src/components/Loans.js");
+  assert("owners read loans through owner_loans_readonly, with no login / edit controls",
+    /const readOnly = userRole === "owner"/.test(loans3) && /rpc\("owner_loans_readonly"/.test(loans3)
+    && /!readOnly && l\.username_encrypted/.test(loans3) && /\{!readOnly && <Btn variant="success-fill" onClick=\{\(\) => \{ setEditingLoan\(null\)/.test(loans3));
+  assert("Utilities deep link waits for fetchAutomationData (acctsLoaded), not the list spinner",
+    /handledAction\.current === initialAction \|\| !acctsLoaded\) return;/.test(util) && /setAcctsLoaded\(true\)/.test(util));
+  assert("the Accounts-tab save is single-flight (guardSubmit)",
+    /if \(!guardSubmit\("saveUtilityAccount"\)\) return;/.test(util));
+  const lm3 = read("src/utils/loginMissing.js");
+  const M3 = await import("data:text/javascript," + encodeURIComponent(lm3));
+  assert("a whitespace-only username or password is not a login",
+    M3.formLogin("   ", "pw") === null && M3.formLogin("u", "   ") === null && M3.formLogin(" u ", "p w").username === "u"
+    && M3.formLogin(" u ", " p ").password === " p " && M3.isHalfLogin("  ", "pw") && !M3.isHalfLogin("  ", "  "));
+  for (const f of ["Utilities.js", "Insurance.js", "HOA.js", "Loans.js"]) {
+    assert(`${f}: saves only a whole, non-blank login`, /formLogin\(/.test(read("src/components/" + f)));
+  }
+  assert("the wizard ignores a whitespace-only login", /const lg = hasCreds \? formLogin\(username, password\) : null;/.test(read("src/components/Properties.js")));
+  assert("the import names the row of a half login", /the \$\{hasU \? "password" : "username"\} is missing/.test(read("src/components/PropertyImport.js")));
+  const app3 = read("src/App.js");
+  assert("the sidebar Tasks badge counts login-missing to-dos with the same loader",
+    /loadLoginMissingRows\(supabase, cid, \{ allowedPages: badgePages, pageAll: fetchAllPaged \}\)/.test(app3)
+    && /wizardSteps \+ loginMissing;/.test(app3) && /loadLoginMissingRows\(supabase, companyId/.test(read("src/components/Admin.js")) && /export async function loadLoginMissingRows/.test(lm3));
 }
 
 // ─── part 3: the database, on TEST ───────────────────────────────────────
@@ -450,12 +484,38 @@ if (sb) {
     // 13. condo fee: the claim RPC refuses it (account wins, any case)
     const condoBill = (await one(sb.from("utility_bills").insert([{ company_id: CO, utility_account_id: bOld.id, property: P2, provider: PROV,
       amount: 9, statement_period: "2026-08", responsibility: "owner", status: "pending_review" }]).select("id")))[0];
-    await one(sb.from("utility_accounts").update({ responsibility: "Condo_Fee" }).eq("id", bOld.id));
+    await one(sb.from("utility_accounts").update({ responsibility: "condo_fee" }).eq("id", bOld.id));
     const cp = (await one(sb.from("utility_payments").insert([{ company_id: CO, provider: "qa", approved_amount: 5, approved_by: "qa@example.test",
       approved_at: new Date().toISOString(), status: "approved", bill_id: condoBill.id, idem_key: "QA-UTIL-condo-" + CO }]).select("id")))[0];
     const { data: cc } = await sb.rpc("claim_utility_payment", { p_company_id: CO, p_id: cp.id, p_worker: "qa" });
     const c2 = Array.isArray(cc) ? cc[0] : cc;
-    assert("claim_utility_payment refuses a condo-fee utility (case-insensitive)", c2 && c2.ok === false && /condo/.test(c2.reason || ""), JSON.stringify(c2));
+    assert("claim_utility_payment refuses a condo-fee utility", c2 && c2.ok === false && /condo/.test(c2.reason || ""), JSON.stringify(c2));
+
+    // 14. round 3: an archived / user-deleted account is never revived
+    const dead = await mkAcct({ account_number: "D-DEL-444", responsibility: "owner", archived_at: new Date().toISOString(), archived_reason: "user_deleted" });
+    const { error: deadErr } = await sb.rpc("save_utility_line_for_account", { p_company_id: CO, p_account_id: dead.id,
+      p_row: { property: P2, provider: PROV, account_number: "D-DEL-444", responsibility: "owner" } });
+    const deadAfter = (await one(sb.from("utility_accounts").select("archived_at, legacy_utility_id").eq("id", dead.id)))[0];
+    assert("save_utility_line_for_account refuses an archived / user-deleted account", !!deadErr && !!deadAfter.archived_at && deadAfter.legacy_utility_id == null, deadErr ? deadErr.message : "no error");
+
+    // 15. round 3: concurrent saves for one account leave exactly ONE live line
+    for (const acctNo of [null, "R-RACE-555"]) {
+      const racer = await mkAcct({ account_number: acctNo || "", responsibility: "owner" });
+      const rs = await Promise.all([0, 1, 2].map(() => sb.rpc("save_utility_line_for_account", { p_company_id: CO, p_account_id: racer.id,
+        p_row: { property: P2 + " race", provider: PROV, account_number: acctNo } })));
+      const okIds = rs.map(r => r.data).filter(Boolean);
+      const linked = (await one(sb.from("utility_accounts").select("legacy_utility_id").eq("id", racer.id)))[0].legacy_utility_id;
+      const { count: live } = await sb.from("utilities").select("*", { count: "exact", head: true }).eq("company_id", CO).eq("property", P2 + " race").is("archived_at", null).eq("provider", PROV);
+      assert(`race (account number ${acctNo ? "set" : "null"}): one save wins, the others are refused, no orphan line`,
+        okIds.length === 1 && okIds[0] === linked && live === 1 && rs.filter(r => r.error).length === 2, JSON.stringify(rs.map(r => r.error ? r.error.message.slice(0, 60) : r.data)));
+      await one(sb.from("utilities").update({ archived_at: new Date().toISOString() }).eq("company_id", CO).eq("property", P2 + " race").is("archived_at", null));
+    }
+
+    // 16. round 3: responsibility is constrained
+    const { error: badResp } = await sb.from("utility_accounts").update({ responsibility: "Tenant Pays" }).eq("id", bOld.id);
+    assert("a responsibility outside owner/tenant/condo_fee/shared is rejected", !!badResp && /chk_utility_accounts_responsibility/.test(badResp.message), badResp ? badResp.message : "accepted");
+    const { data: norm } = await sb.rpc("normalize_utility_responsibility", { p: " Condo Fee " }).then(r => r, () => ({ data: null }));
+    if (norm !== null) assert("the normaliser maps 'Condo Fee' -> condo_fee", norm === "condo_fee", String(norm));
   } catch (e) {
     assert("database part ran without error", false, e.stack || e.message);
   } finally {
@@ -483,9 +543,20 @@ if (sb) {
 // throwaway user and QA-UTIL rows.
 if (sb) {
   const { runTenantExploit } = await import("./utility-rls-exploit.mjs");
-  const r = await runTenantExploit();
-  assert("a tenant cannot read, flip or read ciphertext of utility accounts/bills", !r.error && r.exploitable === false, JSON.stringify(r));
-  assert("the exploit run left nothing behind", r.leftovers === 0, JSON.stringify(r));
+  for (const role of ["tenant", "maintenance"]) {
+    const r = await runTenantExploit(role);
+    assert(`a ${role} cannot read, flip or read ciphertext of utility accounts/bills`, !r.error && r.exploitable === false, JSON.stringify(r));
+    assert(`the ${role} exploit run left nothing behind`, r.leftovers === 0, JSON.stringify(r));
+  }
+  const { runLoanExploit } = await import("./loans-rls-exploit.mjs");
+  for (const role of ["tenant", "owner"]) {
+    const r = await runLoanExploit(role);
+    assert(`a ${role} cannot read or change loans / portfolio loans / insurance (or their ciphertext)`, !r.error && r.exploitable === false, JSON.stringify(r));
+    if (role === "owner") assert("an owner reads THEIR OWN loans read-only, without login columns",
+      JSON.stringify(r.steps.rpc.loans) === JSON.stringify(["QA-UTIL Own Bank"]) && JSON.stringify(r.steps.rpc.portfolio) === JSON.stringify(["QA-UTIL Blanket"]) && r.steps.rpc.leaksCredentialColumns === false, JSON.stringify(r.steps.rpc));
+    if (role === "tenant") assert("a tenant gets nothing from owner_loans_readonly", r.steps.rpc && r.steps.rpc.loans && r.steps.rpc.loans.length === 0, JSON.stringify(r.steps.rpc));
+    assert(`the ${role} loans exploit run left nothing behind`, r.leftovers === 0, JSON.stringify(r));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

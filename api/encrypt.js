@@ -214,7 +214,18 @@ module.exports = async function handler(req, res) {
   // browser payment. No card data here; the token only names the provider/
   // account/amount and expires in 8 minutes. Signed with STREAM_JWT_SECRET,
   // which the VPS browser-stream service verifies.
+  // Roles that legitimately handle account credentials. NOT owner or tenant:
+  // an owner invited into a PM's company reads loans without their logins,
+  // and the stream pre-fills the COMPANY's portal login.
+  const CRED_ROLES = new Set(["admin", "pm", "manager", "office_assistant"]);
+
   if (isStream) {
+    // Staff only: the stream signs into the company's utility portal with the
+    // stored login (and can pay). A tenant/owner/maintenance member used to be
+    // able to mint a token.
+    if (!CRED_ROLES.has(membership.role)) {
+      return res.status(403).json({ error: "Only staff can open the utility portal." });
+    }
     const secret = process.env.STREAM_JWT_SECRET;
     const streamBase = process.env.STREAM_BASE_URL;
     if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
@@ -260,7 +271,8 @@ module.exports = async function handler(req, res) {
     let paymentId = null;
     let approvedAmount = body.amount != null ? Number(body.amount) : null;
     const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (body.billId && svcKey) {
+    // Enroll is a sign-in only -- never a payment, so never a payment row.
+    if (body.billId && svcKey && body.enroll !== true) {
       try {
         const svc = createClient(process.env.REACT_APP_SUPABASE_URL, svcKey, { auth: { persistSession: false } });
         const { data: bill } = await svc.from("utility_bills")
@@ -315,7 +327,8 @@ module.exports = async function handler(req, res) {
   // check a company member with role=tenant could POST to /api/encrypt
   // with action=decrypt and recover any stored credential.
   //
-  //   admin / owner / pm       — full control, obvious yes.
+  //   admin / pm               — full control, obvious yes. (owner removed:
+  //                              an owner member reads loans without logins.)
   //   manager                  — admin delegate; wizard Utility step
   //                              requires write access.
   //   office_assistant         — runs day-to-day property setup
@@ -330,7 +343,6 @@ module.exports = async function handler(req, res) {
     return handleQbImport({ action, body, res, userEmail, membershipRole: membership.role });
   }
 
-  const CRED_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant"]);
   if (!CRED_ROLES.has(membership.role)) {
     return res.status(403).json({ error: "Insufficient role for credential operations" });
   }

@@ -5,7 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, forma
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
-import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Badge, Spinner, PropertySelect } from "./shared";
@@ -82,7 +82,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("association login"), "error"); return; }
   if (isHalfLogin(form.mgmt_username, form.mgmt_password)) { showToast(halfLoginMessage("management company login"), "error"); return; }
   if (isHalfLogin(form.pay_username, form.pay_password)) { showToast(halfLoginMessage("payment portal login"), "error"); return; }
-  if (form.username || form.password) {
+  if (formLogin(form.username, form.password)) {
     // Pair of creds shares one per-row salt (encryption_salt). Each value
     // gets its OWN IV — both preserved now (encryption_iv_username for
     // username, encryption_iv for password). Prior schema only held one
@@ -93,7 +93,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     // one overwrote the column and left the stored management-company and
     // payment-portal logins undecryptable.
     try {
-      const resU = await encryptCredential(form.username || "", companyId, (editingHoa && editingHoa.encryption_salt) || null);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId, (editingHoa && editingHoa.encryption_salt) || null);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
       payload.username_encrypted = resU.encrypted || null; // null, never '' (chk_*_creds_not_blank)
       // Which key encrypted this. ENCRYPTION_KEY was rotated once with
@@ -114,8 +114,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   // of the three sets would decrypt to nothing.
   try {
     const rowSalt = payload.encryption_salt || (editingHoa && editingHoa.encryption_salt) || null;
-    if (form.mgmt_username || form.mgmt_password) {
-      const u = await encryptCredential(form.mgmt_username || "", companyId, rowSalt);
+    if (formLogin(form.mgmt_username, form.mgmt_password)) {
+      const u = await encryptCredential(String(form.mgmt_username || "").trim(), companyId, rowSalt);
       const p2 = await encryptCredential(form.mgmt_password || "", companyId, u.salt);
       payload.mgmt_username_encrypted = u.encrypted || null;
       payload.mgmt_password_encrypted = p2.encrypted || null;
@@ -124,9 +124,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       payload.encryption_salt = payload.encryption_salt || u.salt || null;
       payload.credential_key_fp = payload.credential_key_fp || u.keyFp || null;
     }
-    if (form.pay_username || form.pay_password) {
+    if (formLogin(form.pay_username, form.pay_password)) {
       const salt = payload.encryption_salt || rowSalt;
-      const u = await encryptCredential(form.pay_username || "", companyId, salt);
+      const u = await encryptCredential(String(form.pay_username || "").trim(), companyId, salt);
       const p2 = await encryptCredential(form.pay_password || "", companyId, u.salt);
       payload.pay_username_encrypted = u.encrypted || null;
       payload.pay_password_encrypted = p2.encrypted || null;

@@ -232,8 +232,15 @@ export default function PropertyImport({ companyId, companyName, properties = []
   // over a password.
   const credFailures = [];
   async function encryptCreds(row, whatFor) {
-    const username = cellString(row.username), password = cellString(row.password);
-    if (!username && !password) return NO_CREDS;
+    const username = cellString(row.username).trim(), password = cellString(row.password);
+    // Whitespace is not a login; one half without the other is refused with
+    // a message naming the row, instead of storing half a login.
+    const hasU = username.trim() !== "", hasP = password.trim() !== "";
+    if (!hasU && !hasP) return NO_CREDS;
+    if (hasU !== hasP) {
+      credFailures.push(`${whatFor || "a login"}${row && row._row ? " (sheet row " + row._row + ")" : ""}: the ${hasU ? "password" : "username"} is missing — fill in both or neither`);
+      return NO_CREDS;
+    }
     try {
       const u = await encryptCredential(username, companyId);
       const pw = await encryptCredential(password, companyId, u.salt);

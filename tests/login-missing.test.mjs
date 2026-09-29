@@ -138,13 +138,17 @@ assert("Loans.js: insert writes NULL creds when none", /username_encrypted: cred
 
 console.log("\n📋 TASKS PAGE + DEEP LINKS");
 const admin = src("components/Admin.js");
-assert("Tasks page builds login-missing to-dos from the shared rules", /buildLoginMissingTasks\(loginRows/.test(admin) && /LOGIN_MISSING_SOURCES\.filter\(src => canOpenPage\(src\.page\)\)\.map/.test(admin));
-assert("Tasks page pages its reads (fetchAllPaged) and excludes archived", /fetchAllPaged\(\(\) => \{[\s\S]{0,200}\.is\("archived_at", null\)/.test(admin));
-assert("Tasks page excludes utility final bills", /not\("is_final_bill", "is", true\)/.test(admin));
+// The reads live in the shared loader (loginMissing.js) so the Tasks page
+// and the sidebar badge count exactly the same rows.
+const lmSrc = src("utils/loginMissing.js");
+assert("Tasks page builds login-missing to-dos from the shared rules and loader",
+  /buildLoginMissingTasks\(loginRows/.test(admin) && /loadLoginMissingRows\(supabase, companyId, \{ allowedPages, pageAll: fetchAllPaged \}\)/.test(admin));
+assert("the loader pages its reads and excludes archived", /await pageAll\(build/.test(lmSrc) && /\.is\("archived_at", null\)/.test(lmSrc));
+assert("the loader excludes utility final bills", /not\("is_final_bill", "is", true\)/.test(lmSrc));
 for (const [f, list] of [["Utilities.js", "utilAccounts"], ["Insurance.js", "policies"], ["Loans.js", "loans"], ["HOA.js", "hoaPayments"]]) {
   const s = src("components/" + f);
   assert(`${f}: accepts initialAction and opens the edit form for editRecordId`,
-    /showConfirm, initialAction \}\)/.test(s) && /initialAction\?\.editRecordId/.test(s) && new RegExp("\\}, \\[initialAction, " + list + "(, loading)?\\]\\)").test(s));
+    /showConfirm, initialAction \}\)/.test(s) && /initialAction\?\.editRecordId/.test(s) && new RegExp("\\}, \\[initialAction, " + list + "(, loading|, acctsLoaded)?\\]\\)").test(s));
 }
 assert("Loans.js: portfolio deep link opens the portfolio edit form", /initialAction\?\.editPortfolioId/.test(src("components/Loans.js")) && /openEditPortfolio\(rec\)/.test(src("components/Loans.js")));
 assert("Utilities deep link resolves the utilities row to its linked account", /a\.legacy_utility_id\) === String\(id\)/.test(src("components/Utilities.js")));

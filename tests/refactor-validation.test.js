@@ -264,8 +264,8 @@ function testFileStructure() {
   // 53500 on 2026-09-28 (theme K): +~210 for expenseRules.js / expensePosting.js and the
   // WO<->invoice link picker, Record-payment month rule, escrowed-tax filtering.
   // 53600 on 2026-09-29: theme-I merged with bank undo/void/edit (staging ccb892f).
-  // 54200 on 2026-09-29: theme I round 3 merged with theme K (staging df90dcd) -- both branches' lines together.
-  assert(totalLines <= 54200, `Total src lines <= 54200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53900 on 2026-09-29: theme I round 3 (owner read-only loans, whole-login trimming, badge count) merged with theme K (staging df90dcd).
+  assert(totalLines <= 53900, `Total src lines <= 53900 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

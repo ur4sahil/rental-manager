@@ -5,12 +5,16 @@ import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanT
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
-import { isHalfLogin, halfLoginMessage } from "../utils/loginMissing";
+import { isHalfLogin, halfLoginMessage, formLogin } from "../utils/loginMissing";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
 function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   const [loans, setLoans] = useState([]);
+  // An OWNER member (invited into a PM's company) sees their own properties'
+  // loans read-only, through owner_loans_readonly -- no login columns, no
+  // edits. The tables themselves are staff-only.
+  const readOnly = userRole === "owner";
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState(null);
@@ -75,7 +79,19 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     return () => { cancelled = true; };
   }, [showForm, form.property, companyId]);
 
+  async function fetchOwnerLoans() {
+  const { data, error } = await supabase.rpc("owner_loans_readonly", { p_company_id: companyId });
+  if (error) pmError("PM-2007", { raw: error, context: "owner loans (read-only)", phase: "read", silent: true });
+  const d = data || {};
+  setLoans(d.loans || []);
+  setPortfolioLoans(d.portfolio_loans || []);
+  setPortfolioProps(d.portfolio_props || []);
+  setPfLoaded(true);
+  setLoading(false);
+  }
+
   async function fetchLoans() {
+  if (readOnly) return fetchOwnerLoans();
   const { data } = await supabase.from("property_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
   setLoans(data || []);
   setLoading(false);
@@ -99,9 +115,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   // the whole save would fail the constraint).
   let creds = null;
   if (isHalfLogin(form.username, form.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
-  if (form.username && form.password) {
+  if (formLogin(form.username, form.password)) {
     try {
-      const resU = await encryptCredential(form.username, companyId);
+      const resU = await encryptCredential(String(form.username || "").trim(), companyId);
       const resP = await encryptCredential(form.password, companyId, resU.salt);
       if (resU.encrypted && resP.encrypted) {
         creds = {
@@ -186,6 +202,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   }
 
   async function fetchPortfolioLoans() {
+  if (readOnly) return; // loaded with the owner's loans
+
   const [{ data: pl }, { data: pp }] = await Promise.all([
     supabase.from("portfolio_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
     supabase.from("portfolio_loan_properties").select("*").eq("company_id", companyId),
@@ -211,9 +229,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     status: portfolioForm.status, notes: portfolioForm.notes || "", website: portfolioForm.website || "",
   };
   if (isHalfLogin(portfolioForm.username, portfolioForm.password)) { showToast(halfLoginMessage("lender portal login"), "error"); return; }
-  if (portfolioForm.username && portfolioForm.password) {
+  if (formLogin(portfolioForm.username, portfolioForm.password)) {
     try {
-      const resU = await encryptCredential(portfolioForm.username || "", companyId);
+      const resU = await encryptCredential(String(portfolioForm.username || "").trim(), companyId);
       const resP = await encryptCredential(portfolioForm.password || "", companyId, resU.salt);
       base.username_encrypted = resU.encrypted; base.password_encrypted = resP.encrypted;
       base.encryption_iv_username = resU.iv || null; base.encryption_iv = resP.iv || resU.iv; base.encryption_salt = resU.salt || resP.salt;
@@ -289,7 +307,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <Select filter value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </Select>
-  <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>
+  {!readOnly && <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>}
   </div>
 
   {/* Stats */}
@@ -370,11 +388,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "portal", label: "Portal", className: "text-xs",
         render: l => (<>
           {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-            {l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
+            {!readOnly && l.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv_username || l.encryption_iv, companyId, l.encryption_salt); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId, l.encryption_salt); s.add(l.id); setShowCreds(new Set(s)); }}}>{showCreds.has(l.id) ? "Hide" : "Show"} login</TextLink>}
             {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
         </>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
-        render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : (<>
+        render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : readOnly ? <span className="text-xs text-neutral-300">View only</span> : (<>
           {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
             <TextLink tone="brand" size="xs" onClick={() => openEditLoan(l)} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
@@ -392,7 +410,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
   <div><h2 className="text-lg font-display font-bold text-neutral-800">Portfolio Loans</h2>
   <p className="text-xs text-neutral-400">One loan covering multiple properties — entered once, tracked at the portfolio level (no per-property split).</p></div>
-  <Btn variant="success-fill" className="md:ml-auto" onClick={() => { setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); }}>+ Add Portfolio Loan</Btn>
+  {!readOnly && <Btn variant="success-fill" className="md:ml-auto" onClick={() => { setEditingPortfolio(null); setPortfolioForm(emptyPortfolioForm); setPfPropToAdd(""); setShowPortfolioForm(true); }}>+ Add Portfolio Loan</Btn>}
   </div>
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card overflow-x-auto">
   <DataTable
@@ -407,7 +425,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "monthly", label: "Monthly", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.monthly_payment)}</>) },
       { key: "balance", label: "Balance", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.current_balance)}</>) },
       { key: "maturity", label: "Maturity", className: "text-neutral-400", render: l => (<>{fmtDate(l.maturity_date) || "\u2014"}</>) },
-      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => (<>
+      { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => readOnly ? <span className="text-xs text-neutral-300">View only</span> : (<>
         <TextLink tone="brand" size="xs" className="mr-2" onClick={() => openEditPortfolio(l)}>Edit</TextLink>
         <TextLink tone="danger" size="xs" onClick={() => deletePortfolioLoan(l.id)}>Delete</TextLink>
       </>) },
