@@ -220,37 +220,10 @@ async function signedIn(page, book) {
   return true;
 }
 
-// Read a one-time code out of the local macOS Mail store (no IMAP, no creds).
-// Scans ~/Library/Mail for a message FROM the portal's code sender that arrived
-// AFTER the login was triggered (mtime gate — so an old code is never reused),
-// and pulls the 6-digit code, preferring a digit-run sitting next to the word
-// "code". Works for whatever Gmail account is signed into Mail.app that receives
-// the code. Returns null until such a message has synced down.
-function readCodeFromMail(sinceMs) {
-  const os = require("os");
-  const root = process.env.HOUSY_CODE_MAILDIR || path.join(os.homedir(), "Library", "Mail");
-  const sender = (process.env.HOUSY_CODE_SENDER || "no-reply@bge.com").toLowerCase();
-  let best = null, bestT = 0;
-  const stack = [root];
-  while (stack.length) {
-    const d = stack.pop();
-    let ents; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
-    for (const e of ents) {
-      const p = path.join(d, e.name);
-      if (e.isDirectory()) { stack.push(p); continue; }
-      if (!e.name.endsWith(".emlx")) continue;
-      let st; try { st = fs.statSync(p); } catch { continue; }
-      if (st.mtimeMs < sinceMs - 45000) continue;          // only mail newer than the trigger
-      let txt; try { txt = fs.readFileSync(p, "latin1"); } catch { continue; }
-      if (!txt.toLowerCase().includes(sender)) continue;   // from the code sender
-      const near = txt.match(/code[^0-9]{0,40}(\d{6})/i) || txt.match(/(\d{6})[^0-9]{0,40}code/i);
-      const any = txt.match(/\b\d{6}\b/);
-      const code = near ? near[1] : (any ? any[0] : null);
-      if (code && st.mtimeMs > bestT) { bestT = st.mtimeMs; best = code; }
-    }
-  }
-  return best;
-}
+// Read a one-time code out of the local macOS Mail store -- see mail-code.js
+// (finds the message through Mail's own index, decodes the body, takes only
+// the digits labelled as the code).
+const { readCodeFromMail } = require("./mail-code");
 
 (async () => {
   const portal = (process.argv[2] || "").toLowerCase();
