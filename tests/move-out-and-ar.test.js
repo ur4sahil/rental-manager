@@ -62,7 +62,10 @@ assert(/getOrCreateTenantAR|acct_accounts.*tenant_id|name.*"AR - "/.test(lifecyc
 console.log('\n3. getOrCreateTenantAR per-lease keying');
 assert(/cacheKey = `\$\{companyId\}::\$\{tenantId \|\| tenantName\}`/.test(accountingUtilsJs),
   'Cache key uses tenantId, not bare name');
-assert(/eq\("tenant_id", tenantId\)\.maybeSingle/.test(accountingUtilsJs),
+// Several linked rows are possible (an inactive old one + the current one):
+// read them all and pick, never .maybeSingle() (which errored and fell
+// through to creating a junk account).
+assert(/\.eq\("tenant_id", tenantId\)\.limit\(50\)/.test(accountingUtilsJs) && /pickTenantArAccount\(linked \|\| \[\], tenantId\)/.test(accountingUtilsJs),
   'Lookup by acct_accounts.tenant_id first');
 assert(/shortProp|split\(","\)\[0\]/.test(accountingUtilsJs), 'New per-lease account name includes short property');
 assert(/acct_accounts.*tenant_id: tenantId/.test(accountingUtilsJs), 'New AR sub-account populates tenant_id');

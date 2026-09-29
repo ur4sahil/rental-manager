@@ -134,6 +134,39 @@ function autopayIdempotencyKey(scheduleId, period, attemptDate) {
   return "autopay-" + scheduleId + "-" + billingPeriodOf(period) + "-" + day;
 }
 
+// Days in month `m` (1-12) of year `y`, computed in UTC so the host's time
+// zone can never shift it.
+function daysInMonthUtc(y, m) {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+// The due date inside billing period `period` ("YYYY-MM") for a schedule
+// charged on `dayOfMonth`: that day, clamped to the month's last day
+// (day 31 in February -> the 28th/29th). Null for a malformed period.
+function chargeDateInPeriod(period, dayOfMonth) {
+  const p = billingPeriodOf(period);
+  if (!p) return null;
+  const y = parseInt(p.slice(0, 4), 10), m = parseInt(p.slice(5, 7), 10);
+  const want = Math.max(1, Math.floor(num(dayOfMonth)) || 1);
+  const d = Math.min(want, daysInMonthUtc(y, m));
+  return p + "-" + String(d).padStart(2, "0");
+}
+
+// WHEN AN AUTOPAY SCHEDULE IS NEXT DUE after it has been charged for
+// `period`: the month AFTER the claimed period -- never "a month from
+// today". A schedule that fell behind (due 2026-08-01, charged 2026-09-28)
+// is next due 2026-09-01, so September is billed on the next run instead of
+// being skipped; a charge that lands on the 31st does not overflow into the
+// month after next. Pure string/UTC arithmetic (no setMonth overflow, no
+// local-vs-ISO mixing).
+function nextChargeDateAfterPeriod(period, dayOfMonth) {
+  const p = billingPeriodOf(period);
+  if (!p) return null;
+  let y = parseInt(p.slice(0, 4), 10), m = parseInt(p.slice(5, 7), 10) + 1;
+  if (m > 12) { m = 1; y += 1; }
+  return chargeDateInPeriod(y + "-" + String(m).padStart(2, "0"), dayOfMonth);
+}
+
 // PaymentMethod.type -> autopay_schedules.method. Anything that is not a US
 // bank account is charged as a card (the fee the app has always applied).
 function autopayMethodFromPmType(pmType) {
@@ -194,6 +227,78 @@ function buildReversalLines(originalLines, amountCents, memo) {
   })).filter(l => l.debit > 0 || l.credit > 0);
 }
 
+// payments.status only moves FORWARD. Stripe does not guarantee event
+// order, so an older charge.refunded (partial) can arrive after the newer
+// one (full): it must not turn "refunded" back into "partially_refunded".
+// Likewise a late charge.dispute.created must not undo "dispute_lost".
+// Returns the current statuses that block writing `incoming` (the webhook
+// applies it as a conditional update, so there is no read-then-write race).
+const PAYMENT_STATUS_BLOCKERS = {
+  partially_refunded: ["refunded"],
+  disputed: ["dispute_lost"],
+};
+function paymentStatusBlockers(incoming) {
+  return (PAYMENT_STATUS_BLOCKERS[incoming] || []).slice();
+}
+function paymentStatusMayMove(current, incoming) {
+  return !paymentStatusBlockers(incoming).includes(String(current || ""));
+}
+
+// Only these company roles may trigger the autopay charger with their own
+// login (the cron uses CRON_SECRET). company_members.role "owner" is the
+// OWNER-PORTAL role (a property owner, not a company owner) and is excluded.
+const AUTOPAY_RUN_ROLES = ["admin"];
+function autopayRunCompanyIds(memberships) {
+  return [...new Set((memberships || [])
+    .filter(m => m && m.company_id && String(m.status || "") === "active" && AUTOPAY_RUN_ROLES.includes(String(m.role || "").toLowerCase()))
+    .map(m => String(m.company_id)))];
+}
+
+// Is this recurring_journal_entries row the tenant's RENT schedule (as
+// opposed to, say, a pet fee or parking charge billed to the same tenant)?
+// Rent schedules credit Rental Income (code 4000). `rentalIncomeIds` are the
+// company's acct_accounts ids for 4000. Stored ids may be the uuid or the
+// legacy code string "4000".
+function isRentSchedule(schedule, rentalIncomeIds) {
+  if (!schedule) return false;
+  const ids = new Set((rentalIncomeIds || []).filter(Boolean).map(String));
+  const credit = String(schedule.credit_account_id || "");
+  if (credit && (ids.has(credit) || credit === "4000")) return true;
+  if (/^rental income\b/i.test(String(schedule.credit_account_name || "").trim())) return true;
+  return false;
+}
+
+// ── Tenant AR account (getOrCreateTenantAR) ──────────────────────────────
+// Legacy fallback by name: the accounts named exactly "AR - <tenant name>".
+// Mirrors the SQL helper _late_fee_tenant_ar: adopt only when the name is
+// unambiguous (exactly one such account) AND that account is not linked to
+// any tenant. An account linked to a DIFFERENT tenant -- for example the
+// archived tenant row of someone who has moved back in -- is never returned;
+// the caller creates a fresh one instead. Without a tenant id (legacy
+// name-only callers) the single same-name account is returned as before.
+function pickLegacyNamedArAccount(rows, tenantId) {
+  const list = (rows || []).filter(r => r && r.id);
+  if (list.length !== 1) return null;
+  const only = list[0];
+  const hasTid = !(tenantId === null || tenantId === undefined || tenantId === "");
+  if (!hasTid) return only;
+  const linked = !(only.tenant_id === null || only.tenant_id === undefined || only.tenant_id === "");
+  if (linked) return String(only.tenant_id) === String(tenantId) ? only : null;
+  return only;
+}
+
+// Next per-tenant AR sequence N (for code "1100-" + N padded to 3) from the
+// existing codes: numeric max + 1 (a string sort puts "1100-1000" below
+// "1100-999"), plus `bump` for a retry after a collision.
+function nextTenantArSeq(codes, bump) {
+  let max = 0;
+  for (const c of codes || []) {
+    const m = /^1100-(\d+)$/.exec(String(c || ""));
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max + 1 + Math.max(0, Math.floor(num(bump)));
+}
+
 // ── Autopay schedule -> tenant ───────────────────────────────────────────
 // By tenant_id when the schedule has one; only a schedule without one falls
 // back to (case-insensitive name + property), and only when that is unique.
@@ -220,7 +325,10 @@ module.exports = {
   isTenantOwnArAccount, pickRentReceiptCredit, hasRentChargeInMonth,
   recurringRentRef, recurringRentRefsForMonth, pickMoveOutRentCharge,
   localBusinessDate, billingPeriodOf, autopayIdempotencyKey,
+  chargeDateInPeriod, nextChargeDateAfterPeriod,
   autopayMethodFromPmType, isAchAutopayMethod,
   refundReference, disputeReference, disputeWonReference, refundDeltaCents, buildReversalLines,
+  paymentStatusBlockers, paymentStatusMayMove, autopayRunCompanyIds, isRentSchedule,
+  pickLegacyNamedArAccount, nextTenantArSeq,
   matchAutopayTenant, isStripeSchedule,
 };

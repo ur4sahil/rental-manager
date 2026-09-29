@@ -260,29 +260,46 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
     // Remember the match so the next run is by id.
     if (tenantRow?.id) await supabase.from("autopay_schedules").update({ tenant_id: tenantRow.id }).eq("company_id", companyId).eq("id", s.id);
   }
+  // A receipt must settle a TENANT's receivable. A schedule that cannot be
+  // matched to a tenant used to be booked straight to Rental Income -- money
+  // received with no tenant owing less. Refuse instead.
+  if (!tenantRow?.id) {
+    showToast("This autopay schedule is not linked to a tenant (" + (s.tenant || "no name") + " at " + (s.property || "no property") + "). Edit the schedule and pick the tenant, then run it. Nothing was recorded.", "error");
+    return;
+  }
   // Prefer the tenant row's current name over the schedule's stored
   // name — the schedule row isn't kept in sync when a tenant is renamed.
-  const tenantDisplayName = tenantRow?.name || s.tenant;
-  // Duplicate guard — by tenant_id + date + method when possible, else fall back to name.
-  let dupQ = supabase.from("payments").select("id").eq("company_id", companyId).eq("date", today).eq("method", s.method).limit(1);
-  dupQ = tenantRow?.id ? dupQ.eq("tenant_id", tenantRow.id) : dupQ.eq("tenant", s.tenant).eq("property", s.property);
-  const { data: todayPay } = await dupQ;
-  if (todayPay?.length > 0) {
-    if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) return;
+  const tenantDisplayName = tenantRow.name || s.tenant;
+  // Deterministic reference — the unique index on (company_id, reference)
+  // is only useful if refs are predictable. APAY-<tenantId>-<yyyymmdd>
+  // collides on double-post, which is exactly what we want.
+  const jeRef = "APAY-" + String(tenantRow.id) + "-" + today.replace(/-/g, "");
+  // Already recorded today? APAY-<tenant>-<date> can only be posted once a
+  // day (the unique reference index), so there is nothing to "run again":
+  // say so instead of offering a confirm that could only fail.
+  const [{ data: todayPay }, { data: todayJe }] = await Promise.all([
+    supabase.from("payments").select("id").eq("company_id", companyId).eq("date", today).eq("method", s.method).eq("tenant_id", tenantRow.id).limit(1),
+    supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", jeRef).neq("status", "voided").limit(1),
+  ]);
+  if ((todayPay?.length || 0) > 0 || (todayJe?.length || 0) > 0) {
+    showToast("An autopay payment from " + tenantDisplayName + " was already recorded today. Nothing more was recorded.", "info");
+    return;
   }
   const classId = await getPropertyClassId(s.property, companyId);
   // A rent receipt settles the tenant's OWN receivable (rent is billed to it
-  // by the recurring engine). Only a tenant with no AR account of their own,
-  // and none can be created, falls back to Rental Income.
+  // by the recurring engine). If that account cannot be established the
+  // receipt is refused -- never booked to Rental Income for a real tenant.
   let tenantAr = null;
-  if (tenantRow?.id) {
-    const arId = await getOrCreateTenantAR(companyId, tenantDisplayName, tenantRow.id);
-    if (arId) {
-      const { data: arRow } = await supabase.from("acct_accounts").select("id, name, tenant_id").eq("company_id", companyId).eq("id", arId).maybeSingle();
-      tenantAr = arRow || null;
-    }
+  const arId = await getOrCreateTenantAR(companyId, tenantDisplayName, tenantRow.id);
+  if (arId) {
+    const { data: arRow } = await supabase.from("acct_accounts").select("id, name, tenant_id").eq("company_id", companyId).eq("id", arId).maybeSingle();
+    tenantAr = arRow || null;
   }
-  const credit = pickRentReceiptCredit({ tenantAr, tenantId: tenantRow?.id });
+  const credit = pickRentReceiptCredit({ tenantAr, tenantId: tenantRow.id });
+  if (!credit.settlesAr) {
+    showToast("Could not open " + tenantDisplayName + "'s receivable account, so the payment was not recorded. Try again, or check the tenant's AR account in Accounting.", "error");
+    return;
+  }
   // "via <method>" marker is parsed by fetchPayments to surface the
   // right payment method on the payments page without relying on
   // fuzzy description matches.
@@ -292,11 +309,6 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   { account_id: credit.account_id, account_name: credit.account_name, debit: 0, credit: amt, class_id: classId, memo: (credit.settlesAr ? "AR settlement — " + tenantDisplayName : tenantDisplayName + " — " + s.property) + viaTag },
   ];
   const jeDesc = credit.settlesAr ? "Autopay received — " + tenantDisplayName + " — " + s.property + " (settling AR)" : "Autopay — " + tenantDisplayName + " — " + s.property;
-  // Deterministic reference — the unique index on (company_id, reference)
-  // is only useful if refs are predictable. APAY-<tenantId>-<yyyymmdd>
-  // collides on double-post, which is exactly what we want.
-  const refKey = tenantRow?.id ? String(tenantRow.id) : (s.tenant || "anon").replace(/\s+/g, "_");
-  const jeRef = "APAY-" + refKey + "-" + today.replace(/-/g, "");
   // tenants.balance: the credit on the tenant's own AR fires the
   // sync_tenant_balance_lines trigger, which recomputes the balance from the
   // GL. A manual balanceUpdate on top would count the payment twice. The
