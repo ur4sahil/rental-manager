@@ -89,13 +89,25 @@ console.log("==============================================");
       }
       return present;
     };
-    const expectedTrigger = ["properties", "acct_journal_entries", "leases", "autopay_schedules",
+    const expectedTrigger = ["properties", "leases", "autopay_schedules",
       "owners", "vendors", "tenants", "work_orders", "acct_accounts", "owner_distributions"];
     const missing = expectedTrigger.filter(t => !triggerPresent(t));
-    // utility_accounts is intentionally NOT gated (routine ops), so it must NOT have the trigger.
-    const shouldNotHave = ["utility_accounts"].filter(t => triggerPresent(t));
+    // utility_accounts is intentionally NOT gated (routine ops), and JE void
+    // moved to its own accounting-tier trigger (20260929080000) so office
+    // assistants and accountants can void -- neither may carry trg_mgmt_gate.
+    const shouldNotHave = ["utility_accounts", "acct_journal_entries"].filter(t => triggerPresent(t));
     assert("gate trigger attached to exactly the gated tables", missing.length === 0 && shouldNotHave.length === 0,
-      missing.length ? "MISSING: " + missing.join(", ") : shouldNotHave.length ? "UNEXPECTED: " + shouldNotHave.join(", ") : "10 gated, utility_accounts ungated");
+      missing.length ? "MISSING: " + missing.join(", ") : shouldNotHave.length ? "UNEXPECTED: " + shouldNotHave.join(", ") : "9 gated, utility_accounts + JE ungated");
+
+    // JE void: its own trigger, INVOKER, accounting roles only (maintenance etc. refused).
+    const v = latestFnText("enforce_je_void_role");
+    const t = latestFnText("is_accounting_tier");
+    const voidGateAttached = migs.some(f => /CREATE TRIGGER\s+trg_je_void_gate[^;]{0,80}ON public\.acct_journal_entries\b/.test(fs.readFileSync(path.join(migDir, f), "utf8")));
+    assert("JE void gate: INVOKER trigger attached, accounting roles only",
+      !!v && !!t && voidGateAttached
+      && /enforce_je_void_role\(\)[\s\S]{0,120}SECURITY INVOKER/.test(v.text)
+      && /'office_assistant','accountant'/.test(t.text) && !/maintenance/.test(t.text.slice(t.text.indexOf("is_accounting_tier"), t.text.indexOf("$$;"))),
+      v ? v.file : "no enforce_je_void_role");
   }
 }
 
