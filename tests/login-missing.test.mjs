@@ -57,7 +57,8 @@ const rows = {
     { id: 4, property: A, provider: "BGE", responsibility: "owner", is_final_bill: true, username_encrypted: null }, // final bill -> skip
     { id: 5, property: A, provider: "Verizon", responsibility: null, username_encrypted: "cipher" },       // has login
     { id: 6, property: B, provider: "Dominion", responsibility: "owner", archived_at: "2026-01-01", username_encrypted: null }, // archived
-    { id: 7, property: B, provider: "Fairfax Water", responsibility: "condo_fee", username_encrypted: "" },  // '' = missing
+    { id: 7, property: B, provider: "Fairfax Water", responsibility: "owner", username_encrypted: "" },      // '' = missing
+    { id: 13, property: B, provider: "Condo Gas", responsibility: "condo_fee", username_encrypted: null },   // condo/HOA fee -> skip
     { id: 8, property: B, provider: "fairfax water ", responsibility: "owner", username_encrypted: null },   // same provider -> one to-do
     { id: 9, property: B, provider: "Comcast", responsibility: "owner", username_encrypted: null },
     { id: 10, property: B, provider: "Comcast", responsibility: "owner", username_encrypted: "cipher" },     // a duplicate with login covers it
@@ -67,7 +68,16 @@ const rows = {
     { id: "i2", property: B, provider: "Allstate", username_encrypted: "cipher" },
     { id: "i3", property: B, provider: "Old Policy", archived_at: "2026-01-01", username_encrypted: null },
   ],
-  loan: [{ id: "l1", property: B, lender_name: "Chase", username_encrypted: "" }],
+  loan: [
+    { id: "l1", property: B, lender_name: "Chase", status: "active", username_encrypted: "" },
+    { id: "l2", property: A, lender_name: "Paid Bank", status: "paid_off", username_encrypted: null },      // paid off -> skip
+  ],
+  portfolio_loan: [
+    { id: "p1", lender_name: "Blanket Lender", status: "active", username_encrypted: "" },
+    { id: "p2", lender_name: "Old Blanket", status: "paid_off", username_encrypted: null },               // paid off -> skip
+    { id: "p3", lender_name: "Has Login", status: "active", username_encrypted: "cipher" },
+    { id: "p4", lender_name: "Gone", status: "active", archived_at: "2026-01-01", username_encrypted: null },
+  ],
   hoa: [
     { id: 11, property: A, hoa_name: "Alpha HOA", username_encrypted: null, mgmt_username_encrypted: null, pay_username_encrypted: null },
     { id: 12, property: B, hoa_name: "Beta HOA", username_encrypted: null, mgmt_username_encrypted: null, pay_username_encrypted: "cipher" }, // pay login counts
@@ -76,10 +86,16 @@ const rows = {
 const tasks = M.buildLoginMissingTasks(rows, new Map([[A, 101]]));
 const titles = tasks.map(t => t.title).sort();
 assert("exactly the records without a login become to-dos", JSON.stringify(titles) === JSON.stringify([
-  "Alpha HOA — login missing (HOA)", "Chase — login missing (Loan)", "Fairfax Water — login missing (Utility)",
+  "Alpha HOA — login missing (HOA)", "Blanket Lender — login missing (Portfolio loan)", "Chase — login missing (Loan)", "Fairfax Water — login missing (Utility)",
   "Pepco — login missing (Utility)", "State Farm — login missing (Insurance)"]), JSON.stringify(titles));
 const g = groupByProperty(tasks);
-assert("grouped: one card per property", g.size === 2 && g.get(A).length === 3 && g.get(B).length === 2);
+assert("grouped: one card per property, plus one Portfolio loans card", g.size === 3 && g.get(A).length === 3 && g.get(B).length === 2
+  && g.get(M.PORTFOLIO_LOANS_GROUP).length === 1);
+assert("condo/HOA-fee utilities skipped", M.isCondoFee("condo_fee") && !tasks.some(t => t.title.startsWith("Condo Gas")));
+assert("paid-off loans skipped (property and portfolio)", M.isPaidOff("paid_off") && !M.isPaidOff("active")
+  && !tasks.some(t => /Paid Bank|Old Blanket/.test(t.title)));
+const pf = tasks.find(t => t.recordType === "portfolio_loan");
+assert("portfolio loan links to the Loans page's portfolio edit form", pf.link === "loans" && pf.linkAction.editPortfolioId === "p1" && pf.propertyId === null);
 const pepco = tasks.find(t => t.title.startsWith("Pepco"));
 assert("each to-do links to its record's page with editRecordId", pepco.link === "utilities" && pepco.linkAction.editRecordId === 1
   && tasks.find(t => t.recordType === "insurance").link === "insurance" && tasks.find(t => t.recordType === "loan").link === "loans"
@@ -116,6 +132,7 @@ for (const [f, list] of [["Utilities.js", "utilAccounts"], ["Insurance.js", "pol
   assert(`${f}: accepts initialAction and opens the edit form for editRecordId`,
     /showConfirm, initialAction \}\)/.test(s) && /initialAction\?\.editRecordId/.test(s) && new RegExp("\\}, \\[initialAction, " + list + "\\]\\)").test(s));
 }
+assert("Loans.js: portfolio deep link opens the portfolio edit form", /initialAction\?\.editPortfolioId/.test(src("components/Loans.js")) && /openEditPortfolio\(rec\)/.test(src("components/Loans.js")));
 assert("Utilities deep link resolves the utilities row to its linked account", /a\.legacy_utility_id\) === String\(id\)/.test(src("components/Utilities.js")));
 assert("App passes initialAction to every page", /initialAction=\{pageAction\}/.test(src("App.js")));
 
@@ -137,6 +154,9 @@ if (!live) {
     const uids = (us || []).map(u => u.id);
     if (uids.length) await sb.from("utility_accounts").delete().in("legacy_utility_id", uids);
     await sb.from("utility_accounts").delete().eq("company_id", CID).like("property", "QA-LOGIN%");
+    await sb.from("portfolio_loans").delete().eq("company_id", CID).like("lender_name", "QA-LOGIN%");
+    const { count: pfc } = await sb.from("portfolio_loans").select("id", { count: "exact", head: true }).eq("company_id", CID).like("lender_name", "QA-LOGIN%");
+    out.portfolio_loans = pfc;
     for (const t of ["utilities", "property_insurance", "property_loans", "hoa_payments"]) {
       await sb.from(t).delete().eq("company_id", CID).like("property", "QA-LOGIN%");
       const { count } = await sb.from(t).select("id", { count: "exact", head: true }).eq("company_id", CID).like("property", "QA-LOGIN%");
@@ -155,8 +175,15 @@ if (!live) {
     const pol = await ins("property_insurance", { property: P1, provider: "QA Insurer", policy_number: "", premium_amount: 1200, premium_frequency: "Annual", coverage_amount: 0, expiration_date: null, notes: "", website: "" });
     const loan = await ins("property_loans", { property: P2, lender_name: "QA Bank", loan_type: "Conventional", original_amount: 100000, current_balance: 100000, interest_rate: 0, monthly_payment: 0, escrow_included: false, escrow_amount: 0, escrow_covers: "", loan_start_date: null, maturity_date: null, account_number: "", notes: "", status: "active", website: "",
       username_encrypted: null, password_encrypted: null, encryption_iv: null, encryption_iv_username: null, encryption_salt: null });
+    const u3 = await ins("utilities", { property: P1, provider: "QA Condo Gas", amount: 0, due: "2026-10-01", responsibility: "condo_fee", status: "pending", website: "" });
+    const loanPaid = await ins("property_loans", { property: P2, lender_name: "QA Paid Bank", original_amount: 1000, current_balance: 0, status: "paid_off", website: "",
+      username_encrypted: null, password_encrypted: null, encryption_iv: null, encryption_iv_username: null, encryption_salt: null });
+    // Portfolio loan payload as savePortfolioLoan sends it with no login.
+    const pfBase = { loan_type: "Conventional", original_amount: 500000, current_balance: 500000, interest_rate: 0, monthly_payment: 0, account_number: null, loan_start_date: null, maturity_date: null, escrow_included: false, escrow_amount: 0, notes: "", website: "" };
+    const pf1 = await ins("portfolio_loans", { ...pfBase, lender_name: tag + " Blanket", status: "active" });
+    const pf2 = await ins("portfolio_loans", { ...pfBase, lender_name: tag + " Old Blanket", status: "paid_off" });
     const hoa = await ins("hoa_payments", { property: P1, hoa_name: "QA HOA", amount: 75, due_date: "2026-10-01", frequency: "monthly", status: "pending", notes: "", website: "", contact_email: null, contact_name: null, contact_phone: null, management_company: null });
-    for (const [n, r] of [["utility", u1], ["tenant-paid utility", u2], ["insurance", pol], ["loan", loan], ["HOA", hoa]]) {
+    for (const [n, r] of [["utility", u1], ["tenant-paid utility", u2], ["insurance", pol], ["loan", loan], ["HOA", hoa], ["condo-fee utility", u3], ["paid-off loan", loanPaid], ["portfolio loan", pf1], ["paid-off portfolio loan", pf2]]) {
       assert(`insert without login succeeds: ${n}`, !r.error && r.data, r.error && r.error.message);
     }
     assert("omitted credential columns are NULL, not ''", [u1, pol, hoa].every(r => r.data && r.data.username_encrypted === null && r.data.password_encrypted === null && r.data.encryption_iv === null));
@@ -174,17 +201,24 @@ if (!live) {
           all.push(...data);
           if (data.length < 1000) break;
         }
-        byKind[s.kind] = all.filter(r => String(r.property || "").startsWith(tag));
+        byKind[s.kind] = all.filter(r => String(s.kind === "portfolio_loan" ? r.lender_name : r.property || "").startsWith(tag));
       }
       return M.buildLoginMissingTasks(byKind);
     }
     const t1 = await loadTasks();
     const g1 = groupByProperty(t1);
     const names = (addr) => (g1.get(addr) || []).map(t => t.title).sort();
-    assert("one card per property", g1.size === 2, [...g1.keys()].join(" | "));
-    assert("property 1 card: utility + insurance + HOA (tenant-paid water skipped)",
+    assert("one card per property, plus the Portfolio loans card", g1.size === 3, [...g1.keys()].join(" | "));
+    assert("property 1 card: utility + insurance + HOA (tenant-paid water and condo-fee gas skipped)",
       JSON.stringify(names(P1)) === JSON.stringify(["QA Electric — login missing (Utility)", "QA HOA — login missing (HOA)", "QA Insurer — login missing (Insurance)"]), JSON.stringify(names(P1)));
-    assert("property 2 card: the loan", JSON.stringify(names(P2)) === JSON.stringify(["QA Bank — login missing (Loan)"]));
+    assert("property 2 card: the active loan only (paid-off loan skipped)", JSON.stringify(names(P2)) === JSON.stringify(["QA Bank — login missing (Loan)"]), JSON.stringify(names(P2)));
+    const pfNames = names(M.PORTFOLIO_LOANS_GROUP);
+    assert("Portfolio loans card: the active portfolio loan only", JSON.stringify(pfNames) === JSON.stringify([tag + " Blanket — login missing (Portfolio loan)"]), JSON.stringify(pfNames));
+    assert("portfolio to-do carries editPortfolioId", t1.find(t => t.recordType === "portfolio_loan").linkAction.editPortfolioId === pf1.data.id);
+    const pfUp = await sb.from("portfolio_loans").update({ username_encrypted: "qa-cipher-u", password_encrypted: "qa-cipher-p", encryption_iv: "qa-iv" }).eq("id", pf1.data.id).eq("company_id", CID);
+    const tPf = await loadTasks();
+    assert("a login on the portfolio loan removes its to-do", !pfUp.error && !tPf.some(t => t.recordType === "portfolio_loan"));
+    await sb.from("portfolio_loans").update({ username_encrypted: null, password_encrypted: null, encryption_iv: null }).eq("id", pf1.data.id);
     assert("links carry the record id", t1.find(t => t.recordType === "loan").linkAction.editRecordId === loan.data.id);
 
     // Add a login (ciphertext shape, as the app writes it) -> the to-do goes.

@@ -46,6 +46,20 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   openEditLoan(rec);
   }, [initialAction, loans]);
 
+  function openEditPortfolio(l) {
+  setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true);
+  }
+  // Same deep link for a portfolio (blanket) loan: {editPortfolioId}.
+  const handledPfAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editPortfolioId;
+  if (!id || handledPfAction.current === initialAction || portfolioLoans.length === 0) return;
+  const rec = portfolioLoans.find(x => String(x.id) === String(id));
+  if (!rec) return;
+  handledPfAction.current = initialAction;
+  openEditPortfolio(rec);
+  }, [initialAction, portfolioLoans, portfolioProps]);
+
   // Load the current portfolio attachment for whichever property the loan form
   // is on, so the dropdown reflects reality and save can detach/attach.
   useEffect(() => {
@@ -398,7 +412,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "balance", label: "Balance", align: "right", className: "font-semibold", render: l => (<>{formatCurrency(l.current_balance)}</>) },
       { key: "maturity", label: "Maturity", className: "text-neutral-400", render: l => (<>{fmtDate(l.maturity_date) || "\u2014"}</>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap", render: l => (<>
-        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => { setEditingPortfolio(l); setPfPropToAdd(""); setPortfolioForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), account_number: l.account_number || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), status: l.status || "active", notes: l.notes || "", website: l.website || "", username: "", password: "", properties: portfolioProps.filter(p => p.portfolio_loan_id === l.id).map(p => p.property) }); setShowPortfolioForm(true); }}>Edit</TextLink>
+        <TextLink tone="brand" size="xs" className="mr-2" onClick={() => openEditPortfolio(l)}>Edit</TextLink>
         <TextLink tone="danger" size="xs" onClick={() => deletePortfolioLoan(l.id)}>Delete</TextLink>
       </>) },
     ]}
