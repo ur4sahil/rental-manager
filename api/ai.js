@@ -1087,6 +1087,12 @@ module.exports = async function handler(req, res) {
         .select("id, provider, account_number, username_encrypted, password_encrypted, "
               + "encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
         .eq("company_id", cid)
+        // Live, ongoing lines only. The worker picks the login by MAJORITY
+        // across these rows, so an archived row's stale login used to
+        // outvote a freshly rotated one; the owner->tenant final-bill
+        // closeout line is only a copy of the ongoing line's login.
+        .is("archived_at", null)
+        .neq("is_final_bill", true)
         .not("username_encrypted", "is", null)
         .not("password_encrypted", "is", null);
       // One portal login covers every account on it, so a provider filter is

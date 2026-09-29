@@ -125,10 +125,12 @@ function resolveProviderKey(raw) {
 
 // DECRYPT — same scheme as ensure-session.js / api/encrypt.js (PBKDF2-SHA256,
 // 100k, AES-256-GCM, 16-byte tag appended). Duplicated on purpose.
+// Key file FIRST (verbatim bytes, trailing newline kept); the env var is the
+// fallback. Same precedence as worker/portals/credential-select.js.
 function _masterKey() {
-  let m = process.env.ENCRYPTION_KEY;
-  if (!m && process.env.ENCRYPTION_KEY_FILE) { try { m = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf8"); } catch {} }
-  return m;
+  let m = "";
+  if (process.env.ENCRYPTION_KEY_FILE) { try { m = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf8"); } catch {} }
+  return m || process.env.ENCRYPTION_KEY;
 }
 function _decrypt(master, b64, ivHex, saltHex) {
   if (!b64 || !ivHex || !saltHex) return "";

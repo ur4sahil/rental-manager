@@ -102,38 +102,21 @@ async function launchBrowser(chromium, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// DECRYPT — the same scheme as api/encrypt.js, deliberately duplicated rather
-// than imported, because that file is a Vercel handler and this is a CLI.
-// If one changes the other must: PBKDF2-SHA256, 100k iterations, 32-byte key,
-// AES-256-GCM with the 16-byte tag appended to the ciphertext.
-function deriveKey(master, saltHex) {
-  return crypto.pbkdf2Sync(master, Buffer.from(saltHex, "hex"), 100000, 32, "sha256");
-}
-
-function decryptValue(master, b64, ivHex, saltHex) {
-  if (!b64 || !ivHex || !saltHex) return "";
-  const key = deriveKey(master, saltHex);
-  const iv = Buffer.from(ivHex, "hex");
-  const combined = Buffer.from(b64, "base64");
-  const TAG = 16;
-  if (combined.length < TAG) throw new Error("ciphertext too short");
-  const ct = combined.slice(0, combined.length - TAG);
-  const tag = combined.slice(combined.length - TAG);
-  const d = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  d.setAuthTag(tag);
-  return Buffer.concat([d.update(ct), d.final()]).toString("utf8");
-}
+// DECRYPT + CHOOSE — see credential-select.js. The scheme is the same as
+// api/encrypt.js, deliberately duplicated rather than imported, because that
+// file is a Vercel handler and this is a CLI. If one changes the other must:
+// PBKDF2-SHA256, 100k iterations, 32-byte key, AES-256-GCM with the 16-byte
+// tag appended to the ciphertext; and the key-fingerprint rule.
+const { readMasterKey, keyFingerprint, pickCredential } = require("./credential-select");
 
 // ---------------------------------------------------------------------------
 async function credentialsFor(portal, book) {
-  // The master key can carry a trailing newline (it does in this deployment:
-  // the ciphertext was written under KEY + "\n"). A shell `$(...)` strips
-  // trailing newlines and would silently change the fingerprint, so prefer
-  // ENCRYPTION_KEY_FILE, whose bytes are read verbatim.
-  let master = process.env.ENCRYPTION_KEY;
-  if (!master && process.env.ENCRYPTION_KEY_FILE) {
-    try { master = fs.readFileSync(process.env.ENCRYPTION_KEY_FILE, "utf8"); } catch {}
-  }
+  // ENCRYPTION_KEY_FILE FIRST. The master key carries a trailing newline in
+  // this deployment (the ciphertext was written under KEY + "\n"); its bytes
+  // are read verbatim from the file, whereas a shell `$(...)` export strips
+  // the newline and hashes to a different fingerprint. The env var is only
+  // the fallback when no key file is configured or readable.
+  const master = readMasterKey();
   if (!master) {
     die(`ENCRYPTION_KEY is not set, so the stored credentials cannot be opened.\n`
       + `Either export it (or ENCRYPTION_KEY_FILE) for this run, or sign in once by hand:\n`
@@ -154,6 +137,11 @@ async function credentialsFor(portal, book) {
   // plaintext, and only ENCRYPTION_KEY here can open them. Either path yields
   // the same rows; decryption below is identical.
   //
+  // Only LIVE, ongoing lines: an archived row is a retired or duplicate
+  // account, and its stale login used to outvote a freshly rotated one in the
+  // majority count below; the final-bill closeout line is a copy of the
+  // ongoing line. Same filter as api/ai.js action=portal-credentials.
+  //
   // Any row for this provider will do: one portal login covers every account
   // on it. Matched through the playbook's aliases because the stored provider
   // names are inconsistent -- "Washington Gas", "Wash Gas" and "WGL" are all
@@ -163,8 +151,10 @@ async function credentialsFor(portal, book) {
     const { createClient } = createRequire(path.join(__dirname, "..", "..", "package.json"))("@supabase/supabase-js");
     const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
     const { data, error } = await sb.from("utilities")
-      .select("id, provider, username_encrypted, password_encrypted, encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp")
+      .select("id, provider, username_encrypted, password_encrypted, encryption_iv_username, encryption_iv, encryption_salt, credential_key_fp, archived_at, is_final_bill")
       .eq("company_id", COMPANY)
+      .is("archived_at", null)
+      .neq("is_final_bill", true)
       .not("username_encrypted", "is", null)
       .not("password_encrypted", "is", null);
     if (error) die(`could not read credentials: ${error.message}`);
@@ -189,52 +179,33 @@ async function credentialsFor(portal, book) {
     rows = j.credentials || [];
   }
 
-  const aliases = (book.aliases || []).map(a => a.toLowerCase());
-  const matches = (rows || []).filter(r => {
-    const p = String(r.provider || "").trim().toLowerCase();
-    return aliases.some(a => p === a || p.includes(a));
-  });
-  if (!matches.length) die(`no stored credentials for ${book.provider} on this company`);
-
-  const fpNow = crypto.createHash("sha256").update(master).digest("hex").slice(0, 12);
-
   // PICK THE MOST COMMON (username, password) among the matching rows, not the
   // first one. Each utility account stores its own copy of the portal login, so
-  // the CURRENT credential is repeated across dozens of rows while stale or
-  // mis-typed ones are the minority. Taking the first row blindly logged WSSC in
-  // under a wrong account (sanyahousify@ appeared once, ahead of the real
-  // investhome365@ that 60 rows carry). Majority-wins self-heals to whatever is
-  // actually in use. HOUSY_PREFER_USER pins a specific login when majority is
-  // ambiguous (e.g. a just-rotated password not yet saved on most accounts).
-  const preferUser = (process.env.HOUSY_PREFER_USER || "").trim().toLowerCase();
-  const groups = new Map();
-  let sawForeignKey = false;
-  for (const r of matches) {
-    if (r.credential_key_fp && r.credential_key_fp !== fpNow) { sawForeignKey = true; continue; }
-    let u, p;
-    try {
-      u = decryptValue(master, r.username_encrypted, r.encryption_iv_username, r.encryption_salt);
-      p = decryptValue(master, r.password_encrypted, r.encryption_iv, r.encryption_salt);
-    } catch { continue; }
-    if (!u || !p) continue;
-    if (preferUser && u.trim().toLowerCase() !== preferUser) continue;
-    const key = u + "\x00" + p;
-    const g = groups.get(key) || { count: 0, username: u, password: p };
-    g.count++; groups.set(key, g);
-  }
-  if (!groups.size) {
-    if (sawForeignKey) {
+  // the CURRENT credential is repeated across many rows while stale or
+  // mis-typed ones are the minority. HOUSY_PREFER_USER pins a specific login
+  // when majority is ambiguous (e.g. a just-rotated password not yet saved on
+  // most accounts).
+  const fpNow = keyFingerprint(master);
+  const picked = pickCredential(rows, master, {
+    aliases: book.aliases || [],
+    preferUser: process.env.HOUSY_PREFER_USER || "",
+  });
+  if (picked.error === "no_rows") die(`no stored credentials for ${book.provider} on this company`);
+  if (picked.error) {
+    if (picked.sawForeignKey) {
       // The fingerprint exists to make a key-rotation legible rather than
       // surfacing as a bare "decryption failed".
-      die(`the stored ${book.provider} credentials were encrypted under a different key `
-        + `than ENCRYPTION_KEY here (${fpNow}). Re-enter them in the app, or use the matching key.`);
+      const match = (rows || []).find(r => r.credential_key_fp && r.credential_key_fp !== fpNow) || {};
+      die(`the stored ${book.provider} credentials were encrypted under a different key: `
+        + `these credentials were encrypted under key ${match.credential_key_fp}, and ENCRYPTION_KEY here is ${fpNow}. `
+        + `Re-enter them in the app, or use the matching key.`);
     }
+    const preferUser = (process.env.HOUSY_PREFER_USER || "").trim().toLowerCase();
     die(preferUser
       ? `no decryptable ${book.provider} credentials for user ${preferUser}`
       : `could not decrypt any stored ${book.provider} credentials`);
   }
-  const best = [...groups.values()].sort((a, b) => b.count - a.count)[0];
-  return { username: best.username, password: best.password };
+  return { username: picked.username, password: picked.password };
 }
 
 // Is this session signed in? Asks the page, using the playbook's own

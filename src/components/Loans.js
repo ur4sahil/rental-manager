@@ -107,13 +107,14 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
           encryption_iv: resP.iv || resU.iv,
           encryption_iv_username: resU.iv || null,
           encryption_salt: resU.salt || resP.salt,
+          credential_key_fp: resU.keyFp || resP.keyFp || null,
         };
       }
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   const nb = v => (v && v !== "" ? v : null); // null-if-blank: '' violates the not-blank constraint
   if (editingLoan) {
-  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: creds ? creds.username_encrypted : nb(editingLoan.username_encrypted), password_encrypted: creds ? creds.password_encrypted : nb(editingLoan.password_encrypted), encryption_iv: creds ? creds.encryption_iv : nb(editingLoan.encryption_iv), encryption_iv_username: creds ? creds.encryption_iv_username : nb(editingLoan.encryption_iv_username), encryption_salt: creds ? creds.encryption_salt : nb(editingLoan.encryption_salt) }).eq("id", editingLoan.id).eq("company_id", companyId);
+  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: creds ? creds.username_encrypted : nb(editingLoan.username_encrypted), password_encrypted: creds ? creds.password_encrypted : nb(editingLoan.password_encrypted), encryption_iv: creds ? creds.encryption_iv : nb(editingLoan.encryption_iv), encryption_iv_username: creds ? creds.encryption_iv_username : nb(editingLoan.encryption_iv_username), encryption_salt: creds ? creds.encryption_salt : nb(editingLoan.encryption_salt), credential_key_fp: creds ? creds.credential_key_fp : (editingLoan.credential_key_fp || null) }).eq("id", editingLoan.id).eq("company_id", companyId);
   if (loanErr) { showToast("Error updating loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan updated: ${form.lender_name}`);
   logAudit("update", "loans", `Loan updated: ${form.lender_name} ${formatCurrency(form.original_amount)}`, editingLoan.id, userProfile?.email, userRole, companyId);
@@ -124,7 +125,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
     password_encrypted: creds ? creds.password_encrypted : null,
     encryption_iv: creds ? creds.encryption_iv : null,
     encryption_iv_username: creds ? creds.encryption_iv_username : null,
-    encryption_salt: creds ? creds.encryption_salt : null };
+    encryption_salt: creds ? creds.encryption_salt : null,
+    credential_key_fp: creds ? creds.credential_key_fp : null };
   delete insPayload.username; delete insPayload.password;
   const { error: loanErr } = await supabase.from("property_loans").insert([insPayload]);
   if (loanErr) { showToast("Error saving loan: " + loanErr.message, "error"); return; }
