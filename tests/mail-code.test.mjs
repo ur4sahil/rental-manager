@@ -93,10 +93,11 @@ try {
   execFileSync("/usr/bin/sqlite3", [db,
     "CREATE TABLE addresses(ROWID INTEGER PRIMARY KEY, address TEXT);"
     + "CREATE TABLE mailboxes(ROWID INTEGER PRIMARY KEY, url TEXT);"
-    + "CREATE TABLE messages(ROWID INTEGER PRIMARY KEY, sender INTEGER, mailbox INTEGER, date_received INTEGER);"
+    + "CREATE TABLE messages(ROWID INTEGER PRIMARY KEY, sender INTEGER, mailbox INTEGER, date_received INTEGER, summary INTEGER);"
+    + "CREATE TABLE summaries(ROWID INTEGER PRIMARY KEY, summary TEXT);"
     + "INSERT INTO addresses VALUES (1,'no-reply@bge.com'),(2,'someone@else.com');"
     + `INSERT INTO mailboxes VALUES (1,'${url}');`
-    + `INSERT INTO messages VALUES (252175,1,1,${now - 86400}),(281140,1,1,${now - 5}),(281141,2,1,${now});`]);
+    + `INSERT INTO messages VALUES (252175,1,1,${now - 86400},NULL),(281140,1,1,${now - 5},NULL),(281141,2,1,${now},NULL);`]);
   put(252175, BGE.replace("48=\r\n2917", "111=\r\n111"));   // yesterday's code: must NOT be used
   put(281141, "From: someone@else.com\r\nContent-Type: text/plain\r\n\r\nYour verification code: 999999");
 
@@ -114,6 +115,10 @@ try {
   fs.utimesSync(oldFile, new Date(), new Date());
   assert("a re-touched old file is not mistaken for a new message", mc.readCodeFromMail(since) === "482917");
   assert("other sender needs its own sender argument", mc.readCodeFromMail(since, "someone@else.com") === "999999");
+  // Preview text present but NO file on disk (what Sheeba's Mac does): still read.
+  execFileSync("/usr/bin/sqlite3", [db, "INSERT INTO summaries VALUES (1, 'Here''s your six-digit verification code: 370215 This code will only be active for 20 minutes.');"
+    + `INSERT INTO messages VALUES (281300,1,1,${now + 2},1);`]);
+  assert("preview text alone (no .emlx yet) -> code", mc.readCodeFromMail(since) === "370215", String(mc.readCodeFromMail(since)));
   assert("missing Mail dir -> null, no throw", (() => { process.env.HOUSY_CODE_MAILDIR = path.join(root, "nope"); return mc.readCodeFromMail(since) === null; })());
 } finally {
   delete process.env.HOUSY_CODE_MAILDIR;

@@ -98,8 +98,13 @@ function indexedMessages(sender, sinceMs, vdir) {
   if (!fs.existsSync(db)) return null;
   const who = String(sender).toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
   const since = Math.floor(sinceMs / 1000) - 30; // clock skew between Mail and us
-  const sql = "SELECT m.ROWID, m.date_received, mb.url FROM messages m "
+  // The preview (summaries) is Mail's own decoded text of the message -- it is
+  // what a phone shows under the subject, and it lands as soon as Mail has the
+  // body, often before (or without) the .emlx file.
+  const sql = "SELECT m.ROWID, m.date_received, mb.url, "
+    + "replace(replace(COALESCE(s.summary, ''), char(10), ' '), char(9), ' ') FROM messages m "
     + "JOIN addresses a ON a.ROWID = m.sender JOIN mailboxes mb ON mb.ROWID = m.mailbox "
+    + "LEFT JOIN summaries s ON s.ROWID = m.summary "
     + `WHERE lower(a.address) = '${who}' AND m.date_received >= ${since} `
     + "ORDER BY m.date_received DESC LIMIT 5;";
   let out;
@@ -107,8 +112,8 @@ function indexedMessages(sender, sinceMs, vdir) {
     out = execFileSync("/usr/bin/sqlite3", ["-readonly", "-separator", "\t", db, sql], { encoding: "utf8", timeout: 10000 });
   } catch { return null; }
   return out.split("\n").filter(Boolean).map(l => {
-    const [rowid, received, url] = l.split("\t");
-    return { rowid: Number(rowid), receivedMs: Number(received) * 1000, url };
+    const [rowid, received, url, summary] = l.split("\t");
+    return { rowid: Number(rowid), receivedMs: Number(received) * 1000, url, summary: summary || "" };
   });
 }
 
@@ -140,6 +145,9 @@ function readCodeFromMail(sinceMs, sender = process.env.HOUSY_CODE_SENDER || "no
   const msgs = indexedMessages(sender, sinceMs, vdir);
   if (!msgs) return null;
   for (const msg of msgs) {
+    // 1) Mail's preview text, 2) the message file.
+    const fromPreview = msg.summary ? extractCode(msg.summary) : null;
+    if (fromPreview) return fromPreview;
     const file = emlxPathFor(vdir, msg.url, msg.rowid);
     if (!file) continue; // indexed, body not on disk yet -- try again next poll
     let raw;
