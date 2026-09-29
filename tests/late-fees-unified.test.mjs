@@ -21,6 +21,10 @@ const root = path.join(import.meta.dirname, "..");
 const src = (f) => fs.readFileSync(path.join(root, "src", f), "utf8");
 const MIG = "supabase/migrations/20260928050000_late_fees_one_rule_tenant_ar.sql";
 const mig = fs.readFileSync(path.join(root, MIG), "utf8");
+// batch_post_late_fees was re-created (same body, deterministic ORDER BYs and
+// a tidy-scale percent fee) by the parity migration; it is the live definition.
+const MIG_BATCH = "supabase/migrations/20260928080000_late_fee_parity.sql";
+const migBatch = fs.readFileSync(path.join(root, MIG_BATCH), "utf8");
 
 let pass = 0, fail = 0;
 function assert(name, cond, detail) {
@@ -143,12 +147,17 @@ const latest = (fn) => {
   }
   return found;
 };
-assert("this migration is the latest definition of batch_post_late_fees", latest("batch_post_late_fees") === path.basename(MIG), latest("batch_post_late_fees"));
+assert("the parity migration is the latest definition of batch_post_late_fees", latest("batch_post_late_fees") === path.basename(MIG_BATCH), latest("batch_post_late_fees"));
+assert("…and 050000 is still the latest late_fee_already_posted / _late_fee_tenant_ar",
+  latest("late_fee_already_posted") === path.basename(MIG) && latest("_late_fee_tenant_ar") === path.basename(MIG));
 const sqlFn = (name) => {
   const i = mig.indexOf("CREATE OR REPLACE FUNCTION public." + name + "(");
   return i < 0 ? "" : mig.slice(i, mig.indexOf("$function$;", i));
 };
-const batch = sqlFn("batch_post_late_fees");
+const batch = (() => {
+  const i = migBatch.indexOf("CREATE OR REPLACE FUNCTION public.batch_post_late_fees(");
+  return i < 0 ? "" : migBatch.slice(i, migBatch.indexOf("$function$;", i));
+})();
 const dupSql = sqlFn("late_fee_already_posted");
 const arSql = sqlFn("_late_fee_tenant_ar");
 const code = (s) => s.split("\n").map(l => l.replace(/--.*$/, "")).join("\n");  // strip comments
@@ -164,7 +173,7 @@ assert("AR leg is the tenant's own account, never the shared 1100",
 assert("a tenant with no AR account is skipped and reported", /skipped_no_ar_account/.test(batch) && /IF v_ar_id IS NULL THEN/.test(batch));
 assert("who: active/current/notice, balance > 0, not archived (same as the app)",
   /lease_status IN \('active','current','notice'\) AND coalesce\(balance,0\) > 0/.test(batch) && /archived_at IS NULL/.test(batch));
-assert("how much: flat rounded to cents, percent = round(rent * pct)/100", /v_fee := round\(v_amount, 2\);/.test(batch) && /v_fee := round\(v_t\.rent \* v_amount\) \/ 100\.0;/.test(batch));
+assert("how much: flat rounded to cents, percent = round(round(rent * pct) / 100, 2)", /v_fee := round\(v_amount, 2\);/.test(batch) && /v_fee := round\(round\(v_t\.rent \* v_amount\) \/ 100, 2\);/.test(batch));
 assert("disabled rules ignored; an active rule is the on/off switch for the job", /coalesce\(is_active, true\)/.test(batch) && /no late fee rule configured/.test(batch));
 
 console.log("\n🗄️  SQL RULE == JS RULE");
@@ -276,7 +285,7 @@ try {
   assert("tenant button no longer computes percent/flat by hand", !/late_fee_type === "percent"/.test(tn));
   assert("tenant button shows whenever the tenant owes money (rule OR own setting)", /lateFeeAction=\{safeNum\(selectedTenant\?\.balance\) > 0 && !selectedTenant\?\.archived_at/.test(tn));
 
-  const sql = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), "../supabase/migrations/20260928050000_late_fees_one_rule_tenant_ar.sql"), "utf8");
+  const sql = migBatch;  // the live batch_post_late_fees definition
   const job = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.batch_post_late_fees"));
   assert("job: New York date", /now\(\) AT TIME ZONE 'America\/New_York'/.test(job) && !/CURRENT_DATE/.test(job));
   assert("job: charges notice tenants", /lease_status IN \('active','current','notice'\)/.test(job));
@@ -284,6 +293,199 @@ try {
   assert("job: tenant's own setting first", /IF coalesce\(v_t\.late_fee_amount, 0\) > 0 THEN/.test(job));
   assert("job: grace counted from the tenant's due day", /payment_due_day/.test(job) && /day_of_month/.test(job) && /\(v_today - v_due_date\) <= v_grace/.test(job));
   assert("job: no longer stops for everyone on a day-of-month grace check", !/EXTRACT\(DAY FROM v_today\)::int <= coalesce\(v_rule\.grace_days/.test(job));
+}
+
+// ── QA gaps (2026-09-28): JS == SQL to the cent and the row ──────────────
+{
+  console.log("\n— QA gaps: same cent, same row, same account —");
+  const fee = (type, amount, rent) => R.computeLateFeeAmount({ type, amount }, rent);
+  assert("685 at 5.1% is $34.94, as SQL charges it (float gave $34.93)", fee("percent", 5.1, 685) === 34.94);
+  assert("…and from strings too", fee("percent", "5.1", "685") === 34.94);
+  assert("flat 1.005 -> 1.01, 2.675 -> 2.68, 10.005 -> 10.01 (half away from zero, like SQL round(x, 2))",
+    fee("flat", 1.005) === 1.01 && fee("flat", 2.675) === 2.68 && fee("flat", 10.005) === 10.01);
+  assert("12.5% of $1.16 -> $0.15 (exactly 0.145)", fee("percent", 12.5, 1.16) === 0.15);
+  assert("unchanged: whole numbers, no rent, bad amount", fee("percent", 7, 1000) === 70 && fee("percent", 5, 0) === null && fee("percent", 5, null) === null && fee("flat", "NaN") === 0 && R.computeLateFeeAmount({ error: "x" }, 1) === null);
+  // Brute force against an independent exact-decimal reference (BigInt,
+  // written here, not the code under test). SQL numeric is exact, so this
+  // is SQL's answer; the migration's brute force proved the new SQL
+  // expression equals the old one over 8M (rent, pct) pairs.
+  const exactPctCents = (rentCents, pctStr) => {
+    const [a, b = ""] = pctStr.split(".");
+    const n = BigInt(rentCents) * BigInt(a + b), d = BigInt(10) ** BigInt(2 + b.length);
+    let q = n / d; if ((n % d) * BigInt(2) >= d) q += BigInt(1);
+    return Number(q);
+  };
+  let bad = [], n = 0;
+  for (let c = 1; c <= 200000; c += 7) for (const p of ["5.1", "7.5", "3.33", "12.5", "0.1234", "2.675", "1.005", "4.99999", "10"]) {
+    n++; const js = fee("percent", Number(p), c / 100), ex = exactPctCents(c, p) / 100;
+    if (js !== ex && bad.length < 3) bad.push({ rent: c / 100, pct: p, js, exact: ex });
+  }
+  for (let m = 1; m <= 200000; m++) {
+    n++; const js = fee("flat", m / 1000, 0), ex = (Math.floor(m / 10) + (m % 10 >= 5 ? 1 : 0)) / 100;
+    if (js !== ex && bad.length < 3) bad.push({ flat: m / 1000, js, exact: ex });
+  }
+  assert(`computeLateFeeAmount is exact to the cent on ${n.toLocaleString()} inputs`, bad.length === 0, JSON.stringify(bad));
+  const rulesSrc = src("utils/lateFeeRules.js");
+  assert("no float rounding of the fee left (no Math.round(... * ...))", !/Math\.round\([^)]*\*/.test(rulesSrc.slice(rulesSrc.indexOf("function decimalOf"))));
+  assert("no BigInt literals or ** (Babel turns ** into Math.pow, which throws on BigInt)",
+    !/\b\d+n\b/.test(rulesSrc.replace(/\/\/.*$/gm, "")) && !/\*\*/.test(rulesSrc.replace(/\/\/.*$/gm, "")));
+
+  console.log("\n  dates");
+  assert("lateFeeDueDate: month 13 -> null", R.lateFeeDueDate("2026-13-01", 1) === null);
+  assert("lateFeeDueDate: Feb 31 -> null", R.lateFeeDueDate("2026-02-31", 1) === null && R.lateFeeDueDate("2026-00-10", 1) === null && R.lateFeeDueDate("2026-09-00", 1) === null);
+  assert("lateFeeDueDate: leap day is real", R.lateFeeDueDate("2028-02-29", 31) === "2028-02-29" && R.lateFeeDueDate("2026-02-29", 1) === null);
+  assert("lateFeeBusinessDate(invalid Date) -> null, not a throw", R.lateFeeBusinessDate(new Date("x")) === null);
+  assert("lateFeeBusinessDate(non-Date) -> null", R.lateFeeBusinessDate("2026-09-28") === null && R.lateFeeBusinessDate(null) === null);
+  assert("lateFeeBusinessDate() still today in NY", /^\d{4}-\d{2}-\d{2}$/.test(R.lateFeeBusinessDate()));
+  assert("eligibility refuses an invalid day", !R.lateFeeEligibility({ tenant: { lease_status: "active", balance: 5 }, today: "2026-02-31", dueDay: 1, graceDays: 0 }).ok);
+
+  console.log("\n  who: exact lease_status, like SQL");
+  const el = (s) => R.lateFeeEligibility({ tenant: { lease_status: s, balance: 5 }, today: "2026-09-28", dueDay: 1, graceDays: 0 }).ok;
+  assert("'active' / 'current' / 'notice' are charged", el("active") && el("current") && el("notice"));
+  assert("'Active', ' active ', 'NOTICE' are not (SQL IN (...) is case-sensitive)", !el("Active") && !el(" active ") && !el("NOTICE"));
+  assert("the SQL job still uses the exact list", /lease_status IN \('active','current','notice'\)/.test(batch));
+
+  console.log("\n  which row: the job's ORDER BYs everywhere");
+  assert("SQL rule: ORDER BY created_at, id", /coalesce\(is_active, true\) ORDER BY created_at, id LIMIT 1/.test(batch));
+  assert("SQL lease: ORDER BY start_date DESC NULLS LAST, id", /ORDER BY l\.start_date DESC NULLS LAST, l\.id LIMIT 1/.test(batch));
+  assert("SQL schedule fallback: ORDER BY created_at, id (had no ORDER BY)", /ORDER BY r\.created_at, r\.id LIMIT 1/.test(batch));
+  const LO = JSON.stringify(R.LATE_FEE_LEASE_ORDER), SO = JSON.stringify(R.LATE_FEE_SCHEDULE_ORDER), RO = JSON.stringify(R.LATE_FEE_RULE_ORDER);
+  assert("JS lease order = start_date desc nulls last, id", LO === JSON.stringify([["start_date", { ascending: false, nullsFirst: false }], ["id", { ascending: true }]]));
+  assert("JS schedule + rule order = created_at, id", SO === JSON.stringify([["created_at", { ascending: true }], ["id", { ascending: true }]]) && RO === SO);
+  const calls = []; const fakeQ = { order(c, o) { calls.push([c, o]); return fakeQ; } };
+  R.lateFeeOrdered(fakeQ, R.LATE_FEE_LEASE_ORDER);
+  assert("lateFeeOrdered applies each .order() in turn", JSON.stringify(calls) === LO);
+  assert("due day takes the FIRST usable row (so order decides)", R.lateFeeDueDay({ leases: [{ payment_due_day: 27 }, { payment_due_day: 5 }] }) === 27);
+  const tn2 = src("components/Tenants.js"), lf2 = src("components/LateFees.js");
+  const btn = fnBody(tn2, "async function applyLateFeeForTenant(");
+  assert("tenant button: rules / leases / schedules use the job's order",
+    /lateFeeOrdered\(supabase\.from\("late_fee_rules"\)[^\n]*LATE_FEE_RULE_ORDER\)/.test(btn) &&
+    /lateFeeOrdered\(supabase\.from\("leases"\)[^\n]*LATE_FEE_LEASE_ORDER\)/.test(btn) &&
+    /lateFeeOrdered\(supabase\.from\("recurring_journal_entries"\)[^\n]*LATE_FEE_SCHEDULE_ORDER\)/.test(btn));
+  assert("tenant button: only usable due days are fetched (> 0, as in SQL)", /\.gt\("payment_due_day", 0\)/.test(btn) && /\.gt\("day_of_month", 0\)/.test(btn));
+  const fetchLF = fnBody(lf2, "async function fetchData(");
+  assert("Late Fees page: rules / leases / schedules use the job's order",
+    /LATE_FEE_RULE_ORDER/.test(fetchLF) && /LATE_FEE_LEASE_ORDER/.test(fetchLF) && /LATE_FEE_SCHEDULE_ORDER/.test(fetchLF));
+  assert("Late Fees page: leases matched by tenant_id only (name fallback removed, same as button + job)",
+    !/tenant_name === tn\.name/.test(fetchLF) && /leases\.filter\(l => String\(l\.tenant_id\) === String\(tn\.id\)\)/.test(fetchLF));
+  assert("Late Fees page: no date -> nothing listed (lateFeeBusinessDate null is handled)", /if \(!today\) throw/.test(fetchLF));
+
+  console.log("\n  row links = drawer button");
+  const rowLinks = tn2.match(/\{safeNum\(t\.balance\) > 0 && [^<\n]*<TextLink.{0,200}?applyLateFeeForTenant/g) || [];
+  assert("both row 'Late Fee' links found", rowLinks.length === 2, String(rowLinks.length));
+  assert("…shown when balance > 0 and not archived (not only with a tenant-level fee)",
+    rowLinks.every(s => /safeNum\(t\.balance\) > 0 && !t\.archived_at && <TextLink/.test(s)) && !/safeNum\(t\.late_fee_amount\) > 0 && <TextLink/.test(tn2));
+
+  console.log("\n  races report 'already charged'");
+  const post2 = fnBody(lib, "export async function postTenantLateFee(");
+  assert("a failed AR lookup re-checks for the winner's fee before saying no-ar",
+    /settledByRace\(\)\) return \{ status: "duplicate"/.test(post2) && post2.indexOf("settledByRace()") < post2.indexOf('return { status: "no-ar" }'));
+  assert("a failed journal entry (reference collision) re-checks too",
+    /if \(!result\.jeId\) \{\s*if \(await settledByRace\(\)\) return \{ status: "duplicate", reference \};/.test(post2));
+  assert("the re-check never turns a failed check into 'posted' (error -> not settled)", /return !again\.error && again\.already;/.test(post2));
+
+  console.log("\n  manual late fee (owner: must always be possible)");
+  const add = fnBody(tn2, "async function addLedgerEntry(");
+  assert("Add Transaction still offers Late Fee", /<option value="late_fee">Late Fee<\/option>/.test(tn2) && /newCharge\.type === "late_fee"/.test(add));
+  assert("manual late fee: existing-fee notice is a confirm the user can click through",
+    /lateFeeAlreadyPosted\(companyId, selectedTenant\.id/.test(add) && /Add another late fee anyway\?/.test(add) && /confirmText: "Add anyway"/.test(add));
+  assert("…a failed check never blocks the save (only `already` without error asks)", /if \(!lfPrior\.error && lfPrior\.already\)/.test(add));
+  assert("…posts to the tenant's own AR first (resolveTenantLateFeeAR), then the usual lookup",
+    /if \(newCharge\.type === "late_fee"\) \{\s*const ownAr = await resolveTenantLateFeeAR\(companyId, selectedTenant\);/.test(add) &&
+    /if \(!tenantArId\) tenantArId = await getOrCreateTenantAR\(/.test(add));
+  assert("…keeps a MANUAL- reference (a second manual fee must not hit the LATEFEE unique index)",
+    /reference: "MANUAL-" \+ shortId\(\)/.test(add) && !/lateFeeReference\(/.test(add));
+  assert("…credits Late Fee Income 4010 (so the once-a-month rule recognises it)", /account_id: "4010", account_name: "Late Fee Income"/.test(add));
+}
+
+// ── resolveTenantLateFeeAR against the TEST project ──────────────────────
+// lateFees.js imports the browser client and accounting.js; both are
+// replaced here (the client with a TEST service client, getOrCreateTenantAR
+// with a stub whose answer each case sets), so the real function runs.
+{
+  console.log("\n🌐 TENANT AR CHOICE + RACES (TEST project; rows created and removed)");
+  require("./sandbox-env");
+  const { createClient } = require("@supabase/supabase-js");
+  const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+  const CO = "lf-test-" + Math.random().toString(36).slice(2, 10);
+  let stubAR = null;
+  globalThis.__lfTest = {
+    supabase: sb,
+    getOrCreateTenantAR: async () => { globalThis.__lfTest.gocCalls++; return stubAR; },
+    gocCalls: 0,
+    resolveAccountId: async (code, cid) => ((await sb.from("acct_accounts").select("id").eq("company_id", cid).eq("code", code).maybeSingle()).data || {}).id || null,
+    atomicPostJEAndLedger: async ({ companyId, date, description, reference, property, lines }) => {
+      const { data, error } = await sb.rpc("post_je_and_ledger", { p_company_id: companyId, p_date: date, p_description: description, p_reference: reference, p_property: property || "", p_status: "posted",
+        p_lines: lines.map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: null, memo: l.memo || "" })),
+        p_ledger_tenant: null, p_ledger_tenant_id: null, p_ledger_property: null, p_ledger_amount: 0, p_ledger_type: null, p_ledger_description: null, p_balance_change: 0 });
+      return error ? { jeId: null, error: "Journal entry failed" } : { jeId: data, error: null };
+    },
+  };
+  const rulesUrl = "data:text/javascript," + encodeURIComponent(src("utils/lateFeeRules.js"));
+  const libSrc = src("utils/lateFees.js")
+    .replace(/import \{ supabase \} from "\.\.\/supabase";/, "const supabase = globalThis.__lfTest.supabase;")
+    .replace(/import \{ ([^}]+) \} from "\.\/accounting";/, "const { $1 } = globalThis.__lfTest;")
+    .replace(/from "\.\/lateFeeRules";/, `from "${rulesUrl}";`);
+  const F = await import("data:text/javascript," + encodeURIComponent(libSrc));
+  const cleanup = async () => {
+    const { data: jes } = await sb.from("acct_journal_entries").select("id").eq("company_id", CO);
+    const ids = (jes || []).map(j => j.id);
+    for (let i = 0; i < ids.length; i += 100) await sb.from("acct_journal_lines").delete().in("journal_entry_id", ids.slice(i, i + 100));
+    // audit_trail rows are written by triggers on the rows above
+    for (const tb of ["acct_journal_entries", "acct_accounts", "tenants", "audit_trail"]) await sb.from(tb).delete().eq("company_id", CO);
+    await sb.from("companies").delete().eq("id", CO);
+  };
+  try {
+    const ok = (r, w) => { if (r.error) throw new Error(w + ": " + r.error.message); return r.data; };
+    ok(await sb.from("companies").insert([{ id: CO, name: "late fee test (temp)" }]), "company");
+    const acct = async (code, name, extra = {}) => ok(await sb.from("acct_accounts").insert([{ company_id: CO, code, name, type: "Asset", is_active: true, old_text_id: CO + "-" + code, ...extra }]).select("*").single(), "acct " + code);
+    const parent = await acct("1100", "Accounts Receivable");
+    await acct("4010", "Late Fee Income", { type: "Revenue" });
+    const ten = async (name) => ok(await sb.from("tenants").insert([{ company_id: CO, name, property: name + " St", lease_status: "active", balance: 0, rent: 1000 }]).select("*").single(), "tenant " + name);
+    const a = await ten("LFT Two"), b = await ten("LFT Other"), c = await ten("LFT Foreign"), d = await ten("LFT Race");
+    const aOld = await acct("1100-T01", "AR - LFT Two (old)", { is_active: false, tenant_id: a.id });
+    const aCur = await acct("1100-T02", "AR - LFT Two", { tenant_id: a.id });
+    const bAr = await acct("1100-T03", "AR - LFT Foreign", { tenant_id: b.id });
+    const dAr = await acct("1100-T04", "AR - LFT Race", { tenant_id: d.id });
+
+    stubAR = aOld.id;  // even if getOrCreateTenantAR would say otherwise
+    const r1 = await F.resolveTenantLateFeeAR(CO, a);
+    assert("two linked accounts (inactive + active): the ACTIVE one, as the job picks", r1?.id === aCur.id, JSON.stringify(r1));
+    stubAR = bAr.id;
+    assert("an account linked to a DIFFERENT tenant is refused", (await F.resolveTenantLateFeeAR(CO, c)) === null);
+    stubAR = parent.id;
+    assert("the shared 1100 parent is refused", (await F.resolveTenantLateFeeAR(CO, c)) === null);
+    const before = globalThis.__lfTest.gocCalls;
+    assert("lookupOnly (the race retries) never calls getOrCreateTenantAR, so never creates an account",
+      (await F.resolveTenantLateFeeAR(CO, c, { lookupOnly: true })) === null && globalThis.__lfTest.gocCalls === before);
+    stubAR = null;
+    const t0 = Date.now();
+    const noAr = await F.postTenantLateFee({ companyId: CO, tenant: c, amount: 50, date: R.lateFeeBusinessDate(), description: "LFT", ledgerDescription: "LFT" });
+    assert("no account anywhere -> 'no-ar' after the retries; getOrCreateTenantAR asked twice (first try + last retry), never more",
+      noAr.status === "no-ar" && globalThis.__lfTest.gocCalls === before + 2, JSON.stringify(noAr) + " calls=" + (globalThis.__lfTest.gocCalls - before) + " ms=" + (Date.now() - t0));
+    stubAR = bAr.id;
+    assert("getOrCreateTenantAR's own linked answer is accepted", (await F.resolveTenantLateFeeAR(CO, b))?.id === bAr.id);
+    assert("pickLinkedTenantAR: active first, never another tenant's",
+      F.pickLinkedTenantAR([{ id: 1, tenant_id: 9, is_active: false }, { id: 2, tenant_id: 9 }, { id: 3, tenant_id: 8 }], 9)?.id === 2 &&
+      F.pickLinkedTenantAR([{ id: 3, tenant_id: 8 }], 9) === null && F.pickLinkedTenantAR([{ id: 1, tenant_id: 9, is_active: false }], 9)?.id === 1);
+
+    // four clicks at once: one fee, three "already charged this month"
+    const date = R.lateFeeBusinessDate();
+    const res = await Promise.all([1, 2, 3, 4].map(() => F.postTenantLateFee({ companyId: CO, tenant: d, amount: 50, date, description: "LFT", ledgerDescription: "LFT" })));
+    const st = res.map(r => r.status).sort().join(",");
+    assert("4 racing posts: 1 posted + 3 'duplicate' (not no-ar / journal failure)", st === "duplicate,duplicate,duplicate,posted", st);
+    const { data: onBooks } = await sb.from("acct_journal_entries").select("id").eq("company_id", CO).like("reference", "LATEFEE-" + d.id + "-%");
+    assert("…and exactly one fee on the books", (onBooks || []).length === 1, String((onBooks || []).length));
+    const { data: drLine } = await sb.from("acct_journal_lines").select("account_id, debit").eq("journal_entry_id", onBooks?.[0]?.id).gt("debit", 0);
+    assert("…debited to the tenant's own AR", drLine?.[0]?.account_id === dAr.id);
+    assert("duplicate reads as 'already on the books'", /already on the books/.test(F.lateFeeFailureReason({ status: "duplicate" })));
+  } catch (e) {
+    assert("tenant AR / race checks ran", false, e.message);
+  } finally {
+    await cleanup();
+    const { count } = await sb.from("acct_accounts").select("id", { count: "exact", head: true }).eq("company_id", CO);
+    assert("test rows removed", count === 0, String(count));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -9,8 +9,8 @@ import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
-import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason } from "../utils/lateFees";
-import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType } from "../utils/lateFeeRules";
+import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
+import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
@@ -738,9 +738,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       // else the company's active rule; only a live tenant who owes money and
       // is past the rent due day + the rule's grace days.
       const [ruleRes, leaseRes, schedRes] = await Promise.all([
-        supabase.from("late_fee_rules").select("fee_type, fee_amount, grace_days, is_active").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }).limit(20),
-        supabase.from("leases").select("payment_due_day").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").limit(5),
-        supabase.from("recurring_journal_entries").select("day_of_month").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").is("archived_at", null).limit(5),
+        // Every list in the nightly job's order (utils/lateFeeRules.js):
+        // oldest rule first, newest lease first, oldest schedule first, id
+        // breaking ties -- so two active leases give the same due day here
+        // as in the job.
+        lateFeeOrdered(supabase.from("late_fee_rules").select("fee_type, fee_amount, grace_days, is_active").eq("company_id", companyId).is("archived_at", null), LATE_FEE_RULE_ORDER).limit(20),
+        lateFeeOrdered(supabase.from("leases").select("payment_due_day").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").gt("payment_due_day", 0), LATE_FEE_LEASE_ORDER).limit(5),
+        lateFeeOrdered(supabase.from("recurring_journal_entries").select("day_of_month").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").is("archived_at", null).gt("day_of_month", 0), LATE_FEE_SCHEDULE_ORDER).limit(5),
       ]);
       const lfErr = ruleRes.error || leaseRes.error || schedRes.error;
       if (lfErr) { showToast("Could not load the late fee settings (" + lfErr.message + "). Nothing was posted.", "error"); return; }
@@ -999,6 +1003,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const isCredit = newCharge.type === "payment" || newCharge.type === "credit";
   const amount = isCredit ? -Math.abs(Number(newCharge.amount)) : Math.abs(Number(newCharge.amount));
   const today = formatLocalDate(new Date());
+  // Manual late fee: always allowed. Staff may add a late fee by hand at any
+  // time, even when one is already on the books this month -- this is only
+  // a heads-up they can click through. A failed check never blocks the save.
+  if (newCharge.type === "late_fee" && selectedTenant?.id) {
+    const lfMonthManual = lateFeeMonth(today);
+    const lfPrior = await lateFeeAlreadyPosted(companyId, selectedTenant.id, lfMonthManual);
+    if (!lfPrior.error && lfPrior.already) {
+      const lfMonthLabel = new Date(lfMonthManual + "-15T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
+      if (!await showConfirm({ message: `A late fee is already recorded for ${selectedTenant.name} for ${lfMonthLabel}. Add another late fee anyway?`, confirmText: "Add anyway" })) return;
+    }
+  }
   const classId = await getPropertyClassId(selectedTenant.property, companyId);
   // The receivable leg has to land on the tenant's OWN AR sub-account
   // (1100-NNN), not the bare 1100 parent. `ledger_entries` is a view
@@ -1006,7 +1021,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // posted to the parent is real in the GL but invisible in the
   // tenant's ledger and absent from tenants.balance. This is the same
   // account the payments path and the QuickBooks import use.
-  const tenantArId = await getOrCreateTenantAR(companyId, selectedTenant.name, selectedTenant.id);
+  // A late fee first tries the tenant's own linked AR account the way the
+  // Late Fee button and the nightly job pick it (resolveTenantLateFeeAR),
+  // so the once-a-month check recognises a hand-added fee as this tenant's.
+  // If that finds nothing it falls through to the usual lookup below and
+  // still posts -- manual late fees are never refused.
+  let tenantArId = null;
+  if (newCharge.type === "late_fee") {
+    const ownAr = await resolveTenantLateFeeAR(companyId, selectedTenant);
+    if (ownAr?.id) tenantArId = ownAr.id;
+  }
+  if (!tenantArId) tenantArId = await getOrCreateTenantAR(companyId, selectedTenant.name, selectedTenant.id);
   // getOrCreateTenantAR falls back to the plain 1100 parent when it
   // can't resolve or create a sub-account. Read the account back so
   // the line carries that account's real name either way ("AR - Name"
@@ -2259,7 +2284,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Msg</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-1.5 py-0.5 rounded-md hover:bg-brand-50/30">Lease</TextLink>
   <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
-  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <TextLink tone="danger" size="xs" underline={false} onClick={() => applyLateFeeForTenant(t)} className="border border-danger-100 px-1.5 py-0.5 rounded-md hover:bg-danger-50/30">Late Fee</TextLink>}
+  {safeNum(t.balance) > 0 && !t.archived_at && <TextLink tone="danger" size="xs" underline={false} onClick={() => applyLateFeeForTenant(t)} className="border border-danger-100 px-1.5 py-0.5 rounded-md hover:bg-danger-50/30">Late Fee</TextLink>}
   {portalStatus !== "active" && (
   <TextLink tone="highlight" size="xs" disabled={!t.email || !!invitingTenant[t.id || t.email || ""]}
     title={!t.email ? "Add an email to this tenant first" : portalStatus === "invited" ? "Re-send the portal invite email" : "Send a portal invite"}
@@ -2297,7 +2322,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="font-medium shrink-0">Ledger</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openMessages(t); }} className="font-medium shrink-0">Msg</TextLink>
   <TextLink tone="info" size="xs" underline={false} onClick={e => { e.stopPropagation(); startEdit(t); }} className="font-medium shrink-0">Edit</TextLink>
-  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</TextLink>}
+  {safeNum(t.balance) > 0 && !t.archived_at && <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</TextLink>}
   {portalStatus !== "active" && (
   <button
     onClick={e => { e.stopPropagation(); inviteTenant(t); }}

@@ -179,11 +179,15 @@ export async function lateFeeAlreadyPostedWith(client, companyId, tenantId, mont
 export const LATE_FEE_TIME_ZONE = "America/New_York";
 const LIVE = ["active", "current", "notice"];
 
-// "YYYY-MM-DD" in New York for a Date (default: now).
+// "YYYY-MM-DD" in New York for a Date (default: now). null for anything that
+// is not a valid Date (Intl would throw a RangeError); callers treat null as
+// "cannot tell what day it is" and charge nothing.
 export function lateFeeBusinessDate(now = new Date()) {
+  if (!(now instanceof Date) || isNaN(now.getTime())) return null;
   const p = new Intl.DateTimeFormat("en-CA", { timeZone: LATE_FEE_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   const g = (t) => (p.find(x => x.type === t) || {}).value;
-  return g("year") + "-" + g("month") + "-" + g("day");
+  const out = g("year") + "-" + g("month") + "-" + g("day");
+  return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
 }
 
 // 'flat' | 'percent' | null (unknown word -> null, never guessed).
@@ -211,22 +215,65 @@ export function resolveLateFeeTerms({ tenant, rule }) {
   return { error: "no late fee is set for this tenant and no late fee rule is active" };
 }
 
+// Exact decimal arithmetic for the fee, so the app charges the same cent as
+// the nightly job. SQL numeric is exact; a float product is not (rent 685 at
+// 5.1% is 3493.4999999999995 in floating point, so Math.round gave $34.93
+// while SQL gave $34.94). Each number is taken at its shortest decimal
+// spelling (what PostgREST sent), turned into a BigInt with a scale,
+// multiplied exactly, and rounded half away from zero like Postgres round().
+// (BigInt() calls rather than 10n literals / **: Babel rewrites ** to
+// Math.pow for older targets, which throws on a BigInt.)
+/* global BigInt */
+const BIG0 = BigInt(0), BIG1 = BigInt(1), BIG2 = BigInt(2), BIG10 = BigInt(10);
+function pow10(k) { let p = BIG1; for (let i = 0; i < k; i++) p = p * BIG10; return p; }
+function decimalOf(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(n));
+  if (!m) return null;
+  const frac = m[3] || "";
+  let digits = BigInt(m[2] + frac);
+  let scale = frac.length - Number(m[4] || 0);
+  if (scale < 0) { digits = digits * pow10(-scale); scale = 0; }
+  return { int: m[1] ? -digits : digits, scale };
+}
+// round(int / 10^scale, places), returned as an integer count of 10^-places.
+function roundToPlaces({ int, scale }, places) {
+  if (scale <= places) return int * pow10(places - scale);
+  const div = pow10(scale - places);
+  const neg = int < BIG0;
+  const a = neg ? -int : int;
+  let q = a / div;
+  if ((a % div) * BIG2 >= div) q = q + BIG1;
+  return neg ? -q : q;
+}
+
 // Dollar fee for the terms, rounded to cents. null when a percent fee has no rent to apply to.
+// SQL twin (batch_post_late_fees, 20260928080000): flat = round(amount, 2);
+// percent = round(round(rent * pct) / 100, 2). Change one, change the other.
 export function computeLateFeeAmount(terms, rent) {
   if (!terms || terms.error) return null;
-  if (terms.type === "flat") return Math.round(num(terms.amount) * 100) / 100;
+  const amt = decimalOf(terms.amount);
+  if (terms.type === "flat") return amt ? Number(roundToPlaces(amt, 2)) / 100 : 0;
   const base = num(rent);
   if (base <= 0) return null;
-  return Math.round(base * num(terms.amount)) / 100;
+  const r = decimalOf(base);
+  if (!r || !amt) return 0;
+  // rent * pct / 100 dollars = round(rent * pct) cents: one exact product.
+  return Number(roundToPlaces({ int: r.int * amt.int, scale: r.scale + amt.scale }, 0)) / 100;
 }
 
 // Rent due date ("YYYY-MM-DD") in the month of `today` for a due day, clamped
-// to the month's length (due day 31 -> Feb 28/29).
+// to the month's length (due day 31 -> Feb 28/29). null when `today` is not a
+// real calendar date ("2026-13-01", "2026-02-31", "2026-9-28") -- callers
+// then charge nothing.
 export function lateFeeDueDate(today, dueDay) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(today || ""));
   if (!m) return null;
-  const y = Number(m[1]), mo = Number(m[2]);
+  const y = Number(m[1]), mo = Number(m[2]), day = Number(m[3]);
+  if (mo < 1 || mo > 12) return null;
   const last = new Date(y, mo, 0).getDate();
+  if (day < 1 || day > last) return null;
   const d = Math.min(Math.max(1, Math.floor(num(dueDay)) || 1), last);
   return m[1] + "-" + m[2] + "-" + String(d).padStart(2, "0");
 }
@@ -235,7 +282,10 @@ export function lateFeeDueDate(today, dueDay) {
 export function lateFeeEligibility({ tenant, today, dueDay, graceDays }) {
   if (!tenant) return { ok: false, reason: "no tenant record", daysLate: 0 };
   if (tenant.archived_at) return { ok: false, reason: "the tenant is archived", daysLate: 0 };
-  if (!LIVE.includes(String(tenant.lease_status || "").toLowerCase())) return { ok: false, reason: "the tenant is not active or on notice", daysLate: 0 };
+  // Exact, case-sensitive -- the same as the SQL job's lease_status IN
+  // ('active','current','notice') and the Late Fees page's .in(...) filter.
+  // "Active" is charged by none of the three.
+  if (!LIVE.includes(String(tenant.lease_status ?? ""))) return { ok: false, reason: "the tenant is not active or on notice", daysLate: 0 };
   if (!(num(tenant.balance) > 0)) return { ok: false, reason: "the tenant owes nothing", daysLate: 0 };
   const due = lateFeeDueDate(today, dueDay);
   if (!due) return { ok: false, reason: "invalid date", daysLate: 0 };
@@ -246,11 +296,27 @@ export function lateFeeEligibility({ tenant, today, dueDay, graceDays }) {
 }
 
 // Rent due day for a tenant: active lease payment_due_day, else rent
-// schedule day_of_month, else 1. leases/schedules are rows for this tenant.
+// schedule day_of_month, else 1. leases/schedules are rows for this tenant,
+// and the FIRST usable row wins, so callers must fetch them in the job's
+// order (LATE_FEE_LEASE_ORDER / LATE_FEE_SCHEDULE_ORDER below).
 export function lateFeeDueDay({ leases, schedules }) {
   const l = (leases || []).find(x => num(x?.payment_due_day) > 0);
   if (l) return Math.floor(num(l.payment_due_day));
   const s = (schedules || []).find(x => num(x?.day_of_month) > 0);
   if (s) return Math.floor(num(s.day_of_month));
   return 1;
+}
+
+// The job's ORDER BYs, as PostgREST .order(column, options) pairs:
+//   leases                    ORDER BY start_date DESC NULLS LAST, id
+//   recurring_journal_entries ORDER BY created_at, id
+//   late_fee_rules            ORDER BY created_at, id
+// Without them two active leases (or two schedules, or two rules created in
+// the same instant) come back in whatever order Postgres likes, and the app
+// could pick a different due day or fee than the nightly job.
+export const LATE_FEE_LEASE_ORDER = [["start_date", { ascending: false, nullsFirst: false }], ["id", { ascending: true }]];
+export const LATE_FEE_SCHEDULE_ORDER = [["created_at", { ascending: true }], ["id", { ascending: true }]];
+export const LATE_FEE_RULE_ORDER = [["created_at", { ascending: true }], ["id", { ascending: true }]];
+export function lateFeeOrdered(query, order) {
+  return order.reduce((q, [col, opts]) => q.order(col, opts), query);
 }

@@ -242,11 +242,12 @@ function testFileStructure() {
   // src/utils/lateFeeRules.js (one-per-month rule, tested directly by
   // late-fees-unified.test.mjs) and the shared posting routine
   // lateFees.js; the two component call sites got shorter.
+  // 51950 on 2026-09-28: +~150 for late-fee QA parity -- exact-decimal fee rounding (JS == SQL to the cent), the job's ORDER BYs shared as constants, tenant-AR pick + race re-check in lateFees.js, and the optional "already recorded" notice on manual late fees (late-fees-unified.test.mjs).
   // 51800 on 2026-09-28: + shared late-fee who/when/how-much rules (lateFeeRules.js). 51700 after merging late fees + payments and the per-day autopay key; 51450 on 2026-09-28 (payments/autopay/Stripe fixes): +~155 for the new
   // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
-  assert(totalLines <= 51800, `Total src lines <= 51800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  assert(totalLines <= 51950, `Total src lines <= 51950 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

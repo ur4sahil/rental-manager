@@ -8,7 +8,7 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { getPropertyClassId } from "../utils/accounting";
 import { postTenantLateFee, lateFeeFailureReason } from "../utils/lateFees";
-import { lateFeeBusinessDate, normalizeLateFeeType, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, lateFeeDueDate } from "../utils/lateFeeRules";
+import { lateFeeBusinessDate, normalizeLateFeeType, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, lateFeeDueDate, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Spinner } from "./shared";
 
 function LateFees({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -42,12 +42,17 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // rules[0], and without an ORDER BY the row Postgres happens to return
   // first decides which fee every overdue tenant is charged. Oldest rule
   // first makes the choice deterministic and explicable.
-  supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: true }),
+  // id breaks a created_at tie, as the nightly job does (LATE_FEE_RULE_ORDER).
+  lateFeeOrdered(supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null), LATE_FEE_RULE_ORDER),
   // Active AND on-notice tenants: someone on notice still lives there and
   // still owes rent. Same "who" as the tenant button and the nightly job.
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).in("lease_status", LIVE_TENANCY),
-  supabase.from("leases").select("tenant_id, tenant_name, payment_due_day, status, property").eq("company_id", companyId).eq("status", "active"),
-  supabase.from("recurring_journal_entries").select("tenant_id, day_of_month").eq("company_id", companyId).eq("status", "active").is("archived_at", null).not("tenant_id", "is", null),
+  // Leases and rent schedules in the nightly job's order (newest lease
+  // first; oldest schedule first; id breaks ties), matched to tenants by
+  // tenant_id only -- the same as the tenant button and the job. A lease
+  // with no tenant_id is not guessed at by name.
+  lateFeeOrdered(supabase.from("leases").select("tenant_id, payment_due_day, start_date, id").eq("company_id", companyId).eq("status", "active").gt("payment_due_day", 0).not("tenant_id", "is", null), LATE_FEE_LEASE_ORDER),
+  lateFeeOrdered(supabase.from("recurring_journal_entries").select("tenant_id, day_of_month, created_at, id").eq("company_id", companyId).eq("status", "active").is("archived_at", null).gt("day_of_month", 0).not("tenant_id", "is", null), LATE_FEE_SCHEDULE_ORDER),
   ]);
   const leases = lRes.data || [];
   const schedules = sRes.data || [];
@@ -55,10 +60,11 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   setTenants(t.data || []);
   // New York calendar day, the same day the nightly job uses.
   const today = lateFeeBusinessDate();
+  if (!today) throw new Error("could not determine today's date in New York");
   const overdue = (t.data || [])
     .filter(tn => safeNum(tn.balance) > 0)
     .map(tn => {
-      const tLeases = leases.filter(l => (l.tenant_id && tn.id && String(l.tenant_id) === String(tn.id)) || (!l.tenant_id && l.tenant_name === tn.name && l.property === tn.property));
+      const tLeases = leases.filter(l => String(l.tenant_id) === String(tn.id));
       const tScheds = schedules.filter(sc => String(sc.tenant_id) === String(tn.id));
       const dueDay = lateFeeDueDay({ leases: tLeases, schedules: tScheds });
       const dueDate = lateFeeDueDate(today, dueDay);
