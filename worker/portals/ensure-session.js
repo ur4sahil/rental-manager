@@ -72,6 +72,10 @@ const IS_RESIDENTIAL = /^(1|true|yes)$/i.test(process.env.HOUSY_RESIDENTIAL || "
 // the session. The code is single-use and bound to THIS open session, so it must be
 // supplied while the run is live -- hence the file poll rather than a later handoff.
 const CODE_FILE = (process.env.HOUSY_CODE_FILE || "").trim();
+// How long to wait for an emailed code. BGE's code is valid for 20 minutes and
+// Mail on the agent Mac can take ~10 minutes to download a message's text, so
+// the old 8-minute wait gave up before the code was readable (2026-09-29).
+const CODE_WAIT_MIN = Math.max(1, Math.min(19, Number(process.env.HOUSY_CODE_WAIT_MIN) || 18));
 
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR
   || path.join(require("os").homedir(), ".housy-sessions");
@@ -405,9 +409,9 @@ const { readCodeFromMail } = require("./mail-code");
         const codeSender = process.env.HOUSY_CODE_SENDER || "no-reply@bge.com";
         console.log(`\n>>> ${book.provider} sent a one-time code. Auto-reading from local Mail `
           + `(${codeSender}); or drop ONLY the digits in ${CODE_FILE} (echo 123456 > ${CODE_FILE}). `
-          + `Waiting up to 8 minutes...\n`);
+          + `Waiting up to ${CODE_WAIT_MIN} minutes...\n`);
         let code = "", via = "";
-        const codeDeadline = Date.now() + 8 * 60 * 1000;
+        const codeDeadline = Date.now() + CODE_WAIT_MIN * 60 * 1000;
         while (Date.now() < codeDeadline) {
           await page.waitForTimeout(3000);
           // 1) unattended: the code as it lands in the local Mail store
@@ -417,7 +421,7 @@ const { readCodeFromMail } = require("./mail-code");
           let fileCode = ""; try { fileCode = (fs.readFileSync(CODE_FILE, "utf8") || "").replace(/\D/g, ""); } catch {}
           if (/^\d{4,8}$/.test(fileCode)) { code = fileCode; via = "file"; break; }
         }
-        if (!code) die(`no verification code (local Mail or ${CODE_FILE}) within 8 minutes`);
+        if (!code) die(`no verification code (local Mail or ${CODE_FILE}) within ${CODE_WAIT_MIN} minutes`);
         console.log(`  got code via ${via}`);
         const codeBox = page.locator(codeBoxSel).first();
         await codeBox.waitFor({ state: "visible", timeout: 15000 });
