@@ -84,7 +84,8 @@ function testFileStructure() {
   // components are the drift this split exists to stop.
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 25, `src/utils/ has 8..25 files (found ${actualUtilFiles.length})`);
+  // 26 on 2026-09-28: + depositRules.js (deposit release rules, import-free, tested directly by deposits-owed-once.test.mjs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 26, `src/utils/ has 8..26 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -247,7 +248,8 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 52100 on 2026-09-28: +~255 for depositRules.js (deposit released once, tested by deposits-owed-once.test.mjs) and the three release-path guards.
-  assert(totalLines <= 52100, `Total src lines <= 52100 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 52400 on 2026-09-28: +~200 for renewal-chain / legacy / per-leg release rules and the Leases "apply to balance" option.
+  assert(totalLines <= 52400, `Total src lines <= 52400 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

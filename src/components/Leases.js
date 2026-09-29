@@ -7,7 +7,7 @@ import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReleaseReference, depositDeductionReference, depositReturnOfferable, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, tenantOwedFromGL, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -32,7 +32,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const defaultMoveOutChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review"];
 
   const [form, setForm] = useState({
-  tenant_name: "", property: "", start_date: "", end_date: "",
+  tenant_id: "", tenant_name: "", property: "", start_date: "", end_date: "",
   rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3),
   escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1),
   lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60),
@@ -45,7 +45,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // Deposit release entries (DEPRET-/DEPDED-, any status) for the company, so
   // "Return Deposit" is not offered for a deposit already released elsewhere.
   const [depositReleases, setDepositReleases] = useState([]);
-  const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
+  const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()), mode: "cash" });
+  // { loading, leaseId, rel, owed } for the open "Return Deposit" modal.
+  const [depositCtx, setDepositCtx] = useState(null);
 
   useEffect(() => { fetchData(); }, [companyId]);
 
@@ -61,9 +63,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   setTenants(t.data || []);
   setProperties(p.data || []);
   setTemplates(tmpl.data || []);
-  const { rows: rel } = await fetchAllPaged(() => supabase.from("acct_journal_entries").select("reference, status")
+  const { rows: rel } = await fetchAllPaged(() => supabase.from("acct_journal_entries").select("reference, status, acct_journal_lines(debit)")
     .eq("company_id", companyId).or("reference.like.DEPRET-%,reference.like.DEPDED-%").order("id"), "deposit release entries");
-  setDepositReleases(rel || []);
+  setDepositReleases((rel || []).map(e => ({ reference: e.reference, status: e.status, amount: (e.acct_journal_lines || []).reduce((t, l) => t + safeNum(l.debit), 0) })));
   setLoading(false);
   }
 
@@ -80,22 +82,25 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   setForm({ ...form, template_id: templateId, clauses: tmpl.clauses || "", special_terms: tmpl.special_terms || "", rent_escalation_pct: String(tmpl.default_escalation_pct || 3), payment_due_day: String(tmpl.payment_due_day || 1), end_date: formatLocalDate(endDate) });
   }
 
-  function prefillFromTenant(tenantName) {
-  const tenant = tenants.find(t => t.name === tenantName);
-  if (tenant) setForm(f => ({ ...f, tenant_name: tenant.name, property: tenant.property || "", rent_amount: String(tenant.rent || "") }));
+  // The tenant is chosen by ID. Picking by name charged the deposit to
+  // whichever same-named tenant came first in the list.
+  function prefillFromTenant(tenantId) {
+  const tenant = tenants.find(t => String(t.id) === String(tenantId));
+  if (tenant) setForm(f => ({ ...f, tenant_id: String(tenant.id), tenant_name: tenant.name, property: tenant.property || "", rent_amount: String(tenant.rent || "") }));
+  else setForm(f => ({ ...f, tenant_id: "", tenant_name: "" }));
   }
 
   async function saveLease() {
   if (!guardSubmit("saveLease")) return;
   try {
-  if (!form.tenant_name) { showToast("Please select a tenant.", "error"); return; }
+  const tenant = form.tenant_id ? tenants.find(t => String(t.id) === String(form.tenant_id)) : null;
+  if (!form.tenant_name || (!editingLease && !tenant)) { showToast("Please select a tenant.", "error"); return; }
   if (!form.property) { showToast("Please select a property.", "error"); return; }
   if (!form.start_date || !form.end_date) { showToast("Lease start and end dates are required.", "error"); return; }
   if (!form.rent_amount || isNaN(Number(form.rent_amount)) || Number(form.rent_amount) <= 0) { showToast("Please enter a valid positive rent amount.", "error"); return; }
   if (form.start_date >= form.end_date) { showToast("Lease end date must be after start date.", "error"); return; }
   if (Number(form.security_deposit || 0) < 0) { showToast("Security deposit cannot be negative.", "error"); return; }
   if (Number(form.rent_escalation_pct || 0) < 0 || Number(form.rent_escalation_pct || 0) > 25) { showToast("Rent escalation must be between 0% and 25%.", "error"); return; }
-  const tenant = tenants.find(t => t.name === form.tenant_name);
   // Prevent duplicate active leases for same tenant+property
   if (!editingLease) {
   const { data: existingActive } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", form.tenant_name).eq("property", form.property).eq("status", "active").limit(1);
@@ -165,7 +170,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
   // Queue lease notification
   if (!editingLease) {
-  const { data: leaseTenant } = await supabase.from("tenants").select("email").eq("name", form.tenant_name).eq("company_id", companyId).maybeSingle();
+  const { data: leaseTenant } = tenant ? await supabase.from("tenants").select("email").eq("id", tenant.id).eq("company_id", companyId).maybeSingle() : { data: null };
   if (leaseTenant?.email) queueNotification("lease_created", leaseTenant.email, { tenant: form.tenant_name, property: form.property, startDate: form.start_date, endDate: form.end_date, rent: form.rent_amount }, companyId);
   }
   resetForm(); fetchData();
@@ -175,12 +180,16 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
 
   function resetForm() {
   setShowForm(false); setEditingLease(null);
-  setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3), escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1), lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60), clauses: "", special_terms: "", template_id: "", late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5) });
+  setForm({ tenant_id: "", tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3), escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1), lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60), clauses: "", special_terms: "", template_id: "", late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5) });
   }
 
   function startEdit(lease) {
   setEditingLease(lease);
-  setForm({ tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "", late_fee_amount: String(lease.late_fee_amount || 50), late_fee_type: lease.late_fee_type || "flat", late_fee_grace_days: String(lease.late_fee_grace_days || 5) });
+  // Legacy leases carry no tenant_id: pre-select the tenant only when the
+  // name AND property identify exactly one.
+  const byNameProp = tenants.filter(t => t.name === lease.tenant_name && t.property === lease.property);
+  const editTenantId = lease.tenant_id ? String(lease.tenant_id) : (byNameProp.length === 1 ? String(byNameProp[0].id) : "");
+  setForm({ tenant_id: editTenantId, tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "", late_fee_amount: String(lease.late_fee_amount || 50), late_fee_type: lease.late_fee_type || "flat", late_fee_grace_days: String(lease.late_fee_grace_days || 5) });
   setShowForm(true);
   }
 
@@ -204,7 +213,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // Bug 1-2: Check errors and rollback on failure
   const { error: updateErr } = await supabase.from("leases").update({ status: "renewed" }).eq("company_id", companyId).eq("id", lease.id);
   if (updateErr) { showToast("Error updating old lease: " + updateErr.message, "error"); return; }
-  const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
+  const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, deposit_status: lease.deposit_status || "held", deposit_returned: lease.deposit_returned ?? 0, deposit_return_date: lease.deposit_return_date || null, deposit_deductions: lease.deposit_deductions || "", rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
   if (insertErr) {
   const { error: _err4650 } = await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("id", lease.id); // rollback
   if (_err4650) { showToast("Error updating leases: " + _err4650.message, "error"); return; }
@@ -289,98 +298,127 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   fetchData();
   }
 
+  // Open "Return Deposit": read what is still held and what the tenant owes,
+  // fresh from the database, so the modal can warn before anything posts.
+  async function openDepositModal(l) {
+  setShowDepositModal(l);
+  setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()), mode: "cash" });
+  setDepositCtx({ loading: true, leaseId: l.id });
+  const [rel, owed] = await Promise.all([
+    depositReleaseState(companyId, { tenantId: l.tenant_id, leaseId: l.id }),
+    l.tenant_id ? tenantOwedFromGL(companyId, l.tenant_id) : Promise.resolve(null),
+  ]);
+  setDepositCtx({ loading: false, leaseId: l.id, rel, owed });
+  if (rel?.partial) setDepositForm(f => ({ ...f, amount_returned: String(rel.remaining) }));
+  }
+
   async function processDepositReturn(lease) {
   if (!guardSubmit("processDepositReturn", lease.id)) return;
   try {
-  // A deposit leaves 2100 once. The Move-Out wizard releases it to the
-  // tenant's ledger and never used to mark the lease, so this button was
-  // still offered afterwards and returned the same deposit a second time.
-  // depositReleaseState reads the lease afresh and looks for a release under
-  // the shared DEPRET-T<tenant id> reference from ANY path; a voided release
-  // does not count. It fails closed.
+  // A deposit leaves 2100 once. depositReleaseState reads the lease and its
+  // renewal chain afresh and looks for a release from ANY path -- keyed
+  // (DEPRET-/DEPDED-<key>), legacy random references at this property, or a
+  // released status. A voided release does not count; a voided LEG frees only
+  // that leg's amount. It fails closed.
   const rel = await depositReleaseState(companyId, { tenantId: lease.tenant_id, leaseId: lease.id });
   if (rel.released) {
   showToast("This deposit cannot be returned again: " + rel.reason + ".", "error");
   setShowDepositModal(null); fetchData(); return;
   }
-  await _processDepositReturn(lease);
+  // Owner decision: refunding cash to a tenant who still owes money gets a
+  // (non-blocking) warning with the option to apply the deposit instead.
+  // Re-read the balance now; if it changed since the modal opened, show it
+  // and let the user choose before anything posts.
+  const owed = lease.tenant_id ? await tenantOwedFromGL(companyId, lease.tenant_id) : null;
+  if (depositForm.mode !== "apply" && safeNum(owed) > 0.005 && !(depositCtx?.leaseId === lease.id && safeNum(depositCtx?.owed) > 0.005)) {
+  setDepositCtx({ loading: false, leaseId: lease.id, rel, owed });
+  showToast("This tenant still owes " + formatCurrency(owed) + ". You can apply the deposit to that balance instead — choose, then press Process Return again.", "warning");
+  return;
+  }
+  await _processDepositReturn(lease, rel);
   } finally { guardRelease("processDepositReturn", lease.id); }
   }
 
-  async function _processDepositReturn(lease) {
-  const returned = Number(depositForm.amount_returned || 0);
-  const deposit = safeNum(lease.security_deposit);
-  const deducted = deposit - returned;
-  if (returned < 0 || deducted < 0) { showToast("Amounts cannot be negative.", "error"); return; }
-  if (returned > deposit) {
-  if (!await showConfirm({ message: "Return amount ($" + returned + ") exceeds the original deposit ($" + deposit + "). Continue?" })) return;
-  }
+  async function _processDepositReturn(lease, rel) {
+  const apply = depositForm.mode === "apply";
+  const returned = Math.round(Number(depositForm.amount_returned || 0) * 100) / 100;
+  const fullDeposit = safeNum(lease.security_deposit);
+  // What is still held: the whole deposit, or -- when one leg of an earlier
+  // split release was voided -- only that leg's amount.
+  const held = safeNum(rel.remaining);
+  const deducted = Math.round((held - returned) * 100) / 100;
+  if (returned < 0) { showToast("Amounts cannot be negative.", "error"); return; }
+  if (deducted < 0) { showToast("The amount returned cannot exceed the " + formatCurrency(held) + " still held.", "error"); return; }
   if (!depositForm.return_date) { showToast("Return date is required.", "error"); return; }
+  if (apply && returned > 0 && !lease.tenant_id) { showToast("This lease has no tenant record, so the deposit cannot be applied to a balance. Refund it instead.", "error"); return; }
+  // Each leg gets one of this deposit's free references; the first takes the
+  // claim DEPRET-<key>, so the unique index refuses any concurrent release.
+  const plan = planReleaseLegs({ returned, deducted, freeReferences: rel.freeReferences });
+  if (plan.error) { showToast("Deposit not released: " + plan.error + ".", "error"); return; }
   try {
-  const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
   const classId = await getPropertyClassId(lease.property, companyId);
-  // Get current tenant balance for accurate ledger trail
-  const { data: depTenantBal } = lease.tenant_id ? await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).eq("company_id", companyId).maybeSingle() : { data: null };
-  let runningBalance = safeNum(depTenantBal?.balance);
-  let returnJeOk = true;
-  let deductJeOk = true;
-  // The FIRST entry this return posts carries the release claim,
-  // DEPRET-T<tenant id> (DEPRET-L<lease id> when the lease has no tenant id),
-  // shared with the Move-Out wizard and property deletion. The unique
-  // reference index then refuses a second release from any path. The
-  // deduction, when cash was also returned, is DEPDED-<same key>.
-  const claimRef = depositReleaseReference(lease.tenant_id, lease.id);
-  const dedRef = returned > 0 ? depositDeductionReference(lease.tenant_id, lease.id) : claimRef;
-  if (returned > 0) {
-  const _retResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: claimRef, property: lease.property,
+  const arId = apply && returned > 0 ? await tenantOwnArAccountId(companyId, lease.tenant_name, lease.tenant_id) : null;
+  if (apply && returned > 0 && !arId) { showToast("Deposit not applied: this tenant's receivable account could not be found.", "error"); return; }
+  const posted = [];
+  for (const leg of plan.legs) {
+  let res;
+  if (leg.kind === "return" && apply) {
+  // Same shape as move-out: DR 2100 / CR the tenant's own AR. The balance
+  // trigger recomputes tenants.balance from that AR, so no balanceUpdate.
+  res = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit applied to balance — " + lease.tenant_name, reference: leg.reference, property: lease.property,
   lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
+  { account_id: "2100", account_name: "Security Deposits Held", debit: leg.amount, credit: 0, class_id: classId, memo: "Deposit applied to balance — " + lease.tenant_name },
+  { account_id: arId, account_name: "AR - " + lease.tenant_name, debit: 0, credit: leg.amount, class_id: classId, memo: "Deposit credit — applied to balance" },
   ],
-  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Security deposit returned", amount: returned, type: "deposit_return" } : null
+  ledgerEntry: { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Deposit applied to balance", amount: -leg.amount, type: "credit" }
   });
-  returnJeOk = !!_retResult?.jeId;
-  if (!returnJeOk) {
-  // Nothing was released (a duplicate claim is refused here too), so the
-  // lease stays "held" and no deduction is posted on its own.
-  showToast("Deposit return was not posted — it may already have been released elsewhere. Please check the accounting module.", "error");
+  } else if (leg.kind === "return") {
+  res = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: leg.reference, property: lease.property,
+  lines: [
+  { account_id: "2100", account_name: "Security Deposits Held", debit: leg.amount, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
+  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: leg.amount, class_id: classId, memo: "Deposit refund" },
+  ],
+  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Security deposit returned", amount: leg.amount, type: "deposit_return" } : null
+  });
+  } else {
+  res = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: leg.reference, property: lease.property,
+  lines: [
+  { account_id: "2100", account_name: "Security Deposits Held", debit: leg.amount, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
+  { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: leg.amount, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
+  ],
+  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Deposit deduction: " + depositForm.deductions, amount: leg.amount, type: "deposit_deduction" } : null
+  });
+  }
+  if (!res?.jeId) {
+  if (!posted.length) {
+  // Nothing was released (a duplicate claim is refused here too).
+  showToast("Deposit was not released — it may already have been released elsewhere. Please check the accounting module.", "error");
   setShowDepositModal(null); fetchData(); return;
   }
-  if (lease.tenant_id) runningBalance -= returned;
+  showToast("The " + (leg.kind === "deduction" ? "deduction" : "return") + " of " + formatCurrency(leg.amount) + " was not posted. The lease stays “held” with " + formatCurrency(leg.amount) + " still held — process the rest again.", "error");
+  break;
   }
-  if (deducted > 0) {
-  const _dedResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: dedRef, property: lease.property,
-  lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
-  { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
-  ],
-  ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction" } : null
-  });
-  deductJeOk = !!_dedResult?.jeId;
-  if (!deductJeOk && returned <= 0) {
-  // This entry WAS the release; it did not post, so nothing was released.
-  showToast("Deposit forfeiture was not posted — it may already have been released elsewhere. Please check the accounting module.", "error");
-  setShowDepositModal(null); fetchData(); return;
+  posted.push(leg);
   }
-  if (!deductJeOk) showToast("Deposit deduction accounting entry failed. Please check the accounting module.", "error");
-  if (deductJeOk && lease.tenant_id) runningBalance += deducted;
-  }
-  // Mark the lease only once the release is on the books, so a failed post
-  // does not leave a "returned" lease with the deposit still held.
-  const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
-  if (depErr) showToast("Deposit posted, but the lease could not be marked " + status.replace("_", " ") + ": " + depErr.message, "error");
-  // tenants.balance now updated by sync_tenant_balance_lines trigger
-  // for the AR-touching deduction JE; the deposit return JE doesn't
-  // touch a per-tenant AR account so it has no effect on balance.
-  logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
+  // Mark the lease only for what is on the books. If a leg failed, the lease
+  // stays "held" (the remainder is still held) and records what was returned.
+  const returnedNow = posted.filter(l => l.kind === "return").reduce((t, l) => t + l.amount, 0);
+  const deductedNow = posted.filter(l => l.kind === "deduction").reduce((t, l) => t + l.amount, 0);
+  const priorReturned = safeNum(rel.liveReturned);
+  const complete = posted.length === plan.legs.length;
+  const upd = { deposit_returned: Math.round((priorReturned + returnedNow) * 100) / 100, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions };
+  if (complete) upd.deposit_status = releasedDepositStatus({ deposit: fullDeposit, priorReturned, returnedNow });
+  const { error: depErr } = await supabase.from("leases").update(upd).eq("company_id", companyId).eq("id", lease.id);
+  if (depErr) showToast("Deposit posted, but the lease record could not be updated: " + depErr.message, "error");
+  logAudit("update", "leases", "Deposit " + (apply ? "applied to balance" : "return") + ": $" + returnedNow + " to " + lease.tenant_name + (deductedNow ? ", $" + deductedNow + " deducted" : ""), lease.id, userProfile?.email, userRole, companyId);
   // Queue deposit return notification
-  const { data: depTenant } = await supabase.from("tenants").select("email").eq("name", lease.tenant_name).eq("company_id", companyId).maybeSingle();
-  if (depTenant?.email) queueNotification("deposit_returned", depTenant.email, { tenant: lease.tenant_name, returned, deducted, property: lease.property }, companyId);
-  setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
+  const { data: depTenant } = lease.tenant_id ? await supabase.from("tenants").select("email").eq("id", lease.tenant_id).eq("company_id", companyId).maybeSingle() : { data: null };
+  if (depTenant?.email) queueNotification("deposit_returned", depTenant.email, { tenant: lease.tenant_name, returned: returnedNow, deducted: deductedNow, property: lease.property }, companyId);
+  setShowDepositModal(null); setDepositCtx(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()), mode: "cash" });
   fetchData();
   } catch (e) {
   showToast("Deposit return failed: " + e.message, "error");
-  setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
+  setShowDepositModal(null); setDepositCtx(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()), mode: "cash" });
   }
   }
 
@@ -463,14 +501,27 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} addNotification={addNotification} />}
 
   {showDepositModal && (
-  <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
+  <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => { setShowDepositModal(null); setDepositCtx(null); }}>
   <div className="space-y-3">
-  <div className="bg-highlight-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
-  <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><MoneyInput value={depositForm.amount_returned} onChange={v => setDepositForm({...depositForm, amount_returned: v})} placeholder={String(showDepositModal.security_deposit)} /></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div>
+  {depositCtx?.rel?.partial && <div className="flex justify-between mt-1"><span className="text-neutral-400">Still held:</span><span className="font-bold">{formatCurrency(depositCtx.rel.remaining)}</span></div>}</div>
+  {depositCtx?.loading && <div className="text-xs text-neutral-400">Checking the tenant's balance…</div>}
+  {depositCtx?.rel?.partial && <div className="bg-warn-50 rounded-lg p-2 text-xs text-warn-700">{depositCtx.rel.reason}.</div>}
+  {depositCtx?.rel?.released && <div className="bg-danger-50 rounded-lg p-2 text-xs text-danger-700">This deposit cannot be returned again: {depositCtx.rel.reason}.</div>}
+  {safeNum(depositCtx?.owed) > 0.005 && (
+  <div className="bg-warn-50 rounded-lg p-3 text-xs text-warn-700 space-y-2">
+  <div>This tenant still owes <span className="font-bold">{formatCurrency(depositCtx.owed)}</span>. You can apply the deposit to that balance instead of refunding cash.</div>
+  <div className="flex gap-2">
+  <Btn size="xs" variant={depositForm.mode === "apply" ? "purple" : "secondary"} onClick={() => setDepositForm({ ...depositForm, mode: "apply" })}>Apply to balance</Btn>
+  <Btn size="xs" variant={depositForm.mode !== "apply" ? "purple" : "secondary"} onClick={() => setDepositForm({ ...depositForm, mode: "cash" })}>Refund cash anyway</Btn>
+  </div>
+  </div>
+  )}
+  <div><label className="text-xs text-neutral-400">{depositForm.mode === "apply" ? "Amount to Apply to Balance ($)" : "Amount to Return ($)"}</label><MoneyInput value={depositForm.amount_returned} onChange={v => setDepositForm({...depositForm, amount_returned: v})} placeholder={String(showDepositModal.security_deposit)} /></div>
   <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} /></div>
   <div><label className="text-xs text-neutral-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
-  {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
-  <div className="bg-danger-50 rounded-lg p-2 text-xs text-danger-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
+  {Number(depositForm.amount_returned || 0) < safeNum(depositCtx?.rel?.partial ? depositCtx.rel.remaining : showDepositModal.security_deposit) && depositForm.amount_returned && (
+  <div className="bg-danger-50 rounded-lg p-2 text-xs text-danger-700">Deducting ${(safeNum(depositCtx?.rel?.partial ? depositCtx.rel.remaining : showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
   )}
   <Btn variant="purple" onClick={() => processDepositReturn(showDepositModal)}>Process Return</Btn>
   </div>
@@ -514,9 +565,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   )}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-neutral-400 mb-1 block">Tenant *</label>
-  <Select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
-  <option value="">Select tenant...</option>
-  {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+  <Select value={form.tenant_id} onChange={e => prefillFromTenant(e.target.value)} >
+  <option value="">{editingLease && !form.tenant_id && form.tenant_name ? form.tenant_name : "Select tenant..."}</option>
+  {tenants.map(t => <option key={t.id} value={String(t.id)}>{t.name}{t.property ? " — " + t.property : ""}</option>)}
   </Select>
   </div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
@@ -584,7 +635,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
   <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
   {safeNum(l.security_deposit) > 0 && depositReturnOfferable(l, depositReleases) && (l.status === "terminated" || l.status === "expired" || isExpired) && (
-  <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
+  <Btn variant="purple" size="xs" onClick={() => openDepositModal(l)}>Return Deposit</Btn>
   )}
   </div>
   </div>

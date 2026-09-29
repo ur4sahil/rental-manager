@@ -5,7 +5,7 @@ import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 import { RENT_CHARGE_PREFIXES, hasRentChargeInMonth } from "./paymentRules";
 import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
-import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, depositReleaseStateWith } from "./depositRules";
+import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
 // (acct_journal_lines + acct_journal_entries). There is nothing to
@@ -590,9 +590,27 @@ export async function tenantOwnArAccountId(companyId, tenantName, tenantId) {
 // SECURITY DEPOSIT RELEASE -- never twice. Rules and the reference scheme
 // (DEPRET-T<tenant id>, or DEPRET-L<lease id> for a lease with no tenant id)
 // live in depositRules.js; this binds the check to the app's client.
-export { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable };
+export { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef };
 export function depositReleaseState(companyId, { tenantId = null, leaseId = null } = {}) {
   return depositReleaseStateWith(supabase, companyId, { tenantId, leaseId });
+}
+
+// What the tenant owes right now, from the GL: debits minus credits on their
+// own AR account(s) (acct_accounts.tenant_id), voided entries excluded.
+// null when it cannot be read -- callers then show no amount rather than 0.
+export async function tenantOwedFromGL(companyId, tenantId) {
+  if (!companyId || tenantId === null || tenantId === undefined || tenantId === "") return null;
+  const { data: accts, error } = await supabase.from("acct_accounts").select("id")
+    .eq("company_id", companyId).eq("type", "Asset").eq("tenant_id", tenantId);
+  if (error) return null;
+  const ids = (accts || []).map(a => a.id);
+  if (!ids.length) return 0;
+  const { rows, failed } = await fetchAllPaged(() => supabase.from("acct_journal_lines")
+    .select("debit, credit, acct_journal_entries!inner(status)")
+    .eq("company_id", companyId).in("account_id", ids)
+    .neq("acct_journal_entries.status", "voided").order("id"), "tenant owed");
+  if (failed) return null;
+  return Math.round(rows.reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0) * 100) / 100;
 }
 
 export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
