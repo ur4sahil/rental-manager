@@ -10,7 +10,7 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, deactivateTenantRecurring } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReleaseReference, deactivateTenantRecurring } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -1512,8 +1512,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const classId = await getPropertyClassId(compositeAddress, companyId);
         const dep = Number(tenantForm.security_deposit) || 0;
         if (!isLeaseMigration && dep > 0 && !depPosted) {
-          const tenantArId = await getOrCreateTenantAR(companyId, tName, resTenantId);
-          await atomicPostJEAndLedger({
+          // Owed, then paid: DR the tenant's OWN AR (never the shared 1100).
+          const tenantArId = await tenantOwnArAccountId(companyId, tName, resTenantId);
+          if (!tenantArId) phaseCFailures.push('security deposit (tenant receivable account not found)');
+          else await atomicPostJEAndLedger({
             companyId, date: tenantForm.lease_start,
             description: 'Security deposit received — ' + tName + ' — ' + compositeAddress,
             reference: depRef, property: compositeAddress,
@@ -3290,15 +3292,18 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const _depAlready = await depositAlreadyPosted(companyId, tenantId);
   if (dep > 0 && !_depAlready) {
   const classId = await getPropertyClassId(compositeAddress, companyId);
-  const tenantArId = await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
-  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: compositeAddress,
+  // Owed, then paid: DR the tenant's OWN AR, never the shared 1100 parent
+  // that getOrCreateTenantAR falls back to (e.g. when the tenant insert failed).
+  const tenantArId = await tenantOwnArAccountId(companyId, form.tenant.trim(), tenantId);
+  const _depResult = !tenantArId ? null : await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: compositeAddress,
   lines: [
   { account_id: tenantArId, account_name: "AR - " + form.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },
   ],
   ledgerEntry: tenantId ? { tenant: form.tenant.trim(), tenant_id: tenantId, property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit" } : null
   });
-  if (!_depResult?.jeId) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
+  if (!tenantArId) showToast("Security deposit not booked: this tenant's receivable account could not be found or created. Add the deposit charge in Accounting.", "error");
+  else if (!_depResult?.jeId) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
   }
   // Post rent charges for this lease (awaited so errors surface)
   try {
@@ -3543,19 +3548,29 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   }
 
   // 7. Clear security deposit liabilities before terminating leases
-  const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, security_deposit, deposit_status").eq("company_id", companyId).eq("property", address).eq("status", "active");
+  // A deposit leaves 2100 once, from any path: skip one already released at
+  // move-out or on the Leases page (including a partial return, which the old
+  // returned/forfeited check missed and forfeited in full a second time). The
+  // entry carries the shared release claim DEPRET-T<tenant id>, so the unique
+  // reference index refuses a duplicate even if this check is raced.
+  const { data: activeLeases } = await supabase.from("leases").select("id, tenant_id, tenant_name, security_deposit, deposit_status").eq("company_id", companyId).eq("property", address).eq("status", "active");
   for (const lease of (activeLeases || [])) {
   const dep = safeNum(lease.security_deposit);
-  if (dep > 0 && lease.deposit_status !== "returned" && lease.deposit_status !== "forfeited") {
+  if (dep > 0) {
+  const rel = await depositReleaseState(companyId, { tenantId: lease.tenant_id, leaseId: lease.id });
+  if (rel.released) {
+  if (rel.error) pmError("PM-4002", { raw: { message: rel.reason }, context: "deposit release check on property delete: " + (lease.tenant_name || ""), silent: true });
+  continue;
+  }
   // Post JE to forfeit deposit (property deleted = deposit forfeited to other income)
   const classId = await getPropertyClassId(address, companyId);
-  await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Deposit forfeited — property deleted — " + (lease.tenant_name || ""), reference: "DEPFORF-" + shortId(), property: address,
+  const forfJeId = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Deposit forfeited — property deleted — " + (lease.tenant_name || ""), reference: depositReleaseReference(lease.tenant_id, lease.id), property: address,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: dep, credit: 0, class_id: classId, memo: "Clear liability: " + (lease.tenant_name || "") },
   { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: dep, class_id: classId, memo: "Forfeited deposit: property deleted" },
   ]
   });
-  await supabase.from("leases").update({ deposit_status: "forfeited" }).eq("id", lease.id).eq("company_id", companyId);
+  if (forfJeId) await supabase.from("leases").update({ deposit_status: "forfeited" }).eq("id", lease.id).eq("company_id", companyId);
   }
   }
   // Terminate leases, disable autopay

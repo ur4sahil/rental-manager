@@ -7,7 +7,7 @@ import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReleaseReference, depositDeductionReference, depositReturnOfferable, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -42,6 +42,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const [showRentIncrease, setShowRentIncrease] = useState(null);
   const [rentIncreaseForm, setRentIncreaseForm] = useState({ new_amount: "", effective_date: "", reason: "" });
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: "1" });
+  // Deposit release entries (DEPRET-/DEPDED-, any status) for the company, so
+  // "Return Deposit" is not offered for a deposit already released elsewhere.
+  const [depositReleases, setDepositReleases] = useState([]);
   const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
 
   useEffect(() => { fetchData(); }, [companyId]);
@@ -58,6 +61,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   setTenants(t.data || []);
   setProperties(p.data || []);
   setTemplates(tmpl.data || []);
+  const { rows: rel } = await fetchAllPaged(() => supabase.from("acct_journal_entries").select("reference, status")
+    .eq("company_id", companyId).or("reference.like.DEPRET-%,reference.like.DEPDED-%").order("id"), "deposit release entries");
+  setDepositReleases(rel || []);
   setLoading(false);
   }
 
@@ -123,16 +129,25 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // this keeps the "Accounting entry failed" toast for real failures.
   const _depAlready = await depositAlreadyPosted(companyId, tenant?.id);
   if (!error && Number(form.security_deposit) > 0 && !_depAlready) {
+  // Owed, then paid: the deposit is a CHARGE on the tenant's own AR, which
+  // the tenant then pays like rent. This used to debit Checking directly, as
+  // if the money had already arrived -- so recording the actual payment
+  // afterwards counted the cash twice and left the tenant showing a credit.
   const classId = await getPropertyClassId(form.property, companyId);
   const dep = Number(form.security_deposit);
+  const depArId = await tenantOwnArAccountId(companyId, form.tenant_name, tenant?.id);
+  if (!depArId) {
+  showToast("Lease saved, but the security deposit was not booked: this tenant's receivable account could not be found or created. Add the deposit charge in Accounting.", "error");
+  } else {
   const _depResult = await atomicPostJEAndLedger({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: depositReference(tenant?.id) || ("DEP-" + shortId()), property: form.property,
   lines: [
-  { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
+  { account_id: depArId, account_name: "AR - " + form.tenant_name, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
   ],
-  ledgerEntry: tenant?.id ? { tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date, description: "Security deposit collected", amount: dep, type: "deposit" } : null
+  ledgerEntry: { tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date, description: "Security deposit collected", amount: dep, type: "deposit" }
   });
   if (!_depResult?.jeId) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
+  }
   }
   }
   if (error) { pmError("PM-3004", { raw: error, context: "save lease" }); return; }
@@ -275,9 +290,24 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   }
 
   async function processDepositReturn(lease) {
-  if (lease.deposit_status === "returned" || lease.deposit_status === "forfeited") {
-  showToast("Deposit has already been processed for this lease.", "error"); return;
+  if (!guardSubmit("processDepositReturn", lease.id)) return;
+  try {
+  // A deposit leaves 2100 once. The Move-Out wizard releases it to the
+  // tenant's ledger and never used to mark the lease, so this button was
+  // still offered afterwards and returned the same deposit a second time.
+  // depositReleaseState reads the lease afresh and looks for a release under
+  // the shared DEPRET-T<tenant id> reference from ANY path; a voided release
+  // does not count. It fails closed.
+  const rel = await depositReleaseState(companyId, { tenantId: lease.tenant_id, leaseId: lease.id });
+  if (rel.released) {
+  showToast("This deposit cannot be returned again: " + rel.reason + ".", "error");
+  setShowDepositModal(null); fetchData(); return;
   }
+  await _processDepositReturn(lease);
+  } finally { guardRelease("processDepositReturn", lease.id); }
+  }
+
+  async function _processDepositReturn(lease) {
   const returned = Number(depositForm.amount_returned || 0);
   const deposit = safeNum(lease.security_deposit);
   const deducted = deposit - returned;
@@ -288,16 +318,21 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (!depositForm.return_date) { showToast("Return date is required.", "error"); return; }
   try {
   const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
-  const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
-  if (depErr) { showToast("Error processing deposit return: " + depErr.message, "error"); return; }
   const classId = await getPropertyClassId(lease.property, companyId);
   // Get current tenant balance for accurate ledger trail
   const { data: depTenantBal } = lease.tenant_id ? await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).eq("company_id", companyId).maybeSingle() : { data: null };
   let runningBalance = safeNum(depTenantBal?.balance);
   let returnJeOk = true;
   let deductJeOk = true;
+  // The FIRST entry this return posts carries the release claim,
+  // DEPRET-T<tenant id> (DEPRET-L<lease id> when the lease has no tenant id),
+  // shared with the Move-Out wizard and property deletion. The unique
+  // reference index then refuses a second release from any path. The
+  // deduction, when cash was also returned, is DEPDED-<same key>.
+  const claimRef = depositReleaseReference(lease.tenant_id, lease.id);
+  const dedRef = returned > 0 ? depositDeductionReference(lease.tenant_id, lease.id) : claimRef;
   if (returned > 0) {
-  const _retResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
+  const _retResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: claimRef, property: lease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
@@ -305,11 +340,16 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Security deposit returned", amount: returned, type: "deposit_return" } : null
   });
   returnJeOk = !!_retResult?.jeId;
-  if (!returnJeOk) showToast("Deposit return accounting entry failed. Please check the accounting module.", "error");
-  if (returnJeOk && lease.tenant_id) runningBalance -= returned;
+  if (!returnJeOk) {
+  // Nothing was released (a duplicate claim is refused here too), so the
+  // lease stays "held" and no deduction is posted on its own.
+  showToast("Deposit return was not posted — it may already have been released elsewhere. Please check the accounting module.", "error");
+  setShowDepositModal(null); fetchData(); return;
+  }
+  if (lease.tenant_id) runningBalance -= returned;
   }
   if (deducted > 0) {
-  const _dedResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
+  const _dedResult = await atomicPostJEAndLedger({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: dedRef, property: lease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
   { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
@@ -317,9 +357,18 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   ledgerEntry: lease.tenant_id ? { tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date, description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction" } : null
   });
   deductJeOk = !!_dedResult?.jeId;
+  if (!deductJeOk && returned <= 0) {
+  // This entry WAS the release; it did not post, so nothing was released.
+  showToast("Deposit forfeiture was not posted — it may already have been released elsewhere. Please check the accounting module.", "error");
+  setShowDepositModal(null); fetchData(); return;
+  }
   if (!deductJeOk) showToast("Deposit deduction accounting entry failed. Please check the accounting module.", "error");
   if (deductJeOk && lease.tenant_id) runningBalance += deducted;
   }
+  // Mark the lease only once the release is on the books, so a failed post
+  // does not leave a "returned" lease with the deposit still held.
+  const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
+  if (depErr) showToast("Deposit posted, but the lease could not be marked " + status.replace("_", " ") + ": " + depErr.message, "error");
   // tenants.balance now updated by sync_tenant_balance_lines trigger
   // for the AR-touching deduction JE; the deposit return JE doesn't
   // touch a per-tenant AR account so it has no effect on balance.
@@ -534,7 +583,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {l.status === "active" && canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
   <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
   <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
-  {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
+  {safeNum(l.security_deposit) > 0 && depositReturnOfferable(l, depositReleases) && (l.status === "terminated" || l.status === "expired" || isExpired) && (
   <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
   )}
   </div>

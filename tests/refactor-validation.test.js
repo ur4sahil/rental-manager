@@ -246,7 +246,8 @@ function testFileStructure() {
   // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
-  assert(totalLines <= 51800, `Total src lines <= 51800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 52100 on 2026-09-28: +~255 for depositRules.js (deposit released once, tested by deposits-owed-once.test.mjs) and the three release-path guards.
+  assert(totalLines <= 52100, `Total src lines <= 52100 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file
