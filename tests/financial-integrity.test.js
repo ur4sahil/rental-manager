@@ -106,13 +106,16 @@ async function testProrationMath() {
   assert(lifecycleJs.includes('proratedCents / 100'), 'proratedRent converted back from cents to dollars');
   assert(lifecycleJs.includes('(fullRentCents - proratedCents) / 100'), 'creditBack computed from cents difference (avoids floating point)');
 
-  // Accounting: owner distribution uses cents
-  assert(accountingJs.includes('paymentCents'), 'Owner distribution computes paymentCents');
-  assert(accountingJs.includes('mgmtFeeCents'), 'Owner distribution computes mgmtFeeCents');
-  assert(accountingJs.includes('Math.round(paymentAmount * 100)'), 'paymentCents uses Math.round');
-  assert(accountingJs.includes('Math.round(paymentCents * feePct / 100)'), 'mgmtFeeCents computed from integer cents * percentage');
-  assert(accountingJs.includes('mgmtFeeCents / 100'), 'mgmtFee converted back from cents');
-  assert(accountingJs.includes('(paymentCents - mgmtFeeCents) / 100'), 'ownerNet computed from cents difference');
+  // Owner distribution uses cents. The math moved to utils/ownerRules.js
+  // (runOwnerDistributionAccrual) so the Stripe webhook shares it;
+  // accounting.js#autoOwnerDistribution now delegates there.
+  const ownerRulesJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'utils', 'ownerRules.js'), 'utf8');
+  assert(accountingJs.includes('runOwnerDistributionAccrual(supabase,'), 'autoOwnerDistribution delegates to the shared ownerRules implementation');
+  assert(ownerRulesJs.includes('const paymentCents = toCents(amount);'), 'Owner distribution computes paymentCents');
+  assert(ownerRulesJs.includes('Math.round(n * 100)'), 'paymentCents uses Math.round');
+  assert(ownerRulesJs.includes('return Math.round(incomeCents * Number(pct) / 100);') && ownerRulesJs.includes('const feeC = mgmtFeeCents(paymentCents, rule.pct);'), 'mgmtFeeCents computed from integer cents * percentage');
+  assert(ownerRulesJs.includes('feeC / 100'), 'mgmtFee converted back from cents');
+  assert(ownerRulesJs.includes('const netC = paymentCents - feeC;') && ownerRulesJs.includes('amount: netC / 100'), 'ownerNet computed from cents difference');
 
   // No raw floating-point multiplication for financial percentages
   // (paymentAmount * feePct without cents would be a bug)

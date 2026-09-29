@@ -8,7 +8,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, printTable} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId } from "../utils/accounting";
+import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId, autoOwnerDistribution } from "../utils/accounting";
 import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
 import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
@@ -1104,6 +1104,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   balanceUpdate: arLegIsPerTenant ? null : balData,
   });
   if (!result.jeId) return; // toast already shown by postAccountingTransaction
+  // A rent receipt on an owner-managed property accrues the owner's share and
+  // the management fee -- the same step autopay and the Stripe webhook run.
+  if (newCharge.type === "payment" && arLegIsPerTenant) {
+    await autoOwnerDistribution(companyId, selectedTenant.property, Math.abs(amount), today, selectedTenant.name, selectedTenant.id);
+  }
   // Fetch fresh tenant data to avoid stale closure state
   const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", selectedTenant.id).eq("company_id", companyId).maybeSingle();
   if (freshTenant) setSelectedTenant(freshTenant);

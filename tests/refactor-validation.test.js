@@ -85,7 +85,8 @@ function testFileStructure() {
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 26, `src/utils/ has 8..26 files (found ${actualUtilFiles.length})`);
+  // 26 -> 28 on 2026-09-28 (owners): ownerRules.js (pure fee / reference / statement rules shared with api/stripe.js) and owners.js (owner-link + ledger-read helpers).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 28, `src/utils/ has 8..28 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -102,7 +103,8 @@ function testFileStructure() {
     assert(fs.existsSync(path.join(compDir, f)), `src/components/${f} exists`);
   }
   const actualCompFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.js'));
-  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 40, `src/components/ has 23..40 files (found ${actualCompFiles.length})`);
+  // 40 -> 41 on 2026-09-28 (owners): OwnerPicker.js, the one owner chooser used by the wizard and the property page.
+  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 41, `src/components/ has 23..41 files (found ${actualCompFiles.length})`);
 
   // Total line count. App.js grew past its own 1500 cap with the
   // SCREEN_HASHES guard that fixed deep-link routing — a deliberate,
@@ -249,7 +251,8 @@ function testFileStructure() {
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
   // 53200 on 2026-09-28 (integration of late-fee gaps + Stripe/autopay QA fixes + deposits owed-once + QB standard slots).
-  assert(totalLines <= 53200, `Total src lines <= 53200 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 53700 on 2026-09-28 (owners): +~390 -- ownerRules.js (fee rule, references, GL statement builder, the accrual shared with the Stripe webhook), owners.js, OwnerPicker.js, owner-linking in the wizard / property page / import, statement Excel export.
+  assert(totalLines <= 53700, `Total src lines <= 53700 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

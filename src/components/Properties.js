@@ -10,6 +10,9 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import PropertyDocuments from "./PropertyDocuments";
+import OwnerPicker from "./OwnerPicker";
+import { assignPropertyOwner } from "../utils/owners";
+import { propertyOwnerName } from "../utils/ownerRules";
 import { safeLedgerInsert, atomicPostJEAndLedger, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, fetchAllPaged, depositReference, depositAlreadyPosted, tenantOwnArAccountId, deactivateTenantRecurring } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
@@ -220,6 +223,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" };
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
+  // The property's owner (owner_id). A wizard resumed from a draft saved
+  // before the owner picker existed has no owner_id in its propForm: read
+  // it from the property so saving the wizard cannot silently clear it.
+  useEffect(() => {
+    if (!savedPropertyId || propForm.owner_id !== undefined) return;
+    let live = true;
+    supabase.from("properties").select("owner_id, owner_name").eq("company_id", companyId).eq("id", savedPropertyId).maybeSingle()
+      .then(({ data, error }) => { if (live && !error) setPropForm(f => (f.owner_id !== undefined ? f : { ...f, owner_id: data?.owner_id || null, owner_name_text: data?.owner_name || "" })); });
+    return () => { live = false; };
+  }, [savedPropertyId, propForm.owner_id, companyId]);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
   // IDs of documents inserted during this wizard session. We stamp
   // the best-known address at upload time, then UPDATE ... WHERE id IN
@@ -611,7 +624,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // the wizard, which is exactly what "Add Tenant" on a fresh
             // vacant property hits, and where the earlier fix did not reach.
             const _statusForForm = wizardData?.addingTenant ? "occupied" : (existProp.status || "vacant");
-            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "" };
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: _statusForForm, notes: existProp.notes || "", owner_id: existProp.owner_id || null, owner_name_text: existProp.owner_name || "" };
             setPropForm(filledProp);
             // Jump to the requested step (e.g. tenant_lease for Add Tenant).
             if (wizardData?.startAtStep) {
@@ -1429,6 +1442,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     // friendly names of failed steps so the completion toast can list
     // them and the PM knows to check the log.
     const phaseCFailures = [];
+    // The property's owner record. Written only when the form knows it
+    // (undefined = never loaded, so leave whatever is stored alone).
+    if (resPropertyId && propForm.owner_id !== undefined) {
+      try {
+        const oa = await assignPropertyOwner(companyId, resPropertyId, propForm.owner_id || null);
+        if (!oa.ok) { pmError('PM-8006', { raw: { message: oa.error }, context: 'post-commit owner link', silent: true }); phaseCFailures.push('owner link'); }
+      } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit owner link', silent: true }); phaseCFailures.push('owner link'); }
+    }
     try {
       if (taxes.enabled && resPropertyId) {
         await generateBillsForProperty({
@@ -1828,6 +1849,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <option value="maintenance">Maintenance</option>
                   </Select>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Owner</label>
+                <OwnerPicker companyId={companyId} value={propForm.owner_id || ""} fallbackName={propForm.owner_name_text}
+                  onChange={(id) => setPropForm(f => ({ ...f, owner_id: id || null }))} />
+                <p className="text-2xs text-neutral-400 mt-1">Set this when you manage the property for an outside owner: statements, the owner portal and management fees follow it.</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
@@ -3006,7 +3033,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   { label: "Bathrooms", key: "bathrooms" },
   { label: "Rent", key: "rent" },
   { label: "Tenant", key: "tenant" },
-  { label: "Owner", key: "owner_name" },
+  { label: "Owner", key: "_ownerName" },
   ], "properties_" + new Date().toLocaleDateString(), showToast);
   }
   const [properties, setProperties] = useState([]);
@@ -3085,6 +3112,16 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   (managedProps || []).forEach(mp => {
   if (!allProps.find(p => p.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" });
   });
+  // Owner as the LINKED owner record (owner_id); the free-text owner_name
+  // is only a fallback for properties not linked yet.
+  {
+  const { data: ownerRows } = await supabase.from("owners").select("id, name").eq("company_id", companyId);
+  const ownersById = new Map((ownerRows || []).map(o => [String(o.id), o]));
+  for (const p of allProps) {
+  p._ownerName = propertyOwnerName(p, ownersById);
+  p._ownerKey = p.owner_id ? "id:" + p.owner_id : (p.owner_name ? "name:" + p.owner_name : "");
+  }
+  }
   // Enrich with tenant email/phone for edit forms
   if (allProps.length > 0) {
   const { data: tenantData } = await supabase.from("tenants").select("name, email, phone, property").eq("company_id", companyId).is("archived_at", null);
@@ -3940,7 +3977,8 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   { id: "notes", label: "Notes" }, { id: "owner_name", label: "Owner" },
   ];
   const propertyTypes = [...new Set(properties.map(p => p.type).filter(Boolean))];
-  const propertyOwners = [...new Set(properties.map(p => p.owner_name).filter(Boolean))];
+  // Keyed by owner_id ("id:<uuid>"); unlinked text-only owners by name.
+  const propertyOwners = [...new Map(properties.filter(p => p._ownerKey).map(p => [p._ownerKey, { key: p._ownerKey, label: p._ownerName + (p.owner_id ? "" : " (unlinked)") }])).values()].sort((a, b) => a.label.localeCompare(b.label));
   const propertyCities = [...new Set(properties.map(p => {
   const parts = (p.address || "").split(",").map(s => s.trim());
   return parts.length >= 2 ? parts[parts.length - 2] : "";
@@ -3957,14 +3995,14 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   if (filter !== "all" && p.status !== filter) return false;
   if (filterType !== "all" && p.type !== filterType) return false;
   if (filterOwnership !== "all" && p._ownership !== filterOwnership) return false;
-  if (filterOwner !== "all" && p.owner_name !== filterOwner) return false;
+  if (filterOwner !== "all" && p._ownerKey !== filterOwner) return false;
   if (filterCity !== "all") {
   const parts = (p.address || "").split(",").map(s => s.trim());
   const city = parts.length >= 2 ? parts[parts.length - 2] : "";
   if (city !== filterCity) return false;
   }
   const q = debouncedSearch.toLowerCase();
-  if (q && !p.address?.toLowerCase().includes(q) && !p.type?.toLowerCase().includes(q) && !p.tenant?.toLowerCase()?.includes(q) && !p.owner_name?.toLowerCase()?.includes(q)) return false;
+  if (q && !p.address?.toLowerCase().includes(q) && !p.type?.toLowerCase().includes(q) && !p.tenant?.toLowerCase()?.includes(q) && !p._ownerName?.toLowerCase()?.includes(q)) return false;
   return true;
   }), [properties, filter, filterType, filterOwnership, filterOwner, filterCity, debouncedSearch]);
   if (loading) return <Spinner />;
@@ -3992,6 +4030,18 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
           insurance={propertyInsurance}
           userRole={userRole}
           readOnly={isReadOnly(selectedProperty)}
+          ownerSlot={isReadOnly(selectedProperty) ? null : (
+            <OwnerPicker compact companyId={companyId} value={selectedProperty.owner_id || ""} fallbackName={selectedProperty.owner_id ? "" : selectedProperty.owner_name}
+              onChange={async (id) => {
+                const r = await assignPropertyOwner(companyId, selectedProperty.id, id || null);
+                if (!r.ok) { showToast("Could not set the owner: " + r.error, "error"); return; }
+                const patch = { owner_id: r.owner ? r.owner.id : null, owner_name: r.owner ? r.owner.name : "", _ownerName: r.owner ? r.owner.name : "", _ownerKey: r.owner ? "id:" + r.owner.id : "" };
+                setSelectedProperty(sp => ({ ...sp, ...patch }));
+                setProperties(ps => ps.map(x => x.id === selectedProperty.id ? { ...x, ...patch } : x));
+                logAudit("update", "properties", "Owner of " + selectedProperty.address + " set to " + (r.owner ? r.owner.name : "none"), selectedProperty.id, userProfile?.email, userRole, companyId);
+                showToast(r.owner ? "Owner set to " + r.owner.name + "." : "Owner cleared.", "success");
+              }} />
+          )}
           onBack={() => setSelectedProperty(null)}
           onEdit={() => { setShowPropertyWizard(wizardFor({
             leaseStart: selectedProperty.lease_start || "", leaseEnd: selectedProperty.lease_end || "",
@@ -4486,7 +4536,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   {propertyOwners.length > 1 && (
   <Select filter aria-label="Filter properties by owner" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Owners</option>
-  {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
+  {propertyOwners.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
   </Select>
   )}
   {propertyCities.length > 1 && (
@@ -4623,7 +4673,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
       { key: "lease_end", label: "Lease End", className: "text-neutral-400",
         render: p => (<>{p.lease_end || "—"}</>) },
       { key: "owner", label: "Owner", className: "text-neutral-500",
-        render: p => (<>{p.owner_name || "—"}</>) },
+        render: p => (<>{p._ownerName || "—"}</>) },
       { key: "notes", label: "Notes", className: "text-xs text-neutral-400 max-w-32 truncate",
         render: p => (<>{p.notes || "—"}</>) },
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",

@@ -24,6 +24,8 @@ import {
   cellString,
 } from "../utils/propertyImport";
 import { ACTIVE_LEASE } from "../utils/helpers";
+import { propertyOwnerName } from "../utils/ownerRules";
+import { findOrCreateOwnerByName, assignPropertyOwner } from "../utils/owners";
 
 const STEPS = [
   { id: "download", label: "Download" },
@@ -49,11 +51,11 @@ export default function PropertyImport({ companyId, companyName, properties = []
   // cannot drift apart mid-session.
   async function loadExisting() {
     const [{ data: props }, { data: tens }, { data: owners }, { data: accts }] = await Promise.all([
-      supabase.from("properties").select("id,address,address_line_1,address_line_2,city,state,zip,county,short_name,type,status,bedrooms,bathrooms,sqft,owner_name,rent,security_deposit,notes")
+      supabase.from("properties").select("id,address,address_line_1,address_line_2,city,state,zip,county,short_name,type,status,bedrooms,bathrooms,sqft,owner_id,owner_name,rent,security_deposit,notes")
         .eq("company_id", companyId).is("archived_at", null).order("address"),
       supabase.from("tenants").select("id,name,property,email,phone,move_in,move_out,lease_start,lease_end_date,rent,balance,is_voucher,voucher_number,tenant_portion,voucher_portion,lease_status")
         .eq("company_id", companyId).is("archived_at", null).order("name"),
-      supabase.from("owners").select("name").eq("company_id", companyId).is("archived_at", null),
+      supabase.from("owners").select("id,name").eq("company_id", companyId).is("archived_at", null),
       supabase.from("acct_accounts").select("id,tenant_id").eq("company_id", companyId).not("tenant_id", "is", null),
     ]);
 
@@ -140,7 +142,10 @@ export default function PropertyImport({ companyId, companyName, properties = []
     });
 
     return {
-      properties: (props || []).map(p => ({ ...p, short_name: p.short_name || p.address })),
+      // The Owner column shows the LINKED owner record's name; the free
+      // text owner_name only for a property not linked yet.
+      properties: (props || []).map(p => ({ ...p, short_name: p.short_name || p.address,
+        owner_name: propertyOwnerName(p, new Map((owners || []).map(o => [String(o.id), o]))) })),
       tenants: tenantRows,
       owners: [...new Set((owners || []).map(o => o.name).filter(Boolean))],
       extras,
@@ -441,12 +446,26 @@ export default function PropertyImport({ companyId, companyName, properties = []
     let n = 0;
     const tick = (label) => { n += 1; setProgress({ done: n, total, label }); };
 
+    // Owner names in the sheet resolve to owner RECORDS (created when new),
+    // and the property is linked by owner_id -- the key statements, the
+    // owner portal and the fee accrual read. Loaded fresh for the commit.
+    const { data: ownerRows } = await supabase.from("owners").select("id,name,archived_at")
+      .eq("company_id", companyId).is("archived_at", null);
+    const ownerList = ownerRows || [];
+    let ownersCreated = 0;
+    // Returns { owner } (null = no owner named) or { error }.
+    const resolveOwner = async (name) => {
+      const res = await findOrCreateOwnerByName(companyId, name, ownerList);
+      if (res.created) ownersCreated += 1;
+      return res;
+    };
+
     try {
       // --- new properties, through the wizard's own transactional RPC ---
       for (const c of plan.creates) {
         tick(c.newAddress);
         const r = c.record;
-        const { error } = await supabase.rpc("commit_property_wizard", {
+        const { data: createRes, error } = await supabase.rpc("commit_property_wizard", {
           p_payload: {
             company_id: companyId, wizard_id: null, mode: "fresh", property_id_for_edit: null,
             property: {
@@ -469,6 +488,15 @@ export default function PropertyImport({ companyId, companyName, properties = []
         });
         if (error) { done.failed.push({ what: c.newAddress, why: error.message }); continue; }
         done.created += 1;
+        if (cellString(r.owner_name)) {
+          const ow = await resolveOwner(r.owner_name);
+          const newId = createRes?.property_id;
+          if (ow.error) done.failed.push({ what: c.newAddress, why: "owner: " + ow.error });
+          else if (ow.owner && newId) {
+            const la = await assignPropertyOwner(companyId, newId, ow.owner.id);
+            if (!la.ok) done.failed.push({ what: c.newAddress, why: "owner link: " + la.error });
+          }
+        }
       }
 
       // --- existing properties -----------------------------------------
@@ -493,10 +521,18 @@ export default function PropertyImport({ companyId, companyName, properties = []
           type: r.type || null, status: r.status || null,
           bedrooms: r.bedrooms, bathrooms: r.bathrooms, sqft: r.sqft,
           year_built: r.year_built,
-          owner_name: r.owner_name || "", rent: r.rent, security_deposit: r.security_deposit,
+          rent: r.rent, security_deposit: r.security_deposit,
           notes: r.notes || "",
         };
         Object.keys(patch).forEach(k => { if (patch[k] === null || patch[k] === undefined) delete patch[k]; });
+        // Owner: a blank cell clears it (as the old owner_name write did); a
+        // name links the owner record, creating it when there is none. An
+        // ambiguous name leaves the owner as it is and is reported.
+        {
+          const ow = await resolveOwner(r.owner_name);
+          if (ow.error) done.failed.push({ what: u.newAddress, why: "owner: " + ow.error });
+          else { patch.owner_id = ow.owner ? ow.owner.id : null; patch.owner_name = ow.owner ? ow.owner.name : ""; }
+        }
 
         // Licences from the spreadsheet. Keyed on (property_id,
         // license_type) so re-importing updates rather than duplicating,
@@ -703,6 +739,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         null, undefined, undefined, companyId);
 
       done.credFailures = [...new Set(credFailures)];
+      done.ownersCreated = ownersCreated;
       setResult(done);
       setStep("done");
       if (typeof onImported === "function") onImported();
@@ -931,6 +968,7 @@ function DoneStep({ result, onAgain }) {
         <Stat label="Properties created" value={result.created} tone="good" />
         <Stat label="Properties updated" value={result.updated} />
         <Stat label="Addresses changed" value={result.renamed} />
+        {result.ownersCreated > 0 && <Stat label="Owners created" value={result.ownersCreated} tone="good" />}
         <Stat label="Tenants created" value={result.tenantsCreated} tone="good" />
         <Stat label="Tenants updated" value={result.tenantsUpdated} />
         <Stat label="Archived" value={result.archived} />

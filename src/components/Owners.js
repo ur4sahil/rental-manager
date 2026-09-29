@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from "react";
+import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { autoPostJournalEntry, autoOwnerDistribution, getPropertyClassId, atomicPostJEAndLedger, safeLedgerInsert, resolveAccountId } from "../utils/accounting";
+import { getPropertyClassId, atomicPostJEAndLedger, fetchAllPaged } from "../utils/accounting";
+import { loadOwnerLedger } from "../utils/owners";
+import { resolveMgmtFeePct, feeLabel, parseFeeInput, payoutReference, toCents, distributionKind, isLivePayout, sumPayouts, buildOwnerStatement } from "../utils/ownerRules";
 import { Spinner, Modal, StatCard, Badge } from "./shared";
 
 // Build a formatted, printable HTML document for an owner statement.
@@ -17,9 +20,7 @@ import { Spinner, Modal, StatCard, Badge } from "./shared";
 // missing) since it does not change how statements are generated.
 function buildStatementHtml(statement, companyId) {
   const s = statement || {};
-  let cats = [];
-  try { cats = JSON.parse(s.line_items || "[]"); } catch (_e) { cats = []; }
-  if (!Array.isArray(cats)) cats = [];
+  const cats = statementCategories(s);
 
   const esc = escapeHtml;
   const company = esc(companyId) || "—";
@@ -96,12 +97,70 @@ function openStatementPrint(statement, companyId) {
   setTimeout(() => w.print(), 300);
 }
 
+// line_items is written as a JSON string (a jsonb string scalar); tolerate an
+// already-parsed array too.
+function statementCategories(s) {
+  const raw = s && s.line_items;
+  let cats = [];
+  if (Array.isArray(raw)) cats = raw;
+  else { try { cats = JSON.parse(raw || "[]"); } catch (_e) { cats = []; } }
+  return Array.isArray(cats) ? cats : [];
+}
+
+// Excel export of a statement: one section per category with a SUM
+// subtotal, then a summary whose totals and net are formulas over those
+// subtotals (CLAUDE.md report rules).
+async function exportStatementExcel(statement) {
+  const s = statement || {};
+  const cats = statementCategories(s);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Owner Statement");
+  ws.columns = [{ key: "a", width: 14 }, { key: "b", width: 60 }, { key: "c", width: 16 }];
+  const money = '"$"#,##0.00;[Red]"-$"#,##0.00';
+  ws.addRow(["Owner Statement"]).font = { bold: true, size: 14 };
+  ws.addRow(["Owner", s.owner_name || ""]);
+  ws.addRow(["Period", (s.period || "") + (s.start_date ? " (" + fmtDate(s.start_date) + " – " + fmtDate(s.end_date) + ")" : "")]);
+  ws.addRow([]);
+  const subtotal = {};
+  for (const cat of cats) {
+    const h = ws.addRow([cat.category || ""]);
+    h.font = { bold: true };
+    h.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+    ws.addRow(["Date", "Description", "Amount"]).font = { bold: true };
+    const first = ws.rowCount + 1;
+    for (const it of (Array.isArray(cat.items) ? cat.items : [])) {
+      const r = ws.addRow([it.date ? excelDate(it.date) : null, it.description || "", safeNum(it.amount)]);
+      r.getCell(1).numFmt = EXCEL_DATE_FMT;
+      r.getCell(3).numFmt = money;
+    }
+    const last = ws.rowCount;
+    const t = ws.addRow(["", "Total " + (cat.category || ""), last >= first ? { formula: `SUM(C${first}:C${last})` } : 0]);
+    t.font = { bold: true }; t.getCell(3).numFmt = money;
+    subtotal[cat.category] = "C" + t.number;
+    ws.addRow([]);
+  }
+  const ref = (name) => subtotal[name] ? `ABS(${subtotal[name]})` : "0";
+  const sumRow = (label, formula, bold) => { const r = ws.addRow(["", label, { formula }]); r.getCell(3).numFmt = money; if (bold) r.font = { bold: true }; return r.number; };
+  ws.addRow(["Summary"]).font = { bold: true };
+  const inc = sumRow("Total Income", ref("Income"));
+  const exp = sumRow("Total Expenses", ref("Expenses"));
+  const fee = sumRow("Management Fee", ref("Management Fee"));
+  sumRow("Net to Owner", `C${inc}-C${exp}-C${fee}`, true);
+  if (subtotal["Distributions Paid"]) sumRow("Distributions Paid in Period", ref("Distributions Paid"));
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `owner-statement-${String(s.owner_name || "owner").replace(/[^A-Za-z0-9]+/g, "-")}-${s.period || ""}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function OwnerManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [owners, setOwners] = useState([]);
   const [properties, setProperties] = useState([]);
   const [statements, setStatements] = useState([]);
   const [distributions, setDistributions] = useState([]);
-  const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("owners");
   const [showForm, setShowForm] = useState(false);
@@ -112,27 +171,30 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const [showDistForm, setShowDistForm] = useState(null);
   const [distForm, setDistForm] = useState({ amount: "", method: "check", reference: "", notes: "" });
 
+  // management_fee_pct "" = not set (null). The one fee rule is
+  // ownerRules.resolveMgmtFeePct: 0 means 0; unset means 0% and is flagged
+  // "Fee not set" so staff notice. There is no company-level default setting.
   const [form, setForm] = useState({
   name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", company: "",
-  address: "", management_fee_pct: "10", payment_method: "check", notes: "",
+  address: "", management_fee_pct: "", payment_method: "check", notes: "",
   });
 
   useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
   setLoading(true);
-  const [o, p, s, d, pay] = await Promise.all([
+  // The income side of a statement comes from the general ledger at
+  // generation time (generateStatement), not from a capped payments list.
+  const [o, p, s, d] = await Promise.all([
   supabase.from("owners").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("owner_statements").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
-  supabase.from("owner_distributions").select("*").eq("company_id", companyId).order("date", { ascending: false }),
-  supabase.from("payments").select("*").eq("company_id", companyId).order("date", { ascending: false }).limit(500),
+  fetchAllPaged(() => supabase.from("owner_distributions").select("*").eq("company_id", companyId).order("date", { ascending: false }).order("id"), "owner distributions"),
   ]);
   setOwners(o.data || []);
   setProperties(p.data || []);
   setStatements(s.data || []);
-  setDistributions(d.data || []);
-  setPayments(pay.data || []);
+  setDistributions(d.rows || []);
   setLoading(false);
   }
 
@@ -140,16 +202,20 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   if (!guardSubmit("saveOwner")) return;
   try {
   if (!form.name.trim()) { showToast("Owner name is required.", "error"); return; }
+  const fee = parseFeeInput(form.management_fee_pct);
+  if (fee.error) { showToast(fee.error, "error"); return; }
   const payload = {
   name: form.name,
   first_name: form.first_name,
   middle_initial: form.mi,
   last_name: form.last_name,
-  email: normalizeEmail(form.email),
+  // owners.email is UNIQUE; an empty string would collide with every other
+  // owner saved without an email, so "no email" is stored as null.
+  email: normalizeEmail(form.email) || null,
   phone: form.phone,
   company: form.company,
   address: form.address,
-  management_fee_pct: Number(form.management_fee_pct) || 10,
+  management_fee_pct: fee.value,
   payment_method: form.payment_method,
   notes: form.notes,
   };
@@ -160,6 +226,11 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   ({ error } = await supabase.from("owners").insert([{ ...payload, company_id: companyId }]));
   }
   if (error) { pmError("PM-8006", { raw: error, context: editingOwner ? "update owner" : "create owner" }); return; }
+  // properties.owner_name is only a display copy of the linked owner's
+  // name; keep it in step when the owner is renamed.
+  if (editingOwner && editingOwner.name !== payload.name) {
+  await supabase.from("properties").update({ owner_name: payload.name }).eq("company_id", companyId).eq("owner_id", editingOwner.id);
+  }
   logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole, companyId);
   addNotification("👤", (editingOwner ? "Updated" : "Added") + " owner: " + form.name);
   resetForm();
@@ -170,7 +241,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   function resetForm() {
   setShowForm(false);
   setEditingOwner(null);
-  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", company: "", address: "", management_fee_pct: "10", payment_method: "check", notes: "" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", company: "", address: "", management_fee_pct: "", payment_method: "check", notes: "" });
   }
 
   function startEdit(owner) {
@@ -185,7 +256,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   phone: owner.phone || "",
   company: owner.company || "",
   address: owner.address || "",
-  management_fee_pct: String(owner.management_fee_pct || 10),
+  management_fee_pct: owner.management_fee_pct === null || owner.management_fee_pct === undefined ? "" : String(owner.management_fee_pct),
   payment_method: owner.payment_method || "check",
   notes: owner.notes || "",
   });
@@ -211,57 +282,22 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id));
   if (ownerProps.length === 0) { showToast("No properties assigned to this owner.", "error"); return; }
-  const propAddresses = ownerProps.map(p => p.address);
 
-  // Income: payments received for owner's properties in this period
-  const periodPayments = payments.filter(p =>
-  propAddresses.includes(p.property) && p.date >= startDate && p.date <= endDate
-  );
-  const totalIncome = periodPayments.reduce((s, p) => s + safeNum(p.amount), 0);
-
-  // Expenses: work orders completed in this period for owner's properties
-  const { data: woData } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", propAddresses).eq("status", "completed").gte("created", startDate).lte("created", endDate);
-  const totalExpenses = (woData || []).reduce((s, w) => s + safeNum(w.cost), 0);
-
-  // Management fee
-  const feePct = owner.management_fee_pct || 10;
-  const mgmtFee = Math.round(totalIncome * feePct / 100 * 100) / 100;
-  const netToOwner = Math.round((totalIncome - totalExpenses - mgmtFee) * 100) / 100;
-
-  // Build line items
-  const lineItems = [];
-  if (periodPayments.length > 0) {
-  lineItems.push({
-  category: "Income",
-  items: periodPayments.map(p => ({
-  date: p.date,
-  description: `Rent — ${p.property}${p.tenant ? " (" + p.tenant + ")" : ""}`,
-  amount: safeNum(p.amount),
-  })),
-  });
-  }
-  if (woData && woData.length > 0) {
-  lineItems.push({
-  category: "Expenses",
-  items: woData.map(w => ({
-  date: w.created,
-  description: `Maintenance — ${w.issue} (${w.property})`,
-  amount: -safeNum(w.cost),
-  })),
-  });
-  }
-  lineItems.push({
-  category: "Management Fee",
-  items: [{ date: endDate, description: `${feePct}% of $${totalIncome.toLocaleString()}`, amount: -mgmtFee }],
+  // From the GENERAL LEDGER: every posted line in the period on these
+  // properties -- by the property's class, or, for lines with no class, by
+  // the entry's property text. Paged: no 500 / 1000 row ceiling.
+  const gl = await loadOwnerLedger(companyId, ownerProps, startDate, endDate);
+  if (gl.failed) { showToast("Could not read the books for this statement. Nothing was generated — please retry.", "error"); return; }
+  const st = buildOwnerStatement({
+  lines: gl.lines, accounts: gl.accounts,
+  feeRule: resolveMgmtFeePct(owner),
+  payouts: distributions.filter(d => String(d.owner_id) === String(owner.id)),
+  startDate, endDate,
   });
 
   // NOTE: owner_statements has no `properties` column (verified against
-  // the test and production schemas). Sending one made PostgREST reject
-  // the insert with PGRST204, so "Generate Statement" never produced a
-  // statement — it only raised PM-8006. The covered properties are named
-  // in every line item's description, and the period the statement spans
-  // goes in start_date/end_date, which are real columns and were being
-  // left null.
+  // the test and production schemas). The covered properties are named in
+  // the line items; the period goes in start_date/end_date.
   const { error } = await supabase.from("owner_statements").insert([{
   company_id: companyId,
   owner_id: owner.id,
@@ -269,17 +305,18 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   period: statementPeriod,
   start_date: startDate,
   end_date: endDate,
-  total_income: totalIncome,
-  total_expenses: totalExpenses,
-  management_fee: mgmtFee,
-  net_to_owner: netToOwner,
-  line_items: JSON.stringify(lineItems),
+  total_income: st.totalIncome,
+  total_expenses: st.totalExpenses,
+  management_fee: st.managementFee,
+  net_to_owner: st.netToOwner,
+  line_items: JSON.stringify(st.lineItems),
+  notes: "From the general ledger: " + ownerProps.length + " propert" + (ownerProps.length === 1 ? "y" : "ies") + ". Distributions paid in period: " + formatCurrency(st.distributionsPaid) + (st.feeIsSet ? "" : ". Management fee not set on this owner (0%)."),
   status: "draft",
   }]);
   if (error) { pmError("PM-8006", { raw: error, context: "generate owner statement" }); return; }
 
   addNotification("📊", `Statement generated for ${owner.name} — ${statementPeriod}`);
-  logAudit("create", "owner_statements", `Statement: ${statementPeriod} for ${owner.name} — Net: $${netToOwner}`, "", userProfile?.email, userRole, companyId);
+  logAudit("create", "owner_statements", `Statement: ${statementPeriod} for ${owner.name} — Net: $${st.netToOwner}`, "", userProfile?.email, userRole, companyId);
   setShowStatementGen(null);
   fetchData();
   } finally { guardRelease("genStatement"); }
@@ -310,46 +347,50 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   openStatementPrint(statement, companyId);
   }
 
+  async function exportStatement(statement) {
+  try { await exportStatementExcel(statement); }
+  catch (e) { pmError("PM-8006", { raw: e, context: "owner statement Excel export" }); showToast("Export failed: " + (e?.message || e), "error"); }
+  }
+
   async function payOwner(owner) {
   if (!guardSubmit("payOwner")) return;
   try {
   if (!distForm.amount || isNaN(Number(distForm.amount)) || Number(distForm.amount) <= 0) { showToast("Enter a valid amount.", "error"); return; }
   const amt = Number(distForm.amount);
+  const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(properties.find(p => String(p.owner_id) === String(owner.id))?.address || "", companyId);
-  // Insert owner_distributions FIRST, then post the JE. Previous order
-  // was JE → dist with a soft warning on JE failure, but the code kept
-  // going and wrote the dist row anyway — the next statement run saw a
-  // paid distribution with no matching GL entry and couldn't reconcile.
-  // Now: on JE post failure we delete the dist row, matching the
-  // dist-first-then-JE-with-rollback pattern already used by
-  // autoOwnerDistribution in utils/accounting.js.
-  const distRef = distForm.reference || "DIST-" + shortId();
-  // owner_distributions has neither an owner_name nor a status column
-  // (utils/accounting.js#autoOwnerDistribution already writes the real
-  // schema). Sending them made PostgREST reject the insert with
-  // PGRST204, so "Process Distribution" never recorded anything — it
-  // raised PM-8006 and returned before the GL entry was even attempted.
-  // The owner is identified by owner_id; the tab resolves the name from
-  // the owners list.
+  // The journal reference is GENERATED (DIST-<owner>-<date>-<cents>[-<ref slug>]).
+  // The user's "Reference #" used to be the journal reference itself, so a
+  // check number like "1001" collided with any other entry referenced
+  // "1001" (idx_je_company_reference_unique) and the payout was refused.
+  // The user's text is kept as the memo and in the distribution's notes.
+  const userRef = (distForm.reference || "").trim();
+  const distRef = payoutReference({ ownerId: owner.id, date: today, cents: toCents(amt), userRef });
+  const { data: dupJe } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", distRef).neq("status", "voided").limit(1);
+  if ((dupJe || []).length) { showToast("A payout of this amount to " + owner.name + " is already recorded today" + (userRef ? " with reference " + userRef : "") + ". Enter a different Reference # if this is a second payment.", "error"); return; }
+  // Insert owner_distributions FIRST, then post the JE; on JE failure the
+  // dist row is deleted (dist-first-then-JE-with-rollback, as the accrual).
   const { data: distRow, error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId,
   owner_id: owner.id,
+  kind: "payout",
   amount: amt,
   method: distForm.method,
   reference: distRef,
-  date: formatLocalDate(new Date()),
-  notes: distForm.notes,
+  date: today,
+  notes: [userRef ? "Ref #" + userRef : "", distForm.notes || ""].filter(Boolean).join(" · "),
   }]).select("id").maybeSingle();
   if (distErr) { pmError("PM-8006", { raw: distErr, context: "save owner distribution" }); return; }
 
+  const memoRef = userRef ? " (ref " + userRef + ")" : "";
   const distResult = await atomicPostJEAndLedger({ companyId,
-  date: formatLocalDate(new Date()),
-  description: `Owner distribution — ${owner.name}`,
+  date: today,
+  description: `Owner distribution — ${owner.name}${memoRef}`,
   reference: distRef,
   property: "",
   lines: [
-  { account_id: "2200", account_name: "Owner Distributions Payable", debit: amt, credit: 0, class_id: classId, memo: `Distribution to ${owner.name}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid to ${owner.name} via ${distForm.method}` },
+  { account_id: "2200", account_name: "Owner Distributions Payable", debit: amt, credit: 0, class_id: classId, memo: `Distribution to ${owner.name}${memoRef}` },
+  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid to ${owner.name} via ${distForm.method}${memoRef}` },
   ], requireJE: false });
   if (!distResult.jeId) {
   // Roll back the dist row so owner_statements + GL stay consistent.
@@ -362,7 +403,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   addNotification("💰", `$${amt.toLocaleString()} distributed to ${owner.name}`);
   // Owner-facing copy — lands in the owner portal's inbox.
   if (owner.email) addNotification("💰", `A distribution of $${amt.toLocaleString()} (${distForm.method}) was sent to you.`, { recipient: owner.email, type: "owner_distribution" });
-  logAudit("create", "owner_distributions", `Distribution: $${amt} to ${owner.name} via ${distForm.method}`, "", userProfile?.email, userRole, companyId);
+  logAudit("create", "owner_distributions", `Distribution: $${amt} to ${owner.name} via ${distForm.method} (${distRef})`, "", userProfile?.email, userRole, companyId);
   setShowDistForm(null);
   setDistForm({ amount: "", method: "check", reference: "", notes: "" });
   fetchData();
@@ -383,7 +424,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Owners" value={owners.length} color="text-brand-600" />
   <StatCard label="Statements" value={statements.length} color="text-info-600" sub={statements.filter(s => s.status === "draft").length + " drafts"} />
-  <StatCard label="Distributed (YTD)" value={formatCurrency(distributions.reduce((s, d) => s + safeNum(d.amount), 0))} color="text-positive-600" />
+  {/* Payouts only, voided excluded: owner_distributions also holds the fee
+      ACCRUALS booked on each rent receipt, and summing both counted every
+      paid dollar twice. */}
+  <StatCard label="Distributed (YTD)" value={formatCurrency(sumPayouts(distributions, { year: formatLocalDate(new Date()).slice(0, 4) }))} color="text-positive-600" sub="payouts this year" />
   <StatCard label="Properties" value={properties.filter(p => p.owner_id).length} color="text-neutral-500" sub="with owners" />
   </div>
 
@@ -405,7 +449,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-neutral-400 mb-1 block">Email</label><Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Phone</label><Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
   <div className="col-span-2"><label className="text-xs text-neutral-400 mb-1 block">Address</label><Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} placeholder="Mailing address" /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Management Fee %</label><Input type="number" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Management Fee %</label><Input type="number" min="0" max="100" step="0.01" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} placeholder="Not set (0% charged)" />{String(form.management_fee_pct).trim() === "" && <div className="text-2xs text-warn-600 mt-0.5">Fee not set — no fee will be charged. Enter 0 to record a deliberate 0%.</div>}</div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Payment Method</label>
   <Select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})}>
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
@@ -426,7 +470,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {owners.map(owner => {
   const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id));
   const ownerStmts = statements.filter(s => String(s.owner_id) === String(owner.id));
-  const lastDist = distributions.find(d => String(d.owner_id) === String(owner.id));
+  const lastDist = distributions.find(d => String(d.owner_id) === String(owner.id) && isLivePayout(d));
+  const feeRule = resolveMgmtFeePct(owner);
   return (
   <div key={owner.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start mb-2">
@@ -435,7 +480,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-xs text-neutral-400">{owner.email}{owner.phone ? " · " + owner.phone : ""}</div>
   </div>
   <div className="text-right">
-  <div className="text-xs text-brand-600 font-bold">{owner.management_fee_pct}% fee</div>
+  <div className={"text-xs font-bold " + (feeRule.isSet ? "text-brand-600" : "text-warn-600")} title={feeRule.isSet ? "" : "No management fee is set on this owner, so none is charged. Edit the owner to set one (0 is allowed)."}>{feeLabel(owner)}</div>
   <div className="text-xs text-neutral-400">{ownerProps.length} properties</div>
   </div>
   </div>
@@ -513,6 +558,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   {s.status === "draft" && <Btn variant="secondary" size="xs" onClick={e => { e.stopPropagation(); sendStatement(s); }}>📧 Send</Btn>}
   <Btn variant="secondary" size="xs" onClick={e => { e.stopPropagation(); printStatement(s); }}><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
+  <Btn variant="secondary" size="xs" title="Export to Excel" onClick={e => { e.stopPropagation(); exportStatement(s); }}><span className="material-icons-outlined text-xs align-middle">download</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-positive-100 text-positive-700" : s.status === "sent" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{s.status}</span>
   </div>
   </div>
@@ -534,6 +580,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex items-center gap-2">
   {viewStatement.status === "draft" && <Btn variant="secondary" size="xs" onClick={() => sendStatement(viewStatement)}>📧 Send</Btn>}
   <Btn onClick={() => printStatement(viewStatement)} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
+  <Btn onClick={() => exportStatement(viewStatement)} variant="secondary" size="xs" title="Export to Excel"><span className="material-icons-outlined text-xs align-middle">download</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{viewStatement.status}</span>
   </div>
   </div>
@@ -544,7 +591,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
-  {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse statement line items", silent: true }); } return items.map((cat, ci) => (
+  {(() => { const items = statementCategories(viewStatement); return items.map((cat, ci) => (
   <div key={ci} className="mb-3">
   <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
@@ -567,11 +614,14 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div>
   {/* owner_distributions stores only owner_id — resolve the display
       name from the owners list rather than a non-existent column. */}
-  <div className="text-sm font-medium text-neutral-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown owner"} — ${safeNum(d.amount).toLocaleString()}</div>
+  <div className={"text-sm font-medium text-neutral-800" + (d.voided_at ? " line-through text-neutral-400" : "")}>{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown owner"} — ${safeNum(d.amount).toLocaleString()}</div>
   <div className="text-xs text-neutral-400">{d.reference} · {fmtDate(d.date)}{d.notes ? " · " + d.notes : ""}</div>
   </div>
   <div className="flex items-center gap-2">
-  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-positive-100 text-positive-700">{d.method?.toUpperCase()}</span>
+  {d.voided_at && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-danger-100 text-danger-700">VOIDED</span>}
+  {distributionKind(d) === "accrual"
+    ? <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-neutral-100 text-neutral-500" title="Owner's share accrued from a rent receipt (net of management fee). Not a payment.">ACCRUED</span>
+    : <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-positive-100 text-positive-700">PAID · {d.method?.toUpperCase()}</span>}
   </div>
   </div>
   ))}
@@ -644,7 +694,9 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   ]);
   setProperties(p.data || []);
   setStatements(s.data || []);
-  setDistributions(d.data || []);
+  // The owner sees what was PAID to them. Fee accruals are internal
+  // bookkeeping, and a voided payout was never paid.
+  setDistributions((d.data || []).filter(isLivePayout));
   setLoading(false);
   }
 
@@ -675,7 +727,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="text-right">
   <div className="text-sm text-brand-200">Management Fee</div>
-  <div className="text-lg font-bold">{ownerData.management_fee_pct}%</div>
+  <div className="text-lg font-bold">{resolveMgmtFeePct(ownerData).isSet ? resolveMgmtFeePct(ownerData).pct + "%" : "Not set"}</div>
   </div>
   </div>
   </div>
@@ -782,6 +834,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="flex items-center gap-2">
   <Btn onClick={() => openStatementPrint(viewStatement, companyId)} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
+  <Btn onClick={() => exportStatementExcel(viewStatement).catch(e => pmError("PM-8006", { raw: e, context: "owner portal statement Excel export" }))} variant="secondary" size="xs" title="Export to Excel"><span className="material-icons-outlined text-xs align-middle">download</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{viewStatement.status}</span>
   </div>
   </div>
@@ -792,7 +845,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
-  {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse statement line items", silent: true }); } return items.map((cat, ci) => (
+  {(() => { const items = statementCategories(viewStatement); return items.map((cat, ci) => (
   <div key={ci} className="mb-3">
   <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
