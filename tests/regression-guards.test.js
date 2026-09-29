@@ -16,6 +16,9 @@
 const fs = require("fs");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
+// Live checks below WRITE (property_loans probe rows). Without this, SUPABASE_URL
+// in tests/.env is PRODUCTION and every test:unit run wrote there (2026-09-25..29).
+require("./sandbox-env");
 const { createClient } = require("@supabase/supabase-js");
 
 let passed = 0, failed = 0;
@@ -97,6 +100,23 @@ console.log("==============================================");
   const b = latestFnText("batch_post_late_fees");
   assert("batch_post_late_fees skips disabled rules (is_active)",
     !!b && /is_active/.test(b.text), b ? b.file : "no batch_post_late_fees");
+}
+
+
+// ---- A0. no test reaches production -----------------------------------------
+// Any test that builds a client from process.env.SUPABASE_URL must load
+// ./sandbox-env first (it redirects SUPABASE_URL to the TEST project and dies
+// if that is production). regression-guards itself skipped it for 4 days.
+{
+  const testDir = __dirname;
+  const offenders = fs.readdirSync(testDir)
+    .filter(f => /\.test\.(c?js|mjs)$/.test(f))
+    .filter(f => {
+      const t = fs.readFileSync(path.join(testDir, f), "utf8");
+      return /process\.env\.SUPABASE_URL\b/.test(t) && !/sandbox-env/.test(t);
+    });
+  assert("every test that reads SUPABASE_URL loads sandbox-env", offenders.length === 0,
+    offenders.length ? "MISSING in: " + offenders.join(", ") : "all sandboxed");
 }
 
 // ---- B. live DB checks ----------------------------------------------------
