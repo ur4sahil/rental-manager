@@ -76,7 +76,7 @@ BEGIN
     ALTER TABLE public.vendor_invoices
       ADD CONSTRAINT vendor_invoices_work_order_id_fkey
       FOREIGN KEY (work_order_id) REFERENCES public.work_orders(id)
-      ON UPDATE CASCADE ON DELETE SET NULL;
+      ON UPDATE CASCADE ON DELETE RESTRICT;  -- deleting a billed work order must not unlink its invoice
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_order_photos_work_order_id_fkey') THEN
     ALTER TABLE public.work_order_photos

@@ -7,7 +7,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
-import { postWorkOrderCompletion, postVendorInvoicePayment, closeOutWorkOrder } from "../utils/expensePosting";
+import { postWorkOrderCompletion, postVendorInvoicePayment } from "../utils/expensePosting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 import { ArchivedItems } from "./Admin";
 
@@ -197,7 +197,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const res = await postWorkOrderCompletion({ companyId, wo, date: formatLocalDate(new Date()) });
   if (res.reason === "already_posted") { addNotification("⚠️", "Accounting entry already exists for this work order"); return false; }
   if (res.reason === "already_expensed_by_invoice") addNotification("ℹ️", "Not posted: the vendor invoice paid for this work order already booked the repair expense");
-  else if (res.reason === "read_failed" || res.reason === "post_failed") { pmError("PM-4001", { raw: new Error("JE post failed: " + res.reason), context: "posting work order accounting entry" }); }
+  else if (res.reason === "rpc_failed" || res.reason === "missing_input") { pmError("PM-4002", { raw: res.error || new Error("work order accrual " + res.reason), context: "posting work order accounting entry" }); }
   if (res.closeout?.reversed > 0) addNotification("ℹ️", `Work order closed under budget: ${formatCurrency(res.closeout.reversed)} unused accrual reversed`);
   return true;
   }
@@ -798,7 +798,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   setLoading(true);
   const [v, inv, wo] = await Promise.all([
   supabase.from("vendors").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
-  supabase.from("vendor_invoices").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+  supabase.from("vendor_invoices").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created", { ascending: false }).limit(100),
   ]);
   setVendors(v.data || []);
@@ -892,48 +892,34 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   if (inv.status === "paid") { showToast("This invoice is already paid.", "error"); return; }
   if (!await showConfirm({ message: "Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?" })) return;
   const today = formatLocalDate(new Date());
-  // Post FIRST, under the deterministic reference VPAY-<invoice id>, then
-  // mark paid. If the post fails the invoice stays payable and can be
-  // retried; a retry after a half-finished attempt finds the entry and does
-  // not post it again. For an invoice linked to a completed work order the
+  // One database transaction (repair_pay_invoice): post VPAY-<invoice id>,
+  // mark the invoice paid, count it in the vendor's totals, and close out the
+  // linked work order -- serialised against the work order's completion and
+  // its other invoices. For an invoice linked to a completed work order the
   // entry clears the payable that completion accrued (DR Accounts Payable)
   // rather than expensing the repair twice -- see utils/expenseRules.js.
   const res = await postVendorInvoicePayment({ companyId, inv, date: today });
-  if (!res.jeId) { showToast("Accounting entry failed, so the invoice was NOT marked paid. Please try again or check the accounting module.", "error"); return; }
-  const { error: invErr } = await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
-  if (invErr) { showToast("Payment was posted but the invoice could not be marked paid: " + invErr.message, "error"); return; }
-  // Last invoice of a completed work order paid: reverse any accrual the
-  // invoices did not use (idempotent, reference WO-ADJ-<wo id>).
-  if (inv.work_order_id) {
-    const co = await closeOutWorkOrder({ companyId, woId: inv.work_order_id, date: today });
-    if (co.reversed > 0) showToast(`Work order #${inv.work_order_id} closed under budget: ${formatCurrency(co.reversed)} unused accrual reversed.`, "success");
-    else if (co.reason === "read_failed" || co.reason === "post_failed") pmError("PM-4001", { raw: new Error("work order close-out " + co.reason), context: "closing out work order " + inv.work_order_id, silent: true });
-  }
-  // Update vendor total_paid (skipped when an earlier attempt already posted
-  // this payment, so the totals are not counted twice either).
-  const vendor = !res.already && vendors.find(v => String(v.id) === String(inv.vendor_id));
-  if (vendor) {
-  // Atomic increment via RPC (prevents concurrent update race)
-  try {
-  const { error: incErr } = await supabase.rpc("increment_vendor_totals", {
-  p_company_id: companyId, p_vendor_id: String(vendor.id), p_amount: safeNum(inv.amount)
-  });
-  if (incErr) throw new Error(incErr.message);
-  } catch (rpcE) {
-  pmError("PM-8006", { raw: rpcE, context: "vendor increment RPC fallback", silent: true });
-  const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
-  if (freshVendor) {
-  const { error: _vendErr } = await supabase.from("vendors").update({
-  total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
-  total_jobs: (freshVendor.total_jobs || 0) + 1,
-  }).eq("company_id", companyId).eq("id", vendor.id);
-  if (_vendErr) pmError("PM-8006", { raw: _vendErr, context: "vendor totals fallback update", silent: true });
-  }
-  }
-  }
-  logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name + (res.plan?.ap > 0 ? " (cleared $" + res.plan.ap + " work-order payable)" : ""), inv.id, userProfile?.email, userRole, companyId);
+  if (res.reason === "already_paid") { showToast("This invoice was already paid.", "error"); fetchData(); return; }
+  if (!res.jeId) { pmError("PM-4002", { raw: res.error || new Error("invoice payment " + res.reason), context: "paying vendor invoice" }); showToast("Accounting entry failed, so the invoice was NOT marked paid. Please try again.", "error"); return; }
+  if (res.closeout?.reversed > 0) showToast(`Work order #${inv.work_order_id} closed under budget: ${formatCurrency(res.closeout.reversed)} unused accrual reversed.`, "success");
+  logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name + (res.ap > 0 ? " (cleared $" + res.ap + " work-order payable)" : ""), inv.id, userProfile?.email, userRole, companyId);
   fetchData();
   } finally { guardRelease("payInvoice"); }
+  }
+
+  // Withdraw an unpaid invoice (entered in error, or a dispute the vendor
+  // dropped). It is archived, not deleted, and no longer holds up the linked
+  // work order's close-out.
+  async function withdrawInvoice(inv) {
+  if (!guardSubmit("withdrawInvoice", inv.id)) return;
+  try {
+  if (inv.status === "paid") { showToast("A paid invoice cannot be withdrawn.", "error"); return; }
+  if (!await showConfirm({ message: "Withdraw invoice #" + (inv.invoice_number || inv.id.slice(0, 8)) + " ($" + inv.amount + ")? It will no longer be payable.", variant: "danger", confirmText: "Withdraw" })) return;
+  const { error } = await supabase.from("vendor_invoices").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("company_id", companyId).eq("id", inv.id).neq("status", "paid");
+  if (error) { pmError("PM-8006", { raw: error, context: "withdraw vendor invoice" }); return; }
+  logAudit("delete", "vendor_invoices", "Withdrew invoice: $" + inv.amount + " from " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
+  fetchData();
+  } finally { guardRelease("withdrawInvoice", inv.id); }
   }
 
   async function rateVendor(vendor, rating) {
@@ -1137,9 +1123,10 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-danger-600" : "")}>{fmtDate(inv.due_date)}</span></div>}
   {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-positive-600">{fmtDate(inv.paid_date)}</span></div>}
   </div>
-  {(inv.status === "pending" || inv.status === "approved") && (
+  {(inv.status === "pending" || inv.status === "approved" || inv.status === "disputed") && (
   <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">
-  <Btn variant="success-fill" size="xs" onClick={() => payInvoice(inv)}>Mark Paid</Btn>
+  {inv.status !== "disputed" && <Btn variant="success-fill" size="xs" onClick={() => payInvoice(inv)}>Mark Paid</Btn>}
+  <Btn variant="ghost" size="xs" onClick={() => withdrawInvoice(inv)}>Withdraw</Btn>
   </div>
   )}
   </div>

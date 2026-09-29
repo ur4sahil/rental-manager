@@ -2736,27 +2736,31 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     return { summary, byVendor };
   }
 
-  // Unpaid bills come from the vendor invoices themselves: pending or
-  // approved, dated on or before the as-of date. This used to scan journal
-  // entries whose reference began "VINV-" -- but VINV- entries were the
-  // PAYMENTS of invoices (DR Repairs / CR Checking), so the report listed
-  // bills already paid.
+  // Unpaid bills come from the vendor invoices themselves, AS OF the report
+  // date: dated on or before it and not paid by then (never paid, or paid
+  // later -- an invoice dated Aug 1 and paid Sep 15 is unpaid "as of Aug 31").
+  // Pending, approved and disputed all count; withdrawn (archived) invoices do
+  // not. This used to scan journal entries whose reference began "VINV-", but
+  // those were the PAYMENTS of invoices, so the report listed paid bills.
   const [openVendorBills, setOpenVendorBills] = useState([]);
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    supabase.from("vendor_invoices").select("id, vendor_name, description, invoice_number, invoice_date, amount, status")
-      .eq("company_id", companyId).in("status", ["pending", "approved"]).order("invoice_date", { ascending: true }).limit(1000)
+    // Only a plain YYYY-MM-DD goes into the or() filter grammar.
+    const asOf = /^\d{4}-\d{2}-\d{2}$/.test(asOfDate || "") ? asOfDate : acctToday();
+    supabase.from("vendor_invoices").select("id, vendor_name, description, invoice_number, invoice_date, amount, status, paid_date")
+      .eq("company_id", companyId).is("archived_at", null).lte("invoice_date", asOf)
+      .or(`status.neq.paid,paid_date.gt.${asOf}`)
+      .order("invoice_date", { ascending: true }).limit(1000)
       .then(({ data, error }) => {
         if (error) { pmError("PM-8006", { raw: error, context: "load unpaid vendor bills", silent: true }); return; }
         if (!cancelled) setOpenVendorBills(data || []);
       });
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, asOfDate]);
   function getUnpaidBills() {
     return openVendorBills
-      .filter(b => !asOfDate || !b.invoice_date || b.invoice_date <= asOfDate)
-      .map(b => ({ vendor: b.vendor_name || "Unknown", date: b.invoice_date || "", description: b.description || "", amount: safeNum(b.amount), reference: b.invoice_number || "", jeNumber: b.invoice_number || "" }))
+      .map(b => ({ vendor: b.vendor_name || "Unknown", date: b.invoice_date || "", description: (b.description || "") + (b.status === "disputed" ? " (disputed)" : ""), amount: safeNum(b.amount), reference: b.invoice_number || "", jeNumber: b.invoice_number || "" }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 

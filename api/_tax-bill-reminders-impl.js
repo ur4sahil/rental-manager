@@ -135,15 +135,30 @@ function resolveDueDates(schedule, startingYear) {
 // taxesEscrowed; tests/no-double-expense.test.mjs asserts the two agree.
 // Taxes are escrowed when the tax record says the lender pays them, or an
 // active loan on the property includes escrow that covers taxes.
+// Read CONSERVATIVELY: unclear or negated text counts as NOT escrowed.
+const escNorm = (v) => String(v ?? "").toLowerCase().replace(/[_\-./]+/g, " ").replace(/\s+/g, " ").trim();
+const ESC_TAX_TOKENS = new Set(["tax", "taxes", "property tax", "property taxes", "real estate tax", "real estate taxes", "re tax", "re taxes"]);
+const escIsTaxToken = (v) => ESC_TAX_TOKENS.has(escNorm(v));
+const ESC_TRUTHY = new Set(["true", "yes", "y", "1", "included", "x"]);
+const escIsTruthy = (v) => v === true || v === 1 || ESC_TRUTHY.has(escNorm(v));
+const ESC_NEGATION = /\b(no|not|none|without|exclud\w*|except|n a|false|owner pays?|paid by owner|owner paid|self pay\w*)\b/;
+function escTextCoversTaxes(text) {
+  const t = escNorm(text);
+  if (!t || ESC_NEGATION.test(t)) return false;
+  if (!/\b(taxes|tax|property tax(es)?|real estate tax(es)?)\b/.test(t)) return false;
+  const only = t.match(/^(.*?)\bonly\b/);
+  if (only && !/\btax(es)?\b/.test(only[1])) return false;
+  return true;
+}
 function escrowCoversTaxes(covers) {
-  if (!covers) return false;
-  if (typeof covers === "string") return /\btax(es)?\b/i.test(covers);
-  if (Array.isArray(covers)) return covers.some(c => /^tax(es)?$/i.test(String(c).trim()));
-  if (typeof covers === "object") return covers.taxes === true || covers.taxes === "true";
+  if (covers == null || covers === false) return false;
+  if (typeof covers === "string") return escTextCoversTaxes(covers);
+  if (Array.isArray(covers)) return covers.some(c => escIsTaxToken(c));
+  if (typeof covers === "object") return Object.entries(covers).some(([k, v]) => escIsTaxToken(k) && escIsTruthy(v));
   return false;
 }
 function loanEscrowsTaxes(l) {
-  return !!l && !l.archived_at && l.status !== "paid_off" && !!l.escrow_included && escrowCoversTaxes(l.escrow_covers);
+  return !!l && !l.archived_at && l.status !== "paid_off" && l.escrow_included === true && escrowCoversTaxes(l.escrow_covers);
 }
 
 // Every escrowed property, keyed "company_id|address". Returns null when a
