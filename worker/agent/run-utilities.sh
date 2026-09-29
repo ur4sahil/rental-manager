@@ -10,6 +10,9 @@ LOCK="$HOME/housy-agent/util.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then echo "$(date -u +%FT%TZ) another sweep holds the lock; exit"; exit 0; fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 cd "$HOME/rental-manager/worker" || exit 1
+# Visible Chrome for sign-in AND bill reading: this Mac exists to be a real
+# desktop browser on a home IP (reCAPTCHA scores a hidden headless one as a bot).
+export HOUSY_HEADED=1
 PROVIDERS="${HOUSY_SWEEP_PROVIDERS:-washington_gas pepco wssc bge smeco}"
 echo "===== $(date -u +%FT%TZ) residential sweep start (IP $(curl -s https://api.ipify.org)) providers=[$PROVIDERS] ====="
 for p in $PROVIDERS; do

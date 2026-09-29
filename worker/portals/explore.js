@@ -230,8 +230,8 @@ async function inspectVisually(pngBase64) {
   // be one. No fingerprint patching, no stealth plugin, no proxy. headless
   // "new" mode is still used when Chrome is absent, because a sweep on a
   // server with no desktop browser must still run.
-  try { return await chromium.launch({ channel: "chrome", headless: true }); }
-  catch { return await chromium.launch({ headless: true }); }
+  try { return await chromium.launch({ channel: "chrome", headless: process.env.HOUSY_HEADED !== "1" }); }
+  catch { return await chromium.launch({ headless: process.env.HOUSY_HEADED !== "1" }); }
 })();
   const ctx = await browser.newContext({
     ...(haveSession ? { storageState: JSON.parse(fs.readFileSync(sessionFile, "utf8")) } : {}),
