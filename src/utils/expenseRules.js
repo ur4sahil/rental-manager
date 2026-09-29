@@ -1,29 +1,32 @@
 // One real-world expense, one expense line (audit theme K).
 //
 // Pure rules only -- no imports -- so tests load this file as-is. The async
-// code that reads the ledger and posts lives with its callers
-// (Maintenance.js, Loans.js, accounting.js, the tax-bill cron).
+// code that reads the ledger and posts lives in expensePosting.js; the tax
+// cron (api/_tax-bill-reminders-impl.js) mirrors the escrow rule.
 //
 // REPAIRS. A repair can reach the books from two sides: completing its work
 // order (accrues DR Repairs / CR Accounts Payable, reference WO-<wo id>) and
 // paying the vendor invoice for it (reference VPAY-<invoice id>). Both used
 // to debit Repairs. Now:
 //   - paying an invoice LINKED to a work order first uses up whatever that
-//     work order accrued and no earlier linked payment has used: that part
-//     is DR Accounts Payable. Only an excess over the accrual is new expense.
+//     work order accrued and nothing else has used yet: that part is
+//     DR Accounts Payable. Only an excess over the accrual is new expense.
 //   - completing a work order accrues only the part of its cost that linked
 //     invoice payments have not already expensed.
-//   - an invoice with no work order books DR Repairs / CR Checking, as before.
+//   - an invoice with no work order books DR Repairs / CR Checking when it is
+//     paid (owner decision: vendor bills are booked when paid).
+//   - once the work order is completed and EVERY linked invoice is paid, any
+//     accrual the invoices did not use is reversed (DR Accounts Payable /
+//     CR Repairs, reference WO-ADJ-<wo id>), once.
 // Every combination (WO only, invoice only, WO then invoice, invoice then
-// WO, several invoices against one WO, either side voided) therefore expenses
-// the repair exactly once. Voided entries count as absent.
+// WO, several invoices against one WO, under- or over-billing, either side
+// voided) therefore expenses the repair exactly once. Voided entries count
+// as absent.
 //
-// MORTGAGE. The property wizard's monthly recurring entry
-// (RECUR-<schedule id8>-YYYY-MM, DR Mortgage/Loan Payment / CR Checking) and
-// the Loans page's "Record payment" (LOAN-<loan id>-YYYY-MM...) both booked
-// the same monthly payment. Rule: a loan's payment is booked ONCE per
-// calendar month. Whichever path gets there first books it; the other one
-// recognises the month as booked and posts nothing.
+// MORTGAGE. Owner decision: cash basis, no automatic mortgage entries. The
+// wizard no longer creates a recurring mortgage schedule, and the Loans
+// page's "Record payment" posts nothing -- it only tracks the loan balance.
+// The payment is booked when the bank transaction is categorized or matched.
 //
 // ESCROWED TAXES. When the lender pays the taxes from escrow there is no tax
 // bill for the owner to pay, so none is generated, listed as due or reminded.
@@ -31,41 +34,21 @@
 export const AP_CODE = "2110";
 export const REPAIRS_CODE = "5300";
 export const CASH_CODE = "1000";
-export const MORTGAGE_CODE = "5600";
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 // ─── references ────────────────────────────────────────────────────────────
 export function workOrderAccrualReference(woId) {
   const id = String(woId ?? "").trim();
   return id ? "WO-" + id : null;
 }
+export function workOrderCloseoutReference(woId) {
+  const id = String(woId ?? "").trim();
+  return id ? "WO-ADJ-" + id : null;
+}
 export function invoicePaymentReference(invoiceId) {
   const id = String(invoiceId ?? "").trim();
   return id ? "VPAY-" + id : null;
-}
-export function loanPaymentReference(loanId, month) {
-  const id = String(loanId ?? "").trim();
-  if (!id || !MONTH_RE.test(String(month || ""))) return null;
-  return "LOAN-" + id + "-" + month;
-}
-// The recurring engine's reference for a schedule + month (mirrors
-// autoPostRecurringEntries and paymentRules.recurReference).
-export function recurringReference(scheduleId, month) {
-  if (!scheduleId || !MONTH_RE.test(String(month || ""))) return null;
-  return "RECUR-" + String(scheduleId).slice(0, 8) + "-" + month;
-}
-
-export function monthOf(dateStr) {
-  const m = /^(\d{4}-\d{2})/.exec(String(dateStr || ""));
-  return m && MONTH_RE.test(m[1]) ? m[1] : null;
-}
-export function monthBoundsOf(month) {
-  const m = MONTH_RE.exec(String(month || ""));
-  if (!m) return null;
-  const last = new Date(Number(m[1]), Number(m[2]), 0).getDate();
-  return { start: month + "-01", end: month + "-" + String(last).padStart(2, "0") };
 }
 
 // ─── repairs ───────────────────────────────────────────────────────────────
@@ -85,7 +68,8 @@ export function planWorkOrderAccrual({ cost, expensedByLinkedPayments = 0 }) {
 // payable and new expense.
 //   amount           -- the invoice amount being paid
 //   woAccrued        -- the linked work order's live accrual (0 if none/voided)
-//   appliedByOthers  -- AP debits already booked by OTHER linked invoice payments
+//   appliedByOthers  -- AP debits already booked against that accrual by OTHER
+//                       linked invoice payments or a close-out reversal
 export function planInvoicePayment({ amount, woAccrued = 0, appliedByOthers = 0 }) {
   const amt = round2(amount);
   if (!(amt > 0)) return { ap: 0, expense: 0, cash: 0 };
@@ -93,6 +77,21 @@ export function planInvoicePayment({ amount, woAccrued = 0, appliedByOthers = 0 
   const ap = round2(Math.min(amt, remaining));
   const expense = round2(amt - ap);
   return { ap, expense, cash: amt };
+}
+
+// Close-out of an under-billed work order. Reverses the accrual the invoices
+// did not use -- only when the work order is completed, it has at least one
+// linked invoice, and every linked invoice is paid.
+//   woAccrued  -- live accrual (AP credit on WO-<id>)
+//   applied    -- AP debits already booked against it (linked payments + any
+//                 earlier close-out)
+export function planWorkOrderCloseout({ woCompleted, invoiceStatuses, woAccrued = 0, applied = 0 }) {
+  const statuses = invoiceStatuses || [];
+  if (!woCompleted) return { reverse: 0, reason: "work_order_open" };
+  if (statuses.length === 0) return { reverse: 0, reason: "no_linked_invoice" };
+  if (!statuses.every(s => s === "paid")) return { reverse: 0, reason: "invoices_unpaid" };
+  const reverse = round2(Math.max(0, round2(woAccrued) - round2(applied)));
+  return reverse > 0 ? { reverse, reason: "reverse_unused_accrual" } : { reverse: 0, reason: "fully_used" };
 }
 
 // Journal lines for a planned invoice payment. Account codes are bare and are
@@ -104,37 +103,6 @@ export function invoicePaymentLines(plan, { classId = null, vendorName = "", des
   if (plan.expense > 0) lines.push({ account_id: REPAIRS_CODE, account_name: "Repairs & Maintenance", debit: plan.expense, credit: 0, class_id: classId, memo: v + (description ? ": " + description : "") });
   if (plan.cash > 0) lines.push({ account_id: CASH_CODE, account_name: "Checking Account", debit: 0, credit: plan.cash, class_id: classId, memo: "Payment to " + v });
   return lines;
-}
-
-// ─── mortgage ──────────────────────────────────────────────────────────────
-export function isMortgageSchedule(entry) {
-  return !!entry && !entry.tenant_id && /^Mortgage\/Loan/i.test(String(entry.description || ""));
-}
-
-// Does this recurring schedule book THIS loan's payment? The wizard keys the
-// schedule by property, not by loan, and sets its amount to the loan's
-// monthly payment. On a property with one active loan the schedule is that
-// loan's; with several, only the loan whose payment matches.
-export function scheduleCoversLoan({ scheduleAmount, loanAmount, activeLoanCount }) {
-  if (Number(activeLoanCount) <= 1) return true;
-  return Math.abs(round2(scheduleAmount) - round2(loanAmount)) < 0.005;
-}
-
-// What "Record payment" should do for `month`.
-//   alreadyRecorded -- the loan's last_payment_month === month, or a live
-//                      LOAN-<id>-<month>... entry exists
-//   recurringBooked -- the covering schedule's RECUR entry for month is live
-export function decideLoanPayment({ alreadyRecorded, recurringBooked }) {
-  if (alreadyRecorded) return "already_recorded";
-  if (recurringBooked) return "settle_recurring"; // reduce balance, post nothing
-  return "post";
-}
-
-// Should the recurring engine skip a mortgage schedule's month because
-// Record payment already booked it? `loanPayments` are the live LOAN- entries
-// on the schedule's property dated in that month, each { amount }.
-export function recurringMonthAlreadyPaid({ scheduleAmount, activeLoanCount, loanPayments }) {
-  return (loanPayments || []).some(p => scheduleCoversLoan({ scheduleAmount, loanAmount: p.amount, activeLoanCount }));
 }
 
 // ─── escrowed taxes ────────────────────────────────────────────────────────

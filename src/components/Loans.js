@@ -6,7 +6,6 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
-import { recordLoanPayment } from "../utils/expensePosting";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
 function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -131,31 +130,22 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   } finally { guardRelease("deleteLoan"); }
   }
 
+  // Record payment only TRACKS the loan (reduces the balance). It posts no
+  // journal entry: the books are cash basis, and the payment is booked when
+  // its bank transaction is categorized or matched in Banking. Posting here
+  // as well is how the same mortgage payment used to be expensed twice
+  // (owner decision, 2026-09-28; see utils/expenseRules.js).
   async function recordPayment(loan) {
   if (!guardSubmit("recordLoanPayment")) return;
   try {
   const amt = safeNum(loan.monthly_payment);
   if (amt <= 0) { showToast("Monthly payment amount must be greater than zero.", "error"); return; }
-  const today = formatLocalDate(new Date());
-  const month = today.slice(0, 7);
-  if (loan.last_payment_month === month) { showToast(`A payment for ${loan.lender_name} is already recorded for ${month}.`, "error"); return; }
-  if (!await showConfirm({ message: `Record the ${month} payment of ${formatCurrency(amt)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
-  // One loan payment per calendar month (utils/expenseRules.js). If the
-  // property's monthly mortgage recurring entry has already booked this
-  // month, nothing new is posted -- the payment is recorded against the
-  // loan (balance, month stamp) only. Otherwise LOAN-<id>-YYYY-MM is posted
-  // and the recurring engine then skips this month for the property.
-  const res = await recordLoanPayment({ companyId, loan, date: today, month });
-  if (res.action === "failed") { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
-  if (res.action === "already_recorded") { showToast(`A payment for ${loan.lender_name} is already recorded for ${month}.`, "error"); return; }
-  // Update current balance only once the month is booked
+  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(amt)} for ${loan.lender_name}?\n\nThis reduces the loan balance only. No accounting entry is posted — the payment is booked when its bank transaction is categorized in Banking.`, confirmText: "Record Payment" })) return;
   const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
-  const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance, last_payment_month: month }).eq("id", loan.id).eq("company_id", companyId);
+  const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
   if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); return; }
-  const note = res.action === "settle_recurring" ? " (already booked by the monthly mortgage entry, so no second expense was posted)" : "";
-  if (note) showToast("Payment recorded" + note + ".", "success");
-  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}${note}`);
-  logAudit("update", "loans", `Loan payment recorded for ${month}: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}${note}`, loan.id, userProfile?.email, userRole, companyId);
+  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} (balance only)`);
+  logAudit("update", "loans", `Loan payment recorded (balance only, no journal entry): ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}; balance ${formatCurrency(safeNum(loan.current_balance))} -> ${formatCurrency(newBalance)}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("recordLoanPayment"); }
   }

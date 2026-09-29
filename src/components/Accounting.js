@@ -2736,17 +2736,28 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     return { summary, byVendor };
   }
 
+  // Unpaid bills come from the vendor invoices themselves: pending or
+  // approved, dated on or before the as-of date. This used to scan journal
+  // entries whose reference began "VINV-" -- but VINV- entries were the
+  // PAYMENTS of invoices (DR Repairs / CR Checking), so the report listed
+  // bills already paid.
+  const [openVendorBills, setOpenVendorBills] = useState([]);
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    supabase.from("vendor_invoices").select("id, vendor_name, description, invoice_number, invoice_date, amount, status")
+      .eq("company_id", companyId).in("status", ["pending", "approved"]).order("invoice_date", { ascending: true }).limit(1000)
+      .then(({ data, error }) => {
+        if (error) { pmError("PM-8006", { raw: error, context: "load unpaid vendor bills", silent: true }); return; }
+        if (!cancelled) setOpenVendorBills(data || []);
+      });
+    return () => { cancelled = true; };
+  }, [companyId]);
   function getUnpaidBills() {
-    // Derive from vendor_invoices if available, otherwise from AP JE lines
-    const bills = [];
-    journalEntries.filter(je => je.status === "posted" && ((je.reference||"").startsWith("VINV-") || (je.description||"").toLowerCase().includes("invoice"))).forEach(je => {
-      const total = (je.lines||[]).reduce((s,l) => s + safeNum(l.credit), 0);
-      if (total > 0) {
-        const vendor = je.description?.split(" — ")[0]?.trim() || "Unknown";
-        bills.push({ vendor, date: je.date, description: je.description, amount: total, reference: je.reference, jeNumber: je.number });
-      }
-    });
-    return bills.sort((a,b) => a.date.localeCompare(b.date));
+    return openVendorBills
+      .filter(b => !asOfDate || !b.invoice_date || b.invoice_date <= asOfDate)
+      .map(b => ({ vendor: b.vendor_name || "Unknown", date: b.invoice_date || "", description: b.description || "", amount: safeNum(b.amount), reference: b.invoice_number || "", jeNumber: b.invoice_number || "" }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   function getVendorBalanceSummary(asOfDate) {

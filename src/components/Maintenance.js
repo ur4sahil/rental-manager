@@ -7,7 +7,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
-import { postWorkOrderCompletion, postVendorInvoicePayment } from "../utils/expensePosting";
+import { postWorkOrderCompletion, postVendorInvoicePayment, closeOutWorkOrder } from "../utils/expensePosting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 import { ArchivedItems } from "./Admin";
 
@@ -120,10 +120,16 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
     vendor_name: pickedVendor ? pickedVendor.name : "",
     assigned: pickedVendor ? pickedVendor.name : (form.assigned || ""),
   };
-  const { error } = editingWO
-  ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, vendor_id: payload.vendor_id, vendor_name: payload.vendor_name, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
-  : await supabase.from("work_orders").insert([{ ...payload, created: formatLocalDate(new Date()), company_id: companyId }]);
+  const { data: savedWO, error } = editingWO
+  ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, vendor_id: payload.vendor_id, vendor_name: payload.vendor_name, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId).select("id").maybeSingle()
+  : await supabase.from("work_orders").insert([{ ...payload, created: formatLocalDate(new Date()), company_id: companyId }]).select("id").maybeSingle();
   if (error) { pmError("PM-7001", { raw: error, context: "saving work order" }); return; }
+  // Completing through the edit form books exactly what the status button
+  // books (it used to post nothing at all).
+  if (payload.status === "completed" && (!editingWO || editingWO.status !== "completed")) {
+    const woId = savedWO?.id || editingWO?.id;
+    if (woId) await postCompletionAccounting({ ...payload, id: woId });
+  }
   showToast(editingWO ? "Work order updated." : "Work order created.", "success");
   if (editingWO) {
   const costChanged = safeNum(form.cost) !== safeNum(editingWO.cost);
@@ -178,21 +184,28 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
     } finally { guardRelease("billTenant", wo.id); }
   }
 
-  async function updateStatus(wo, newStatus) {
-  const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId).eq("id", wo.id);
-  if (error) { pmError("PM-7005", { raw: error, context: "updating work order status" }); return; }
-  // AUTO-POST TO ACCOUNTING when completed with a cost. The accrual is
+  // AUTO-POST TO ACCOUNTING when a work order is completed with a cost -- the
+  // ONE path for both the status button and the edit form. The accrual is
   // DR Repairs / CR Accounts Payable (reference WO-<id>); paying a vendor
   // invoice linked to this work order later clears that payable instead of
   // expensing the repair a second time. If a linked invoice was already paid
-  // (and so already expensed), only the uncovered remainder is accrued.
-  // See utils/expenseRules.js.
-  if (newStatus === "completed" && safeNum(wo.cost) > 0) {
+  // (and so already expensed), only the uncovered remainder is accrued; once
+  // every linked invoice is paid, an unused accrual is reversed (WO-ADJ-<id>).
+  // See utils/expenseRules.js. Returns false when it was already posted.
+  async function postCompletionAccounting(wo) {
+  if (!(safeNum(wo.cost) > 0)) return true;
   const res = await postWorkOrderCompletion({ companyId, wo, date: formatLocalDate(new Date()) });
-  if (res.reason === "already_posted") { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
+  if (res.reason === "already_posted") { addNotification("⚠️", "Accounting entry already exists for this work order"); return false; }
   if (res.reason === "already_expensed_by_invoice") addNotification("ℹ️", "Not posted: the vendor invoice paid for this work order already booked the repair expense");
   else if (res.reason === "read_failed" || res.reason === "post_failed") { pmError("PM-4001", { raw: new Error("JE post failed: " + res.reason), context: "posting work order accounting entry" }); }
+  if (res.closeout?.reversed > 0) addNotification("ℹ️", `Work order closed under budget: ${formatCurrency(res.closeout.reversed)} unused accrual reversed`);
+  return true;
   }
+
+  async function updateStatus(wo, newStatus) {
+  const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId).eq("id", wo.id);
+  if (error) { pmError("PM-7005", { raw: error, context: "updating work order status" }); return; }
+  if (newStatus === "completed" && !await postCompletionAccounting(wo)) { fetchWorkOrders(); return; }
   addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
   logAudit("update", "maintenance", `Work order status: ${wo.issue} → ${newStatus}${safeNum(wo.cost) > 0 ? " ($" + safeNum(wo.cost) + ")" : ""}`, wo.id, userProfile?.email, userRole, companyId);
   // Tenant-facing: for tenant-originated work orders, keep them in the
@@ -889,6 +902,13 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   if (!res.jeId) { showToast("Accounting entry failed, so the invoice was NOT marked paid. Please try again or check the accounting module.", "error"); return; }
   const { error: invErr } = await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
   if (invErr) { showToast("Payment was posted but the invoice could not be marked paid: " + invErr.message, "error"); return; }
+  // Last invoice of a completed work order paid: reverse any accrual the
+  // invoices did not use (idempotent, reference WO-ADJ-<wo id>).
+  if (inv.work_order_id) {
+    const co = await closeOutWorkOrder({ companyId, woId: inv.work_order_id, date: today });
+    if (co.reversed > 0) showToast(`Work order #${inv.work_order_id} closed under budget: ${formatCurrency(co.reversed)} unused accrual reversed.`, "success");
+    else if (co.reason === "read_failed" || co.reason === "post_failed") pmError("PM-4001", { raw: new Error("work order close-out " + co.reason), context: "closing out work order " + inv.work_order_id, silent: true });
+  }
   // Update vendor total_paid (skipped when an earlier attempt already posted
   // this payment, so the totals are not counted twice either).
   const vendor = !res.already && vendors.find(v => String(v.id) === String(inv.vendor_id));

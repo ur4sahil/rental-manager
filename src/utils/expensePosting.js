@@ -7,13 +7,11 @@
 // app uses the defaults.
 import { supabase } from "../supabase";
 import { autoPostJournalEntry, resolveAccountId, getPropertyClassId } from "./accounting";
-import { pmError } from "./errors";
 import {
-  AP_CODE, REPAIRS_CODE, MORTGAGE_CODE, CASH_CODE,
-  workOrderAccrualReference, invoicePaymentReference, loanPaymentReference, recurringReference,
-  planWorkOrderAccrual, planInvoicePayment, invoicePaymentLines,
-  isMortgageSchedule, scheduleCoversLoan, decideLoanPayment, recurringMonthAlreadyPaid,
-  monthBoundsOf, taxesEscrowed,
+  AP_CODE, REPAIRS_CODE,
+  workOrderAccrualReference, workOrderCloseoutReference, invoicePaymentReference,
+  planWorkOrderAccrual, planInvoicePayment, planWorkOrderCloseout, invoicePaymentLines,
+  taxesEscrowed,
 } from "./expenseRules";
 
 const DEFAULT_DEPS = {
@@ -44,30 +42,45 @@ const sumLines = (entries, accountId, side) => (entries || []).reduce((s, je) =>
     .reduce((t, l) => t + (Number(l[side]) || 0), 0), 0);
 
 // What the books already say about a work order's repair cost.
+//   woAccrued                -- AP credit on the live WO-<id> accrual
+//   appliedByOthers          -- AP debits against it: linked payments other
+//                               than excludeInvoiceId, plus any close-out
+//   expensedByLinkedPayments -- Repairs debits booked by linked payments
+//   invoiceStatuses          -- status of every linked invoice
 async function workOrderRepairFacts(d, companyId, woId, excludeInvoiceId) {
-  const { data: linked, error } = await d.sb.from("vendor_invoices").select("id")
+  const { data: linked, error } = await d.sb.from("vendor_invoices").select("id, status")
     .eq("company_id", companyId).eq("work_order_id", woId);
   if (error) return null;
-  const invIds = (linked || []).map(r => r.id);
   const woRef = workOrderAccrualReference(woId);
-  const payRefs = invIds.map(invoicePaymentReference);
-  const entries = await liveEntries(d.sb, companyId, [woRef, ...payRefs]);
+  const adjRef = workOrderCloseoutReference(woId);
+  const payRefs = (linked || []).map(r => invoicePaymentReference(r.id));
+  const entries = await liveEntries(d.sb, companyId, [woRef, adjRef, ...payRefs]);
   if (!entries) return null;
   const apId = await d.resolve(AP_CODE, companyId);
   const repairsId = await d.resolve(REPAIRS_CODE, companyId);
   if (!apId || !repairsId) return null;
   const accrual = entries.filter(e => e.reference === woRef);
-  const payments = entries.filter(e => e.reference !== woRef);
-  const others = payments.filter(e => e.reference !== invoicePaymentReference(excludeInvoiceId));
+  const payments = entries.filter(e => e.reference !== woRef && e.reference !== adjRef);
+  const others = entries.filter(e => e.reference !== woRef && e.reference !== invoicePaymentReference(excludeInvoiceId));
   return {
     woAccrued: sumLines(accrual, apId, "credit"),
     appliedByOthers: sumLines(others, apId, "debit"),
     expensedByLinkedPayments: sumLines(payments, repairsId, "debit"),
+    invoiceStatuses: (linked || []).map(r => r.status),
   };
 }
 
-// Work order marked completed. Returns { jeId, accrued, reason }.
+// Work order marked completed -- from the status button or the edit form.
+// Accrues the cost (once), then closes out any unused accrual if every linked
+// invoice is already paid. Returns { jeId, accrued, reason, closeout }.
 export async function postWorkOrderCompletion({ companyId, wo, date }, deps) {
+  const res = await accrueWorkOrder({ companyId, wo, date }, deps);
+  const closeout = (res.reason === "read_failed" || res.reason === "post_failed" || res.reason === "missing_input")
+    ? null : await closeOutWorkOrder({ companyId, woId: wo.id, date }, deps);
+  return { ...res, closeout };
+}
+
+async function accrueWorkOrder({ companyId, wo, date }, deps) {
   const d = withDeps(deps);
   const ref = workOrderAccrualReference(wo?.id);
   if (!companyId || !ref) return { jeId: null, accrued: 0, reason: "missing_input" };
@@ -122,80 +135,41 @@ export async function postVendorInvoicePayment({ companyId, inv, date }, deps) {
   return { jeId, plan, reason: jeId ? "posted" : "post_failed" };
 }
 
-// ─── mortgage ──────────────────────────────────────────────────────────────
-// The recurring schedule (if any) that books this loan's monthly payment.
-async function coveringSchedule(d, companyId, loan) {
-  const [{ data: scheds, error: sErr }, { data: loans, error: lErr }] = await Promise.all([
-    d.sb.from("recurring_journal_entries").select("id, description, amount, tenant_id, property, status")
-      .eq("company_id", companyId).eq("property", loan.property).eq("status", "active").is("archived_at", null),
-    d.sb.from("property_loans").select("id, status").eq("company_id", companyId).eq("property", loan.property).is("archived_at", null),
-  ]);
-  if (sErr || lErr) return { error: true };
-  const activeLoanCount = (loans || []).filter(l => (l.status || "active") === "active").length;
-  const sched = (scheds || []).filter(isMortgageSchedule)
-    .find(s => scheduleCoversLoan({ scheduleAmount: s.amount, loanAmount: loan.monthly_payment, activeLoanCount }));
-  return { schedule: sched || null, activeLoanCount };
-}
-
-// "Record payment" on the Loans page for `month` ("YYYY-MM").
-// Returns { action, jeId, reason } where action is one of
-//   already_recorded | settle_recurring | post | failed
-export async function recordLoanPayment({ companyId, loan, date, month }, deps) {
+// Close-out of an under-billed work order: once it is completed and every
+// linked invoice is paid, reverse the accrual the invoices did not use
+// (DR Accounts Payable / CR Repairs, reference WO-ADJ-<wo id>). Safe to call
+// after any completion or payment -- it does nothing until the conditions
+// hold, and never posts twice (an existing WO-ADJ entry, voided included,
+// means it was already dealt with). Returns { jeId, reversed, reason }.
+export async function closeOutWorkOrder({ companyId, woId, date }, deps) {
   const d = withDeps(deps);
-  const ref = loanPaymentReference(loan?.id, month);
-  const bounds = monthBoundsOf(month);
-  if (!companyId || !ref || !bounds) return { action: "failed", reason: "missing_input" };
-  // Earlier LOAN- references were date-qualified (LOAN-<id>-YYYY-MM-DD), so
-  // match the month prefix rather than the exact reference.
-  const { data: prior, error: pErr } = await d.sb.from("acct_journal_entries").select("id")
-    .eq("company_id", companyId).like("reference", ref + "%").neq("status", "voided").limit(1);
-  if (pErr) return { action: "failed", reason: "read_failed" };
-  const cover = await coveringSchedule(d, companyId, loan);
-  if (cover.error) return { action: "failed", reason: "read_failed" };
-  let recurringBooked = false;
-  if (cover.schedule) {
-    const live = await liveEntries(d.sb, companyId, [recurringReference(cover.schedule.id, month)]);
-    if (!live) return { action: "failed", reason: "read_failed" };
-    recurringBooked = live.length > 0;
-  }
-  const action = decideLoanPayment({ alreadyRecorded: loan.last_payment_month === month || (prior || []).length > 0, recurringBooked });
-  if (action !== "post") return { action, jeId: null, reason: action };
-  const amt = Number(loan.monthly_payment) || 0;
-  const classId = await d.classOf(loan.property, companyId);
+  const ref = workOrderCloseoutReference(woId);
+  if (!companyId || !ref) return { jeId: null, reversed: 0, reason: "missing_input" };
+  const [{ data: woRows, error: wErr }, { data: existing, error: exErr }] = await Promise.all([
+    d.sb.from("work_orders").select("id, status, property, issue").eq("company_id", companyId).eq("id", woId).limit(1),
+    d.sb.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", ref).limit(1),
+  ]);
+  if (wErr || exErr) return { jeId: null, reversed: 0, reason: "read_failed" };
+  if (existing && existing.length > 0) return { jeId: null, reversed: 0, reason: "already_posted" };
+  const wo = (woRows || [])[0];
+  if (!wo) return { jeId: null, reversed: 0, reason: "no_work_order" };
+  const facts = await workOrderRepairFacts(d, companyId, woId, null);
+  if (!facts) return { jeId: null, reversed: 0, reason: "read_failed" };
+  const plan = planWorkOrderCloseout({ woCompleted: wo.status === "completed", invoiceStatuses: facts.invoiceStatuses, woAccrued: facts.woAccrued, applied: facts.appliedByOthers });
+  if (!(plan.reverse > 0)) return { jeId: null, reversed: 0, reason: plan.reason };
+  const classId = await d.classOf(wo.property, companyId);
+  const memo = `Unused accrual reversed — work order #${wo.id}: ${wo.issue || ""}`;
   const jeId = await d.post({
     companyId, date,
-    description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
+    description: `Work order #${wo.id} closed under budget — ${wo.property || ""}`,
     reference: ref,
-    property: loan.property,
+    property: wo.property || "",
     lines: [
-      { account_id: MORTGAGE_CODE, account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
-      { account_id: CASH_CODE, account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
+      { account_id: AP_CODE, account_name: "Accounts Payable", debit: plan.reverse, credit: 0, class_id: classId, memo },
+      { account_id: REPAIRS_CODE, account_name: "Repairs & Maintenance", debit: 0, credit: plan.reverse, class_id: classId, memo },
     ],
   });
-  return jeId ? { action: "post", jeId, reason: "posted" } : { action: "failed", jeId: null, reason: "post_failed" };
-}
-
-// Recurring engine: has "Record payment" already booked this mortgage
-// schedule's month? Answers TRUE when it cannot tell (fail closed: skipping
-// a month is recoverable, a second expense is what we are preventing).
-export async function mortgageMonthAlreadyPaid({ companyId, entry, month }, deps) {
-  const d = withDeps(deps);
-  if (!isMortgageSchedule(entry) || !entry.property) return false;
-  const bounds = monthBoundsOf(month);
-  if (!bounds) return true;
-  const [{ data: pays, error: pErr }, { data: loans, error: lErr }] = await Promise.all([
-    d.sb.from("acct_journal_entries").select("id, reference, acct_journal_lines(debit)")
-      .eq("company_id", companyId).eq("property", entry.property).like("reference", "LOAN-%")
-      .neq("status", "voided").gte("date", bounds.start).lte("date", bounds.end).limit(50),
-    d.sb.from("property_loans").select("id, status").eq("company_id", companyId).eq("property", entry.property).is("archived_at", null),
-  ]);
-  if (pErr || lErr) {
-    pmError("PM-4008", { raw: pErr || lErr, context: "mortgage month check for schedule " + entry.id, silent: true });
-    return true;
-  }
-  const activeLoanCount = (loans || []).filter(l => (l.status || "active") === "active").length;
-  const loanPayments = (pays || []).map(je => ({ amount: (je.acct_journal_lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0) }));
-  return recurringMonthAlreadyPaid({ scheduleAmount: entry.amount, activeLoanCount, loanPayments });
+  return { jeId, reversed: jeId ? plan.reverse : 0, reason: jeId ? plan.reason : "post_failed" };
 }
 
 // ─── escrowed taxes ────────────────────────────────────────────────────────

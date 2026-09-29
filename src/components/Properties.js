@@ -1265,7 +1265,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           account_number: (loan.account_number || '').trim(),
           notes: (loan.notes || '').trim(),
           website: loan.website || '',
-          setup_recurring: !!loan.setup_recurring,
+          // Never: mortgage payments are booked on a cash basis from the bank
+          // feed, so the wizard creates no recurring mortgage entry (owner
+          // decision 2026-09-28; commit_property_wizard only creates one when
+          // this is true).
+          setup_recurring: false,
           ...(creds || {}),
         };
       }
@@ -2293,10 +2297,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
                     <Textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." />
                   </div>
-                  <label className="flex items-center gap-2 text-sm pt-1">
-                    <Checkbox checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
-                    <span className="font-medium text-neutral-700">Set up recurring mortgage payment</span>
-                  </label>
                   <div className="border-t border-neutral-100 pt-2 mt-2">
                     <p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
@@ -2867,7 +2867,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                     <div className="text-xs text-neutral-500">
                       <div>{loan.lender_name} — {loan.loan_type}</div>
                       <div>Payment: ${Number(loan.monthly_payment || 0).toLocaleString()}/mo {loan.escrow_included ? "(incl. escrow)" : ""}</div>
-                      {loan.setup_recurring && <div className="text-positive-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
                   ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
                   {portfolioLoanId && (() => { const pl = portfolioLoans.find(x => x.id === portfolioLoanId); return <div className="text-xs text-neutral-500 mt-1">Part of portfolio loan: <span className="font-medium text-neutral-700">{pl ? pl.lender_name : "\u2014"}</span>{pl && pl.current_balance ? ` \u2014 ${formatCurrency(pl.current_balance)} balance` : ""}</div>; })()}
