@@ -451,14 +451,58 @@ const isoDate = (s) => {
           await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
           await page.waitForTimeout(2000);
           const real = shot.replace(/\.png$/, "") + "-statement.pdf";
-          const [dl] = await Promise.all([
-            page.waitForEvent("download", { timeout: 25000 }),
-            page.getByRole("link", { name: book.statementDownload.downloadLink }).first().click({ timeout: 8000 }),
-          ]);
-          await dl.saveAs(real);
+          // The trigger: a "Download Bill" text link where WSSC still has one;
+          // otherwise the download icon in the "PDF Bill" column of the NEWEST
+          // bill row (2026-09-29: the page lists bills as a table whose PDF
+          // column is an icon with no text, so the text link was never found
+          // and every WSSC bill fell back to a page snapshot).
+          // Re-confirm WHOSE bill page this is before downloading anything.
+          const acctDigits = String(wantAccount).replace(/\D/g, "");
+          const pageDigits = (await page.locator("body").innerText().catch(() => "")).replace(/\D/g, "");
+          if (!pageDigits.includes(acctDigits)) throw new Error(`bill page does not show account ${wantAccount}`);
+          let trig = page.getByRole("link", { name: book.statementDownload.downloadLink }).first();
+          if (!(await trig.count().catch(() => 0)) && book.statementDownload.newestRow) {
+            const rowSel = page.locator("tr").filter({ hasText: book.statementDownload.newestRow }).first();
+            trig = rowSel.locator("a, button").last();
+          }
+          // WSSC's "Download Bill" submits a form into a NEW WINDOW
+          // (target="_new") that streams the PDF, rather than firing a
+          // download -- so wait for either: a download, or any response in
+          // this browser context whose content-type is PDF.
+          const ctxOf = page.context();
+          // Catch the PDF bytes on the wire: a visible Chrome hands a PDF
+          // response to its built-in viewer (what reaches the page is the
+          // viewer's HTML wrapper, not the bill), while headless Chrome fires
+          // a download. Intercepting the document response covers both.
+          let caught = null;
+          const grab = async (route) => {
+            try {
+              const resp = await route.fetch();
+              if (!caught && /application\/pdf/i.test(resp.headers()["content-type"] || "")) caught = await resp.body();
+              await route.fulfill({ response: resp });
+            } catch { await route.continue().catch(() => {}); }
+          };
+          await ctxOf.route(r => true, async (route) => {
+            if (route.request().resourceType() === "document") return grab(route);
+            return route.continue();
+          });
+          const dlP = page.waitForEvent("download", { timeout: 30000 }).then(d => ({ dl: d })).catch(() => null);
+          await trig.click({ timeout: 8000 });
+          const t0 = Date.now();
+          let got = null;
+          while (Date.now() - t0 < 30000 && !caught && !got) {
+            got = await Promise.race([dlP, new Promise(r => setTimeout(() => r(null), 500))]);
+          }
+          await ctxOf.unroute(r => true).catch(() => {});
+          let label = "";
+          if (caught) { fs.writeFileSync(real, caught); label = "streamed"; }
+          else if (got?.dl) { await got.dl.saveAs(real); label = got.dl.suggestedFilename(); }
+          for (const pg of ctxOf.pages()) if (pg !== page) await pg.close().catch(() => {});
           if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
             pdfPath = real;
-            record("statement", `official PDF (${dl.suggestedFilename()})`);
+            record("statement", `official PDF (${label})`);
+          } else {
+            record("statement", "download bill did not yield a PDF");
           }
         }
       } catch (e) {

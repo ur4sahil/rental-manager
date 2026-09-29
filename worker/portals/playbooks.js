@@ -170,6 +170,9 @@ const PLAYBOOKS = {
     statementDownload: {
       viewBillLink: /view bill/i,
       downloadLink: /download bill/i,
+      // No text link any more: the newest row of the View Bill table
+      // ("05-08-2026 - 08-10-2026  Actual  $145.80  09-10-2026  [icon]").
+      newestRow: /\b(Actual|Estimated)\b/,
     },
     amount: [
       { labelled: /balance\s*:?\s*\$\s?([\d,]+\.\d{2})/i },
