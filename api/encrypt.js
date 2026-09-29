@@ -40,9 +40,19 @@ const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
 //
 // Truncated to 12 hex characters: enough to tell two keys apart, far too
 // little to attack the key itself.
-const KEY_FP = MASTER_KEY
-  ? crypto.createHash("sha256").update(MASTER_KEY).digest("hex").slice(0, 12)
-  : null;
+//
+// THE FINGERPRINT RULE (worker/portals/credential-select.js keyFingerprint()
+// implements the identical rule -- change both or neither):
+//   fp = sha256( the EXACT key bytes used to encrypt ), first 12 hex
+// Deliberately NOT normalised. The deployed key carries a trailing newline,
+// and those bytes are part of the key: "K\n" and "K" decrypt differently, so
+// they must fingerprint differently too, or a real mismatch (a worker whose
+// shell export dropped the newline) would hide behind a matching fp.
+function fingerprintOf(material) {
+  return crypto.createHash("sha256").update(material).digest("hex").slice(0, 12);
+}
+const KEY_FP = MASTER_KEY ? fingerprintOf(MASTER_KEY) : null;
+const KEY_FPS_ACCEPTED = new Set(KEY_FP ? [KEY_FP] : []);
 
 function deriveKeyFromSalt(saltBytes) {
   if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
@@ -204,7 +214,18 @@ module.exports = async function handler(req, res) {
   // browser payment. No card data here; the token only names the provider/
   // account/amount and expires in 8 minutes. Signed with STREAM_JWT_SECRET,
   // which the VPS browser-stream service verifies.
+  // Roles that legitimately handle account credentials. NOT owner or tenant:
+  // an owner invited into a PM's company reads loans without their logins,
+  // and the stream pre-fills the COMPANY's portal login.
+  const CRED_ROLES = new Set(["admin", "pm", "manager", "office_assistant"]);
+
   if (isStream) {
+    // Staff only: the stream signs into the company's utility portal with the
+    // stored login (and can pay). A tenant/owner/maintenance member used to be
+    // able to mint a token.
+    if (!CRED_ROLES.has(membership.role)) {
+      return res.status(403).json({ error: "Only staff can open the utility portal." });
+    }
     const secret = process.env.STREAM_JWT_SECRET;
     const streamBase = process.env.STREAM_BASE_URL;
     if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
@@ -220,11 +241,25 @@ module.exports = async function handler(req, res) {
     if (body.billId && body.enroll !== true) {
       const { data: gateBill } = await userClient
         .from("utility_bills")
-        .select("responsibility")
+        .select("responsibility, utility_account_id")
         .eq("id", body.billId)
         .eq("company_id", companyId)
         .maybeSingle();
-      if (gateBill && gateBill.responsibility === "tenant" && membership.role !== "admin") {
+      // One rule everywhere: the ACCOUNT's current responsibility wins; the
+      // bill's snapshot (taken when it was read) is only the fallback.
+      let responsibility = gateBill ? gateBill.responsibility : null;
+      if (gateBill && gateBill.utility_account_id) {
+        const { data: gateAcct } = await userClient
+          .from("utility_accounts").select("responsibility")
+          .eq("id", gateBill.utility_account_id).eq("company_id", companyId).maybeSingle();
+        if (gateAcct && gateAcct.responsibility) responsibility = gateAcct.responsibility;
+      }
+      responsibility = String(responsibility || "").trim().toLowerCase();
+      // A bill this caller cannot see (another company, or a role RLS keeps
+      // out of utility_bills) is not one they can open a payment for.
+      if (!gateBill) return res.status(403).json({ error: "That bill isn't available to you." });
+      if (responsibility === "condo_fee") return res.status(403).json({ error: "This utility is covered by the condo fee — there's no separate bill to pay." });
+      if (gateBill && responsibility === "tenant" && membership.role !== "admin") {
         return res.status(403).json({ error: "Tenant-owed utilities need an admin to authorize payment." });
       }
     }
@@ -236,7 +271,8 @@ module.exports = async function handler(req, res) {
     let paymentId = null;
     let approvedAmount = body.amount != null ? Number(body.amount) : null;
     const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (body.billId && svcKey) {
+    // Enroll is a sign-in only -- never a payment, so never a payment row.
+    if (body.billId && svcKey && body.enroll !== true) {
       try {
         const svc = createClient(process.env.REACT_APP_SUPABASE_URL, svcKey, { auth: { persistSession: false } });
         const { data: bill } = await svc.from("utility_bills")
@@ -291,7 +327,8 @@ module.exports = async function handler(req, res) {
   // check a company member with role=tenant could POST to /api/encrypt
   // with action=decrypt and recover any stored credential.
   //
-  //   admin / owner / pm       — full control, obvious yes.
+  //   admin / pm               — full control, obvious yes. (owner removed:
+  //                              an owner member reads loans without logins.)
   //   manager                  — admin delegate; wizard Utility step
   //                              requires write access.
   //   office_assistant         — runs day-to-day property setup
@@ -306,7 +343,6 @@ module.exports = async function handler(req, res) {
     return handleQbImport({ action, body, res, userEmail, membershipRole: membership.role });
   }
 
-  const CRED_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant"]);
   if (!CRED_ROLES.has(membership.role)) {
     return res.status(403).json({ error: "Insufficient role for credential operations" });
   }
@@ -358,7 +394,7 @@ module.exports = async function handler(req, res) {
         // Name the likely cause instead of "decryption failed". A caller
         // that knows the row was encrypted under a different key can tell
         // the user to re-enter it; a caller told only "failed" cannot.
-        const mismatched = typeof keyFp === "string" && KEY_FP && keyFp !== KEY_FP;
+        const mismatched = typeof keyFp === "string" && KEY_FP && !KEY_FPS_ACCEPTED.has(keyFp);
         return res.status(422).json({
           error: mismatched
             ? "encrypted under a different ENCRYPTION_KEY — this credential must be re-entered"
@@ -375,3 +411,6 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: e.message || "Crypto error" });
   }
 };
+
+// For tests: the fingerprint this process would stamp and accept. Never the key.
+module.exports.keyFingerprints = { current: KEY_FP, accepted: [...KEY_FPS_ACCEPTED] };

@@ -101,11 +101,25 @@ async function runOne(pay, live) {
   // THE TENANT'S BILL IS NOT OURS TO PAY. The claim RPC refuses it as well,
   // which is the layer that cannot be bypassed; this one keeps the browser
   // from ever opening for it.
-  let responsibility = bill?.responsibility || null;
-  if (!responsibility && bill?.utility_account_id) {
+  //
+  // One rule everywhere (UI, claim RPC, this runner): the ACCOUNT's current
+  // responsibility wins, and the bill's snapshot -- taken when the sweep read
+  // it, stale the moment the account is changed -- is only the fallback.
+  let responsibility = null;
+  if (bill?.utility_account_id) {
     const { data: ra } = await sb.from("utility_accounts")
       .select("responsibility").eq("id", bill.utility_account_id).eq("company_id", COMPANY).maybeSingle();
     responsibility = ra?.responsibility || null;
+  }
+  if (!responsibility) responsibility = bill?.responsibility || null;
+  responsibility = responsibility ? String(responsibility).trim().toLowerCase() : null;
+  // Covered by the condo fee: there is no separate bill of ours to pay.
+  if (responsibility === "condo_fee") {
+    await sb.from("utility_payments").update({ status: "cancelled",
+      error: "this utility is covered by the condo fee — there is no separate bill to pay",
+    }).eq("id", pay.id).eq("company_id", COMPANY);
+    console.error("  refused: covered by the condo fee");
+    return "refused";
   }
   if (responsibility === "tenant") {
     await sb.from("utility_payments").update({ status: "cancelled",

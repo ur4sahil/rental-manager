@@ -206,6 +206,20 @@ export default function PropertyImport({ companyId, companyName, properties = []
   const NO_CREDS = { username_encrypted: null, password_encrypted: null,
                      encryption_iv: null, encryption_salt: null, encryption_iv_username: null };
 
+  // Re-importing a sheet over EXISTING rows: a blank login or website cell
+  // means "not in this sheet", not "erase it". Writing the nulls onto the
+  // stored row wiped every saved login on a bulk-edit round trip. So on an
+  // UPDATE, drop the credential keys when the sheet carried no login, and the
+  // website key when its cell was blank. (New rows still get the nulls.)
+  const LOGIN_KEYS = ["username_encrypted", "password_encrypted", "encryption_iv",
+                      "encryption_iv_username", "encryption_salt", "credential_key_fp"];
+  function keepStoredLoginOnBlank(row) {
+    const out = { ...row };
+    if (!out.username_encrypted || !out.password_encrypted) for (const k of LOGIN_KEYS) delete out[k];
+    if (out.website == null || out.website === "") delete out.website;
+    return out;
+  }
+
   // Credentials are encrypted by /api/encrypt. When that call fails --
   // the endpoint down, a network blip, or a dev server that does not
   // serve /api at all -- encryptCredential throws, and it used to take
@@ -218,8 +232,15 @@ export default function PropertyImport({ companyId, companyName, properties = []
   // over a password.
   const credFailures = [];
   async function encryptCreds(row, whatFor) {
-    const username = cellString(row.username), password = cellString(row.password);
-    if (!username && !password) return NO_CREDS;
+    const username = cellString(row.username).trim(), password = cellString(row.password);
+    // Whitespace is not a login; one half without the other is refused with
+    // a message naming the row, instead of storing half a login.
+    const hasU = username.trim() !== "", hasP = password.trim() !== "";
+    if (!hasU && !hasP) return NO_CREDS;
+    if (hasU !== hasP) {
+      credFailures.push(`${whatFor || "a login"}${row && row._row ? " (sheet row " + row._row + ")" : ""}: the ${hasU ? "password" : "username"} is missing — fill in both or neither`);
+      return NO_CREDS;
+    }
     try {
       const u = await encryptCredential(username, companyId);
       const pw = await encryptCredential(password, companyId, u.salt);
@@ -227,6 +248,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         username_encrypted: u.encrypted, password_encrypted: pw.encrypted,
         encryption_iv: pw.iv || null, encryption_salt: u.salt || null,
         encryption_iv_username: u.iv || null,
+        credential_key_fp: u.keyFp || pw.keyFp || null,
       };
     } catch (e) {
       credFailures.push(whatFor || "a login");
@@ -357,7 +379,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         .match(match).is("archived_at", null).limit(1);
       const hit = (found || [])[0];
       const { error } = hit
-        ? await supabase.from(table).update(row).eq("id", hit.id).eq("company_id", companyId)
+        ? await supabase.from(table).update(keepStoredLoginOnBlank(row)).eq("id", hit.id).eq("company_id", companyId)
         : await supabase.from(table).insert([{ ...row, company_id: companyId, property: address, ...match }]);
       if (error) failures.push(`${table}: ${error.message}`);
     }
@@ -369,7 +391,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         responsibility: u.responsibility, status: "pending", website: u.website,
         username_encrypted: u.username_encrypted, password_encrypted: u.password_encrypted,
         encryption_iv: u.encryption_iv, encryption_iv_username: u.encryption_iv_username,
-        encryption_salt: u.encryption_salt,
+        encryption_salt: u.encryption_salt, credential_key_fp: u.credential_key_fp,
       });
     }
     for (const h of recs.hoas) {
@@ -378,7 +400,7 @@ export default function PropertyImport({ companyId, companyName, properties = []
         amount: h.amount, frequency: h.frequency, due_date: h.due_date, notes: h.notes,
         website: h.website, username_encrypted: h.username_encrypted,
         password_encrypted: h.password_encrypted, encryption_iv: h.encryption_iv,
-        encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt,
+        encryption_iv_username: h.encryption_iv_username, encryption_salt: h.encryption_salt, credential_key_fp: h.credential_key_fp,
       });
     }
     // property_loans.property_id and property_insurance.property_id are
