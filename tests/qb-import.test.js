@@ -323,6 +323,192 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
     assertEq(ok.dropped.length, 0, "nothing is reported as dropped");
   }
 
+  console.log("\n════ 9c. STANDARD ACCOUNT SLOTS ════");
+  {
+    // A small ledger shaped like the real one: one deposit liability, two
+    // bank accounts with different activity, rent, late fees, repairs,
+    // utilities, interest, several loans, and a tenant receivable.
+    let txn = 0;
+    const rows = [];
+    const line = (accountPath, accountType, debit, credit, extra = {}) =>
+      rows.push({ accountPath, accountType, debit, credit, customer: "", property: "1 Main St", vendor: "", sourceFile: "t", txnId: String(++txn), ...extra });
+    for (let i = 0; i < 5; i++) line("Checking Atlantic - 5248", "Asset", 100, 0);
+    for (let i = 0; i < 2; i++) line("Utopia Atlantic Checking", "Asset", 10, 0);
+    line("Security Deposit", "Liability", 0, 1500);
+    line("Rental Income", "Revenue", 0, 1600);
+    line("Late Fees", "Revenue", 0, 75);
+    line("Repairs & Maintenance", "Expense", 200, 0);
+    line("Utilities", "Expense", 90, 0);
+    line("Interest Paid", "Expense", 400, 0);
+    line("CV Loan - 4620", "Liability", 0, 90000);
+    line("Conventus Loan:CV Loan - 4747", "Liability", 0, 80000);
+    line("Conventus Loan:CV Loan - 4801", "Liability", 0, 70000);
+    for (let i = 0; i < 3; i++) line("Jane Doe", "Asset", 1600, 0, { customer: "Jane Doe" });
+    const plan = qb.buildImportPlan({ rows });
+    const acct = p => plan.accounts.find(a => a.path === p);
+    const slot = c => plan.standardSlots.find(s => s.code === c);
+
+    // Clear winners take the app's own code.
+    assertEq(acct("Security Deposit").code, "2100", "QB 'Security Deposit' takes 2100, the code every deposit posts to");
+    assertEq(acct("Checking Atlantic - 5248").code, "1000", "the busier checking account takes 1000");
+    assert(acct("Utopia Atlantic Checking").code !== "1000" && /^15\d\d$/.test(acct("Utopia Atlantic Checking").code),
+      "the quieter checking account keeps a generated 15xx code");
+    assert(/most activity: 5 lines/.test(slot("1000").how), "the bank choice explains itself by line counts");
+    assertEq(acct("Rental Income").code, "4000", "Rental Income takes 4000");
+    assertEq(acct("Late Fees").code, "4010", "'Late Fees' takes 4010");
+    assertEq(acct("Repairs & Maintenance").code, "5300", "Repairs & Maintenance takes 5300");
+    assertEq(acct("Utilities").code, "5400", "Utilities takes 5400");
+    assertEq(acct("Interest Paid").code, "5600", "the single interest/loan-payment expense takes 5600");
+    assertEq(acct("Security Deposit").leaf, "Security Deposit", "the QuickBooks name is kept");
+    assertEq(acct("Security Deposit").parentCode, null, "a slotted account has no generated parent");
+    // Loans are liabilities and stay liabilities.
+    assert(/^25\d\d$/.test(acct("CV Loan - 4620").code), "a loan liability keeps a generated 25xx code");
+    assert(acct("Conventus Loan:CV Loan - 4747").code.includes("-"), "a sub-account keeps its PARENT-NNN code");
+    // Tenant AR stays under 1100.
+    assertEq(acct("Jane Doe").role, "tenant_ar", "the customer-named receivable is still tenant AR");
+    assertEq(acct("Jane Doe").code, "1100-001", "tenant AR still lands under 1100");
+    // No collisions: each code used once, and no generated code is a standard one.
+    const codes = plan.accounts.map(a => a.code);
+    assertEq(new Set(codes).size, codes.length, "every planned account has a distinct code");
+    assert(plan.accounts.filter(a => !a.standardCode).every(a => !qb.STANDARD_CODES.has(a.code)),
+      "only slotted accounts carry a standard code");
+    assertEq(plan.accounts.filter(a => a.standardCode).length, 7, "seven accounts are slotted");
+    assert(!qb.STANDARD_CODES.has("1100"), "1100 (tenant AR parent) is never a slot");
+
+    // Every candidate for a role that ties is left alone.
+    const tie = qb.buildImportPlan({ rows: [
+      ...["A", "B"].flatMap(n => [1, 2].map(i => ({ accountPath: "Bank " + n + " Checking", accountType: "Asset", debit: 1, credit: 0, txnId: n + i, sourceFile: "t" }))),
+      { accountPath: "Rent - Building A", accountType: "Revenue", debit: 0, credit: 1, txnId: "r1", sourceFile: "t" },
+      { accountPath: "Rent - Building B", accountType: "Revenue", debit: 0, credit: 1, txnId: "r2", sourceFile: "t" },
+      { accountPath: "Legal Expenses", accountType: "Expense", debit: 1, credit: 0, txnId: "l1", sourceFile: "t" },
+      { accountPath: "Legal & Professional Services", accountType: "Expense", debit: 1, credit: 0, txnId: "l2", sourceFile: "t" },
+    ] });
+    const tslot = c => tie.standardSlots.find(s => s.code === c);
+    assertEq(tslot("1000").status, "unassigned", "two checking accounts with equal activity: 1000 is NOT guessed");
+    assertEq(tslot("1000").candidates.length, 2, "both tied bank accounts are listed as candidates");
+    assertEq(tslot("4000").status, "unassigned", "two 'Rent - <building>' incomes: 4000 is NOT guessed");
+    assertEq(tslot("5610").status, "unassigned", "two legal expense accounts: 5610 is NOT guessed");
+    assert(tie.accounts.every(a => !qb.STANDARD_CODES.has(a.code)), "no tied candidate lands on a standard code");
+    assert(tie.accounts.every(a => !a.standardCode), "no tied candidate is marked as slotted");
+
+    // An exact standard name settles a tie; a mere mention does not.
+    const exact = qb.buildImportPlan({ rows: [
+      { accountPath: "Rental Income", accountType: "Revenue", debit: 0, credit: 1, txnId: "1", sourceFile: "t" },
+      { accountPath: "Rent - Parking", accountType: "Revenue", debit: 0, credit: 5, txnId: "2", sourceFile: "t" },
+      { accountPath: "Rent - Parking", accountType: "Revenue", debit: 0, credit: 5, txnId: "3", sourceFile: "t" },
+    ] });
+    assertEq(exact.accounts.find(a => a.path === "Rental Income").code, "4000", "exact name 'Rental Income' wins the tie over 'Rent - Parking'");
+    assert(exact.accounts.find(a => a.path === "Rent - Parking").code !== "4000", "the other rent account keeps a generated code");
+
+    // Tenant receivables are never candidates, whatever they look like.
+    const direct = qb.assignStandardRoles([
+      { path: "Joe Checking - 1234", leaf: "Joe Checking - 1234", type: "Asset", subtype: "Bank", role: "tenant_ar", lineCount: 999, action: "create" },
+      { path: "Ops Checking", leaf: "Ops Checking", type: "Asset", subtype: "Bank", role: "normal", lineCount: 3, action: "create" },
+    ]);
+    assertEq(direct.byPath.get("Ops Checking")?.code, "1000", "a real bank wins 1000 even against a busier tenant AR");
+    assert(!direct.byPath.has("Joe Checking - 1234"), "a tenant AR account is never slotted");
+    const onlyAr = qb.assignStandardRoles([
+      { path: "Joe Checking - 1234", leaf: "Joe Checking - 1234", type: "Asset", subtype: "Bank", role: "tenant_ar", lineCount: 9, action: "create" },
+    ]);
+    assertEq(onlyAr.slots.find(s => s.code === "1000").status, "none", "with only a tenant AR, 1000 has no candidate at all");
+
+    // Parents and sub-accounts keep the QB hierarchy.
+    const tree = qb.assignStandardRoles([
+      { path: "Utilities", leaf: "Utilities", type: "Expense", role: "normal", lineCount: 4, action: "create" },
+      { path: "Utilities:Water", leaf: "Water", parent: "Utilities", type: "Expense", role: "normal", lineCount: 4, action: "create" },
+    ]);
+    assertEq(tree.byPath.size, 0, "neither a parent nor a sub-account is moved into a slot");
+
+    // An app default already on the code: replaced only when EMPTY.
+    const emptyDefault = [{ id: "d2100", code: "2100", name: "Security Deposits Held", lineCount: 0 }];
+    const pe = qb.buildImportPlan({ rows, existingAccounts: emptyDefault });
+    const sd = pe.accounts.find(a => a.path === "Security Deposit");
+    assertEq(sd.code, "2100", "with an EMPTY default on 2100 the QB account still takes 2100");
+    assertEq(sd.replaceAccountId, "d2100", "and takes over that empty default instead of colliding");
+    assertEq(sd.action, "create", "the takeover rides the normal create path (server re-checks the zero lines)");
+    assert(/took over the empty/.test(pe.standardSlots.find(s => s.code === "2100").how), "the summary says it took over the empty default");
+
+    const usedDefault = [{ id: "d2100", code: "2100", name: "Security Deposits Held", lineCount: 7 }];
+    const pu = qb.buildImportPlan({ rows, existingAccounts: usedDefault });
+    const sd2 = pu.accounts.find(a => a.path === "Security Deposit");
+    assert(sd2.code !== "2100" && /^25\d\d$/.test(sd2.code), "a default WITH lines is left alone; QB account keeps a generated code");
+    assert(!sd2.replaceAccountId && !sd2.standardCode, "nothing is marked to replace or slot");
+    assertEq(pu.standardSlots.find(s => s.code === "2100").status, "unassigned", "the slot is reported unassigned");
+    assert(/7 journal lines/.test(pu.standardSlots.find(s => s.code === "2100").reason), "and the reason names the lines it has");
+
+    const unknownDefault = [{ id: "d2100", code: "2100", name: "Security Deposits Held" }];
+    const pk = qb.buildImportPlan({ rows, existingAccounts: unknownDefault });
+    assert(pk.accounts.find(a => a.path === "Security Deposit").code !== "2100",
+      "a default whose line count is unknown is treated as in use, never taken over");
+
+    // An existing account of the same name is used as it always was.
+    const named = [{ id: "d4000", code: "4000", name: "Rental Income", lineCount: 0 }];
+    const pn = qb.buildImportPlan({ rows, existingAccounts: named });
+    const ri = pn.accounts.find(a => a.path === "Rental Income");
+    assertEq(ri.action, "map", "QB 'Rental Income' still maps by name onto the existing 4000");
+    assertEq(ri.targetAccountId, "d4000", "onto that very account");
+    assertEq(pn.standardSlots.find(s => s.code === "4000").status, "assigned", "and the summary counts 4000 as filled");
+
+    // Summary text.
+    const d = qb.describeStandardSlots(plan.standardSlots, plan.accounts);
+    assert(d.text.includes('2100 Security Deposits Held <- QuickBooks "Security Deposit"'), "summary line: which QB account became 2100");
+    assert(d.absent.some(s => s.code === "4200"), "roles QuickBooks has nothing for are listed as absent");
+    const skippedPlan = { ...plan, accounts: plan.accounts.map(a => a.path === "Utilities" ? { ...a, action: "skip" } : a) };
+    const ds = qb.describeStandardSlots(plan.standardSlots, skippedPlan.accounts);
+    assert(ds.unassigned.some(s => s.code === "5400" && /skip/.test(s.reason)), "an account skipped on the Accounts step is reported unassigned");
+    const dt = qb.describeStandardSlots(tie.standardSlots, tie.accounts);
+    assert(dt.text.some(t => t.startsWith("1000 Checking Account: not assigned") && t.includes("Bank A Checking")),
+      "an ambiguous slot is listed as not assigned, with its candidates");
+  }
+
+  console.log("\n════ 9d. NOTHING RE-SEEDS A PARALLEL STANDARD ACCOUNT ════");
+  {
+    const root = path.join(__dirname, "..");
+    const read = f => fs.readFileSync(path.join(root, f), "utf8");
+    const accountingSrc = read("src/utils/accounting.js");
+
+    // The role table is the app's own chart: same codes, same names.
+    const map = JSON.parse("{" + accountingSrc.match(/export const _acctCodeToName = \{([^}]*)\}/)[1] + "}");
+    const expected = Object.entries(map).filter(([c]) => c !== "1100");
+    assertEq(qb.STANDARD_ACCOUNT_ROLES.length, expected.length, "one role per _acctCodeToName code except 1100");
+    assert(expected.every(([c, n]) => qb.STANDARD_ACCOUNT_ROLES.some(r => r.code === c && r.name === n)),
+      "every role carries the exact code and name from _acctCodeToName");
+    assert([...qb.STANDARD_CODES].every(c => qb.RESERVED_CODES.has(c)), "every standard code is also reserved from generation");
+
+    // The server's allow-list matches the client's role table.
+    const impl = read("api/_qb-import-impl.js");
+    const serverCodes = new Set(impl.match(/const STANDARD_CODES = new Set\(\[([^\]]*)\]/)[1].match(/"\d{4}"/g).map(s => s.slice(1, -1)));
+    assert(serverCodes.size === qb.STANDARD_CODES.size && [...serverCodes].every(c => qb.STANDARD_CODES.has(c)),
+      "api/_qb-import-impl.js STANDARD_CODES equals the client's");
+    // Standard accounts never go through the ignore-duplicates upsert, which
+    // would silently post QB history into whatever already sits on the code.
+    assert(/const plainAccounts = accounts\.filter\(a => !\(a && a\.standardCode\)\)/.test(impl) && /plainAccounts\.map\(accountRow\)/.test(impl),
+      "server upserts only NON-standard accounts with ignoreDuplicates");
+    assert(/acct_journal_lines[\s\S]{0,200}count: "exact"[\s\S]{0,200}account_id", existing\.id/.test(impl) && /return bad\(res, 409, st\.conflict\)/.test(impl),
+      "server refuses (409) to take over a standard account that has journal lines");
+
+    // ensureDefaultAccounts skips a code that is already taken, whatever its
+    // name -- so an imported "Security Deposit" on 2100 is not duplicated
+    // by a "Security Deposits Held" insert on the next login.
+    const ensure = accountingSrc.slice(accountingSrc.indexOf("export async function ensureDefaultAccounts"));
+    assert(/!existingCodes\.has\(String\(a\.code\)\)/.test(ensure.slice(0, 3000)), "ensureDefaultAccounts skips any code that already exists");
+    // resolveAccountId finds an account by its code before it would create one.
+    const resolve = accountingSrc.slice(accountingSrc.indexOf("export async function resolveAccountId"), accountingSrc.indexOf("// ============ TENANT AR SUB-ACCOUNT"));
+    const byCode = resolve.indexOf("if (a.code) _acctIdCache[cid][a.code] = a.id;");
+    const create = resolve.indexOf('from("acct_accounts").insert');
+    assert(byCode > 0 && create > byCode && /if \(_acctIdCache\[cid\]\[bareCode\]\) return _acctIdCache\[cid\]\[bareCode\];\s*\/\/ Auto-create/.test(resolve),
+      "resolveAccountId returns the account on the code before it would auto-create one");
+    // The Accounting page seeds its chart only into a company with NO accounts.
+    const acctPage = read("src/components/Accounting.js");
+    assert(/if \(accounts\.length === 0\) \{\s*const defaults = \[/.test(acctPage), "the Accounting page seeds defaults only when the company has no accounts");
+    // The wizard's SQL resolver looks up by code first.
+    const wiz = read("supabase/baseline/schema.sql");
+    const wizAt = wiz.indexOf("FUNCTION \"public\".\"_wizard_resolve_account\"");
+    const wizFn = wizAt >= 0 ? wiz.slice(wizAt) : "";
+    assert(/SELECT id INTO v_id FROM (public\.)?"?acct_accounts"? WHERE company_id = p_company_id AND code = p_code/i.test(wizFn.slice(0, 1500)),
+      "_wizard_resolve_account returns the account on the code before inserting");
+  }
+
   console.log("\n════ 10. REAL QUICKBOOKS EXPORTS ════");
   {
     const dl = path.join(os.homedir(), "Downloads");
@@ -433,6 +619,20 @@ function plRow({ date = "", type = "", num = "", name = "", property = "", cls =
       // revived leg is a real line that will be posted, so a trial balance
       // omitting it disagrees with the import by exactly the recovered
       // amount.
+      // Standard slots on the real books (no Account List, empty company).
+      const realPlan = qb.buildImportPlan({ rows: g.rowsWithReconstructed });
+      const got = Object.fromEntries(realPlan.standardSlots.filter(s => s.status === "assigned").map(s => [s.code, s.qbPath]));
+      assertEq(got["1000"], "Sigma Housing LLC - 6027", "real books: the busiest bank account (2,412 lines) takes 1000");
+      assertEq(got["2100"], "Security Deposit", "real books: Security Deposit takes 2100");
+      assertEq(got["4000"], "Rental Income", "real books: Rental Income takes 4000");
+      assertEq(got["4010"], "Late Fee Income", "real books: Late Fee Income takes 4010");
+      assertEq(got["5300"], "Repairs & Maintenance", "real books: Repairs & Maintenance takes 5300");
+      assertEq(got["5400"], "Utilities", "real books: Utilities takes 5400");
+      assertEq(realPlan.standardSlots.find(s => s.code === "5610").status, "unassigned",
+        "real books: two legal expense accounts, so 5610 is left unassigned rather than guessed");
+      assert(realPlan.accounts.filter(a => a.role === "tenant_ar").every(a => a.code.startsWith("1100-")),
+        "real books: every tenant receivable still lands under 1100");
+
       const tb = qb.buildTrialBalance(g.rowsWithReconstructed);
       assert(near(tb.difference, 0), `trial balance differences to zero (got ${tb.difference})`);
       assert(near(tb.debit, 48689612.24), "trial balance debit total matches");

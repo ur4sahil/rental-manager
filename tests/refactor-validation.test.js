@@ -242,11 +242,14 @@ function testFileStructure() {
   // src/utils/lateFeeRules.js (one-per-month rule, tested directly by
   // late-fees-unified.test.mjs) and the shared posting routine
   // lateFees.js; the two component call sites got shorter.
+  // 52150 on 2026-09-28: +~300 for QuickBooks standard-account slots -- the role table and
+  // assignStandardRoles in the pure src/utils/qbImport.js (tested directly by qb-import.test.js)
+  // and the read-only post-import summary in QuickBooksImport.js.
   // 51800 on 2026-09-28: + shared late-fee who/when/how-much rules (lateFeeRules.js). 51700 after merging late fees + payments and the per-day autopay key; 51450 on 2026-09-28 (payments/autopay/Stripe fixes): +~155 for the new
   // pure src/utils/paymentRules.js (shared by the browser and api/stripe.js,
   // tested directly by payments-autopay-stripe.test.mjs) and the corrected
   // rent-receipt / accrual / move-out lookups that use it.
-  assert(totalLines <= 51800, `Total src lines <= 51800 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  assert(totalLines <= 52150, `Total src lines <= 52150 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

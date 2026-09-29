@@ -18,7 +18,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { Spinner } from "./shared";
 import {
   QB_FILE_GROUPS, parseWorkbook, parseAccountList, isAccountListShape, groupTransactions,
-  buildImportPlan, buildEntriesPayload, buildTrialBalance,
+  buildImportPlan, buildEntriesPayload, buildTrialBalance, STANDARD_CODES, describeStandardSlots,
 } from "../utils/qbImport";
 
 const STEPS = [
@@ -181,12 +181,25 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     if (!allRows.length) { showToast("Add at least one readable QuickBooks export.", "error"); return; }
     setBusy("Building the mapping plan…");
     await new Promise(r => setTimeout(r, 0));
+    // A QuickBooks account that plays a standard role (deposits, main bank,
+    // rent ...) is assigned INTO the app's own code for it. If the company
+    // already has an account on that code, the import may take it over
+    // only when it has no journal lines, so count them. A failed count
+    // leaves lineCount unset, which the plan treats as "in use".
+    const existingAccounts = [];
+    for (const a of accounts) {
+      if (!STANDARD_CODES.has(String(a.code || ""))) { existingAccounts.push(a); continue; }
+      const { count, error } = await supabase.from("acct_journal_lines")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId).eq("account_id", a.id);
+      existingAccounts.push(error ? { ...a } : { ...a, lineCount: count || 0 });
+    }
     // grouped.rowsWithReconstructed, not allRows: a leg rebuilt from a
     // deleted QuickBooks account has to be in the plan, or no account is
     // created for it and the transaction is dropped exactly as before.
     setPlan(buildImportPlan({
       rows: (grouped && grouped.rowsWithReconstructed) || allRows,
-      existingAccounts: accounts,
+      existingAccounts,
       accountList,
     }));
     setBusy("");
@@ -270,6 +283,9 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           code: a.code, name: a.role === "tenant_ar" ? `AR - ${a.tenantName}` : a.leaf,
           type: a.type, subtype: a.subtype || null,
           tenantName: a.role === "tenant_ar" ? a.tenantName : null,
+          // Goes into the app's own standard code (e.g. 2100); the server
+          // takes over an EMPTY account already there, never one with lines.
+          standardCode: a.standardCode || null,
           description: `Imported from QuickBooks (${a.path})`,
         })),
         classes: plan.classes.map(c => ({ name: c.name })),
@@ -318,9 +334,10 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
       }
 
       setProgress({ phase: "Finalising…", done: chunks.length, total: chunks.length });
-      const fin = await call({ action: "qb_finalize" });
+      const standard = describeStandardSlots(plan.standardSlots, plan.accounts);
+      const fin = await call({ action: "qb_finalize", standardAccounts: standard.text });
 
-      setResult({ inserted, skipped, lines, created: resolved.created, importedEntries: fin.importedEntries, balancesUpdated: fin.balancesUpdated });
+      setResult({ inserted, skipped, lines, created: resolved.created, importedEntries: fin.importedEntries, balancesUpdated: fin.balancesUpdated, standard });
       setProgress(null);
       showToast(`Imported ${inserted.toLocaleString()} journal entries.`, "success");
       if (onComplete) onComplete();
@@ -688,6 +705,7 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
           Check <strong>Reports → Trial Balance</strong> and <strong>Profit &amp; Loss</strong> before relying on the numbers.
           {result.balancesUpdated ? ` ${result.balancesUpdated} tenant balances were recalculated.` : ""}
         </p>
+        {result.standard && <StandardAccountsSummary standard={result.standard} />}
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={() => { setStep(1); setFiles([]); setPlan(null); setResult(null); }}>Import more</Btn>
           <TextLink tone="danger" size="xs" onClick={rollback}>Undo this import</TextLink>
@@ -704,6 +722,50 @@ export function QuickBooksImport({ companyId, accounts = [], showToast, showConf
     </div>
     )}
   </div>
+  );
+}
+
+// Read-only: which QuickBooks account became which of the app's standard
+// accounts, and which standard accounts were left as they were and why.
+function StandardAccountsSummary({ standard }) {
+  const { assigned, unassigned, absent } = standard;
+  return (
+    <div className="border border-neutral-200 rounded-lg p-3 space-y-2 text-xs">
+      <p className="text-sm font-medium text-neutral-700">Standard accounts</p>
+      <p className="text-neutral-500">
+        The app posts deposits, rent, bank activity and the like to fixed accounts. These QuickBooks accounts were
+        put in those places, so new activity lands next to their history instead of in a separate empty account.
+      </p>
+      {assigned.length > 0 ? (
+        <ul className="space-y-1">
+          {assigned.map(s => (
+            <li key={s.code} className="text-neutral-700">
+              QuickBooks <strong>{s.qbPath}</strong> became <span className="tnum">{s.code}</span> ({s.label})
+              {s.how && <span className="text-neutral-400"> · {s.how}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-neutral-500">No QuickBooks account was placed in a standard account.</p>}
+      {unassigned.length > 0 && (
+        <div>
+          <p className="font-medium text-warn-700">Left unassigned</p>
+          <ul className="space-y-1">
+            {unassigned.map(s => (
+              <li key={s.code} className="text-neutral-600">
+                <span className="tnum">{s.code}</span> {s.name}: {s.reason}
+                {s.candidates && s.candidates.length > 1 && <span className="text-neutral-400"> ({s.candidates.join(", ")})</span>}.
+                {" "}The app keeps using its own {s.code} for this.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {absent.length > 0 && (
+        <p className="text-neutral-400">
+          Nothing in QuickBooks for: {absent.map(s => `${s.code} ${s.name}`).join(", ")}. The app's own accounts are used for these.
+        </p>
+      )}
+    </div>
   );
 }
 
