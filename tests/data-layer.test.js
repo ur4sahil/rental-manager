@@ -559,7 +559,7 @@ async function testFullLifecycle() {
 async function testDocumentBuilder() {
   console.log('\n📝 DOCUMENT BUILDER');
   // Get a company_id for testing
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const testCompanyId = companies?.[0]?.id || 'sandbox-llc';
 
   // Template CRUD
@@ -610,7 +610,7 @@ async function testDocumentBuilder() {
 
 async function testLoans() {
   console.log('\n🏦 LOANS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   assert(!!cid, 'Loans: company exists for testing');
 
@@ -651,7 +651,7 @@ async function testLoans() {
 
 async function testInsurance() {
   console.log('\n🛡️  INSURANCE');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
 
   const { data: ins, error: insErr } = await supabase.from('property_insurance').insert({
@@ -675,7 +675,7 @@ async function testInsurance() {
 
 async function testWizardProgress() {
   console.log('\n🧙 WIZARD PROGRESS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
 
   // Create wizard entry
@@ -758,7 +758,7 @@ async function testARSubAccountCreation() {
 
 async function testPropertyDeleteCascadeNewTables() {
   console.log('\n🗑️  DELETE CASCADE — NEW TABLES');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   if (!cid) { assert(false, 'Cascade: no company found'); return; }
 
@@ -806,7 +806,7 @@ async function testPropertyDeleteCascadeNewTables() {
 
 async function testHOAPayments() {
   console.log('\n🏘️  HOA PAYMENTS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   assert(!!cid, 'HOA: company exists');
   const { data: hoa, error: hoaErr } = await supabase.from('hoa_payments').insert({
@@ -831,7 +831,7 @@ async function testHOAPayments() {
 
 async function testInsuranceTracker() {
   console.log('\n🛡️  INSURANCE TRACKER');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Test expiry detection
   const past = new Date(); past.setDate(past.getDate() - 30);
@@ -860,7 +860,7 @@ async function testInsuranceTracker() {
 
 async function testMoveOutFlow() {
   console.log('\n🚪 MOVE-OUT FLOW');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const addr = 'TEST-MOVEOUT-' + Date.now();
   // Create property + tenant + lease
@@ -893,7 +893,7 @@ async function testMoveOutFlow() {
 
 async function testEvictionCase() {
   console.log('\n⚖️  EVICTION CASE');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: evCase, error: evErr } = await supabase.from('eviction_cases').insert({
     company_id: cid, tenant_name: 'Evict Test Tenant', property: 'TEST-EVICT-PROP',
@@ -918,7 +918,7 @@ async function testEvictionCase() {
 
 async function testOwnerDistribution() {
   console.log('\n💰 OWNER DISTRIBUTION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: owners } = await supabase.from('owners').select('id').eq('company_id', cid).limit(1);
   if (!owners || owners.length === 0) { assert(true, 'Owner Dist: no owners to test (skip)'); return; }
@@ -942,7 +942,7 @@ async function testOwnerDistribution() {
 
 async function testPropertyChangeRequests() {
   console.log('\n📋 PROPERTY CHANGE REQUESTS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: req, error: reqErr } = await supabase.from('property_change_requests').insert({
     company_id: cid, request_type: 'add', requested_by: 'test@test.com',
@@ -961,7 +961,7 @@ async function testPropertyChangeRequests() {
 
 async function testRecurringEntryEngine() {
   console.log('\n🔄 RECURRING ENTRY ENGINE');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Create a recurring entry
   const { data: entry, error: entErr } = await supabase.from('recurring_journal_entries').insert({
@@ -999,7 +999,7 @@ async function testRecurringEntryEngine() {
 
 async function testMessages() {
   console.log('\n💬 MESSAGES');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: msg, error: msgErr } = await supabase.from('messages').insert({
     company_id: cid, tenant: 'TEST-MSG-Tenant', property: 'TEST-MSG-Prop',
@@ -1067,7 +1067,7 @@ async function testMessages() {
 
 async function testNotificationTables() {
   console.log('\n🔔 NOTIFICATION TABLES');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // notification_inbox
   const { data: inbox, error: inErr } = await supabase.from('notification_inbox').insert({
@@ -1111,7 +1111,7 @@ async function testCompanyMembers() {
 
 async function testCredentialEncryption() {
   console.log('\n🔐 CREDENTIAL ENCRYPTION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Test that credential columns exist on all 4 tables
   const tables = ['utilities', 'hoa_payments', 'property_loans', 'property_insurance'];
@@ -1161,7 +1161,7 @@ async function testProratedRentCalculation() {
 
 async function testPaymentEdgeCases() {
   console.log('\n💰 PAYMENT EDGE CASES');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Zero amount
   const { data: zero, error: zeroErr } = await supabase.from('payments').insert({
@@ -1192,7 +1192,7 @@ async function testPaymentEdgeCases() {
 
 async function testConcurrentLeasePrevention() {
   console.log('\n📋 CONCURRENT LEASE PREVENTION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Create first active lease
   const { data: lease1, error: l1Err } = await supabase.from('leases').insert({
@@ -1214,7 +1214,7 @@ async function testConcurrentLeasePrevention() {
 
 async function testMultiTenantProperty() {
   console.log('\n👥 MULTI-TENANT PROPERTY');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: prop, error: propErr } = await supabase.from('properties').insert(
     propertyFixture('TEST-MULTI-TENANT', {
@@ -1238,7 +1238,7 @@ async function testMultiTenantProperty() {
 
 async function testBankReconciliation() {
   console.log('\n🏦 BANK RECONCILIATION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data, error } = await supabase.from('bank_reconciliations').select('*').eq('company_id', cid).limit(1);
   assert(!error, 'BankRecon: table exists and can query');
@@ -1268,7 +1268,7 @@ async function testUserProfile() {
 
 async function testClassTracking() {
   console.log('\n🏷️ CLASS TRACKING (acct_classes)');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: cls, error: clsErr } = await supabase.from('acct_classes').insert({
     id: require('crypto').randomUUID(),
@@ -1291,7 +1291,7 @@ async function testPagePersistence() {
   console.log('\n💾 PAGE PERSISTENCE (localStorage simulation)');
   // This tests the data contract — not actual browser localStorage
   // Verify company_id is TEXT type (not UUID)
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   assert(typeof cid === 'string', 'Persistence: company_id is string type');
   // Verify property_setup_wizard status values
@@ -1308,7 +1308,7 @@ async function testPagePersistence() {
 
 async function testBankAccountFeed() {
   console.log('\n🏦 BANK ACCOUNT FEED');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Create GL account first
   const oldTextId = cid + '-test-bank-feed';
@@ -1333,7 +1333,7 @@ async function testBankAccountFeed() {
 
 async function testBankImportBatch() {
   console.log('\n📦 BANK IMPORT BATCH');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Create feed first
   const { data: feed } = await supabase.from('bank_account_feed').insert({
@@ -1361,7 +1361,7 @@ async function testBankImportBatch() {
 
 async function testBankFeedTransaction() {
   console.log('\n💳 BANK FEED TRANSACTION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: feed } = await supabase.from('bank_account_feed').insert({
     company_id: cid, account_name: 'TEST Txn Feed', account_type: 'checking',
@@ -1407,7 +1407,7 @@ async function testBankFeedTransaction() {
 
 async function testBankPostingDecision() {
   console.log('\n📝 BANK POSTING DECISION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: feed } = await supabase.from('bank_account_feed').insert({
     company_id: cid, account_name: 'TEST Decision Feed', account_type: 'checking',
@@ -1474,7 +1474,7 @@ async function testBankPostingDecision() {
 
 async function testBankTransactionLink() {
   console.log('\n🔗 BANK TRANSACTION LINK');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: feed } = await supabase.from('bank_account_feed').insert({
     company_id: cid, account_name: 'TEST Link Feed', account_type: 'checking',
@@ -1509,7 +1509,7 @@ async function testBankTransactionLink() {
 
 async function testBankTransactionRule() {
   console.log('\n📏 BANK TRANSACTION RULE');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: rule, error: ruleErr } = await supabase.from('bank_transaction_rule').insert({
     company_id: cid, name: 'TEST Rent Rule', priority: 10, enabled: true,
@@ -1531,7 +1531,7 @@ async function testBankTransactionRule() {
 
 async function testMappingProfile() {
   console.log('\n🗂️ MAPPING PROFILE');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: profile, error: profErr } = await supabase.from('bank_import_mapping_profile').insert({
     company_id: cid, name: 'Chase Format', institution_name: 'Chase',
@@ -1548,7 +1548,7 @@ async function testMappingProfile() {
 
 async function testPeriodLock() {
   console.log('\n🔒 PERIOD LOCK');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Upsert period lock
   const { error: lockErr } = await supabase.from('accounting_period_lock').upsert({
@@ -1604,7 +1604,7 @@ async function testEncryptDecryptRoundtrip() {
 
 async function testPeriodLockEnforcement() {
   console.log('\n🔒 PERIOD LOCK ENFORCEMENT');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Set a period lock
   await supabase.from('accounting_period_lock').upsert({
@@ -1626,7 +1626,7 @@ async function testPeriodLockEnforcement() {
 
 async function testBankTxnLockedStatus() {
   console.log('\n🔐 BANK TXN LOCKED STATUS');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   const { data: feed } = await supabase.from('bank_account_feed').insert({
     company_id: cid, account_name: 'TEST Lock Feed', account_type: 'checking',
@@ -1723,7 +1723,7 @@ function testWizardApplicableSteps() {
 
 async function testAuditLogRedaction() {
   console.log('\n📝 AUDIT LOG REDACTION');
-  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const { data: companies } = await supabase.from('companies').select('id').eq('id', 'sandbox-llc').limit(1); // fixed company: an unordered pick can land on another suite's throwaway (or a real) company
   const cid = companies?.[0]?.id;
   // Insert an audit entry with sensitive patterns
   const sensitiveDetails = 'User password: MySecret123 and token: abc-def-ghi-jkl';
