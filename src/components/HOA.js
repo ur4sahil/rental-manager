@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Select, Btn, PageHeader, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, formatPhoneInput} from "../utils/helpers";
@@ -9,7 +9,7 @@ import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Badge, Spinner, PropertySelect } from "./shared";
 
-function HOAPayments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function HOAPayments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   const [hoaPayments, setHoaPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -29,6 +29,24 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   const [showCreds, setShowCreds] = useState(new Set());
 
   useEffect(() => { fetchHOA(); }, [companyId]);
+
+  function openEditHoa(h) {
+  setEditingHoa(h); setForm({ ...EMPTY_HOA_FORM, property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "",
+    management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
+    pay_portal_website: h.pay_portal_website || "",
+    contact_name: h.contact_name || "", contact_email: h.contact_email || "", contact_phone: h.contact_phone || "" }); setShowForm(true);
+  }
+  // Deep link from Tasks & Approvals ("login missing"): open that HOA's
+  // edit form once the list has loaded. Handled once per action object.
+  const handledAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editRecordId;
+  if (!id || handledAction.current === initialAction || hoaPayments.length === 0) return;
+  const rec = hoaPayments.find(x => String(x.id) === String(id));
+  if (!rec) return;
+  handledAction.current = initialAction;
+  openEditHoa(rec);
+  }, [initialAction, hoaPayments]);
 
   async function fetchHOA() {
   const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).is("archived_at", null).order("due_date", { ascending: false });
@@ -67,16 +85,16 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     try {
       const resU = await encryptCredential(form.username || "", companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-      payload.username_encrypted = resU.encrypted;
+      payload.username_encrypted = resU.encrypted || null; // null, never '' (chk_*_creds_not_blank)
       // Which key encrypted this. ENCRYPTION_KEY was rotated once with
       // nothing migrating the ciphertext, and every stored credential
       // silently stopped opening. A fingerprint turns the next rotation
       // into "re-enter this" instead of a credential that never works.
       payload.credential_key_fp = resU.keyFp || null;
-      payload.password_encrypted = resP.encrypted;
+      payload.password_encrypted = resP.encrypted || null;
       payload.encryption_iv_username = resU.iv || null;
-      payload.encryption_iv = resP.iv || resU.iv;
-      payload.encryption_salt = resU.salt || resP.salt;
+      payload.encryption_iv = resP.iv || resU.iv || null;
+      payload.encryption_salt = resU.salt || resP.salt || null;
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
 
@@ -303,10 +321,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
         render: h => (<>
           {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
-            <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ ...EMPTY_HOA_FORM, property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "", website: h.website || "",
-              management_company: h.management_company || "", mgmt_website: h.mgmt_website || "",
-              pay_portal_website: h.pay_portal_website || "",
-              contact_name: h.contact_name || "", contact_email: h.contact_email || "", contact_phone: h.contact_phone || "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="brand" size="xs" onClick={() => openEditHoa(h)} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
         </>) },
     ]}

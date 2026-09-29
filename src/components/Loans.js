@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, MoneyInput, PageHeader, Select, TextLink, DataTable, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, propertyLabel, fmtDate, loanTypeOptions} from "../utils/helpers";
@@ -9,7 +9,7 @@ import { logAudit } from "../utils/audit";
 import { autoPostJournalEntry, getPropertyClassId } from "../utils/accounting";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
-function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,6 +30,21 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const [origLoanPortfolioId, setOrigLoanPortfolioId] = useState("");
 
   useEffect(() => { fetchLoans(); fetchPortfolioLoans(); }, [companyId]);
+
+  function openEditLoan(l) {
+  setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true);
+  }
+  // Deep link from Tasks & Approvals ("login missing"): open that loan's
+  // edit form once the list has loaded. Handled once per action object.
+  const handledAction = useRef(null);
+  useEffect(() => {
+  const id = initialAction?.editRecordId;
+  if (!id || handledAction.current === initialAction || loans.length === 0) return;
+  const rec = loans.find(x => String(x.id) === String(id));
+  if (!rec) return;
+  handledAction.current = initialAction;
+  openEditLoan(rec);
+  }, [initialAction, loans]);
 
   // Load the current portfolio attachment for whichever property the loan form
   // is on, so the dropdown reflects reality and save can detach/attach.
@@ -351,7 +366,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
       { key: "actions", label: "Actions", align: "right", className: "whitespace-nowrap",
         render: l => l._portfolio ? <span className="text-xs text-neutral-400">Portfolio ↓</span> : (<>
           {l.status === "active" && <TextLink tone="positive" size="xs" onClick={() => recordPayment(l)} className="mr-2">Record Payment</TextLink>}
-            <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active", website: l.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+            <TextLink tone="brand" size="xs" onClick={() => openEditLoan(l)} className="mr-2">Edit</TextLink>
             <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
         </>) },
     ]}

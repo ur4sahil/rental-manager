@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor, canManage} from "../utils/helpers";
@@ -52,7 +52,7 @@ function billAge(row, today) {
   return days;
 }
 
-function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, initialAction }) {
   function exportUtilities() {
   exportToCSV(utilities, [
   { label: "Property", key: "property" },
@@ -115,6 +115,32 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "", responsibility: "owner" });
 
   useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
+
+  function openEditAccount(acct) {
+    setEditingAccount(acct);
+    setAccountForm({
+      property: acct.property || "", provider: "__keep__", account_number: acct.account_number || "",
+      username: "", password: "", account_type: acct.account_type || "electric",
+      check_frequency: acct.check_frequency || "weekly", two_factor_method: acct.two_factor_method || "none",
+      notes: acct.notes || "", responsibility: acct.responsibility || "owner",
+    });
+    setShowAccountForm(true);
+    const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
+  }
+  // Deep link from Tasks & Approvals ("login missing"). The to-do names the
+  // `utilities` row (what the bill sweep reads); its login is edited on the
+  // linked utility_accounts row, so open that account on the Accounts tab.
+  const handledAction = useRef(null);
+  useEffect(() => {
+    const id = initialAction?.editRecordId;
+    if (!id || handledAction.current === initialAction || utilAccounts.length === 0) return;
+    const acct = utilAccounts.find(a => String(a.legacy_utility_id) === String(id))
+      || utilAccounts.find(a => String(a.id) === String(initialAction.editAccountId || ""));
+    if (!acct) return;
+    handledAction.current = initialAction;
+    setUtilTab("automation");
+    openEditAccount(acct);
+  }, [initialAction, utilAccounts]);
 
   async function fetchAutomationData() {
   const [accts, bills, jobs, provs, receipts] = await Promise.all([
@@ -635,11 +661,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     try {
       const resU = await encryptCredential(form.username || "", companyId);
       const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-      row.username_encrypted = resU.encrypted;
-      row.password_encrypted = resP.encrypted;
+      row.username_encrypted = resU.encrypted || null; // null, never '' (chk_utilities_creds_not_blank)
+      row.password_encrypted = resP.encrypted || null;
       row.encryption_iv_username = resU.iv || null;
-      row.encryption_iv = resP.iv || resU.iv;
-      row.encryption_salt = resU.salt || resP.salt;
+      row.encryption_iv = resP.iv || resU.iv || null;
+      row.encryption_salt = resU.salt || resP.salt || null;
     } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   const { error } = await supabase.from("utilities").insert([row]);
@@ -795,17 +821,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
   <TextLink tone="brand" size="xs" underline={false} onClick={() => triggerManualCheck(acct)} className="border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</TextLink>
-  <TextLink tone="neutral" size="xs" underline={false} onClick={() => {
-    setEditingAccount(acct);
-    setAccountForm({
-      property: acct.property || "", provider: "__keep__", account_number: acct.account_number || "",
-      username: "", password: "", account_type: acct.account_type || "electric",
-      check_frequency: acct.check_frequency || "weekly", two_factor_method: acct.two_factor_method || "none",
-      notes: acct.notes || "", responsibility: acct.responsibility || "owner",
-    });
-    setShowAccountForm(true);
-    const m = document.querySelector("main"); if (m) m.scrollTop = 0; window.scrollTo(0, 0);
-  }} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openEditAccount(acct)} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>

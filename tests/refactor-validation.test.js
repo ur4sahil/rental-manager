@@ -85,7 +85,9 @@ function testFileStructure() {
   // 25 on 2026-09-28: + paymentRules.js (rent-receipt / autopay / Stripe rules shared by
   // the browser and api/stripe.js, tested directly by payments-autopay-stripe.test.mjs).
   // 26 on 2026-09-28 (integration): lateFeeRules, lateFees, paymentRules, depositRules -- one focused rules module per money flow.
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 26, `src/utils/ has 8..26 files (found ${actualUtilFiles.length})`);
+  // 27 on 2026-09-28: + loginMissing.js (import-free "login missing" to-do rules for
+  // Tasks & Approvals, run directly in node by login-missing.test.mjs).
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 27, `src/utils/ has 8..27 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.

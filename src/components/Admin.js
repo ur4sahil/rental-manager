@@ -8,6 +8,8 @@ import { logAudit } from "../utils/audit";
 import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
 import { queueNotification } from "../utils/notifications";
 import { COMPANY_DEFAULTS } from "../config";
+import { fetchAllPaged } from "../utils/accounting";
+import { LOGIN_MISSING_SOURCES, buildLoginMissingTasks } from "../utils/loginMissing";
 import { Spinner } from "./shared";
 import AdminNotificationRules from "./AdminNotificationRules";
 
@@ -933,6 +935,20 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
       });
     }
   }
+  // LOGIN MISSING: utilities / insurance / loans / HOAs saved without a
+  // portal login. Computed from the records, so a to-do vanishes as soon as a
+  // login is saved. Paged -- a company can exceed PostgREST's 1000-row cap.
+  const loginRows = {};
+  await Promise.all(LOGIN_MISSING_SOURCES.map(async src => {
+    const { rows } = await fetchAllPaged(() => {
+      let q = supabase.from(src.table).select(src.select).eq("company_id", companyId).is("archived_at", null);
+      if (src.kind === "utility") q = q.not("is_final_bill", "is", true);
+      return q.order("id");
+    }, "login missing: " + src.table);
+    loginRows[src.kind] = rows;
+  }));
+  const propIdByAddr = new Map((props.data || []).map(p => [p.address, p.id]));
+  allTasks.push(...buildLoginMissingTasks(loginRows, propIdByAddr));
   // Cache open doc_exception requests keyed on address + doc_type so
   // the TasksList can badge "Exception pending review" on the right
   // step without refetching per row. Must live inside the try block
