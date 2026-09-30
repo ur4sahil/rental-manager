@@ -5,6 +5,7 @@ import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCS
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
+import { fileApprovalRequest, archiveAutopay, setAutopayEnabled } from "../utils/destructive";
 import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, getPropertyClassId, autoOwnerDistribution, getOrCreateTenantAR } from "../utils/accounting";
 import { pickRentReceiptCredit, matchAutopayTenant, isStripeSchedule } from "../utils/paymentRules";
@@ -218,20 +219,36 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   if (!guardSubmit("toggleAutopay", s.id)) return;
   try {
   const newState = !s.enabled;
-  const { error: togErr } = await supabase.from("autopay_schedules").update({ enabled: newState }).eq("company_id", companyId).eq("id", s.id);
-  if (togErr) { showToast("Error toggling autopay: " + togErr.message, "error"); return; }
+  // Pausing is management-tier (resuming is not). Other staff request it.
+  if (!newState && !canManage(userRole)) {
+  if (!await showConfirm({ message: `Ask a manager to pause autopay for ${s.tenant}?`, confirmText: "Send request" })) return;
+  const r = await fileApprovalRequest({ companyId, requestType: "disable_autopay", targetId: s.id, tenantId: s.tenant_id || null, address: s.property || "", tenant: s.tenant || "", notes: "Pause autopay: " + s.tenant, userEmail: userProfile?.email });
+  if (r.duplicate) { showToast(`A pause request for ${s.tenant} is already waiting for approval.`, "info"); return; }
+  if (!r.ok) { showToast("Could not file the request: " + (r.error?.message || "unknown error"), "error"); return; }
+  showToast("Pause request sent for approval.", "success");
+  return;
+  }
+  const r = await setAutopayEnabled({ companyId, id: s.id, tenant: s.tenant, enabled: newState, userProfile, userRole });
+  if (!r.ok) { showToast("Error toggling autopay: " + (r.error?.message || "unknown error"), "error"); return; }
   addNotification("🔄", `Autopay ${newState ? "activated" : "paused"} for ${s.tenant}`);
-  logAudit("update", "autopay", `Autopay ${newState ? "enabled" : "disabled"}: ${s.tenant}`, s.id, userProfile?.email, userRole, companyId);
   fetchData();
   } finally { guardRelease("toggleAutopay", s.id); }
   }
 
-  async function deleteSchedule(id, tenant) {
+  async function deleteSchedule(id, tenant, s = null) {
   if (!guardSubmit("deleteSchedule")) return;
   try {
+  if (!canManage(userRole)) {
+  if (!await showConfirm({ message: `Ask a manager to delete the autopay schedule for ${tenant}?`, confirmText: "Send request" })) return;
+  const r = await fileApprovalRequest({ companyId, requestType: "delete_autopay", targetId: id, tenantId: s?.tenant_id || null, address: s?.property || "", tenant: tenant || "", notes: "Delete autopay: " + tenant, userEmail: userProfile?.email });
+  if (r.duplicate) { showToast(`A delete request for ${tenant}'s autopay is already waiting for approval.`, "info"); return; }
+  if (!r.ok) { showToast("Could not file the request: " + (r.error?.message || "unknown error"), "error"); return; }
+  showToast("Delete request sent for approval.", "success");
+  return;
+  }
   if (!await showConfirm({ message: `Delete autopay schedule for ${tenant}?`, variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("autopay_schedules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
-  logAudit("delete", "autopay", `Autopay archived: ${tenant}`, id, userProfile?.email, userRole, companyId);
+  const r = await archiveAutopay({ companyId, id, tenant, userProfile, userRole });
+  if (!r.ok) { showToast("Could not delete the schedule: " + (r.error?.message || "unknown error"), "error"); return; }
   fetchData();
   } finally { guardRelease("deleteSchedule"); }
   }
@@ -439,8 +456,8 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   {canManage(userRole) && (isStripeSchedule(s)
     ? <span className="text-xs text-neutral-400" title="Stripe autopay is charged automatically on its due date; the payment is recorded when Stripe confirms it.">Charged by Stripe automatically</span>
     : <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>)}
-  {canManage(userRole) && <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</Btn>}
-  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>}
+  <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? (canManage(userRole) ? "⏸ Pause" : "⏸ Request pause") : "▶ Resume"}</Btn>
+  <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant, s)} title={canManage(userRole) ? "Delete" : "Request deletion"}>🗑️</Btn>
   </div>
   </div>
   </div>

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, LIVE_TENANCY, fmtDate } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue, LIVE_TENANCY, fmtDate, canManage } from "../utils/helpers";
+import { fileApprovalRequest, hasApprovedRequest } from "../utils/destructive";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -201,6 +202,20 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   // transition left orphan deposit-return / deductions / AR-excess JEs
   // pointing at a tenant who wasn't actually archived — the audit
   // flagged this as the worst real-world risk in the move-out flow.
+  // Move-out is a management-tier action. Other staff file a request; once a
+  // manager approves it, the SAME user can run this wizard and the RPC lets
+  // the single approved action through (and marks the request used).
+  if (!canManage(userRole)) {
+    const approved = await hasApprovedRequest({ companyId: cid, requestType: "move_out", targetId: selectedTenant.id, userEmail: userProfile?.email });
+    if (!approved) {
+      const r = await fileApprovalRequest({ companyId: cid, requestType: "move_out", targetId: selectedTenant.id, tenantId: selectedTenant.id,
+        address: selectedLease.property || "", tenant: tName, notes: `Move-out ${moveOutDate}: ${tName}`, userEmail: userProfile?.email });
+      if (r.duplicate) showToast("Your move-out request for " + tName + " is still waiting for a manager's approval. Nothing was changed.", "info");
+      else if (!r.ok) showToast("Could not file the move-out request: " + (r.error?.message || "unknown error"), "error");
+      else showToast("Move-out request sent for approval. Once approved, run this move-out again to complete it. Nothing was changed.", "success");
+      return;
+    }
+  }
   const { data: stateRes, error: stateErr } = await supabase.rpc("move_out_commit_state", {
     p_company_id: cid,
     p_lease_id: selectedLease.id,

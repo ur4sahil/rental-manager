@@ -48,7 +48,9 @@ console.log("\n=== APPROVAL REQUESTS ===\n");
 // Both sides are measured from source, so neither can be forgotten.
 const filed = new Set();
 for (const [, src] of Object.entries(all)) {
-  for (const m of src.matchAll(/request_type:\s*["'`]([a-z_]+)["'`]/g)) filed.add(m[1]);
+  // Components file directly (request_type:) or through
+  // utils/destructive.js fileApprovalRequest (requestType:).
+  for (const m of src.matchAll(/request_?[tT]ype:\s*["'`]([a-z_]+)["'`]/g)) filed.add(m[1]);
 }
 const properties = read("components/Properties.js");
 const handler = properties.slice(
@@ -64,12 +66,13 @@ assert(
   `filed but never acted on: ${unhandled.join(", ")}\n   `
   + "A request with no branch is approved, audit-logged as approved, and does nothing.");
 
-// Only two types are ever filed. approveRequest also carries 'add' and
+// Seven types are filed (2026-09-30: lease/owner/autopay/move-out requests
+// joined the two originals). approveRequest also carries 'add' and
 // 'edit' arms, which nothing writes any more -- staff edit properties
 // directly now. Dead arms are harmless; a filed type with no arm is not,
 // which is why the check above runs in that direction and not this one.
 assert("the filed request types are the ones we know about",
-  [...filed].sort().join(",") === "delete,delete_tenant",
+  [...filed].sort().join(",") === "archive_owner,delete,delete_autopay,delete_tenant,disable_autopay,move_out,terminate_lease",
   `found: ${[...filed].sort().join(", ")} — a new type needs an arm in approveRequest`);
 
 // ---- 2. one implementation of "archive a tenant" -------------------------
@@ -180,12 +183,18 @@ assert("the property delete path is guarded the same way",
 // ---- 4. the label must not lie ------------------------------------------
 // Every type that was not "add" was badged "Edit", so a tenant archive
 // request read "Edit Property: Essence Ford" in the approvals list.
+// Labels now live in one map (utils/destructive.js REQUEST_LABELS) that both
+// the approvals list and the badge read, so a new type is named in one place.
+const labels = read("utils/destructive.js");
 assert("the approvals list names a tenant request as a tenant request",
-  /Archive Tenant/.test(read("components/Admin.js")),
+  /REQUEST_LABELS\[r\.request_type\]/.test(read("components/Admin.js")) && /delete_tenant:\s*"Archive Tenant"/.test(labels),
   "Admin.js titled it 'Edit Property: <tenant name>'");
 assert("the request badge distinguishes archive from edit",
-  /Archive tenant/.test(properties),
+  /REQUEST_LABELS\[req\.request_type\]/.test(properties),
   "Properties.js badged everything that was not 'add' as 'Edit'");
+assert("every filed request type has a label",
+  [...filed].every(t => new RegExp(`\\b${t}:\\s*"`).test(labels)),
+  "a request type without a REQUEST_LABELS entry shows its raw name in the queue");
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

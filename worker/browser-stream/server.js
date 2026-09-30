@@ -860,4 +860,4 @@ wss.on("connection", async (ws, req) => {
   ws.on("close", async () => { clearTimeout(hardStop); await saveSession(); await closeAll(); log(`[${sessionId}] closed`); });
 });
 
-server.listen(PORT, process.env.STREAM_BIND || undefined, () => log(`browser-stream listening on :${PORT}  (auth: ${TOKEN ? "token" : "OPEN — dev only"})`));
+server.listen(PORT, process.env.STREAM_BIND || undefined, () => log(`browser-stream listening on :${PORT}  (auth: ${JWT_SECRET ? "signed tokens" : TOKEN ? "static token" : "OPEN — dev only"}, max ${MAX_SESSIONS} sessions)`));

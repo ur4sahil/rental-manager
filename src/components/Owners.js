@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
+import { fileApprovalRequest, archiveOwnerRow } from "../utils/destructive";
 import { Input, MoneyInput, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
 import { pmError } from "../utils/errors";
@@ -309,9 +310,17 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   async function archiveOwner(owner) {
   if (!guardSubmit("archiveOwner")) return;
   try {
+  if (!canManage(userRole)) {
+  if (!await showConfirm({ message: `Ask a manager to archive owner "${owner.name}"?`, confirmText: "Send request" })) return;
+  const r = await fileApprovalRequest({ companyId, requestType: "archive_owner", targetId: owner.id, address: owner.name || "", notes: "Archive owner: " + owner.name, userEmail: userProfile?.email });
+  if (r.duplicate) { showToast(`An archive request for ${owner.name} is already waiting for approval.`, "info"); return; }
+  if (!r.ok) { showToast("Could not file the request: " + (r.error?.message || "unknown error"), "error"); return; }
+  showToast("Archive request sent for approval.", "success");
+  return;
+  }
   if (!await showConfirm({ message: `Archive owner "${owner.name}"? Their properties will remain active.`, variant: "danger", confirmText: "Archive" })) return;
-  await supabase.from("owners").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", owner.id).eq("company_id", companyId);
-  logAudit("delete", "owners", "Archived owner: " + owner.name, owner.id, userProfile?.email, userRole, companyId);
+  const r = await archiveOwnerRow({ companyId, owner, userProfile, userRole });
+  if (!r.ok) { showToast("Could not archive " + owner.name + ": " + (r.error?.message || "unknown error"), "error"); return; }
   fetchData();
   } finally { guardRelease("archiveOwner"); }
   }
@@ -543,7 +552,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <Btn variant="secondary" size="xs" onClick={() => startEdit(owner)}>Edit</Btn>
   <Btn variant="secondary" size="xs" onClick={() => setShowStatementGen(owner)}>Generate Statement</Btn>
   {canManage(userRole) && <Btn variant="secondary" size="xs" onClick={() => { setShowDistForm(owner); setDistForm({ amount: "", method: owner.payment_method || "check", reference: "", notes: "" }); }}>Pay Owner</Btn>}
-  {canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => archiveOwner(owner)}>Archive</Btn>}
+  <Btn variant="danger" size="xs" onClick={() => archiveOwner(owner)}>{canManage(userRole) ? "Archive" : "Request archive"}</Btn>
   </div>
   </div>
   );

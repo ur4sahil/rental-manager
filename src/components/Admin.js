@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink, DataTable, TabBar, Switch} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest, sameAddress, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
+import { REQUEST_LABELS } from "../utils/destructive";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -887,14 +888,10 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const email = userProfile?.email || "";
   (propReqs.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
-    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: r.request_type === "delete_tenant" ? "👤" : "🏠",
-      // A tenant-archive request used to read "Edit Property: Essence Ford" --
-      // the tenant's name in the address slot, under the wrong noun, because
-      // every request_type that was not "add" was labelled an edit.
-      title: (r.request_type === "add" ? "New Property"
-        : r.request_type === "delete" ? "Delete Property"
-        : r.request_type === "delete_tenant" ? "Archive Tenant"
-        : "Edit Property") + ": " + (r.request_type === "delete_tenant" ? (r.tenant || r.address) : r.address), subtitle: "Requested by " + r.requested_by + " · " + fmtDate(r.requested_at), data: r, link: "properties" });
+    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: ["delete_tenant","move_out","terminate_lease"].includes(r.request_type) ? "👤" : r.request_type === "archive_owner" ? "🧑‍💼" : r.request_type.endsWith("_autopay") ? "💳" : "🏠",
+      // One label per request type (utils/destructive.js REQUEST_LABELS);
+      // the person's name for tenant-shaped requests, the address otherwise.
+      title: (REQUEST_LABELS[r.request_type] || "Edit Property") + ": " + (["delete_tenant","move_out","terminate_lease","delete_autopay","disable_autopay"].includes(r.request_type) ? (r.tenant || r.address) : r.address), subtitle: "Requested by " + r.requested_by + " · " + fmtDate(r.requested_at), data: r, link: "properties" });
   });
   (docExceptions.data || []).forEach(r => {
     if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;

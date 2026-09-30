@@ -6,6 +6,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
+import { fileApprovalRequest, terminateLeaseCascade } from "../utils/destructive";
 import { queueNotification } from "../utils/notifications";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, tenantOwedFromGL, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
@@ -236,41 +237,22 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   }
 
   async function terminateLease(lease) {
-  if (!await showConfirm({ message: "Terminate lease for " + lease.tenant_name + "? This cannot be undone." })) return;
-  const { error: termErr } = await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("id", lease.id);
-  if (termErr) { showToast("Error terminating lease: " + termErr.message, "error"); return; }
-  if (lease.tenant_id) {
-  const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "past" }).eq("company_id", companyId).eq("id", lease.tenant_id);
-  if (_err4666) { showToast("Error updating tenants: " + _err4666.message, "error"); return; }
-  // Stop the rent schedule, or it bills the departed tenant every month.
-  const recStop = await deactivateTenantRecurring(companyId, lease.tenant_id);
-  if (!recStop.ok) showToast("Lease terminated, but the recurring rent entry could not be stopped — please deactivate it in Accounting.", "error");
-  // Deactivate any autopay schedules for this tenant. The Stripe charger
-  // reads `enabled`, not `active` -- writing active:false left autopay
-  // charging. Scoped by tenant_id (this block only runs with one).
-  const { error: _err4668 } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant_id", lease.tenant_id);
-  if (_err4668) { showToast("Error updating autopay_schedules: " + _err4668.message, "error"); return; }
-  // Update property status back to vacant
-  // lease_end is a DATE column: "" is not an empty date, it is a syntax
-  // error. PostgREST answered 400 ("invalid input syntax for type date")
-  // and the guard below returned, so terminating a lease left the lease
-  // terminated, the tenant inactive, and the PROPERTY still occupied and
-  // still showing the departed tenant — with the audit entry never
-  // written either, since it came after this line. Clear it with null.
-  const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", companyId).eq("address", lease.property);
-  if (_err4670) { showToast("Error updating properties: " + _err4670.message, "error"); return; }
-  // Lease termination is audit-only — recorded via logAudit below.
-  // Removed the zero-amount safeLedgerInsert that used to live here:
-  // ledger_entries is GL-derived now (Phase 4) and only carries
-  // financial events backed by a journal entry. Termination state
-  // changes belong in audit_trail, not the tenant ledger.
-  } else {
-  // No tenant_id on this (legacy) lease: autopay can only be found by name,
-  // so scope by name AND property to spare a same-name tenant elsewhere.
-  const { error: _apErr } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("property", lease.property);
-  if (_apErr) { showToast("Error updating autopay_schedules: " + _apErr.message, "error"); return; }
+  // Termination is a management-tier action (the database enforces it).
+  // Other staff file a request; the approving manager runs the same
+  // terminateLeaseCascade from the Properties approval queue.
+  if (!canManage(userRole)) {
+  if (!await showConfirm({ message: "Ask a manager to terminate the lease for " + lease.tenant_name + "?", confirmText: "Send request" })) return;
+  const r = await fileApprovalRequest({ companyId, requestType: "terminate_lease", targetId: lease.id, tenantId: lease.tenant_id || null,
+    address: lease.property || "", tenant: lease.tenant_name || "", notes: "Terminate lease: " + lease.tenant_name, userEmail: userProfile?.email });
+  if (r.duplicate) { showToast("A termination request for " + lease.tenant_name + " is already waiting for approval.", "info"); return; }
+  if (!r.ok) { showToast("Could not file the request: " + (r.error?.message || "unknown error"), "error"); return; }
+  showToast("Termination request sent for approval.", "success");
+  return;
   }
-  logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
+  if (!await showConfirm({ message: "Terminate lease for " + lease.tenant_name + "? This cannot be undone." })) return;
+  const r = await terminateLeaseCascade({ companyId, lease, userProfile, userRole });
+  if (!r.ok) { showToast("Error " + r.step + ": " + (r.error?.message || "unknown error"), "error"); return; }
+  if (r.warning) showToast(r.warning, "error");
   fetchData();
   }
 
@@ -465,7 +447,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
   <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>{canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}</div>
+  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn></div>
   </div>
   ); })}
   </div>
@@ -631,7 +613,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</Btn>
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
-  {l.status === "active" && canManage(userRole) && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
+  {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn>}
   <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
   <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
   {safeNum(l.security_deposit) > 0 && depositReturnOfferable(l, depositReleases) && (l.status === "terminated" || l.status === "expired" || isExpired) && (

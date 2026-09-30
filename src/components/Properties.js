@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { archiveTenant } from "../utils/tenantArchive";
+import { REQUEST_LABELS, terminateLeaseCascade, archiveOwnerRow, archiveAutopay, setAutopayEnabled } from "../utils/destructive";
 import PropertyPage from "./PropertyPage";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, TabBar, EmptyState, FormField, usePersistedView} from "../ui";
 import { composePropertyAddress, safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, loanTypeOptions, getWizardApplicableSteps, canReviewRequest, canManage, pgrestQuote, ACTIVE_LEASE, LIVE_TENANCY, sameAddress, propertyLabel, LEAD_PAINT_CUTOFF_YEAR, fmtDate} from "../utils/helpers";
@@ -3889,6 +3890,38 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   if (!tOk) { showToast("Could not archive " + who + (tErr ? ": " + tErr.message : ""), "error"); return; }
   addNotification("✅", `Tenant archive approved: ${who}`);
   if (req.requested_by) addNotification("✅", `Your request to archive ${who} was approved.`, { recipient: req.requested_by, type: "delete_tenant" });
+  } else if (req.request_type === "terminate_lease") {
+  // Same helper the Leases page runs for a manager's own click.
+  const { data: lease } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("id", req.target_id).maybeSingle();
+  if (!lease) { showToast("That lease no longer exists — reject this request.", "error"); return; }
+  if (lease.status === "terminated") { showToast("That lease is already terminated — reject this request.", "error"); return; }
+  const r = await terminateLeaseCascade({ companyId, lease, userProfile, userRole });
+  if (!r.ok) { showToast("Could not terminate the lease (" + r.step + "): " + (r.error?.message || "unknown error"), "error"); return; }
+  if (r.warning) showToast(r.warning, "error");
+  addNotification("✅", `Lease termination approved: ${lease.tenant_name}`);
+  if (req.requested_by) addNotification("✅", `Your request to terminate the lease for ${lease.tenant_name} was approved and completed.`, { recipient: req.requested_by, type: "terminate_lease" });
+  } else if (req.request_type === "archive_owner") {
+  const { data: owner } = await supabase.from("owners").select("id, name, archived_at").eq("company_id", companyId).eq("id", req.target_id).maybeSingle();
+  if (!owner) { showToast("That owner no longer exists — reject this request.", "error"); return; }
+  if (owner.archived_at) { showToast("That owner is already archived — reject this request.", "error"); return; }
+  const r = await archiveOwnerRow({ companyId, owner, userProfile, userRole });
+  if (!r.ok) { showToast("Could not archive " + owner.name + ": " + (r.error?.message || "unknown error"), "error"); return; }
+  addNotification("✅", `Owner archive approved: ${owner.name}`);
+  if (req.requested_by) addNotification("✅", `Your request to archive owner ${owner.name} was approved and completed.`, { recipient: req.requested_by, type: "archive_owner" });
+  } else if (req.request_type === "delete_autopay" || req.request_type === "disable_autopay") {
+  const { data: sched } = await supabase.from("autopay_schedules").select("id, tenant, archived_at, enabled").eq("company_id", companyId).eq("id", req.target_id).maybeSingle();
+  if (!sched || sched.archived_at) { showToast("That autopay schedule no longer exists — reject this request.", "error"); return; }
+  const r = req.request_type === "delete_autopay"
+    ? await archiveAutopay({ companyId, id: sched.id, tenant: sched.tenant, userProfile, userRole })
+    : await setAutopayEnabled({ companyId, id: sched.id, tenant: sched.tenant, enabled: false, userProfile, userRole });
+  if (!r.ok) { showToast("Could not update the autopay schedule: " + (r.error?.message || "unknown error"), "error"); return; }
+  addNotification("✅", `Autopay ${req.request_type === "delete_autopay" ? "deletion" : "pause"} approved: ${sched.tenant}`);
+  if (req.requested_by) addNotification("✅", `Your autopay request for ${sched.tenant} was approved and completed.`, { recipient: req.requested_by, type: req.request_type });
+  } else if (req.request_type === "move_out") {
+  // Nothing runs here: approving unlocks ONE move-out for the requester,
+  // who completes the wizard (deposit, deductions, GL) themselves.
+  addNotification("✅", `Move-out approved for ${req.tenant || req.address} — ${req.requested_by} can now complete it.`);
+  if (req.requested_by) addNotification("✅", `Your move-out request for ${req.tenant || req.address} was approved. Open Move-Out and run it to complete.`, { recipient: req.requested_by, type: "move_out" });
   }
   const { data: { user } } = await supabase.auth.getUser();
   const { error: statusErr } = await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
@@ -4722,7 +4755,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   <div className="flex items-start justify-between gap-3">
   <div>
   <div className="flex items-center gap-2 mb-1">
-  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-success-100 text-success-700" : req.request_type === "delete" || req.request_type === "delete_tenant" ? "bg-danger-100 text-danger-700" : "bg-info-100 text-info-700"}`}>{req.request_type === "add" ? "New" : req.request_type === "delete_tenant" ? "Archive tenant" : req.request_type === "delete" ? "Delete" : "Edit"}</span>
+  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-success-100 text-success-700" : req.request_type === "edit" ? "bg-info-100 text-info-700" : "bg-danger-100 text-danger-700"}`}>{req.request_type === "add" ? "New" : req.request_type === "edit" ? "Edit" : (REQUEST_LABELS[req.request_type] || req.request_type)}</span>
   <span className="text-xs text-neutral-400">by {req.requested_by}</span>
   </div>
   <p className="font-semibold text-neutral-800">{req.address}</p>
