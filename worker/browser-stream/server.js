@@ -99,7 +99,7 @@ fs.mkdirSync(SHOTS, { recursive: true });
 
 // The one thing every provider agrees on: a confirmation page says so in
 // words. Per-provider overrides can be added, but this catches the common case.
-const CONFIRM = /thank you|payment (has been )?(received|posted|submitted|scheduled|successful)|confirmation\s*(number|#|code)|successfully (paid|submitted)/i;
+const CONFIRM = /thank you|payment (has been )?(received|posted|submitted|scheduled|successful|processed|complete)|(confirmation|reference|transaction)\s*(number|#|code|id)|successfully (paid|submitted|processed)|payment success/i;
 
 // Where a FRESH (no stored session) stream should land — the provider's own
 // sign-in page, so the person lands ready to log in. A client may still pass an
@@ -210,11 +210,45 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     // and used to fall straight through here unfilled -- which, once a saved
     // session expired, left the person on a blank login page.
     const userSig = (book.signedOutSignals || []).find(s => s.role === "textbox");
+    // The playbook's label first, the generic B2C / email field as a fallback:
+    // BGE relabelled its box from "Email or username" to "Email" and the
+    // label-only match never found it, so an expired session was never filled
+    // (2026-09-30).
+    const genericUser = page.locator('#signInName, #email, input[type="email"], input[name*="user" i], input[id*="user" i]');
     const userBox = book.loginFields?.user
       ? page.locator(book.loginFields.user).first()
       : userSig
-        ? page.getByRole("textbox", { name: userSig.name }).first()
-        : page.locator('#signInName, input[type="email"], input[name*="user" i], input[id*="user" i]').first();
+        ? page.getByRole("textbox", { name: userSig.name }).or(genericUser).first()
+        : genericUser.first();
+    // Bounced to the provider's public site (signed out)? Go to its sign-in
+    // now instead of waiting for the site's own slow redirect -- BGE took 15s
+    // at 11:03 and 48s at 12:29 on 2026-09-30, past every wait below.
+    // Click the first VISIBLE "Sign In" (link or button): BGE's page carries
+    // several, and the first in the DOM is the hidden mobile-menu one, so
+    // .first() never clicked. Going to book.entry instead only bounces back
+    // to the public site (secure.bge.com -> www.bge.com).
+    if (book.signedOutUrl && book.signedOutUrl.test(page.url()) && book.signInClick) {
+      await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+      // The public page re-renders about a second after it loads (a second
+      // navigation to the same URL), so look for up to 20s, not once.
+      let clicked = false;
+      const tSign = Date.now();
+      while (!clicked && Date.now() - tSign < 20000) {
+        for (const role of [book.signInClick.role, book.signInClick.role === "link" ? "button" : "link"]) {
+          const all = page.getByRole(role, { name: book.signInClick.name });
+          const n = await all.count().catch(() => 0);
+          for (let i = 0; i < n && !clicked; i++) {
+            const el = all.nth(i);
+            if (await el.isVisible().catch(() => false)) {
+              await el.click({ timeout: 5000 }).then(() => { clicked = true; }).catch(() => {});
+            }
+          }
+          if (clicked) break;
+        }
+        if (!clicked) await new Promise(r => setTimeout(r, 1000));
+      }
+      log(`[${sessionId}] login: on ${book.provider}'s public site -- ${clicked ? "clicked Sign In" : "no visible Sign In found"}`);
+    }
     // waitFor, NOT isVisible: locator.isVisible() is an INSTANT check (its
     // timeout is ignored), so it returned false before BGE's JS-rendered Azure
     // B2C form appeared (~2-9s after the authorize redirect) and the flow fell
@@ -236,7 +270,7 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
       || !!(book.signedOutUrl && book.signedOutUrl.test(page.url()));
     let visible = false;
     const t0 = Date.now();
-    while (Date.now() - t0 < 45000) {
+    while (Date.now() - t0 < 120000) {
       if (await userBox.isVisible().catch(() => false)) { visible = true; break; }
       if (Date.now() - t0 > 12000 && !onSignInUrl()) break;
       await new Promise(r => setTimeout(r, 1000));
@@ -252,7 +286,9 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     // connection: submit the form, and for BGE fetch the emailed code from
     // Sheeba's Mail through the tunnel (agent/code-service.js). Anything that
     // does not complete falls back to asking the person, as before.
-    if (await autoSubmitLogin(page, book, send, sessionId).catch(() => false)) return "signed-in";
+    const sub = await autoSubmitLogin(page, book, send, sessionId).catch(() => false);
+    if (sub === "needs-code") return "needs-code";
+    if (sub) return "signed-in";
     // reCAPTCHA v3 returns "Invalid Captcha" for an automated click (tested on
     // Washington Gas from the data-centre IP), so the person clicks Log In
     // themselves -- their genuine interaction is what passes v3. BGE has no
@@ -322,9 +358,48 @@ async function autoSubmitLogin(page, book, send, sessionId) {
   while (Date.now() < end) {
     await new Promise(r => setTimeout(r, 2500));
     if (!codeDone && await codeBox.isVisible().catch(() => false)) {
+      // Some code screens only SEND the code when asked ("Send code" /
+      // "Send verification code"); until then no email exists to read.
+      const sendBtn = page.getByRole("button", { name: /send (verification )?code|send code|email me|send$/i }).first();
+      if (await sendBtn.isVisible().catch(() => false)) {
+        await sendBtn.click({ timeout: 5000 }).catch(() => {});
+        log(`[${sessionId}] login: asked ${book.provider} to send the code`);
+      }
+      // What the code screen offers (button labels only, no values), for when
+      // the flow changes again.
+      const btns = await page.getByRole("button").allInnerTexts().catch(() => []);
+      log(`[${sessionId}] login: code screen buttons ${JSON.stringify(btns.map(b => b.trim()).filter(Boolean).slice(0, 8))}`);
+      try { await page.screenshot({ path: path.join(SHOTS, `${book.provider}-${sessionId}-code.png`) }); } catch {}
       send({ type: "status", message: `${book.provider} sent a sign-in code \u2014 reading it from the inbox\u2026` });
-      const code = await (async () => { for (let i = 0; i < 24 && Date.now() < end; i++) { const c = await fetchBgeCode(sentAt - 30000); if (c) return c; await new Promise(r => setTimeout(r, 4000)); } return null; })();
-      if (!code) { log(`[${sessionId}] login: no ${book.provider} code arrived`); return false; }
+      // Give Sheeba's Mail about 45s. Its Gmail sync lagged 4-8 minutes on
+      // 2026-09-30 while the code was already on the person's phone, so after
+      // that the code box is handed to the person (the stream starts) and the
+      // Mail check carries on in the background, filling the box if the code
+      // shows up before they type it.
+      const deadline = Date.now() + 45000;
+      const code = await (async () => { while (Date.now() < deadline) { const c = await fetchBgeCode(sentAt - 30000); if (c) return c; await new Promise(r => setTimeout(r, 3000)); } return null; })();
+      if (!code) {
+        log(`[${sessionId}] login: ${book.provider} code not in Sheeba's Mail yet -- asking the person, still watching Mail`);
+        (async () => {
+          const until = Date.now() + 10 * 60 * 1000;
+          while (Date.now() < until) {
+            await new Promise(r => setTimeout(r, 5000));
+            if (!(await codeBox.isVisible().catch(() => false))) return; // person finished (or page moved on)
+            if ((await codeBox.inputValue().catch(() => "")).trim()) continue; // person is typing
+            const c = await fetchBgeCode(sentAt - 30000).catch(() => null);
+            if (!c) continue;
+            if (!(await codeBox.isVisible().catch(() => false)) || (await codeBox.inputValue().catch(() => "")).trim()) return;
+            await codeBox.click().catch(() => {}); await codeBox.pressSequentially(c, { delay: 80 });
+            const cont2 = page.getByRole("button", { name: /continue|verify|submit|confirm|next/i }).first();
+            if (await cont2.isVisible().catch(() => false)) await cont2.click({ timeout: 8000 }).catch(() => {}); else await codeBox.press("Enter").catch(() => {});
+            log(`[${sessionId}] login: entered ${book.provider} code from Sheeba's Mail (late)`);
+            send({ type: "status", message: "Code entered from the inbox — signing in…" });
+            return;
+          }
+        })().catch(() => {});
+        send({ type: "status", message: `Enter the 6-digit code ${book.provider} just emailed you — the app will also fill it in if it reaches the inbox first.` });
+        return "needs-code";
+      }
       await codeBox.click().catch(() => {}); await codeBox.fill("").catch(() => {}); await codeBox.pressSequentially(code, { delay: 80 });
       const cont = page.getByRole("button", { name: /continue|verify|submit|confirm|next/i }).first();
       if (await cont.isVisible().catch(() => false)) await cont.click({ timeout: 8000 }).catch(() => {}); else await codeBox.press("Enter").catch(() => {});
@@ -611,7 +686,9 @@ wss.on("connection", async (ws, req) => {
     up.on("open", () => { for (const m of pending.splice(0)) up.send(m); });
     ws.on("message", (m, isBinary) => { const d = isBinary ? m : m.toString(); if (up.readyState === 1) up.send(d); else pending.push(d); });
     up.on("message", (m, isBinary) => { try { ws.send(isBinary ? m : m.toString()); } catch {} });
-    const done = (why) => { log(`[${sessionId}] closed (delegated: ${why})`); try { ws.close(); } catch {} try { up.close(); } catch {} };
+    // Pings are not forwarded through the pipe: keep the client side alive here.
+    const keepAliveD = setInterval(() => { try { if (ws.readyState === 1) ws.ping(); } catch {} }, 20000);
+    const done = (why) => { clearInterval(keepAliveD); log(`[${sessionId}] closed (delegated: ${why})`); try { ws.close(); } catch {} try { up.close(); } catch {} };
     ws.on("close", () => done("client"));
     up.on("close", () => done("sheeba"));
     up.on("error", (e) => { send({ type: "status", message: "Couldn't reach the home computer for this payment \u2014 please try again." }); done("error " + e.message); });
@@ -623,10 +700,15 @@ wss.on("connection", async (ws, req) => {
   // sessions until it expired; and nothing capped how many Chromiums a box
   // would launch. (Marked here, after delegation, so a Washington Gas token
   // is spent on Sheeba where the browser actually runs, not on both boxes.)
+  // One LIVE browser per token. Refusing a token forever after first use
+  // broke reopening the same payment ("token already used" when the person
+  // closed the stream and pressed Continue again, 2026-09-30 12:51); what
+  // must not happen is two browsers on one token at once.
   const jti = claims?.jti ? String(claims.jti) : null;
   if (jti) {
-    if (SPENT_JTI.has(jti)) { log(`[${sessionId}] token already used`); ws.close(4001, "token already used"); return; }
+    if (SPENT_JTI.has(jti)) { log(`[${sessionId}] token already in use by an open session`); ws.close(4001, "token already in use"); return; }
     SPENT_JTI.set(jti, Number(claims.exp) || Date.now() + 15 * 60 * 1000);
+    ws.once("close", () => SPENT_JTI.delete(jti));
   }
   if (LIVE_SESSIONS.size >= MAX_SESSIONS) {
     log(`[${sessionId}] refused: ${LIVE_SESSIONS.size} sessions already open`);
@@ -635,6 +717,12 @@ wss.on("connection", async (ws, req) => {
   }
   LIVE_SESSIONS.add(sessionId);
   ws.once("close", () => LIVE_SESSIONS.delete(sessionId));
+  // Keep the connection alive while nothing is streamed yet (signing in and
+  // waiting for an emailed code can take minutes). Cloudflare closes a
+  // WebSocket that carries no traffic for ~100s -- the phone then shows
+  // "could not reach" (code 1006) while the browser here carries on.
+  const keepAlive = setInterval(() => { try { if (ws.readyState === 1) ws.ping(); } catch {} }, 20000);
+  ws.once("close", () => clearInterval(keepAlive));
 
   // Make sure the signed-in session is live before opening the browser, so the
   // stream never lands the person on the portal's login page.
@@ -718,7 +806,7 @@ wss.on("connection", async (ws, req) => {
       const pdf = path.join(SHOTS, stamp + ".pdf");
       try { await page.screenshot({ path: png, fullPage: true }); } catch {}
       try { await page.pdf({ path: pdf, format: "Letter", printBackground: true }); } catch {}
-      const conf = body.match(/confirmation\s*(?:number|#|code)?\s*:?\s*([A-Z0-9-]{5,})/i);
+      const conf = body.match(/(?:confirmation|reference|transaction)\s*(?:number|#|code|id)?\s*:?\s*([A-Z0-9-]{5,})/i);
       // The amount ACTUALLY charged, read off the confirmation page -- the
       // receipt's truth, which can differ from the approved figure (a portal
       // minimum, a fee, or an amount changed on the portal). Best-effort parse
@@ -765,6 +853,13 @@ wss.on("connection", async (ws, req) => {
         } catch (e) { log(`[${sessionId}] record payment failed: ${String(e.message).slice(0, 90)}`); }
       }
     };
+    // Some portals show the confirmation IN PLACE after "Agree" (Washington
+    // Gas: same URL, no navigation), after the click that triggered the only
+    // check had already run. Keep re-reading the page text every 3s until a
+    // confirmation is seen or the session ends. Text only -- innerText does not
+    // include what is typed into inputs, so this never reads a card number.
+    const confirmPoll = setInterval(() => { if (captured) clearInterval(confirmPoll); else tryCapture("poll").catch(() => {}); }, 3000);
+    ws.once("close", () => clearInterval(confirmPoll));
     // A screenshot on each PAGE LOAD — for us to watch the flow and debug.
     // Deliberately on navigation only, never on a timer: a page has just
     // loaded and the card fields are blank, so this can't capture a typed card
@@ -800,7 +895,7 @@ wss.on("connection", async (ws, req) => {
       ? await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false)
       : false;
     if (filled) {
-      if (filled !== "signed-in") send({ type: "status", message: pay ? "Click “Log In” — once you're signed in, it takes you straight to the payment page." : "Once you're signed in, close this window and it's connected." });
+      if (filled === true) send({ type: "status", message: pay ? "Click “Log In” — once you're signed in, it takes you straight to the payment page." : "Once you're signed in, close this window and it's connected." });
       // The person clicks Log In (their real click is what passes reCAPTCHA v3)
       // and types any emailed code; then carry on BY ITSELF to the payment
       // page instead of leaving them to find the bill. Runs in the background
