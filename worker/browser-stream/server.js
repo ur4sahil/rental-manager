@@ -50,6 +50,23 @@ const PORT = Number(process.env.PORT) || 3010;
 // STREAM_TOKEN is honoured too, but only for local dev when no secret is set.
 const JWT_SECRET = process.env.STREAM_JWT_SECRET || "";
 const TOKEN = process.env.STREAM_TOKEN || "";
+// Residential exit: a SOCKS5 proxy that Sheeba (the home Mac) publishes on
+// this box's localhost through a reverse SSH tunnel. Checked per session so a
+// sleeping Sheeba never blocks a payment -- it just goes direct.
+const net = require("net");
+const STREAM_HOME_PROXY = process.env.STREAM_HOME_PROXY || "";   // e.g. socks5://127.0.0.1:1080
+function proxyUp(url) {
+  return new Promise(resolve => {
+    try {
+      const u = new URL(url);
+      const sock = net.connect({ host: u.hostname, port: Number(u.port) });
+      const t = setTimeout(() => { sock.destroy(); resolve(false); }, 1500);
+      sock.on("connect", () => { clearTimeout(t); sock.destroy(); resolve(true); });
+      sock.on("error", () => { clearTimeout(t); resolve(false); });
+    } catch { resolve(false); }
+  });
+}
+
 function verifyToken(tok) {
   if (JWT_SECRET) {
     const [body, sig] = String(tok || "").split(".");
@@ -197,9 +214,9 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     if (!visible) return false;
     const creds = await fetchCredentials(book, companyId);
     if (!creds || !creds.username) { log(`[${sessionId}] login: no stored credentials for ${book.provider}`); return false; }
-    await userBox.click(); await userBox.pressSequentially(creds.username, { delay: 55 });
+    await userBox.click(); await userBox.fill("").catch(() => {}); await userBox.pressSequentially(creds.username, { delay: 55 });
     const passBox = page.locator(book.loginFields?.pass || 'input[type="password"]').first();
-    await passBox.click(); await passBox.pressSequentially(creds.password, { delay: 55 });
+    await passBox.click(); await passBox.fill("").catch(() => {}); await passBox.pressSequentially(creds.password, { delay: 55 });
     log(`[${sessionId}] login: pre-filled ${book.provider}`);
     // reCAPTCHA v3 returns "Invalid Captcha" for an automated click (tested on
     // Washington Gas), so the person clicks Log In themselves -- their genuine
@@ -435,9 +452,15 @@ wss.on("connection", async (ws, req) => {
   };
 
   try {
+    // Go out through Sheeba's home connection when its tunnel is up, so
+    // portals that score logins by IP (Washington Gas's reCAPTCHA) see a
+    // residential address, not this data-centre box. Tunnel down -> direct.
+    const viaHome = STREAM_HOME_PROXY && await proxyUp(STREAM_HOME_PROXY);
+    const proxyOpt = viaHome ? { proxy: { server: STREAM_HOME_PROXY } } : {};
+    log(`[${sessionId}] network: ${viaHome ? "via home connection (Sheeba)" : "direct (Oracle box)"}`);
     browser = await (async () => {
-      try { return await chromium.launch({ channel: "chrome", headless: true }); }
-      catch { return await chromium.launch({ headless: true }); }
+      try { return await chromium.launch({ channel: "chrome", headless: true, ...proxyOpt }); }
+      catch { return await chromium.launch({ headless: true, ...proxyOpt }); }
     })();
     context = await browser.newContext({ storageState, viewport: { width: 1280, height: 900 } });
     // Kill smooth scrolling on every page. When the auto-drive scrolls to an
