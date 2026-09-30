@@ -138,12 +138,57 @@ function emlxPathFor(vdir, url, rowid) {
 
 // The newest code from `sender` that ARRIVED after `sinceMs`, or null until one
 // has synced down (the caller polls).
+// Ask the Mail APP for the newest message from `sender` received after
+// `sinceMs`, and take the code from its text. Used when the Mail store on disk
+// is off-limits: macOS lets a process started over SSH read ~/Library/Mail, but
+// blocks the SAME read from the scheduled launchd job ("Operation not
+// permitted", found 2026-09-30). Controlling Mail needs only the one-time
+// "allow to control Mail" (Automation) consent, not Full Disk Access.
+function readCodeViaMailApp(sinceMs, sender) {
+  const secsAgo = Math.max(60, Math.ceil((Date.now() - sinceMs) / 1000) + 30);
+  const who = String(sender).toLowerCase().replace(/[^a-z0-9@._+-]/g, "");
+  // Walk each account's INBOX from the NEWEST message down (message 1 is the
+  // newest) and stop at the first one older than the cutoff. A "whose date
+  // received > x" filter makes Mail examine every message -- 84,923 in this
+  // inbox, over two minutes per query (2026-09-30) -- while indexed access
+  // reads only the few messages that matter (~8s).
+  const script = [
+    "on run argv",
+    "  set cutoff to (current date) - ((item 1 of argv) as integer)",
+    "  set who to item 2 of argv",
+    "  tell application \"Mail\"",
+    // Mail only downloads new mail on its own schedule (minutes), so a code that
+    // already reached the mailbox can sit unseen; ask it to fetch now.
+    "    check for new mail",
+    "    delay 4",
+    "    repeat with acct in every account",
+    "      try",
+    "        set mb to mailbox \"INBOX\" of acct",
+    "        repeat with i from 1 to 15",
+    "          set m to message i of mb",
+    "          if (date received of m) < cutoff then exit repeat",
+    "          if (sender of m) contains who then return content of m",
+    "        end repeat",
+    "      end try",
+    "    end repeat",
+    "  end tell",
+    "  return \"\"",
+    "end run",
+  ].join("\n");
+  let out = "";
+  try {
+    out = execFileSync("/usr/bin/osascript", ["-e", script, String(secsAgo), who], { encoding: "utf8", timeout: 45000 });
+  } catch { return null; }
+  return extractCode(out.replace(/\s+/g, " "));
+}
+
 function readCodeFromMail(sinceMs, sender = process.env.HOUSY_CODE_SENDER || "no-reply@bge.com") {
-  let vdir;
-  try { vdir = mailVersionDir(); } catch { return null; }
-  if (!vdir) return null;
-  const msgs = indexedMessages(sender, sinceMs, vdir);
-  if (!msgs) return null;
+  let vdir = null, blocked = false;
+  try { vdir = mailVersionDir(); } catch { blocked = true; }
+  const msgs = (!blocked && vdir) ? indexedMessages(sender, sinceMs, vdir) : null;
+  // The store could not be read (no access, not the index missing a message):
+  // ask the Mail app instead.
+  if (!msgs) return readCodeViaMailApp(sinceMs, sender);
   for (const msg of msgs) {
     // 1) Mail's preview text, 2) the message file.
     const fromPreview = msg.summary ? extractCode(msg.summary) : null;
@@ -158,4 +203,4 @@ function readCodeFromMail(sinceMs, sender = process.env.HOUSY_CODE_SENDER || "no
   return null;
 }
 
-module.exports = { emlxMessage, messageText, extractCode, emlxPathFor, readCodeFromMail };
+module.exports = { emlxMessage, messageText, extractCode, emlxPathFor, readCodeFromMail, readCodeViaMailApp };
