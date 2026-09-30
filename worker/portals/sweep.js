@@ -122,6 +122,9 @@ function runFetch(portal, account, opts = {}) {
   // authoritative answer. One filter that works beats two that disagree.
   const { targets } = await api("sweep-targets", { companyId: COMPANY });
 
+  // Account numbers compare on their digits (a stored "0543-163-784" is the
+  // portal's 0543163784); leading zeros are not significant.
+  const acctKey = (n) => String(n || "").replace(/\D/g, "").replace(/^0+/, "");
   for (const portal of portals) {
     const book = PLAYBOOKS[portal];
     const provider = book.provider;
@@ -151,16 +154,10 @@ function runFetch(portal, account, opts = {}) {
       continue;
     }
 
-    // Two linking models, because the portals differ. Washington Gas
-    // switches between numbered accounts, so each is read in turn. WSSC has
-    // no account number anywhere and names the property beside the balance,
-    // so it is read ONCE and the reading identifies itself.
-    // Two ways to build the read list. A CHOOSER portal (Pepco/BGE/Washington
-    // Gas) holds many accounts behind one login and Housy has the number for
-    // only a few, so we enumerate the portal's OWN chooser and read EVERY
-    // account -- each reading identifies its property from the page (addressNear)
-    // and record_utility_reading matches it to the Housy utility by address.
-    // Everything else keeps the old model: read the accounts Housy knows.
+    // Which accounts to read: ONLY those whose account number is entered in
+    // Housy. A chooser portal (Pepco/BGE/Washington Gas) holds many accounts
+    // behind one login; its list is fetched just to confirm each entered
+    // number is there. Readings are filed by that number, never by address.
     let passes;
     if (book.enumerateChooser) {
       const listed = await runFetch(portal, null, { list: true });
@@ -171,37 +168,29 @@ function runFetch(portal, account, opts = {}) {
         continue;
       }
       const chooser = listed.accounts || [];
-      // house-number + first street word, e.g. "2311 COLUMBIA", to line a Housy
-      // property up with a chooser row when Housy has no account number.
-      const skey = (a) => { const m = String(a || "").toUpperCase().replace(/[.,]/g, " ").match(/(\d+)\s+([A-Z]+)/); return m ? `${m[1]} ${m[2]}` : null; };
-      if (chooser.length <= 25) {
-        // A small login: read EVERY account -- each identifies its own property
-        // from the dashboard, so nothing has to be matched up front.
-        console.log(`${provider}: chooser lists ${chooser.length} account${chooser.length === 1 ? "" : "s"} — reading all`);
-        passes = chooser.map(ca => ({ account: ca.number, last_bill_at: null, property: null }));
-      } else {
-        // A big login (Pepco carries ~75, most closed): read only the accounts
-        // that match a Housy utility -- by stored number, else by street key --
-        // so the run stays bounded and never reads dozens of accounts nobody
-        // tracks. A Housy utility with no chooser match is reported, not guessed.
-        console.log(`${provider}: chooser lists ${chooser.length}; matching to ${mine.length} Housy utilit${mine.length === 1 ? "y" : "ies"}`);
-        passes = [];
-        for (const u of mine) {
-          let ca = u.account_number ? chooser.find(c => c.number === u.account_number) : null;
-          if (!ca) { const uk = skey(u.property); if (uk) ca = chooser.find(c => skey(c.address) === uk); }
-          if (ca) passes.push({ account: ca.number, last_bill_at: null, property: u.property });
-          else console.log(`  ${provider.padEnd(15)} ${String(u.property).slice(0, 30).padEnd(32)} no chooser account found`);
+      // ACCOUNT NUMBERS ONLY (owner's rule, 2026-09-29): read exactly the
+      // accounts whose number a person entered in the app. Never read the
+      // whole chooser, never line a property up by address or street -- that
+      // is how an old, closed Pepco account at the same address (3845 St
+      // Barnabas, last bill 2023) overwrote the live one.
+      console.log(`${provider}: chooser lists ${chooser.length}; reading only the ${mine.filter(t => t.account_number).length} with an account number in Housy`);
+      passes = [];
+      for (const u of mine) {
+        if (!u.account_number) {
+          console.log(`  ${provider.padEnd(15)} ${String(u.property).slice(0, 30).padEnd(32)} no account number entered — skipped`);
+          continue;
         }
+        const ca = chooser.find(c => acctKey(c.number) === acctKey(u.account_number));
+        if (ca) passes.push({ account: ca.number, recordAccount: u.account_number, last_bill_at: u.last_bill_at, property: u.property });
+        else console.log(`  ${provider.padEnd(15)} ${String(u.property).slice(0, 30).padEnd(32)} account ${u.account_number} is not in this portal login`);
       }
     } else {
-      const withAccounts = mine.filter(t => t.account_number);
-      // Each pass carries its target, so an account whose current statement is
-      // already on file can be skipped without a portal round-trip. WSSC-style
-      // portals that expose no account number fall back to a single self-
-      // identifying pass.
-      passes = withAccounts.length
-        ? withAccounts.map(t => ({ account: t.account_number, last_bill_at: t.last_bill_at, property: t.property }))
-        : [{ account: null, last_bill_at: null, property: null }];
+      // Account numbers only, as above: no self-identifying "read whatever the
+      // page shows" pass, which filed readings by address.
+      for (const t of mine.filter(t => !t.account_number))
+        console.log(`  ${provider.padEnd(15)} ${String(t.property).slice(0, 30).padEnd(32)} no account number entered — skipped`);
+      passes = mine.filter(t => t.account_number)
+        .map(t => ({ account: t.account_number, recordAccount: t.account_number, last_bill_at: t.last_bill_at, property: t.property }));
     }
 
     let read = 0, failed = 0, unmatched = 0, needsSignin = 0, skipped = 0;
@@ -236,9 +225,12 @@ function runFetch(portal, account, opts = {}) {
         break;
       }
 
+      // Filed by the account number AS ENTERED in Housy, and never by
+      // property: record_utility_reading falls back to an address match when
+      // given one, which is exactly what must not happen.
       const rec = await api("record-reading", {
-        companyId: COMPANY, provider, account,
-        property: pass.property || r.property || null, outcome: r.outcome,
+        companyId: COMPANY, provider, account: pass.recordAccount || account,
+        property: null, outcome: r.outcome,
         // Signed. A credit arrives negative and is stored negative, so the
         // in-credit report is a plain amount < 0 and nothing downstream has
         // to remember a separate flag to avoid paying money that is owed TO
