@@ -303,7 +303,20 @@ async function autoDrive(page, provider, claims, send, sessionId) {
       // actionability checks (~40s total); the row's Pay link goes straight to
       // the payment page in ~1s, and the row already shows its balance so no
       // "expand" step is needed.
-      const pay = accounts.accountRow(page, claims.account).getByRole("link", { name: /^pay$/i }).first();
+      // Only the DEFAULT account's row shows its buttons; every other row is
+      // collapsed until its "View" is clicked (2026-09-30: Pay timed out on a
+      // collapsed row). Expand first when Pay is not there.
+      const payIn = (row) => row.getByRole("link", { name: /^pay$/i }).or(row.getByRole("button", { name: /^pay$/i })).first();
+      let row = accounts.accountRow(page, claims.account);
+      let pay = payIn(row);
+      if (!(await pay.isVisible().catch(() => false))) {
+        const view = row.getByRole("link", { name: /^view$/i }).or(row.getByRole("button", { name: /^view$/i })).first();
+        await view.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+        await view.click({ timeout: 8000 });
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(1500);
+        row = accounts.accountRow(page, claims.account); pay = payIn(row);
+      }
       await pay.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
       await pay.click({ timeout: 8000 });
       await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
