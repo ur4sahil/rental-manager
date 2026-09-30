@@ -59,6 +59,19 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ error: "unauthorized" }));
   }
 
+  // Wake the job workers on this box (see housy-worker.js WAKE-UP). The app
+  // calls this after queueing a job; it carries no data and only ends an
+  // idle sleep, so it goes to every worker port and never to Ollama.
+  if (path === "/housy/wake" && req.method === "POST") {
+    const ports = (process.env.HOUSY_WAKE_PORTS || "").split(",").map(Number).filter(Boolean);
+    for (const port of ports) {
+      const w = http.request({ hostname: "127.0.0.1", port, path: "/wake", method: "POST" }, r => r.resume());
+      w.on("error", () => {}); w.end();
+    }
+    res.writeHead(202, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, woke: ports.length }));
+  }
+
   if (!ALLOWED.has(path)) {
     res.writeHead(404, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: `path not exposed: ${path}` }));

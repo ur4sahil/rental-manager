@@ -48,6 +48,22 @@ const WORKER_ACTIONS = new Set(["claim", "complete", "record-reading", "sweep-ta
 // The failure was invisible because a cron has nobody to tell.
 const CRON_ACTIONS = new Set(["sweep"]);
 
+// Nudge the job workers on the Oracle box so a queued job starts now rather
+// than at their next hourly poll. Best effort: a failed wake only means the
+// job waits for that poll. Awaited (briefly) because a Vercel function can be
+// frozen the moment it responds, and an un-awaited request may never leave.
+async function wakeWorkers() {
+  const base = (process.env.AI_BASE_URL || "").replace(/\/$/, "");
+  const token = process.env.AI_TOKEN || "";
+  if (!base || !token) return;
+  try {
+    await fetch(base + "/housy/wake", {
+      method: "POST", headers: { Authorization: "Bearer " + token },
+      signal: AbortSignal.timeout(2500),
+    });
+  } catch (_) { /* hourly poll picks it up */ }
+}
+
 function admin() {
   // BOTH names, because the two environments are not configured alike:
   // production sets only REACT_APP_SUPABASE_URL (as 19 other routes here
@@ -416,6 +432,7 @@ module.exports = async function handler(req, res) {
         created_by: callerEmail,
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
+      await wakeWorkers();
       return res.status(202).json({ ok: true, job });
     }
 
@@ -588,6 +605,7 @@ module.exports = async function handler(req, res) {
         perCompany[companyId] = rows.length;
       }
   
+      if (queued > 0) await wakeWorkers();
       return res.status(200).json({
         companies_scanned: companyIds.length,
         queued,
@@ -654,6 +672,7 @@ module.exports = async function handler(req, res) {
         insErr ? failures.push({ id: t.id, reason: insErr.message }) : queued++;
       }
 
+      if (queued > 0) await wakeWorkers();
       return res.status(200).json({ ok: true, fromHistory, queued, skipped, failures });
     }
 

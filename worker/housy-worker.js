@@ -34,6 +34,38 @@ if (!API_BASE || !WORKER_TOKEN) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// WAKE-UP. The idle poll is slow on purpose (HOUSY_IDLE_MS, an hour): every
+// poll is a request against Vercel's monthly allowance, and a 5-second poll
+// from two workers used the whole million by itself (2026-09-30). So the app
+// wakes us instead: when it queues a job it POSTs housy.housify365.com
+// /housy/wake, the token-gated proxy on this box forwards that to this
+// loopback listener, and the idle sleep ends at once. The hourly poll stays
+// as the safety net for a wake that never arrives.
+const WAKE_PORT = Number(process.env.HOUSY_WAKE_PORT || 0);
+let wakeTimer = null, wakeResolve = null, wakePending = false;
+function idleSleep(ms) {
+  // A wake that landed between "no job" and here must not be lost.
+  if (wakePending) { wakePending = false; return Promise.resolve("woken"); }
+  return new Promise(resolve => {
+    wakeResolve = resolve;
+    wakeTimer = setTimeout(() => { wakeResolve = null; resolve("timer"); }, ms);
+  });
+}
+function wake() {
+  if (wakeResolve) {
+    clearTimeout(wakeTimer);
+    const r = wakeResolve; wakeResolve = null; r("woken");
+  } else {
+    wakePending = true; // busy with a job, or between claims: claim again right after
+  }
+}
+if (WAKE_PORT) {
+  require("http").createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/wake") { wake(); res.writeHead(204); return res.end(); }
+    res.writeHead(404); res.end();
+  }).listen(WAKE_PORT, "127.0.0.1", () => console.log(`wake listener on 127.0.0.1:${WAKE_PORT}`));
+}
+
 function apiHeaders() {
   const h = { "Content-Type": "application/json", "x-worker-token": WORKER_TOKEN };
   if (BYPASS) h["x-vercel-protection-bypass"] = BYPASS;
@@ -257,7 +289,12 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
       continue;
     }
 
-    if (!job) { await sleep(IDLE_MS); continue; }
+    if (!job) {
+      const why = await idleSleep(IDLE_MS);
+      if (why === "woken") console.log("woken: new work queued");
+      continue;
+    }
+    wakePending = false; // this claim already picks up whatever the wake was for
 
     console.log(`claimed ${job.id} (${job.kind}, attempt ${job.attempts})`);
     try {
