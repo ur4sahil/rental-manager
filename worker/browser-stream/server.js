@@ -832,10 +832,14 @@ wss.on("connection", async (ws, req) => {
       // bare "paid" in it matched the first figure after any "paid" on the
       // page -- Pepco's receipt reads "Payment Amount $5.13 · $0.13
       // Convenience Fee Included" and the payment was recorded as $0.13.
+      // A fee note can sit BETWEEN the label and its value: Pepco's receipt
+      // reads "Payment Amount $0.16 Convenience Fee Included $6.16", and the
+      // $6.16 payment was recorded as $0.16 (2026-09-30). Skip such a note.
+      const FEE_NOTE = "(?:\\$\\s*[\\d,]+\\.\\d{2}\\s*(?:convenience|service|processing)\\s*fees?[^$]{0,20}?)?";
       const AMT_LABELS = [
-        /payment amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
-        /amount paid\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
-        /total (?:amount )?(?:paid|charged)\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+        new RegExp("payment amount\\s*:?\\s*" + FEE_NOTE + "\\$\\s*([\\d,]+\\.\\d{2})", "i"),
+        new RegExp("amount paid\\s*:?\\s*" + FEE_NOTE + "\\$\\s*([\\d,]+\\.\\d{2})", "i"),
+        new RegExp("total (?:amount )?(?:paid|charged)\\s*:?\\s*" + FEE_NOTE + "\\$\\s*([\\d,]+\\.\\d{2})", "i"),
         /you (?:paid|are paying)\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
       ];
       let amtM = null;
