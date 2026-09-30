@@ -354,7 +354,11 @@ async function capturePdf(page, clickFn, dest) {
     const tree = await scope.ariaSnapshot({ timeout: 15000 }).catch(() => "");
     record("page tree", `${tree.length} chars`);
 
-    const bodyText = (await scope.innerText().catch(() => "")).replace(/\s+/g, " ");
+    // A typographic minus/dash in front of an amount is a plain minus: WSSC
+    // prints a credit as "Balance: \u2212$1.00" (U+2212), which no "-" pattern
+    // matches, so the whole read fell through to "no amount found".
+    const bodyText = (await scope.innerText().catch(() => ""))
+      .replace(/\s+/g, " ").replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D](?=\s?\$)/g, "-");
 
     // THE AMOUNT MUST COME FROM THE BALANCE'S OWN CONTAINER.
     //
@@ -393,7 +397,7 @@ async function capturePdf(page, clickFn, dest) {
     // patterns want "$" straight after the label, so the minus made the whole
     // read fall through to "no amount found".
     if (amount == null) {
-      const neg = bodyText.match(/(?:total\s+)?amount\s+due(?:\s+by\s+\d{1,2}\/\d{1,2}\/\d{2,4})?\s*:?\s*(-\s?\$\s?[\d,]+\.\d{2}|\$\s?-\s?[\d,]+\.\d{2})/i);
+      const neg = bodyText.match(/(?:(?:total\s+)?amount\s+due(?:\s+by\s+\d{1,2}\/\d{1,2}\/\d{2,4})?|balance)\s*:?\s*(-\s?\$\s?[\d,]+\.\d{2}|\$\s?-\s?[\d,]+\.\d{2})/i);
       if (neg) {
         credit = Number(neg[1].replace(/[^0-9.]/g, ""));
         amount = -credit;
