@@ -115,6 +115,70 @@ const isoDate = (s) => {
   return `${yr}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 };
 
+// Click something that yields the statement PDF and save it to `dest`.
+// Portals deliver it three ways: a real download (headless Chrome), a PDF
+// response that a VISIBLE Chrome hands to its built-in viewer (what reaches
+// the page is then the viewer's HTML wrapper, not the bill), or a form posted
+// into a new window. Taking the bytes off the document response covers all
+// three. Returns a label, or null when no PDF arrived.
+async function capturePdf(page, clickFn, dest) {
+  const ctxOf = page.context();
+  let caught = null;
+  const handler = async (route) => {
+    if (route.request().resourceType() !== "document") return route.continue();
+    try {
+      const resp = await route.fetch();
+      if (!caught && /application\/pdf/i.test(resp.headers()["content-type"] || "")) caught = await resp.body();
+      await route.fulfill({ response: resp });
+    } catch { await route.continue().catch(() => {}); }
+  };
+  await ctxOf.route("**/*", handler);
+  // A PDF fetched in the background (XHR/fetch, e.g. Exelon's View Bill)
+  // never becomes a document; read it off the response instead.
+  const onResp = async (resp) => {
+    try {
+      if (caught) return;
+      const ct = resp.headers()["content-type"] || "";
+      const rt = resp.request().resourceType();
+      if (process.env.HOUSY_DEBUG_STATEMENT && rt !== "image" && rt !== "stylesheet" && rt !== "font")
+        console.error(`  [debug] ${rt} ${resp.status()} ${ct.slice(0, 40)} ${resp.url().slice(0, 140)}`);
+      if (rt !== "document" && /application\/(pdf|octet-stream)/i.test(ct)) {
+        const body = await resp.body();
+        if (body.slice(0, 5).toString() === "%PDF-") caught = body;
+      } else if ((rt === "xhr" || rt === "fetch") && /\/pdf(\b|$|\?)/i.test(resp.url())) {
+        // Exelon (Pepco, BGE): .../billing/doc/<id>/pdf answers the PDF as
+        // base64 text (sometimes JSON-quoted) and the page builds a blob from
+        // it. Decode it; keep it only if it really is a PDF.
+        const txt = (await resp.text()).trim();
+        const m = txt.match(/JVBERi0[A-Za-z0-9+/=\r\n]+/);
+        if (m) {
+          const buf = Buffer.from(m[0].replace(/[\r\n]/g, ""), "base64");
+          if (buf.slice(0, 5).toString() === "%PDF-") caught = buf;
+        } else if (process.env.HOUSY_DEBUG_STATEMENT) console.error("  [debug] pdf xhr head: " + JSON.stringify(txt.slice(0, 160)));
+      }
+    } catch {}
+  };
+  ctxOf.on("response", onResp);
+  const dlP = page.waitForEvent("download", { timeout: 30000 }).then(d => ({ dl: d })).catch(() => null);
+  let label = null;
+  try {
+    await clickFn();
+    const t0 = Date.now();
+    let got = null;
+    while (Date.now() - t0 < 30000 && !caught && !got) {
+      got = await Promise.race([dlP, new Promise(r => setTimeout(() => r(null), 500))]);
+    }
+    if (caught) { fs.writeFileSync(dest, caught); label = "streamed"; }
+    else if (got?.dl) { await got.dl.saveAs(dest); label = got.dl.suggestedFilename(); }
+  } finally {
+    await ctxOf.unroute("**/*", handler).catch(() => {});
+    ctxOf.off("response", onResp);
+    for (const pg of ctxOf.pages()) if (pg !== page) await pg.close().catch(() => {});
+  }
+  if (!label || !fs.existsSync(dest) || fs.readFileSync(dest).slice(0, 5).toString() !== "%PDF-") return null;
+  return label;
+}
+
 (async () => {
   const steps = [];
   const record = (what, detail) => { steps.push({ at: new Date().toISOString(), what, detail }); console.log(`  ${what}${detail ? ": " + detail : ""}`); };
@@ -469,36 +533,8 @@ const isoDate = (s) => {
           // (target="_new") that streams the PDF, rather than firing a
           // download -- so wait for either: a download, or any response in
           // this browser context whose content-type is PDF.
-          const ctxOf = page.context();
-          // Catch the PDF bytes on the wire: a visible Chrome hands a PDF
-          // response to its built-in viewer (what reaches the page is the
-          // viewer's HTML wrapper, not the bill), while headless Chrome fires
-          // a download. Intercepting the document response covers both.
-          let caught = null;
-          const grab = async (route) => {
-            try {
-              const resp = await route.fetch();
-              if (!caught && /application\/pdf/i.test(resp.headers()["content-type"] || "")) caught = await resp.body();
-              await route.fulfill({ response: resp });
-            } catch { await route.continue().catch(() => {}); }
-          };
-          await ctxOf.route(r => true, async (route) => {
-            if (route.request().resourceType() === "document") return grab(route);
-            return route.continue();
-          });
-          const dlP = page.waitForEvent("download", { timeout: 30000 }).then(d => ({ dl: d })).catch(() => null);
-          await trig.click({ timeout: 8000 });
-          const t0 = Date.now();
-          let got = null;
-          while (Date.now() - t0 < 30000 && !caught && !got) {
-            got = await Promise.race([dlP, new Promise(r => setTimeout(() => r(null), 500))]);
-          }
-          await ctxOf.unroute(r => true).catch(() => {});
-          let label = "";
-          if (caught) { fs.writeFileSync(real, caught); label = "streamed"; }
-          else if (got?.dl) { await got.dl.saveAs(real); label = got.dl.suggestedFilename(); }
-          for (const pg of ctxOf.pages()) if (pg !== page) await pg.close().catch(() => {});
-          if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+          const label = await capturePdf(page, () => trig.click({ timeout: 8000 }), real);
+          if (label) {
             pdfPath = real;
             record("statement", `official PDF (${label})`);
           } else {
@@ -530,14 +566,10 @@ const isoDate = (s) => {
           const vb = page.locator("a, span, button").filter({ hasText: sh.viewBill }).first();
           if (await vb.count().catch(() => 0)) {
             const real = shot.replace(/\.png$/, "") + "-statement.pdf";
-            const [dl] = await Promise.all([
-              page.waitForEvent("download", { timeout: 30000 }),
-              vb.click({ timeout: 8000 }),
-            ]);
-            await dl.saveAs(real);
-            if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+            const label = await capturePdf(page, () => vb.click({ timeout: 8000 }), real);
+            if (label) {
               pdfPath = real;
-              record("statement", `official PDF (${dl.suggestedFilename()})`);
+              record("statement", `official PDF (${label})`);
             } else {
               record("statement", "view bill did not yield a PDF");
             }
@@ -564,14 +596,10 @@ const isoDate = (s) => {
         if (!trig && sc.text) { const l = page.getByText(sc.text).first(); if (await l.count().catch(() => 0)) trig = l; }
         if (trig) {
           const real = shot.replace(/\.png$/, "") + "-statement.pdf";
-          const [dl] = await Promise.all([
-            page.waitForEvent("download", { timeout: 30000 }),
-            trig.click({ timeout: 8000 }),
-          ]);
-          await dl.saveAs(real);
-          if (fs.existsSync(real) && fs.readFileSync(real).slice(0, 5).toString() === "%PDF-") {
+          const label = await capturePdf(page, () => trig.click({ timeout: 8000 }), real);
+          if (label) {
             pdfPath = real;
-            record("statement", `official PDF (${dl.suggestedFilename()})`);
+            record("statement", `official PDF (${label})`);
           } else {
             record("statement", "detailed-bill link did not yield a PDF");
           }
