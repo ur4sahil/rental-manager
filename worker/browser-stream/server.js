@@ -478,8 +478,21 @@ async function autoDrive(page, provider, claims, send, sessionId) {
         if (await r.count().catch(() => 0)) { await r.click({ timeout: 4000 }).catch(() => {}); break; }
       }
       await page.waitForTimeout(800);
-      await page.locator('input[type="text"]:visible, input[type="number"]:visible').first()
-        .fill(String(claims.amount), { timeout: 5000 }).catch(() => {});
+      // The box LABELLED "Payment Amount" -- not "the first visible text box",
+      // which on BGE was another field (2026-09-30: $5 asked, $403.67 left).
+      // Type it like a person: BGE's box is currency-formatted and ignores a
+      // programmatic fill. Then read it back.
+      const amt = Number(claims.amount).toFixed(2);
+      let box = page.getByLabel(/payment amount|amount to pay|other amount/i).first();
+      if (!(await box.count().catch(() => 0))) box = page.locator('input[inputmode="decimal"]:visible, input[type="number"]:visible, input[type="text"]:visible').first();
+      await box.click({ clickCount: 3, timeout: 5000 });
+      await page.keyboard.press("ControlOrMeta+A").catch(() => {});
+      await page.keyboard.press("Backspace").catch(() => {});
+      await box.pressSequentially(amt, { delay: 60 });
+      await box.press("Tab").catch(() => {});
+      await page.waitForTimeout(600);
+      const v = (await box.inputValue().catch(() => "")).replace(/[^0-9.]/g, "");
+      if (Number(v) !== Number(amt)) throw new Error(`amount box reads "${v}", wanted ${amt}`);
     });
   }
 
