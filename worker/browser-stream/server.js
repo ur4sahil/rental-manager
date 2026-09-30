@@ -806,6 +806,7 @@ wss.on("connection", async (ws, req) => {
     // whenever the client nudges us (a submit usually triggers one). When it
     // matches, capture the receipt ONCE and tell the client it's done.
     let captured = false;
+    let captureArmed = false;
     // The convenience fee is usually itemised on the REVIEW page and folded
     // into one "Amount Paid" on the receipt (WSSC: $1.00 + $1.69 shown as
     // "Amount Paid $2.69"). Remember the last fee seen before the receipt.
@@ -818,6 +819,16 @@ wss.on("connection", async (ws, req) => {
     const feeIn = (text) => { for (const re of FEE_RES) { const m = text.match(re); if (m) return Number(m[1].replace(/,/g, "")); } return null; };
     const tryCapture = async (reason) => {
       if (captured) return;
+      // Only once a payment can actually have happened: the drive reached the
+      // payment page, or the person has clicked in the stream. BGE's public
+      // site carries "Thank you for your patience and understanding" in its
+      // maintenance banner, and that was captured as a payment confirmation
+      // two seconds into a sign-in (2026-09-30 23:02; a test session, so
+      // nothing was recorded -- a real one would have marked the bill paid).
+      if (!captureArmed) return;
+      const bookC = (typeof getBook === "function" ? getBook(provider) : null) || {};
+      if (bookC.signedOutUrl && bookC.signedOutUrl.test(page.url())) return;
+      if (/\/login\b|\/maintenance|authorize|b2clogin/i.test(page.url())) return;
       const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
       if (!CONFIRM.test(body)) {
         const f = feeIn(body);
@@ -908,9 +919,17 @@ wss.on("connection", async (ws, req) => {
     // loaded and the card fields are blank, so this can't capture a typed card
     // number. (The card-entry page is caught here empty; nothing polls it.)
     let navSeq = 0;
+    let maintenanceTold = false;
     page.on("framenavigated", async (fr) => {
       if (fr !== page.mainFrame()) return;
       navSeq++;
+      // Say so when the portal itself is down, instead of leaving the person
+      // on a login page that will never work (BGE, 2026-09-30 evening).
+      if (!maintenanceTold && /maintenance/i.test(page.url())) {
+        maintenanceTold = true;
+        log(`[${sessionId}] portal is down for maintenance: ${page.url().slice(0, 90)}`);
+        send({ type: "status", message: `${(getBook(provider) || {}).provider || "The provider"}'s website is down for scheduled maintenance right now \u2014 please try again later.` });
+      }
       const shot = path.join(SHOTS, `${provider || "s"}-${sessionId}-nav${String(navSeq).padStart(2, "0")}.png`);
       await page.screenshot({ path: shot }).catch(() => {});
       log(`[${sessionId}] nav#${navSeq} ${page.url()} -> ${path.basename(shot)}`);
@@ -968,7 +987,7 @@ wss.on("connection", async (ws, req) => {
       try {
         if (ev.type === "mousemove") await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: ev.x, y: ev.y });
         else if (ev.type === "mousedown") await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: ev.x, y: ev.y, button: "left", clickCount: ev.clickCount || 1 });
-        else if (ev.type === "mouseup") { await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: ev.x, y: ev.y, button: "left", clickCount: ev.clickCount || 1 }); tryCapture("click").catch(() => {}); }
+        else if (ev.type === "mouseup") { captureArmed = true; await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: ev.x, y: ev.y, button: "left", clickCount: ev.clickCount || 1 }); tryCapture("click").catch(() => {}); }
         else if (ev.type === "wheel") await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: ev.x, y: ev.y, deltaX: ev.dx || 0, deltaY: ev.dy || 0 });
         else if (ev.type === "text") await cdp.send("Input.insertText", { text: ev.text });
         else if (ev.type === "key") await cdp.send("Input.dispatchKeyEvent", { type: ev.down ? "keyDown" : "keyUp", key: ev.key, code: ev.code, windowsVirtualKeyCode: ev.keyCode, text: ev.down ? ev.text : undefined });
