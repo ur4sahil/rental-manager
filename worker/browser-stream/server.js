@@ -54,7 +54,9 @@ const TOKEN = process.env.STREAM_TOKEN || "";
 // this box's localhost through a reverse SSH tunnel. Checked per session so a
 // sleeping Sheeba never blocks a payment -- it just goes direct.
 const net = require("net");
-const STREAM_HOME_PROXY = process.env.STREAM_HOME_PROXY || "";   // e.g. socks5://127.0.0.1:1080
+const STREAM_HOME_PROXY = process.env.STREAM_HOME_PROXY || "";
+// Providers whose payment session runs on Sheeba (see STREAM_DELEGATE_URL).
+const DELEGATE_PROVIDERS = new Set((process.env.STREAM_DELEGATE_PROVIDERS || "washington_gas").split(",").map(s => s.trim()).filter(Boolean));   // e.g. socks5://127.0.0.1:1080
 function proxyUp(url) {
   return new Promise(resolve => {
     try {
@@ -347,7 +349,7 @@ async function autoDrive(page, provider, claims, send, sessionId) {
   if (!accounts) { log(`[${sessionId}] auto-drive: accounts module not found`); return; }
   const step = async (label, fn) => {
     try { await fn(); log(`[${sessionId}] auto-drive: ${label}`); return true; }
-    catch (e) { log(`[${sessionId}] auto-drive stop at "${label}": ${String(e.message).split("\n")[0].slice(0, 70)}`); return false; }
+    catch (e) { log(`[${sessionId}] auto-drive stop at "${label}": ${String(e.message).split("\n").filter(l => l.trim()).slice(0, 8).join(" | ").slice(0, 600)}`); return false; }
   };
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(800);
@@ -473,9 +475,30 @@ async function autoDrive(page, provider, claims, send, sessionId) {
 
   if (!claims.full && claims.amount != null) {
     await step("set other amount", async () => {
-      for (const re of (pay.otherAmountRadio || [])) {
-        const r = page.getByText(re).first();
-        if (await r.count().catch(() => 0)) { await r.click({ timeout: 4000 }).catch(() => {}); break; }
+      // Log the form's inputs (never their values) so a portal whose amount
+      // box we can't find shows what it does have.
+      const fields = await page.evaluate(() => [...document.querySelectorAll("input, select")]
+        .filter(el => el.type !== "hidden" && el.offsetParent !== null)
+        .map(el => {
+          const lab = (el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute("aria-label") || el.placeholder || "";
+          return `${el.tagName.toLowerCase()}[${el.type}] #${el.id} name=${el.name} dis=${el.disabled} "${lab.trim().slice(0, 50)}"`;
+        }).slice(0, 40)).catch(() => []);
+      log(`[${sessionId}] pay form fields: ${JSON.stringify(fields)}`);
+      if (pay.otherAmountSelector && await page.locator(pay.otherAmountSelector).count().catch(() => 0)) {
+        // Styled radios hide the real input under a drawn circle; click its
+        // label like a person, and confirm the choice took.
+        const radio = page.locator(pay.otherAmountSelector).first();
+        const id = await radio.getAttribute("id").catch(() => null);
+        const label = id ? page.locator(`label[for="${id}"]`).first() : null;
+        if (label && await label.count().catch(() => 0)) await label.click({ timeout: 4000 });
+        else await radio.check({ timeout: 4000, force: true });
+        if (!(await radio.isChecked().catch(() => false))) await radio.check({ timeout: 4000, force: true });
+        if (!(await radio.isChecked().catch(() => false))) throw new Error("Other Amount did not select");
+      } else {
+        for (const re of (pay.otherAmountRadio || [])) {
+          const r = page.getByText(re).first();
+          if (await r.count().catch(() => 0)) { await r.click({ timeout: 4000 }).catch(() => {}); break; }
+        }
       }
       await page.waitForTimeout(800);
       // The box LABELLED "Payment Amount" -- not "the first visible text box",
@@ -483,7 +506,8 @@ async function autoDrive(page, provider, claims, send, sessionId) {
       // Type it like a person: BGE's box is currency-formatted and ignores a
       // programmatic fill. Then read it back.
       const amt = Number(claims.amount).toFixed(2);
-      let box = page.getByLabel(/payment amount|amount to pay|other amount/i).first();
+      let box = pay.amountBoxSelector ? page.locator(pay.amountBoxSelector).first() : page.getByLabel(/payment amount|amount to pay|other amount/i).first();
+      if (!(await box.count().catch(() => 0))) box = page.getByLabel(/payment amount|amount to pay|other amount/i).first();
       if (!(await box.count().catch(() => 0))) box = page.locator('input[inputmode="decimal"]:visible, input[type="number"]:visible, input[type="text"]:visible').first();
       await box.click({ clickCount: 3, timeout: 5000 });
       await page.keyboard.press("ControlOrMeta+A").catch(() => {});
@@ -543,6 +567,27 @@ wss.on("connection", async (ws, req) => {
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };
   log(`[${sessionId}] connect provider=${provider || "-"}`);
 
+  // Washington Gas runs on SHEEBA's own payment browser (a real, visible
+  // Chrome on the home connection): reCAPTCHA v3 refuses this box's headless
+  // Chrome ("Invalid Captcha") even through the home proxy. STREAM_DELEGATE_URL
+  // is Sheeba's server, reached through its reverse tunnel. The client's
+  // websocket is piped to it unchanged (same signed token, verified again
+  // there). Sheeba unreachable -> handled here as before.
+  const delegate = DELEGATE_PROVIDERS.has(provider) && process.env.STREAM_DELEGATE_URL;
+  if (delegate && await proxyUp(delegate.replace(/^ws/, "http"))) {
+    log(`[${sessionId}] delegating ${provider} to Sheeba`);
+    const up = new (require("ws"))(delegate.replace(/\/$/, "") + req.url);
+    const pending = [];
+    up.on("open", () => { for (const m of pending.splice(0)) up.send(m); });
+    ws.on("message", (m, isBinary) => { const d = isBinary ? m : m.toString(); if (up.readyState === 1) up.send(d); else pending.push(d); });
+    up.on("message", (m, isBinary) => { try { ws.send(isBinary ? m : m.toString()); } catch {} });
+    const done = (why) => { log(`[${sessionId}] closed (delegated: ${why})`); try { ws.close(); } catch {} try { up.close(); } catch {} };
+    ws.on("close", () => done("client"));
+    up.on("close", () => done("sheeba"));
+    up.on("error", (e) => { send({ type: "status", message: "Couldn't reach the home computer for this payment \u2014 please try again." }); done("error " + e.message); });
+    return;
+  }
+
   // Make sure the signed-in session is live before opening the browser, so the
   // stream never lands the person on the portal's login page.
   // Skip the headless freshen when the person explicitly opened "Log in"
@@ -583,8 +628,11 @@ wss.on("connection", async (ws, req) => {
     const proxyOpt = viaHome ? { proxy: { server: STREAM_HOME_PROXY } } : {};
     log(`[${sessionId}] network: ${viaHome ? "via home connection (Sheeba)" : "direct (Oracle box)"}`);
     browser = await (async () => {
-      try { return await chromium.launch({ channel: "chrome", headless: true, ...proxyOpt }); }
-      catch { return await chromium.launch({ headless: true, ...proxyOpt }); }
+      // STREAM_HEADED=1 (Sheeba): a real, visible Chrome -- what reCAPTCHA v3
+      // (Washington Gas) accepts. The Oracle box stays headless.
+      const headless = process.env.STREAM_HEADED !== "1";
+      try { return await chromium.launch({ channel: "chrome", headless, ...proxyOpt }); }
+      catch { return await chromium.launch({ headless, ...proxyOpt }); }
     })();
     context = await browser.newContext({ storageState, viewport: { width: 1280, height: 900 } });
     // Kill smooth scrolling on every page. When the auto-drive scrolls to an
@@ -769,4 +817,4 @@ wss.on("connection", async (ws, req) => {
   ws.on("close", async () => { clearTimeout(hardStop); await saveSession(); await closeAll(); log(`[${sessionId}] closed`); });
 });
 
-server.listen(PORT, () => log(`browser-stream listening on :${PORT}  (auth: ${TOKEN ? "token" : "OPEN — dev only"})`));
+server.listen(PORT, process.env.STREAM_BIND || undefined, () => log(`browser-stream listening on :${PORT}  (auth: ${TOKEN ? "token" : "OPEN — dev only"})`));

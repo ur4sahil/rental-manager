@@ -271,6 +271,11 @@ const PLAYBOOKS = {
       // It must never fall back to "Amount Due": that would pay the whole
       // bill when a partial was approved. Confirm these on the first dry run
       // and delete the ones that do not exist.
+      //
+      // Confirmed on BillPay.aspx 2026-09-30: the "Other Amount" radio and the
+      // (unlabelled) amount box beside it.
+      otherAmountSelector: "#rdoOtherAmt",
+      amountBoxSelector: "#AmountDue",
       otherAmountRadio: [
         /^Other Amount$/i,
         /^Other amount/i,
