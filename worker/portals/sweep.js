@@ -248,7 +248,10 @@ function runFetch(portal, account, opts = {}) {
             await api("attach-bill-document", {
               companyId: COMPANY, billId: rec.billId,
               pdfBase64: fsx.readFileSync(r.statement_pdf).toString("base64"),
-              filename: `${provider}-${account || r.property || "statement"}`,
+              // "-snapshot" marks a page print (no official statement was
+              // available), so the next run retries this account instead of
+              // treating its current bill as done.
+              filename: `${provider}-${account || r.property || "statement"}${/-statement\.pdf$/.test(r.statement_pdf) ? "" : "-snapshot"}`,
             });
             fsx.unlinkSync(r.statement_pdf);
             console.log(`     ↳ statement PDF attached to bill ${rec.billId}`);

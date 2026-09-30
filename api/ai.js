@@ -1064,9 +1064,15 @@ module.exports = async function handler(req, res) {
         const lastByAcct = new Map();
         if (acctIds.length) {
           const { data: bills } = await sb.from("utility_bills")
-            .select("utility_account_id, created_at").in("utility_account_id", acctIds)
+            .select("utility_account_id, created_at, pdf_storage_path").in("utility_account_id", acctIds)
             .is("archived_at", null).order("created_at", { ascending: false });
           for (const b of (bills || [])) {
+            // Only a bill with its OFFICIAL statement counts as done. A bill
+            // with no PDF, or a page snapshot ("-snapshot" in the file name,
+            // saved when the portal could not produce the statement), is
+            // retried on the next run until the real statement comes through.
+            const pdf = String(b.pdf_storage_path || "");
+            if (!pdf || /-snapshot\.pdf$/i.test(pdf)) continue;
             if (!lastByAcct.has(b.utility_account_id)) lastByAcct.set(b.utility_account_id, b.created_at);
           }
         }

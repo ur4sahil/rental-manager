@@ -388,6 +388,20 @@ async function capturePdf(page, clickFn, dest) {
       record("amount", `${amount} (${amountVia})`);
     }
 
+    // A NEGATIVE amount due is a credit, not a bill: Pepco prints
+    // "Total Amount Due: -$355.04" (30 Joyceton, 2026-09-29). The bill
+    // patterns want "$" straight after the label, so the minus made the whole
+    // read fall through to "no amount found".
+    if (amount == null) {
+      const neg = bodyText.match(/(?:total\s+)?amount\s+due(?:\s+by\s+\d{1,2}\/\d{1,2}\/\d{2,4})?\s*:?\s*(-\s?\$\s?[\d,]+\.\d{2}|\$\s?-\s?[\d,]+\.\d{2})/i);
+      if (neg) {
+        credit = Number(neg[1].replace(/[^0-9.]/g, ""));
+        amount = -credit;
+        amountVia = `negative amount due "${neg[0].slice(0, 44)}"`;
+        record("amount", `${amount} (${amountVia})`);
+      }
+    }
+
     for (const cand of (amount != null ? [] : book.amount)) {
       if (cand.labelled) {
         const m = bodyText.match(cand.labelled);
@@ -551,6 +565,51 @@ async function capturePdf(page, clickFn, dest) {
     // the amount was read on, so the account is re-confirmed on this page
     // before anything is downloaded -- filing one property's bill under
     // another is exactly the failure this whole file guards against.
+    // THE REAL STATEMENT, Exelon's (Pepco/BGE) current-bill way: "My Bill
+    // Details" shows the current bill with a "View Bill" button. Tried BEFORE
+    // Account History, which Pepco sometimes cannot load at all ("Unable to
+    // retrieve Account History") while this page still works. The account is
+    // re-confirmed on the page before anything is saved.
+    if (!pdfPath && book.statementDetails && wantAccount) {
+      try {
+        const sd = book.statementDetails;
+        const digits = String(wantAccount).replace(/\D/g, "");
+        await page.goto(sd.url, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(3000);
+        const detailsText = await page.locator("body").innerText().catch(() => "");
+        const onPage = detailsText.replace(/\D/g, "").includes(digits);
+        // The bill-details figure is the authoritative one: the dashboard can
+        // say "You do not have a bill due $0.00" while this page shows the
+        // credit behind it ("Total Amount Due by 09/23/2026 -$355.04").
+        if (onPage && (amount == null || amount === 0)) {
+          const dm = detailsText.match(/total\s+amount\s+due(?:\s+by\s+\d{1,2}\/\d{1,2}\/\d{2,4})?\s*:?\s*(-?)\s?\$\s?(-?)([\d,]+\.\d{2})/i);
+          if (dm) {
+            const v = Number(dm[3].replace(/,/g, "")) * ((dm[1] || dm[2]) ? -1 : 1);
+            if (v !== amount) {
+              amount = v; credit = v < 0 ? -v : null;
+              record("amount", `${amount} (bill details "${dm[0].replace(/\s+/g, " ").slice(0, 50)}")`);
+            }
+          }
+        }
+        // Exelon's "View Bill" is an <a> with no href (script-driven), which is
+        // neither a "link" nor a "button" to the accessibility tree -- match
+        // the element by its own text instead.
+        const vb = page.locator("a, button").filter({ hasText: sd.viewBill }).first();
+        if (!onPage) {
+          record("statement", `bill details did not show ${wantAccount} — not downloading`);
+        } else if (await vb.count().catch(() => 0)) {
+          const real = shot.replace(/\.png$/, "") + "-statement.pdf";
+          const label = await capturePdf(page, () => vb.click({ timeout: 8000 }), real);
+          if (label) { pdfPath = real; record("statement", `official PDF from bill details (${label})`); }
+          else record("statement", "bill details View Bill did not yield a PDF");
+        } else {
+          record("statement", "no View Bill on bill details");
+        }
+      } catch (e) {
+        record("statement", "bill details download failed: " + String(e.message).split("\n")[0].slice(0, 60));
+      }
+    }
     if (!pdfPath && book.statementHistory && wantAccount) {
       try {
         const sh = book.statementHistory;
@@ -563,7 +622,20 @@ async function capturePdf(page, clickFn, dest) {
           record("statement", `account history did not show ${wantAccount} — not downloading`);
         } else {
           // The newest bill's control is the first "View Bill" in the accordion.
-          const vb = page.locator("a, span, button").filter({ hasText: sh.viewBill }).first();
+          let vb = page.locator("a, span, button").filter({ hasText: sh.viewBill }).first();
+          // Pepco sometimes fails to load the combined "All Bills and
+          // Payments" list ("Due to a technical issue...") and shows payments
+          // only. The separate "Bills" tab still lists each bill with its View
+          // Bill link, so switch to it before giving up.
+          if (!(await vb.count().catch(() => 0))) {
+            const tab = page.getByRole("tab", { name: /^bills$/i }).or(page.getByText(/^\s*Bills\s*$/)).first();
+            if (await tab.count().catch(() => 0)) {
+              await tab.click({ timeout: 8000 }).catch(() => {});
+              await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+              await page.waitForTimeout(3000);
+              vb = page.locator("a, span, button").filter({ hasText: sh.viewBill }).first();
+            }
+          }
           if (await vb.count().catch(() => 0)) {
             const real = shot.replace(/\.png$/, "") + "-statement.pdf";
             const label = await capturePdf(page, () => vb.click({ timeout: 8000 }), real);

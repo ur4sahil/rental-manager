@@ -76,6 +76,8 @@ const NOTHING_DUE = [
   /(?:your\s+)?balance\s+is\s+\$?0(?:\.00)?\b/i,
   /account\s+is\s+paid\s+in\s+full/i,
   /credit\s+balance/i,
+  // Pepco's newer business dashboard: "You do not have a bill due $0.00".
+  /do\s+not\s+have\s+a\s+bill\s+due/i,
 ];
 
 const AMOUNT_CANDIDATES = [
@@ -364,6 +366,10 @@ const PLAYBOOKS = {
     // app from the dashboard and must never file one property's bill under
     // another. Verified live 2026-09-23: six bills listed for 55037075276,
     // newest "Bill Issued 09/02/2026 $345.00", View Bill saved a real %PDF.
+    statementDetails: {
+      url: "https://secure.pepco.com/MyAccount/MyBillUsage/pages/secure/MyBillDetails.aspx",
+      viewBill: /^\s*view bill\s*$/i,
+    },
     statementHistory: {
       url: "https://secure.pepco.com/MyAccount/MyBillUsage/Pages/Secure/AccountHistory.aspx",
       viewBill: /^View Bill$/,
@@ -462,6 +468,10 @@ const PLAYBOOKS = {
     // that bill as a PDF download. Verified live 2026-09-23: six bills listed
     // for 0543163784, View Bill saved a real PDF. Account is re-confirmed on the
     // page before download (a separate app from the dashboard).
+    statementDetails: {
+      url: "https://secure.bge.com/MyAccount/MyBillUsage/pages/secure/MyBillDetails.aspx",
+      viewBill: /^\s*view bill\s*$/i,
+    },
     statementHistory: {
       url: "https://secure.bge.com/MyAccount/MyBillUsage/Pages/Secure/AccountHistory.aspx",
       viewBill: /^View Bill$/,
