@@ -210,7 +210,21 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     // through to autoDrive on a not-yet-rendered login page. waitFor actually
     // waits; if no login field ever appears, the catch returns false and a
     // valid session drives on to the bill.
-    const visible = await userBox.waitFor({ state: "visible", timeout: 12000 }).then(() => true).catch(() => false);
+    // BGE's Azure B2C login can take ~15s to appear after the authorize
+    // redirect (2026-09-30: nav 04:13:55 -> login 04:14:10). 12s gave up
+    // first and drove on to "select account" on a login page. The captcha /
+    // code portals get 45s; the rest keep 12s so a valid session is not slowed.
+    // Wait up to 12s for the login form; keep waiting (to 45s) only while the
+    // page is on a sign-in URL (authorize / b2c / login), so a valid session
+    // is never held up waiting for a form that will not come.
+    const onSignInUrl = () => /authorize|b2clogin|onmicrosoft|\/login|signin|sign-in/i.test(page.url());
+    let visible = false;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 45000) {
+      if (await userBox.isVisible().catch(() => false)) { visible = true; break; }
+      if (Date.now() - t0 > 12000 && !onSignInUrl()) break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
     if (!visible) return false;
     const creds = await fetchCredentials(book, companyId);
     if (!creds || !creds.username) { log(`[${sessionId}] login: no stored credentials for ${book.provider}`); return false; }
@@ -226,6 +240,31 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     send({ type: "status", message: `Your ${book.provider} login is filled in \u2014 click \u201cLog In\u201d${codeHint}.` });
     return true;
   } catch (e) { log(`[${sessionId}] login fill failed: ${String(e.message).split("\n")[0].slice(0,70)}`); return false; }
+}
+
+// Wait until the person has finished signing in: the login form is gone AND
+// no verification-code box is showing (a code screen also lacks the login
+// form and must not read as "signed in" -- BGE). Polls; never interacts.
+async function waitSignedIn(page, book, timeoutMs) {
+  const userSig = (book && book.signedOutSignals || []).find(s => s.role === "textbox");
+  const userBox = book && book.loginFields && book.loginFields.user
+    ? page.locator(book.loginFields.user).first()
+    : userSig ? page.getByRole("textbox", { name: userSig.name }).first()
+    : page.locator('#signInName, input[type="email"]').first();
+  const codeBox = page.locator('#emailVerificationCode, input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="code" i], input[id*="verification" i]').first();
+  const passBox = page.locator('input[type="password"]').first();
+  const end = Date.now() + timeoutMs;
+  let clearFor = 0;
+  while (Date.now() < end) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (page.isClosed()) return false;
+    const onLogin = await userBox.isVisible().catch(() => false) || await passBox.isVisible().catch(() => false);
+    const onCode = await codeBox.isVisible().catch(() => false);
+    // Two clear polls in a row, so a page mid-redirect is not taken as done.
+    clearFor = (!onLogin && !onCode) ? clearFor + 1 : 0;
+    if (clearFor >= 2) { await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {}); return true; }
+  }
+  return false;
 }
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -580,7 +619,20 @@ wss.on("connection", async (ws, req) => {
       ? await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false)
       : false;
     if (filled) {
-      send({ type: "status", message: pay ? "Once you're signed in, open your bill and pay it here." : "Once you're signed in, close this window and it's connected." });
+      send({ type: "status", message: pay ? "Click “Log In” — once you're signed in, it takes you straight to the payment page." : "Once you're signed in, close this window and it's connected." });
+      // The person clicks Log In (their real click is what passes reCAPTCHA v3)
+      // and types any emailed code; then carry on BY ITSELF to the payment
+      // page instead of leaving them to find the bill. Runs in the background
+      // so the stream starts immediately.
+      if (pay) {
+        (async () => {
+          const ok = await waitSignedIn(page, getBook(provider), 5 * 60 * 1000);
+          if (!ok) { log(`[${sessionId}] auto-drive: not signed in within 5 min -- left for the person`); return; }
+          log(`[${sessionId}] signed in by the person -- continuing to the payment page`);
+          send({ type: "status", message: "Signed in — taking you to the payment page…" });
+          await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
+        })().catch(() => {});
+      }
     } else if (pay) {
       await autoDrive(page, provider, claims, send, sessionId).catch(() => {});
     } else {
