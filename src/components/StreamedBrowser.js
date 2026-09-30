@@ -53,8 +53,25 @@ export default function StreamedBrowser({ url, provider, streamBase, token, onPa
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onerror = () => { if (alive) { setStatus("error"); setDetail("Could not reach the browser service."); } };
-    ws.onclose = (e) => { if (alive && e.code === 4000) setStatus("expired"); };
+    // An error is always followed by a close carrying the real reason (a
+    // refused token, a busy box, a dropped connection). Show that, and log
+    // it, instead of a generic "could not reach" that says nothing.
+    let errored = false;
+    ws.onerror = () => { errored = true; };
+    ws.onclose = (e) => {
+      if (!alive) return;
+      if (e.code === 4000) { setStatus("expired"); return; }
+      const why = {
+        4001: "This payment link was already used or has expired — close and press Pay online again.",
+        4003: "The payment browser refused this connection.",
+        4029: "The payment browser is busy — try again in a few minutes.",
+      }[e.code];
+      if (why || errored || (e.code !== 1000 && e.code !== 1005)) {
+        setStatus("error");
+        setDetail(why || `The connection to the payment browser dropped (code ${e.code}${e.reason ? ": " + e.reason : ""}). Close and press Pay online again.`);
+        pmError("PM-8006", { raw: { code: e.code, reason: e.reason, errored }, context: "streamed browser socket closed", silent: true });
+      }
+    };
     ws.onmessage = (m) => {
       let msg; try { msg = JSON.parse(m.data); } catch { return; }
       if (msg.type === "frame") {

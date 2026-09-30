@@ -266,8 +266,12 @@ module.exports = async function handler(req, res) {
     if (!provider) return res.status(400).json({ error: "provider is required" });
     // These land inside a signed token the payment browser trusts: keep
     // them to the shapes the playbooks expect.
-    if (!/^[a-z][a-z0-9_]{1,31}$/.test(provider)) return res.status(400).json({ error: "provider is not valid" });
-    if (body.account != null && !/^[A-Za-z0-9 .#-]{1,64}$/.test(String(body.account))) {
+    // The app sends the provider's display name ("Washington Gas", "BGE"),
+    // which the payment browser resolves; allow names, not only keys. The
+    // first version of this check accepted only keys and refused every
+    // two-word provider (2026-09-30, Washington Gas).
+    if (!/^[a-z0-9][a-z0-9 _.&'()-]{1,63}$/.test(provider)) return res.status(400).json({ error: "provider is not valid" });
+    if (body.account != null && !/^[A-Za-z0-9 .#\/_-]{1,64}$/.test(String(body.account))) {
       return res.status(400).json({ error: "account is not valid" });
     }
     if (body.amount != null && (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0 || body.amount > 50000)) {

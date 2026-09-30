@@ -228,7 +228,12 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     // Wait up to 12s for the login form; keep waiting (to 45s) only while the
     // page is on a sign-in URL (authorize / b2c / login), so a valid session
     // is never held up waiting for a form that will not come.
-    const onSignInUrl = () => /authorize|b2clogin|onmicrosoft|\/login|signin|sign-in/i.test(page.url());
+    // The provider's own "signed out" address counts too: BGE first bounces to
+    // its public site (www.bge.com) and only ~15s later redirects to the Azure
+    // login, so on 2026-09-30 the 12s check saw www.bge.com, called the session
+    // valid, and drove on a login page ("account ... is not in the switcher").
+    const onSignInUrl = () => /authorize|b2clogin|onmicrosoft|\/login|signin|sign-in/i.test(page.url())
+      || !!(book.signedOutUrl && book.signedOutUrl.test(page.url()));
     let visible = false;
     const t0 = Date.now();
     while (Date.now() - t0 < 45000) {
@@ -857,7 +862,7 @@ wss.on("connection", async (ws, req) => {
       log(`[${sessionId}] saved ${provider} session (${state.cookies.length} cookies)`);
     } catch (e) { log(`[${sessionId}] save ${provider} session failed: ${String(e.message).split("\n")[0].slice(0, 80)}`); }
   };
-  ws.on("close", async () => { clearTimeout(hardStop); await saveSession(); await closeAll(); log(`[${sessionId}] closed`); });
+  ws.on("close", async (code, reason) => { clearTimeout(hardStop); await saveSession(); await closeAll(); log(`[${sessionId}] closed (client code ${code}${reason && reason.length ? " " + reason : ""})`); });
 });
 
 server.listen(PORT, process.env.STREAM_BIND || undefined, () => log(`browser-stream listening on :${PORT}  (auth: ${JWT_SECRET ? "signed tokens" : TOKEN ? "static token" : "OPEN — dev only"}, max ${MAX_SESSIONS} sessions)`));
