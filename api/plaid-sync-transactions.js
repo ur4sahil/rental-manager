@@ -201,12 +201,36 @@ module.exports = async function handler(req, res) {
         const floors = [body.from_date, conn.sync_from_date].filter(Boolean).sort();
         const fromDate = floors.length ? floors[floors.length - 1] : null;
         const candidates = [...added, ...modified].filter(t => !t.pending && (!fromDate || (t.date && t.date >= fromDate)));
-        const rows = [];
+        let rows = [];
         for (const txn of candidates) {
           const feed = feedByAcct.get(txn.account_id);
           if (!feed) continue; // account not imported as a feed
           const row = plaidTxnToRow(txn, feed, conn.company_id);
           if (row) rows.push(row);
+        }
+
+        // A REWIND (no cursor) returns the whole history of EVERY account on
+        // the Item -- the cursor is per bank login, not per account. That is
+        // wanted only for accounts that have nothing yet (a first connect, or
+        // a new account joining the login). An account that already has
+        // transactions takes only lines on or after its latest one: anything
+        // older was either imported already or deliberately removed, and a
+        // rewind must not bring it back (2026-09-30: 558 removed lines would
+        // have returned the next time an account was added).
+        if (!cursorBefore && rows.length) {
+          const latestByFeed = new Map();
+          for (const fid of [...new Set(rows.map(r => r.bank_account_feed_id))]) {
+            const { data: last, error: lastErr } = await supabase.from("bank_feed_transaction")
+              .select("posted_date").eq("company_id", conn.company_id).eq("bank_account_feed_id", fid)
+              .order("posted_date", { ascending: false }).limit(1);
+            // Can't tell? Treat as established and take nothing old: a missed
+            // backfill is recoverable, a re-flood of removed lines is the bug.
+            if (lastErr) latestByFeed.set(fid, "9999-12-31");
+            else if (last && last.length) latestByFeed.set(fid, last[0].posted_date);
+          }
+          const before = rows.length;
+          rows = rows.filter(r => { const d = latestByFeed.get(r.bank_account_feed_id); return !d || (r.posted_date && r.posted_date >= d); });
+          if (before !== rows.length) console.log(`[plaid-sync] rewind: kept ${rows.length} of ${before} lines (older lines on established accounts skipped)`);
         }
 
         // Dedup against what's already stored, two ways:

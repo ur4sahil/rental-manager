@@ -138,6 +138,8 @@ console.log("\n=== An empty first sync must not read as success ===");
     /conn\.sync_from_date/.test(src) && /const fromDate = floors\.length/.test(src));
   assert("every sync records who triggered it and the cursor before/after",
     /triggered_by: triggeredBy/.test(src) && /sync_cursor_before: cursorBefore/.test(src) && /sync_cursor_after: cursorAfter/.test(src));
+  assert("a rewind only backfills accounts with no lines; established accounts take only lines on/after their latest",
+    /if \(!cursorBefore && rows\.length\)/.test(src) && /r\.posted_date >= d/.test(src));
   const link = require("fs").readFileSync(require("path").join(__dirname, "..", "api", "plaid-link.js"), "utf8");
   assert("a new account joining an existing Item rewinds the cursor at the join, once",
     /existingConn && resultAccounts\.some\(a => !a\.is_existing\)/.test(link));
