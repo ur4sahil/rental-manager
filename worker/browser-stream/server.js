@@ -796,17 +796,34 @@ wss.on("connection", async (ws, req) => {
     // whenever the client nudges us (a submit usually triggers one). When it
     // matches, capture the receipt ONCE and tell the client it's done.
     let captured = false;
+    // The convenience fee is usually itemised on the REVIEW page and folded
+    // into one "Amount Paid" on the receipt (WSSC: $1.00 + $1.69 shown as
+    // "Amount Paid $2.69"). Remember the last fee seen before the receipt.
+    let feeSeen = null;
+    // Two patterns tried IN ORDER ("Fee $1.69" first): as one alternation the
+    // leftmost match won, so "Payment Amount $1.00 Convenience Fee $1.69" read
+    // the fee as $1.00. The second covers Pepco's "$0.13 Convenience Fee".
+    const FEE_RES = [/(?:convenience|service|processing|transaction)\s*fee[^$]{0,40}\$\s*([\d,]+\.\d{2})/i,
+                     /\$\s*([\d,]+\.\d{2})\s*(?:convenience|service|processing)\s*fee/i];
+    const feeIn = (text) => { for (const re of FEE_RES) { const m = text.match(re); if (m) return Number(m[1].replace(/,/g, "")); } return null; };
     const tryCapture = async (reason) => {
       if (captured) return;
       const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
-      if (!CONFIRM.test(body)) return;
+      if (!CONFIRM.test(body)) {
+        const f = feeIn(body);
+        if (f > 0 && f < 50) feeSeen = f;
+        return;
+      }
       captured = true;
       const stamp = `${provider || "session"}-${sessionId}-${Date.now()}`;
       const png = path.join(SHOTS, stamp + ".png");
       const pdf = path.join(SHOTS, stamp + ".pdf");
       try { await page.screenshot({ path: png, fullPage: true }); } catch {}
       try { await page.pdf({ path: pdf, format: "Letter", printBackground: true }); } catch {}
-      const conf = body.match(/(?:confirmation|reference|transaction)\s*(?:number|#|code|id)?\s*:?\s*([A-Z0-9-]{5,})/i);
+      // A labelled number, and it must contain a digit: "A confirmation email
+      // will be sent" was read as confirmation "email" (WSSC, 2026-09-30).
+      const conf = body.match(/(?:confirmation|reference|transaction)\s*(?:number|no\.?|#|code|id)\s*:?\s*([A-Z0-9-]*\d[A-Z0-9-]{3,})/i)
+        || body.match(/(?:confirmation|reference|transaction)\s*:?\s*([A-Z0-9-]*\d[A-Z0-9-]{3,})/i);
       // The amount ACTUALLY charged, read off the confirmation page -- the
       // receipt's truth, which can differ from the approved figure (a portal
       // minimum, a fee, or an amount changed on the portal). Best-effort parse
@@ -824,10 +841,8 @@ wss.on("connection", async (ws, req) => {
       let amtM = null;
       for (const re of AMT_LABELS) { amtM = body.match(re); if (amtM) break; }
       const observedAmount = amtM ? Number(amtM[1].replace(/,/g, "")) : null;
-      const feeM = body.match(/\$\s*([\d,]+\.\d{2})\s*(?:convenience|service|processing)\s*fee|(?:convenience|service|processing)\s*fee[^$]{0,24}\$\s*([\d,]+\.\d{2})/i);
-      const observedFee = feeM ? Number((feeM[1] || feeM[2]).replace(/,/g, "")) : null;
+      const observedFee = feeIn(body) ?? feeSeen;
       log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"} observed=${observedAmount ?? "?"} fee=${observedFee ?? "-"}`);
-      send({ type: "paid", confirmation: conf ? conf[1] : null, amount: observedAmount, receipt: path.basename(pdf), screenshot: path.basename(png) });
 
       // Persist it: upload the receipt PDF and mark the bill paid/partial. The
       // approved payment row was created when the token was minted, so record-
@@ -852,6 +867,7 @@ wss.on("connection", async (ws, req) => {
           log(`[${sessionId}] record payment -> HTTP ${rr.status} ${jj.bill_status || jj.error || ""}`);
         } catch (e) { log(`[${sessionId}] record payment failed: ${String(e.message).slice(0, 90)}`); }
       }
+      send({ type: "paid", confirmation: conf ? conf[1] : null, amount: observedAmount, receipt: path.basename(pdf), screenshot: path.basename(png) });
     };
     // Some portals show the confirmation IN PLACE after "Agree" (Washington
     // Gas: same URL, no navigation), after the click that triggered the only
