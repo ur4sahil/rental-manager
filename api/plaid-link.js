@@ -191,6 +191,14 @@ module.exports = async function handler(req, res) {
         });
       }
 
+      // A NEW account joining an Item that already has a cursor can only get
+      // its history by rewinding that Item's cursor (it is per Item). Do it
+      // here, once, on purpose -- the sync no longer blanks a stored cursor
+      // on its own. The start date and provider-id dedup keep the re-pull safe.
+      if (existingConn && resultAccounts.some(a => !a.is_existing)) {
+        await supabase.from("bank_connection").update({ plaid_sync_cursor: null }).eq("id", connectionId);
+      }
+
       return res.status(200).json({
         connection_id: connectionId,
         accounts: resultAccounts,

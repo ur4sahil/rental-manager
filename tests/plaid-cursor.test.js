@@ -122,5 +122,26 @@ console.log("\n=== An empty first sync must not read as success ===");
     toastTone({ total_added: 945, total_removed: 0, history_pending: false }) === "success");
 }
 
+// ---- 2026-09-30: the bookmark blanked itself and 2,153 old lines flooded in.
+// Read the route's source: these are rules about what it must never do.
+{
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "api", "plaid-sync-transactions.js"), "utf8");
+  assert("an earned cursor is never blanked: the empty-account check runs only when there was no cursor",
+    /addedCount === 0 && !cursorBefore/.test(src) && /historyPending = addedCount === 0 && !cursorBefore/.test(src));
+  assert("a failed row count is 'unknown', not 'empty'",
+    /cntErr \|\| count == null/.test(src) && !/if \(!\(count \|\| 0\)\)/.test(src));
+  assert("one sync per connection: the connection is claimed with sync_lock_until before syncing",
+    /sync_lock_until\.is\.null,sync_lock_until\.lt\./.test(src));
+  assert("the lock is released on success and on failure",
+    (src.match(/sync_lock_until: null/g) || []).length >= 3);
+  assert("the start date (sync_from_date) is applied on every sync, not only the first",
+    /conn\.sync_from_date/.test(src) && /const fromDate = floors\.length/.test(src));
+  assert("every sync records who triggered it and the cursor before/after",
+    /triggered_by: triggeredBy/.test(src) && /sync_cursor_before: cursorBefore/.test(src) && /sync_cursor_after: cursorAfter/.test(src));
+  const link = require("fs").readFileSync(require("path").join(__dirname, "..", "api", "plaid-link.js"), "utf8");
+  assert("a new account joining an existing Item rewinds the cursor at the join, once",
+    /existingConn && resultAccounts\.some\(a => !a\.is_existing\)/.test(link));
+}
+
 console.log(`\n${failed ? "❌" : "✅"} Passed: ${passed}   Failed: ${failed}\n`);
 process.exit(failed ? 1 : 0);

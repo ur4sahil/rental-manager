@@ -34,6 +34,7 @@ module.exports = async function handler(req, res) {
     // Auth: JWT (scoped to company), CRON_SECRET in body, or Vercel Cron
     // (GET with Bearer CRON_SECRET). Same model as the retired teller-sync.
     let companyFilter = null;
+    let triggerEmail = null;
     let itemFilter = null; // webhook can target a single item_id
     const authHeader = req.headers.authorization;
     const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && (
@@ -61,6 +62,7 @@ module.exports = async function handler(req, res) {
       // the cursor past real transactions for good, so only staff may run it.
       if (!STAFF_ROLES.has(mem.role)) return res.status(403).json({ error: "Your role cannot run a bank sync" });
       companyFilter = body.company_id;
+      triggerEmail = (user.email || "").toLowerCase();
     } else {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -76,10 +78,34 @@ module.exports = async function handler(req, res) {
 
     const plaid = getPlaidClient();
 
+    // Who asked for this sync, recorded on every plaid_sync_event so a sync
+    // that does something surprising can be traced afterwards.
+    const triggeredBy = isCronAuth ? (body.item_id ? "webhook" : "cron") : ("user:" + (triggerEmail || "unknown"));
+
     async function syncOneConnection(conn) {
+      // ONE SYNC AT A TIME PER CONNECTION. Two presses of Sync a second apart
+      // (2026-09-29 20:16:21 and 20:16:22) ran side by side: both pulled the
+      // same pages, raced to insert, and each wrote its own cursor back, the
+      // slower one winning. Claim the connection atomically; a sync that
+      // cannot claim it steps aside. The lease expires on its own (5 min, past
+      // Vercel's function limit) so a crashed run cannot lock it forever.
+      const nowIso = new Date().toISOString();
+      const { data: claimed } = await supabase.from("bank_connection")
+        .update({ sync_lock_until: new Date(Date.now() + 5 * 60 * 1000).toISOString() })
+        .eq("id", conn.id)
+        .or(`sync_lock_until.is.null,sync_lock_until.lt.${nowIso}`)
+        .select("id, plaid_sync_cursor, sync_from_date");
+      if (!claimed || !claimed.length) {
+        return { added: 0, removed: 0, error: null, skipped: "another sync of this bank is already running" };
+      }
+      // Re-read the cursor under the lock: the one from the list query may be stale.
+      conn = { ...conn, plaid_sync_cursor: claimed[0].plaid_sync_cursor, sync_from_date: claimed[0].sync_from_date };
+      const cursorBefore = conn.plaid_sync_cursor || null;
+
       const { data: syncEvent } = await supabase
         .from("plaid_sync_event")
-        .insert({ company_id: conn.company_id, bank_connection_id: conn.id, status: "syncing" })
+        .insert({ company_id: conn.company_id, bank_connection_id: conn.id, status: "syncing",
+                  sync_cursor_before: cursorBefore, triggered_by: triggeredBy })
         .select("id")
         .single();
 
@@ -162,7 +188,18 @@ module.exports = async function handler(req, res) {
         // advances past the older rows, so they're skipped for good (not
         // re-pulled later). The daily cron/webhook pass no from_date, so
         // steady-state syncs import everything new.
-        const fromDate = body.from_date || null;
+        // The connection's START DATE is permanent: nothing older is ever
+        // imported, on any sync. It used to apply only to the one call that
+        // passed from_date (the first import); every later sync imported
+        // everything, so the day the cursor went blank the bank's whole
+        // 18-month history landed in For Review (2026-09-29: 2,153 lines).
+        // A first import that chooses a date records it here.
+        if (body.from_date && !conn.sync_from_date) {
+          await supabase.from("bank_connection").update({ sync_from_date: body.from_date }).eq("id", conn.id);
+          conn.sync_from_date = body.from_date;
+        }
+        const floors = [body.from_date, conn.sync_from_date].filter(Boolean).sort();
+        const fromDate = floors.length ? floors[floors.length - 1] : null;
         const candidates = [...added, ...modified].filter(t => !t.pending && (!fromDate || (t.date && t.date >= fromDate)));
         const rows = [];
         for (const txn of candidates) {
@@ -267,27 +304,40 @@ module.exports = async function handler(req, res) {
         // claimed it had already been seen. One never-imported account is
         // enough to make the cursor unsafe, because a cursor is per Item and
         // rewinding it is the only way to reach that account's backfill.
+        //
+        // Only a cursor that was NEVER earned may be withheld. Once a cursor
+        // has been stored (cursorBefore), this run's empty result is ordinary
+        // ("nothing new since last time") and blanking it would make the next
+        // sync re-pull the bank's entire history. A new account joining an
+        // Item that already has a cursor is handled where it joins (plaid-link
+        // exchange clears the cursor once, deliberately).
+        //
+        // And a count that FAILED is "don't know", never "empty": `!(count||0)`
+        // read a failed query as zero, which is enough to blank the bookmark.
         let everyFeedHasImported = true;
         const emptyFeeds = [];
-        if (addedCount === 0) {
+        if (addedCount === 0 && !cursorBefore) {
           const feedIds = [...feedByAcct.values()].map(f => f.id).filter(Boolean);
           if (!feedIds.length) everyFeedHasImported = false;
           else {
             for (const fid of feedIds) {
-              const { count } = await supabase
+              const { count, error: cntErr } = await supabase
                 .from("bank_feed_transaction")
                 .select("id", { count: "exact", head: true })
                 .eq("company_id", conn.company_id)
                 .eq("bank_account_feed_id", fid);
-              if (!(count || 0)) { everyFeedHasImported = false; emptyFeeds.push(fid); }
+              if (cntErr || count == null) { console.error("[plaid-sync] feed row count failed; keeping cursor:", cntErr?.message); continue; }
+              if (count === 0) { everyFeedHasImported = false; emptyFeeds.push(fid); }
             }
           }
         }
-        const historyPending = addedCount === 0 && !everyFeedHasImported;
+        const historyPending = addedCount === 0 && !cursorBefore && !everyFeedHasImported;
 
         // Persist the new cursor + refresh balances/last_synced_at
+        const cursorAfter = historyPending ? null : cursor;
         await supabase.from("bank_connection").update({
-          plaid_sync_cursor: historyPending ? null : cursor,
+          plaid_sync_cursor: cursorAfter,
+          sync_lock_until: null,
           last_successful_sync_at: new Date().toISOString(),
           connection_status: "active",
           last_error_code: null,
@@ -340,7 +390,7 @@ module.exports = async function handler(req, res) {
         }
 
         await supabase.from("plaid_sync_event")
-          .update({ completed_at: new Date().toISOString(), added_count: addedCount, status: "success" })
+          .update({ completed_at: new Date().toISOString(), added_count: addedCount, status: "success", sync_cursor_after: cursorAfter })
           .eq("id", syncEvent?.id);
 
         // history_pending lets the UI say "still loading" instead of
@@ -353,8 +403,10 @@ module.exports = async function handler(req, res) {
           .eq("id", syncEvent?.id);
         if (e.message !== "ITEM_LOGIN_REQUIRED") {
           await supabase.from("bank_connection")
-            .update({ connection_status: "errored", last_error_message: e.message })
+            .update({ connection_status: "errored", last_error_message: e.message, sync_lock_until: null })
             .eq("id", conn.id);
+        } else {
+          await supabase.from("bank_connection").update({ sync_lock_until: null }).eq("id", conn.id);
         }
         return { added: 0, removed: 0, error: e.message };
       }
@@ -377,6 +429,7 @@ module.exports = async function handler(req, res) {
       total_added: results.reduce((s, r) => s + (r?.added || 0), 0),
       total_removed: results.reduce((s, r) => s + (r?.removed || 0), 0),
       errors: results.filter(r => r?.error).length,
+      skipped: results.filter(r => r?.skipped).map(r => r.skipped),
     });
   } catch (e) {
     console.error("plaid-sync error:", e.message);
