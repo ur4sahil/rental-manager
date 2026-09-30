@@ -77,7 +77,8 @@ async function selfDeleteAccount(req, res) {
     .ilike("email", emailFilterValue(userEmail))
     .maybeSingle();
   if (appUserErr) {
-    return res.status(500).json({ error: "Could not read the account row: " + appUserErr.message });
+    console.error("[self-delete] app_users read failed:", appUserErr.message);
+    return res.status(500).json({ error: "Could not read the account row" });
   }
   if (!appUser || !appUser.archived_at) {
     return res.status(409).json({ error: "app_users row is not archived yet" });
@@ -98,7 +99,8 @@ async function selfDeleteAccount(req, res) {
 
   const { error: delErr } = await admin.auth.admin.deleteUser(userId);
   if (delErr) {
-    return res.status(500).json({ error: "Auth delete failed: " + delErr.message });
+    console.error("[self-delete] auth delete failed:", delErr.message);
+    return res.status(500).json({ error: "Auth delete failed" });
   }
   return res.status(200).json({ ok: true });
 };

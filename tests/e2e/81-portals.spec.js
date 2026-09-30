@@ -41,7 +41,7 @@ const { execFileSync } = require('child_process');
 // ── config ────────────────────────────────────────────────────────────
 const COMPANY = process.env.E2E_COMPANY || 'e2e-sandbox';
 const DB_URL = process.env.E2E_DB_URL
-  || 'postgresql://postgres.vpeewlplgxthckpidhxo:Sheebasoin1%23@aws-0-us-east-1.pooler.supabase.com:5432/postgres';
+  || (() => { throw new Error("set TEST_DB_URL / E2E_DB_URL: the test database connection string is not kept in the repo"); })();
 const SB_URL = process.env.TEST_SUPABASE_URL || 'https://vpeewlplgxthckpidhxo.supabase.co';
 const SB_ANON = process.env.TEST_SUPABASE_ANON_KEY
   || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwZWV3bHBsZ3h0aGNrcGlkaHhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1MzM1MjAsImV4cCI6MjEwNDEwOTUyMH0.Dvc4REh88yOCgDb8OckW0DSKFB9LwGkU7HwKZiT8iGw';

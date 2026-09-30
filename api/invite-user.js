@@ -106,6 +106,15 @@ module.exports = async function handler(req, res) {
   if (!allowedIssuers.has(callerRole)) {
     return res.status(403).json({ error: "Your role cannot issue this invite type" });
   }
+  // Nobody grants a role above their own: only an admin can make an admin.
+  // Without this a manager invited THEMSELVES as admin, accepted, and was
+  // one (2026-09-30 audit).
+  if (role === "admin" && callerRole !== "admin") {
+    return res.status(403).json({ error: "Only an admin can invite an admin" });
+  }
+  if (email === callerEmail) {
+    return res.status(400).json({ error: "You cannot invite yourself" });
+  }
 
   // Step 2: send the invite and upsert membership via service role.
   const admin = createClient(
@@ -130,6 +139,28 @@ module.exports = async function handler(req, res) {
   //
   // status stays 'invited' either way -- it means "not yet accepted", which
   // is true from the moment the row exists.
+  //
+  // But never over an ACTIVE member. The upsert below rewrites the row it
+  // lands on -- role included, status back to 'invited' -- which turned an
+  // "invite" for an existing admin's email into a demotion and a lock-out.
+  // Role changes for current members go through Team & Roles.
+  const { data: existing } = await admin.from("company_members")
+    .select("id, status, role")
+    .eq("company_id", companyId)
+    .ilike("user_email", emailFilterValue(email))
+    .maybeSingle();
+  if (existing && existing.status === "active") {
+    return res.status(409).json({ error: "This person is already an active member. Change their role in Team & Roles instead." });
+  }
+  // One issuer, at most 20 fresh invitations an hour: enough for onboarding
+  // a team, not enough to use Supabase's mailer to bomb an inbox.
+  const { count: recentInvites } = await admin.from("company_members")
+    .select("id", { count: "exact", head: true })
+    .eq("invited_by", callerEmail)
+    .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+  if ((recentInvites || 0) >= 20) {
+    return res.status(429).json({ error: "Too many invitations in the last hour. Try again later." });
+  }
   const { error: preMemErr } = await admin.from("company_members").upsert([{
     company_id: companyId,
     user_email: email,
@@ -139,7 +170,8 @@ module.exports = async function handler(req, res) {
     invited_by: callerEmail,
   }], { onConflict: "company_id,user_email" });
   if (preMemErr) {
-    return res.status(500).json({ error: "Membership record failed: " + preMemErr.message });
+    console.error("[invite-user] membership upsert failed:", preMemErr.message);
+    return res.status(500).json({ error: "Membership record failed" });
   }
 
   let userCreated = false;
@@ -166,7 +198,8 @@ module.exports = async function handler(req, res) {
       const msg = (invErr.message || "").toLowerCase();
       const isAlreadyRegistered = msg.includes("already") || msg.includes("registered") || (invErr.status === 422);
       if (!isAlreadyRegistered) {
-        return res.status(502).json({ error: "Invite email failed: " + invErr.message });
+        console.error("[invite-user] invite email failed:", invErr.message);
+        return res.status(502).json({ error: "Invite email failed" });
       }
       alreadyRegistered = true;
       // Use anon client with signInWithOtp — admin.generateLink
@@ -189,7 +222,8 @@ module.exports = async function handler(req, res) {
       invitedAuthUserId = invRes.user.id || null;
     }
   } catch (e) {
-    return res.status(500).json({ error: "Auth admin call failed: " + (e.message || "unknown") });
+    console.error("[invite-user] auth admin call failed:", e.message || e);
+    return res.status(500).json({ error: "Auth admin call failed" });
   }
 
   // Link the membership to the auth user that was just created.

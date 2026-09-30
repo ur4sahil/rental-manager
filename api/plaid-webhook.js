@@ -17,7 +17,19 @@ const { getPlaidClient } = require("./_plaid");
 function b64urlToBuf(s) { return Buffer.from(s, "base64url"); }
 function b64urlToJson(s) { return JSON.parse(b64urlToBuf(s).toString("utf8")); }
 
-async function verifyPlaidJwt(plaid, jwtToken) {
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+// `rawBody` is the exact bytes Plaid sent. The JWT carries their SHA-256
+// (request_body_sha256); without comparing it, a captured JWT could be
+// replayed for 5 minutes with a DIFFERENT body -- any item_id.
+async function verifyPlaidJwt(plaid, jwtToken, rawBody) {
   const parts = String(jwtToken || "").split(".");
   if (parts.length !== 3) return false;
   const header = b64urlToJson(parts[0]);
@@ -30,10 +42,16 @@ async function verifyPlaidJwt(plaid, jwtToken) {
   const sigOk = crypto.verify("sha256", signingInput, { key: pubKey, dsaEncoding: "ieee-p1363" }, signature);
   if (!sigOk) return false;
   const payload = b64urlToJson(parts[1]);
-  // Bound replay: reject webhooks older than 5 minutes.
-  if (!payload.iat || Date.now() / 1000 - payload.iat > 300) return false;
-  return true;
+  // Bound replay: reject webhooks older than 5 minutes, or from the future.
+  const age = Date.now() / 1000 - Number(payload.iat || 0);
+  if (!payload.iat || age > 300 || age < -60) return false;
+  const bodyHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+  const claimed = String(payload.request_body_sha256 || "");
+  if (claimed.length !== bodyHash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(claimed), Buffer.from(bodyHash));
 }
+
+module.exports.config = { api: { bodyParser: false } };
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -43,15 +61,17 @@ module.exports = async function handler(req, res) {
     if (!jwtToken) return res.status(401).json({ error: "Missing verification" });
 
     const plaid = getPlaidClient();
+    const rawBody = await readRawBody(req);
     let verified = false;
     try {
-      verified = await verifyPlaidJwt(plaid, jwtToken);
+      verified = await verifyPlaidJwt(plaid, jwtToken, rawBody);
     } catch (e) {
       console.error("plaid-webhook verify error:", e.message);
     }
     if (!verified) return res.status(401).json({ error: "Invalid webhook signature" });
 
-    const payload = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    let payload = {};
+    try { payload = JSON.parse(rawBody.toString("utf8") || "{}"); } catch (_) { payload = {}; }
     const { webhook_type, webhook_code, item_id } = payload;
     if (!item_id) return res.status(200).json({ ok: true });
 

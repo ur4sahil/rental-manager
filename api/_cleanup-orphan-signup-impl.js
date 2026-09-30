@@ -106,7 +106,8 @@ async function cleanupOrphanSignup(req, res) {
 
   const { error: delErr } = await admin.auth.admin.deleteUser(userId);
   if (delErr) {
-    return res.status(500).json({ error: "Delete failed: " + delErr.message });
+    console.error("[cleanup-orphan-signup] delete failed:", delErr.message);
+    return res.status(500).json({ error: "Delete failed" });
   }
   return res.status(200).json({ ok: true });
 };

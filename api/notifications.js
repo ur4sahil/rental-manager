@@ -24,6 +24,7 @@ const sendPushImpl = require("./_send-push-impl");
 const notificationWorkerImpl = require("./_notification-worker-impl");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { emailFilterValue } = require("./_member");
 
 // Diagnostic beacon. The service worker POSTs here when it receives
 // a push event so we can correlate "push delivered to APNS"
@@ -41,16 +42,29 @@ async function pushBeacon(req, res) {
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch (_) { body = {}; } }
   const { payload_tag, status, error_message, title, body: text, recipient_email, company_id } = body || {};
+  // Anonymous, so bound everything it can write: fixed status vocabulary,
+  // capped lengths, an email that looks like one. Without this the table
+  // could be filled with arbitrary text at any size.
+  const KNOWN_STATUSES = new Set([
+    "sw_received", "sw_displayed_main", "sw_displayed_fallback_main",
+    "sw_displayed_parse_error", "sw_displayed_fallback_parse_error",
+    "sw_show_error_main", "sw_show_error_parse_error",
+    "sw_subscription_change", "sw_error",
+  ]);
+  const cap = (v, n) => (typeof v === "string" ? v.slice(0, n) : null);
+  const emailOk = typeof recipient_email === "string" && recipient_email.length <= 254 && /^[^\s@%_]+@[^\s@%_]+\.[^\s@%_]+$/.test(recipient_email);
+  const companyOk = typeof company_id === "string" && company_id.length > 0 && company_id.length <= 128;
+  if (status && !KNOWN_STATUSES.has(status)) return res.status(400).json({ error: "unknown status" });
   await sb.from("push_attempts").insert({
-    company_id: company_id || "?",
-    recipient_email: recipient_email || "?",
-    title: title || null,
-    body: text || null,
+    company_id: companyOk ? company_id : "?",
+    recipient_email: emailOk ? recipient_email.toLowerCase() : "?",
+    title: cap(title, 120),
+    body: cap(text, 500),
     status: status || "sw_received",
     delivered_count: 0,
     pruned_count: 0,
     error_message: error_message ? String(error_message).slice(0, 1000) : null,
-    payload_tag: payload_tag || null,
+    payload_tag: cap(payload_tag, 64),
   });
 
   // Stamp the subscription's last_sw_received_at when the SW reports
@@ -66,11 +80,13 @@ async function pushBeacon(req, res) {
     "sw_show_error_main", "sw_show_error_parse_error",
     "sw_subscription_change",
   ]);
-  if (recipient_email && company_id && aliveStatuses.has(status)) {
+  // The email is validated above to contain no LIKE wildcards, and is
+  // escaped anyway: a `%` here would revive every subscription in the company.
+  if (emailOk && companyOk && aliveStatuses.has(status)) {
     await sb.from("push_subscriptions")
       .update({ last_sw_received_at: new Date().toISOString(), dead_marked_at: null })
       .eq("company_id", company_id)
-      .ilike("user_email", recipient_email);
+      .ilike("user_email", emailFilterValue(recipient_email));
   }
 
   return res.status(200).json({ ok: true });

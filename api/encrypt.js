@@ -130,6 +130,34 @@ const SALT_HEX_MAX = 64;
 // actions mount here and delegate to _qb-import-impl.js.
 const { handleQbImport, QB_ACTIONS } = require("./_qb-import-impl");
 
+// Every column that holds a credential ciphertext, by table. A decrypt is
+// only served for a ciphertext found in one of these rows of the caller's
+// company. Base64 has no quote, comma or paren, so the value is safe to
+// quote inside a PostgREST `or` filter.
+const CREDENTIAL_COLUMNS = [
+  ["utilities", ["username_encrypted", "password_encrypted"]],
+  ["property_insurance", ["username_encrypted", "password_encrypted"]],
+  ["property_loans", ["username_encrypted", "password_encrypted"]],
+  ["portfolio_loans", ["username_encrypted", "password_encrypted"]],
+  ["property_taxes", ["username_encrypted", "password_encrypted", "account_number_encrypted"]],
+  ["hoa_payments", ["username_encrypted", "password_encrypted", "mgmt_username_encrypted", "mgmt_password_encrypted", "pay_username_encrypted", "pay_password_encrypted"]],
+  ["bank_connection", ["access_token_encrypted"]],
+];
+async function ciphertextBelongsToCompany(companyId, ciphertext) {
+  const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!svcKey || typeof ciphertext !== "string" || !ciphertext) return false;
+  const svc = createClient(process.env.REACT_APP_SUPABASE_URL, svcKey, { auth: { persistSession: false } });
+  for (const [table, cols] of CREDENTIAL_COLUMNS) {
+    const { data, error } = await svc.from(table).select("id")
+      .eq("company_id", companyId)
+      .or(cols.map(c => `${c}.eq."${ciphertext}"`).join(","))
+      .limit(1);
+    if (error) { console.error(`[encrypt] ownership check on ${table}:`, error.message); continue; }
+    if (data && data.length) return true;
+  }
+  return false;
+}
+
 const VALID_ACTIONS = new Set(["encrypt", "decrypt"]);
 const VALID_LEGACY_SCHEMES = new Set(["teller", "v2"]);
 const HEX_RE = /^[0-9a-fA-F]+$/;
@@ -236,6 +264,15 @@ module.exports = async function handler(req, res) {
     if (!secret || !streamBase) return res.status(503).json({ error: "streamed payments are not configured" });
     const provider = String(body.provider || "").toLowerCase();
     if (!provider) return res.status(400).json({ error: "provider is required" });
+    // These land inside a signed token the payment browser trusts: keep
+    // them to the shapes the playbooks expect.
+    if (!/^[a-z][a-z0-9_]{1,31}$/.test(provider)) return res.status(400).json({ error: "provider is not valid" });
+    if (body.account != null && !/^[A-Za-z0-9 .#-]{1,64}$/.test(String(body.account))) {
+      return res.status(400).json({ error: "account is not valid" });
+    }
+    if (body.amount != null && (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0 || body.amount > 50000)) {
+      return res.status(400).json({ error: "amount must be a number between 0 and 50,000" });
+    }
 
     // DB-ENFORCED GATE: a tenant-owed utility can only be paid on the tenant's
     // behalf by an ADMIN. The greyed "Online Payment" button is only a hint;
@@ -365,6 +402,14 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ...out, salt: saltHex, keyFp: KEY_FP });
     }
     if (action === "decrypt") {
+      // The v3 key is derived from the master key and the row's salt, not
+      // from the company, so membership in `companyId` alone proved nothing
+      // about the ciphertext: a member of ANY company could decrypt a
+      // triple lifted from another company's row (2026-09-30 audit). The
+      // ciphertext must therefore be one this company actually stores.
+      if (!(await ciphertextBelongsToCompany(companyId, ciphertext))) {
+        return res.status(403).json({ error: "This credential does not belong to your company" });
+      }
       // Try candidate keys in order; use the first that authenticates.
       // This lets pre-migration rows keep rendering without the
       // frontend needing to know which legacy scheme was used. Caches
@@ -413,7 +458,8 @@ module.exports = async function handler(req, res) {
     }
     return res.status(400).json({ error: "Unknown action" });
   } catch (e) {
-    return res.status(500).json({ error: e.message || "Crypto error" });
+    console.error("[encrypt]", e.message || e);
+    return res.status(500).json({ error: "Crypto error" });
   }
 };
 

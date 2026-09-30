@@ -26,6 +26,7 @@
 const webpush = require("web-push");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { emailFilterValue } = require("./_member");
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
@@ -103,7 +104,7 @@ module.exports = async (req, res) => {
   const { data: member } = await svc.from("company_members")
     .select("role, status")
     .eq("company_id", company_id)
-    .ilike("user_email", callerEmail)
+    .ilike("user_email", emailFilterValue(callerEmail))
     .eq("status", "active")
     .maybeSingle();
   if (!member) {
@@ -116,11 +117,24 @@ module.exports = async (req, res) => {
   //    without a single SW beacon. Apple keeps 201ing those forever
   //    even though the device will never display anything; sending
   //    to them is pure waste and inflates our delivered_count noise.
+  // A push is a message from a member to a member of the same company. Any
+  // member may send one (a tenant's maintenance request pushes staff), so
+  // the CONTENT is bounded instead: short title/body, and the click target
+  // can only be a path inside the app. An absolute URL here was a phishing
+  // page delivered to an admin's phone under the app's own name.
+  const MAX_PER_MINUTE = 30;
+  const { count: recentCount } = await svc.from("push_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("caller_email", callerEmail)
+    .gte("created_at", new Date(Date.now() - 60 * 1000).toISOString());
+  if ((recentCount || 0) >= MAX_PER_MINUTE) {
+    res.status(429).json({ error: "too many notifications; try again in a minute" }); return;
+  }
   const recipient = user_email.toLowerCase();
   const { data: subs, error: subErr } = await svc.from("push_subscriptions")
     .select("id, subscription, last_sw_received_at, last_dispatch_at, dead_marked_at, created_at")
     .eq("company_id", company_id)
-    .ilike("user_email", recipient);
+    .ilike("user_email", emailFilterValue(recipient));
   if (subErr) {
     await logAttempt({ company_id, caller_email: callerEmail, recipient_email: recipient, title, body: text, status: "error", error_message: "subscription lookup failed: " + subErr.message });
     res.status(500).json({ error: "subscription lookup failed: " + subErr.message }); return;
@@ -169,8 +183,10 @@ module.exports = async (req, res) => {
   // it in the push body and the SW echoes it back via /api/notifications
   // ?action=beacon so we can join APNS-acknowledged with SW-received.
   const payloadTag = "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  const safeUrl = typeof url === "string" && /^\/(?!\/)[^\s]{0,500}$/.test(url) ? url : "/";
   const payload = JSON.stringify({
-    title, message: text || "", url: url || "/", tag: tag || "housify",
+    title: String(title).slice(0, 120), message: String(text || "").slice(0, 500), url: safeUrl,
+    tag: typeof tag === "string" ? tag.slice(0, 64) : "housify",
     payload_tag: payloadTag,
     company_id, recipient_email: recipient,
   });

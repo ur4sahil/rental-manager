@@ -100,7 +100,7 @@ const ROLE_KEYS = Object.keys(USERS);
 // Test database. Overridable, but defaulted so the spec is runnable
 // straight from the repo the way every other spec here is.
 const DB_URL = process.env.TEST_DB_URL ||
-  'postgresql://postgres.vpeewlplgxthckpidhxo:Sheebasoin1%23@aws-0-us-east-1.pooler.supabase.com:5432/postgres';
+  (() => { throw new Error("set TEST_DB_URL / E2E_DB_URL: the test database connection string is not kept in the repo"); })();
 const SUPA_URL = process.env.TEST_SUPABASE_URL;
 const SUPA_ANON = process.env.TEST_SUPABASE_ANON_KEY;
 

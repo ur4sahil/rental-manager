@@ -14,8 +14,21 @@
 // second one. Tenants whose AR account could not be established come back
 // in each result's skipped_no_ar_account.
 const { createClient } = require("@supabase/supabase-js");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 
 module.exports = async (req, res) => {
+  // Cron only. This posts journal entries for every company; the licence
+  // and tax reminders on the same dispatcher always required the secret,
+  // this one did not (found in the 2026-09-30 audit) -- anyone could post
+  // late fees for every company at any time after grace.
+  const CRON_SECRET = process.env.CRON_SECRET || "";
+  const authHeader = req.headers.authorization || "";
+  const bodySecret = (req.body && typeof req.body === "object" && req.body.cron_secret) || "";
+  const isCronAuth = CRON_SECRET.length >= 8 && (
+    isCronSecretBearer(authHeader, CRON_SECRET) || cronSecretMatches(bodySecret, CRON_SECRET)
+  );
+  if (!isCronAuth) { res.status(401).json({ error: "Unauthorized" }); return; }
+
   const url = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {

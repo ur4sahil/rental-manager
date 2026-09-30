@@ -26,6 +26,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
+const { requireMember, STAFF_ROLES } = require("./_member");
 const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
 const { statementFields, pdfText } = require("./_statement-fields");
@@ -348,11 +349,21 @@ module.exports = async function handler(req, res) {
   const sb = admin();
   if (!sb) return res.status(500).json({ error: "server is not configured for database access" });
 
+  // Three kinds of caller, three gates:
+  //   worker actions  -- the utility box, by its shared token
+  //   cron actions    -- checked inside the action by CRON_SECRET
+  //   everything else -- a signed-in STAFF member of body.companyId
+  // The last group had no gate at all until 2026-09-30: companyId was
+  // trusted from the body, so anyone could read any company's AI jobs and
+  // document index, run the data questions, or replace the index.
   const isWorker = WORKER_ACTIONS.has(action);
+  let callerEmail = null;
   if (isWorker) {
     if (!workerAuthorised(req)) return res.status(401).json({ error: "unauthorized" });
-  } else if (!CRON_ACTIONS.has(action) && !body.companyId) {
-    return res.status(400).json({ error: "companyId is required" });
+  } else if (!CRON_ACTIONS.has(action)) {
+    const m = await requireMember(req, { companyId: body.companyId, roles: STAFF_ROLES, sb });
+    if (m.error) return res.status(m.status).json({ error: m.error });
+    callerEmail = String(m.user.email || "").toLowerCase();
   }
   const { companyId } = body;
 
@@ -402,7 +413,7 @@ module.exports = async function handler(req, res) {
         subject_id: subjectId === null ? null : String(subjectId),
         input,
         priority,
-        created_by: body.userEmail || null,
+        created_by: callerEmail,
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
       return res.status(202).json({ ok: true, job });
@@ -636,7 +647,7 @@ module.exports = async function handler(req, res) {
         const { error: insErr } = await sb.from("ai_jobs").insert([{
           company_id: companyId, kind: "categorise_txn", status: "queued",
           subject_table: "bank_feed_transaction", subject_id: String(t.id),
-          priority: 5, created_by: body.userEmail || null,
+          priority: 5, created_by: callerEmail,
           input: { date: t.date, direction: t.direction, amount: t.amount,
                    description: t.description, payee: t.payee, accounts },
         }]);
@@ -1213,7 +1224,7 @@ module.exports = async function handler(req, res) {
         duration_ms: r.durationMs || null,
         confidence: r.ok ? r.confidence : null,
         error: r.ok ? null : (r.error || "unknown").slice(0, 500),
-        created_by: body.userEmail || null,
+        created_by: callerEmail,
       };
       const { data: job, error: insErr } = await sb.from("ai_jobs").insert([row]).select().single();
       if (insErr) return res.status(500).json({ error: `recording the job: ${insErr.message}` });
@@ -1222,6 +1233,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(400).json({ error: `unknown action "${action}"` });
   } catch (e) {
-    return res.status(500).json({ error: String(e?.message || e).slice(0, 300) });
+    console.error(`[ai ${action}]`, e?.message || e);
+    return res.status(500).json({ error: "request failed" });
   }
 };

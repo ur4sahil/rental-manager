@@ -9,7 +9,7 @@ import { logAudit } from "../utils/audit";
 import { checkPeriodLock, rpcAllPaged } from "../utils/accounting";
 import { accrueOwnerShareForBankDeposit } from "../utils/owners";
 import { Spinner } from "./shared";
-import { HOUSY, queueHousyJob } from "../utils/housy";
+import { HOUSY, queueHousyJob, housyHeaders } from "../utils/housy";
 import { REVIEW_KEYS, isTypingTarget, ShortcutsHint, openShortcuts } from "./KeyboardShortcuts";
 
 // Housy's mark on its own suggestions. Small and consistent, so a row that
@@ -1911,7 +1911,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     let r = null;
     try {
       const res = await fetch("/api/ai?action=code-transactions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: await housyHeaders(),
         body: JSON.stringify({
           companyId, accounts: chart, userEmail: userProfile?.email,
           transactions: selected.map(t => ({

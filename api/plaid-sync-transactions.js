@@ -14,6 +14,8 @@ const CRON_CONCURRENCY = 3;
 const MAX_SYNC_PAGES = 50; // safety cap; each page is up to 500 changes
 const MAX_NOT_READY_RETRIES = 6; // ~15s of PRODUCT_NOT_READY before giving up this run
 
+const { STAFF_ROLES } = require("./_member");
+
 function emailFilterValue(email) {
   const s = (email || "").trim().toLowerCase();
   return s.replace(/[%_,.*()\\]/g, c => "\\" + c);
@@ -55,6 +57,9 @@ module.exports = async function handler(req, res) {
         .eq("status", "active")
         .maybeSingle();
       if (!mem) return res.status(403).json({ error: "Not a member of this company" });
+      // Tenants and owners are members too. A sync with from_date advances
+      // the cursor past real transactions for good, so only staff may run it.
+      if (!STAFF_ROLES.has(mem.role)) return res.status(403).json({ error: "Your role cannot run a bank sync" });
       companyFilter = body.company_id;
     } else {
       return res.status(401).json({ error: "Unauthorized" });

@@ -10,7 +10,7 @@ import { supabase } from "../supabase";
 import { companyInsert } from "../utils/company";
 import { Btn, Card, PageHeader, TabBar, EmptyState, DataTable, Input, FormField } from "../ui";
 import { Spinner } from "./shared";
-import { HOUSY, HOUSY_JOB_KINDS, HOUSY_STATUS, proposalCoverage } from "../utils/housy";
+import { HOUSY, HOUSY_JOB_KINDS, HOUSY_STATUS, proposalCoverage, housyHeaders } from "../utils/housy";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
 import { formatLocalDate, escapeFilterValue} from "../utils/helpers";
@@ -228,15 +228,16 @@ export function Housy({ companyId, userProfile, userRole, showToast }) {
       // exactly, from a reviewed query, and no amount of document search
       // would find it. Only if nothing in the catalogue fits does this
       // fall through to reading the documents.
+      const headers = await housyHeaders();
       const dataRes = await fetch("/api/ai?action=ask-data", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers,
         body: JSON.stringify({ companyId, question: q }),
       });
       const dataBody = await dataRes.json().catch(() => ({}));
       if (dataRes.ok && dataBody?.answered) { setAnswer({ ...dataBody, kind: "data" }); return; }
 
       const res = await fetch("/api/ai?action=ask", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers,
         body: JSON.stringify({ companyId, question: q }),
       });
       const body = await res.json();

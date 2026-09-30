@@ -77,6 +77,23 @@ module.exports = async (req, res) => {
   if (doc.envelope_status !== "completed") {
     res.status(403).json({ error: "envelope not completed" }); return;
   }
+  // Only the signature that COMPLETED the envelope may upload, and only in
+  // the minutes right after it. Any signer's token used to work for the
+  // token's whole 30-day life, so a signer could come back later and file
+  // a different PDF as the copy of record (2026-09-30 audit). The bytes are
+  // still client-rendered; the DB's integrity_hash / doc_hash_at_send remain
+  // the forensic truth for the document text.
+  const { data: sigs } = await sb.from("doc_signatures")
+    .select("id, signed_at, status").eq("doc_id", doc_id);
+  const signedRows = (sigs || []).filter(s => s.status === "signed" && s.signed_at);
+  const last = signedRows.sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at))[0];
+  if (!last || last.id !== sig.id) {
+    res.status(403).json({ error: "only the signer who completed the envelope can upload the signed copy" }); return;
+  }
+  const FINALIZE_WINDOW_MS = 30 * 60 * 1000;
+  if (Date.now() - new Date(last.signed_at).getTime() > FINALIZE_WINDOW_MS) {
+    res.status(403).json({ error: "the upload window after signing has closed" }); return;
+  }
   // Idempotent — if the PDF was already uploaded, return the existing path.
   if (doc.signed_pdf_path) {
     res.status(200).json({
@@ -104,7 +121,8 @@ module.exports = async (req, res) => {
   const { error: upErr } = await sb.storage.from("signed-documents")
     .upload(path, pdfBytes, { contentType: "application/pdf", upsert: false });
   if (upErr) {
-    res.status(500).json({ error: "upload failed: " + upErr.message }); return;
+    console.error("[finalize-signed-pdf] upload failed:", upErr.message);
+    res.status(500).json({ error: "upload failed" }); return;
   }
 
   // 4. Persist path + hash via service-role-only RPC (idempotent).
@@ -118,7 +136,8 @@ module.exports = async (req, res) => {
   });
   if (setErr) {
     sb.storage.from("signed-documents").remove([path]).catch(() => {});
-    res.status(500).json({ error: "set_signed_pdf failed: " + setErr.message }); return;
+    console.error("[finalize-signed-pdf] set_signed_pdf failed:", setErr.message);
+    res.status(500).json({ error: "recording the signed copy failed" }); return;
   }
 
   // 5. Mint a 24h signed URL so the just-signed signer can

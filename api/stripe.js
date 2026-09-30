@@ -55,6 +55,7 @@
 const Stripe = require("stripe");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { emailFilterValue, STAFF_ROLES } = require("./_member");
 const { isCronSecretBearer } = require("./_auth");
 const webpush = require("web-push");
 // Pure rules shared with the browser bundle (CommonJS, no imports).
@@ -273,11 +274,15 @@ async function authTenantOrMember(sb, user, tenant_id, company_id) {
   if (!tenant) return { error: "tenant not found", status: 404 };
   const callerEmail = (user.email || "").toLowerCase();
   const isTenant = (tenant.email || "").toLowerCase() === callerEmail;
+  // A staff member may act for any tenant of the company; another TENANT
+  // may not -- tenants are company_members rows too, and "any active
+  // member" let tenant A disable tenant B's autopay by id (2026-09-30
+  // audit). The email is escaped: `_` is a LIKE wildcard.
   let isMember = false;
   if (!isTenant) {
     const { data: mem } = await sb.from("company_members").select("role, status")
-      .eq("company_id", company_id).ilike("user_email", callerEmail).eq("status", "active").maybeSingle();
-    isMember = !!mem;
+      .eq("company_id", company_id).ilike("user_email", emailFilterValue(callerEmail)).eq("status", "active").maybeSingle();
+    isMember = !!mem && STAFF_ROLES.has(mem.role);
   }
   if (!isTenant && !isMember) return { error: "not authorized for this tenant", status: 403 };
   return { tenant };
@@ -473,7 +478,9 @@ async function handleCreateIntent(req, res) {
   let body = {};
   try { body = JSON.parse(raw || "{}"); } catch { return res.status(400).json({ error: "invalid JSON body" }); }
   const { amount, tenant_id, company_id, payment_method = "card" } = body;
-  if (!amount || amount <= 0) return res.status(400).json({ error: "amount required and > 0" });
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+    return res.status(400).json({ error: "amount must be a number between 0 and 100,000" });
+  }
   if (!tenant_id || !company_id) return res.status(400).json({ error: "tenant_id + company_id required" });
 
   const a = await authTenantOrMember(sb, user, tenant_id, company_id);
@@ -604,6 +611,15 @@ async function handleSavePaymentMethod(req, res) {
   if (!setup_intent_id || !tenant_id || !company_id) {
     return res.status(400).json({ error: "setup_intent_id + tenant_id + company_id required" });
   }
+  if (typeof setup_intent_id !== "string" || !/^seti_[A-Za-z0-9]+$/.test(setup_intent_id)) {
+    return res.status(400).json({ error: "setup_intent_id is not a SetupIntent id" });
+  }
+  if (amount != null && (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount > 100000)) {
+    return res.status(400).json({ error: "amount must be a number between 0 and 100,000" });
+  }
+  if (!Number.isInteger(day_of_month) || day_of_month < 1 || day_of_month > 28) {
+    return res.status(400).json({ error: "day_of_month must be 1-28" });
+  }
 
   const a = await authTenantOrMember(sb, user, tenant_id, company_id);
   if (a.error) return res.status(a.status).json({ error: a.error });
@@ -616,7 +632,18 @@ async function handleSavePaymentMethod(req, res) {
     }
     const paymentMethodId = setupIntent.payment_method;
     if (!paymentMethodId) return res.status(400).json({ error: "setup intent missing payment_method" });
-    const customerId = setupIntent.customer || tenant.stripe_customer_id;
+    // The SetupIntent must be the one create-setup-intent minted for THIS
+    // tenant: same customer, same tenant in metadata. Otherwise a succeeded
+    // seti_ id belonging to someone else attaches their card to this
+    // autopay row and the cron charges the wrong person.
+    const siTenant = String(setupIntent.metadata?.tenant_id || "");
+    const siCompany = String(setupIntent.metadata?.company_id || "");
+    const siCustomer = typeof setupIntent.customer === "string" ? setupIntent.customer : setupIntent.customer?.id;
+    if (siTenant !== String(tenant_id) || siCompany !== String(company_id)
+        || (tenant.stripe_customer_id && siCustomer && siCustomer !== tenant.stripe_customer_id)) {
+      return res.status(403).json({ error: "setup intent does not belong to this tenant" });
+    }
+    const customerId = siCustomer || tenant.stripe_customer_id;
 
     const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
     const isCard = pm.type === "card";

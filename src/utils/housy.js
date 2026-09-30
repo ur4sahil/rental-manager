@@ -1,3 +1,4 @@
+import { supabase } from "../supabase";
 // Housy: the app's assistant.
 //
 // The name lives in ONE constant so it is a single edit to change, and so
@@ -110,11 +111,21 @@ export async function extractPdfText(bytes) {
  * Returns { ok, job, error }. Never throws: the caller is a click
  * handler, and an unhandled rejection there shows the user nothing.
  */
+// Every browser call to /api/ai carries the caller's session: the route
+// checks it against company_members before touching anything. Attribution
+// (created_by) is taken from that session on the server, not from the body.
+export async function housyHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error("No active session");
+  return { "Content-Type": "application/json", Authorization: "Bearer " + token };
+}
+
 export async function queueHousyJob({ companyId, kind, subjectTable, subjectId, sourceName, text, userEmail, priority = 0 }) {
   try {
     const res = await fetch("/api/ai?action=enqueue", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await housyHeaders(),
       body: JSON.stringify({
         companyId, kind, subjectTable, subjectId, priority, userEmail,
         input: { text, source_name: sourceName || null },

@@ -360,7 +360,14 @@ module.exports = async (req, res) => {
   if (!isCronAuth && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     const { data: { user }, error: authErr } = await sb.auth.getUser(token);
-    if (!authErr && user?.id) isUserAuth = true;
+    // "Any Supabase user" included ex-members, orphan signups and tenants.
+    // Draining the queue is a staff action: require an active staff
+    // membership somewhere.
+    if (!authErr && user?.id && user.email) {
+      const { data: mem } = await sb.from("company_members").select("role")
+        .ilike("user_email", emailFilterValue(user.email)).eq("status", "active").limit(20);
+      isUserAuth = (mem || []).some(m => STAFF_ROLES.has(m.role));
+    }
   }
   if (!isCronAuth && !isUserAuth) { res.status(401).json({ error: "Unauthorized" }); return; }
 

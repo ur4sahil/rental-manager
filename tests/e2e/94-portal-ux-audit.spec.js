@@ -28,7 +28,7 @@ const T_EMAIL = 'e2e94-tenant@example.test';
 const O_EMAIL = 'e2e94-owner@example.test';
 const SHOTS = path.join(__dirname, '..', 'screenshots', 'portal-audit');
 const DB = process.env.TEST_DB_URL ||
-  'postgresql://postgres.vpeewlplgxthckpidhxo:Sheebasoin1%23@aws-0-us-east-1.pooler.supabase.com:5432/postgres';
+  (() => { throw new Error("set TEST_DB_URL / E2E_DB_URL: the test database connection string is not kept in the repo"); })();
 
 function sql(text) {
   return execFileSync('psql', [DB, '-v', 'ON_ERROR_STOP=1', '-Atc', text],
