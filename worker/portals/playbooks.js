@@ -276,6 +276,11 @@ const PLAYBOOKS = {
       // (unlabelled) amount box beside it.
       otherAmountSelector: "#rdoOtherAmt",
       amountBoxSelector: "#AmountDue",
+      // The receipt's "Transaction Amount" is the bill payment alone; the card
+      // fee ($2.75) appears only on the review page. Verified 2026-09-30:
+      // Transaction Amount $5.00, Remaining balance $21.66 on a $27.66 bill
+      // after an earlier $1.00.
+      receiptAmountExcludesFee: true,
       otherAmountRadio: [
         /^Other Amount$/i,
         /^Other amount/i,

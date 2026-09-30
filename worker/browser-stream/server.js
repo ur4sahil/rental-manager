@@ -377,7 +377,17 @@ async function autoSubmitLogin(page, book, send, sessionId) {
       // Mail check carries on in the background, filling the box if the code
       // shows up before they type it.
       const deadline = Date.now() + 45000;
-      const code = await (async () => { while (Date.now() < deadline) { const c = await fetchBgeCode(sentAt - 30000); if (c) return c; await new Promise(r => setTimeout(r, 3000)); } return null; })();
+      let resent = false;
+      const code = await (async () => { while (Date.now() < deadline) {
+        const c = await fetchBgeCode(sentAt - 30000); if (c) return c;
+        // No code after 30s: BGE sometimes shows the code screen without
+        // sending one (after several sign-ins in a day). Ask once for a new one.
+        if (!resent && Date.now() - sentAt > 30000) {
+          const again = page.getByRole("button", { name: /send new code|send code again|resend/i }).first();
+          if (await again.isVisible().catch(() => false)) { await again.click({ timeout: 5000 }).catch(() => {}); resent = true; log(`[${sessionId}] login: no code after 30s -- pressed "Send New Code"`); }
+          else { const link = page.getByText(/send code again/i).first(); if (await link.isVisible().catch(() => false)) { await link.click({ timeout: 5000 }).catch(() => {}); resent = true; log(`[${sessionId}] login: no code after 30s -- pressed "Send code again"`); } }
+        }
+        await new Promise(r => setTimeout(r, 3000)); } return null; })();
       if (!code) {
         log(`[${sessionId}] login: ${book.provider} code not in Sheeba's Mail yet -- asking the person, still watching Mail`);
         (async () => {
@@ -841,11 +851,24 @@ wss.on("connection", async (ws, req) => {
         new RegExp("amount paid\\s*:?\\s*" + FEE_NOTE + "\\$\\s*([\\d,]+\\.\\d{2})", "i"),
         new RegExp("total (?:amount )?(?:paid|charged)\\s*:?\\s*" + FEE_NOTE + "\\$\\s*([\\d,]+\\.\\d{2})", "i"),
         /you (?:paid|are paying)\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+        // Washington Gas: "Transaction Amount: $5.00 ... Transaction ID ...
+        // Remaining balance: $21.66" -- the bill payment alone, fee excluded.
+        /transaction amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
       ];
       let amtM = null;
       for (const re of AMT_LABELS) { amtM = body.match(re); if (amtM) break; }
-      const observedAmount = amtM ? Number(amtM[1].replace(/,/g, "")) : null;
+      let observedAmount = amtM ? Number(amtM[1].replace(/,/g, "")) : null;
       const observedFee = feeIn(body) ?? feeSeen;
+      // Where the receipt's figure is the bill payment ALONE (the fee charged
+      // on top is only shown on the review page), the amount charged is that
+      // figure plus the fee; recording it that way lets the recorder apply the
+      // right part to the bill. Washington Gas, 2026-09-30.
+      const payBook = (typeof getBook === "function" ? getBook(provider) : null) || {};
+      if (payBook.pay && payBook.pay.receiptAmountExcludesFee && observedAmount != null && observedFee) {
+        observedAmount = Math.round((observedAmount + observedFee) * 100) / 100;
+      }
+      const remaining = body.match(/remaining balance\s*:?\s*\$\s*([\d,]+\.\d{2})/i);
+      if (remaining) log(`[${sessionId}] receipt: remaining balance $${remaining[1]}`);
       log(`[${sessionId}] confirmation captured (${reason}) conf=${conf ? conf[1] : "?"} observed=${observedAmount ?? "?"} fee=${observedFee ?? "-"}`);
 
       // Persist it: upload the receipt PDF and mark the bill paid/partial. The
