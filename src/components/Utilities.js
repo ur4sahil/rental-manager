@@ -495,6 +495,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   } finally { guardRelease("payViaPortal", bill?.id); }
   }
 
+  // A negative balance is money the utility owes back: "$1.00 credit",
+  // not "$-1.00".
+  const balanceLabel = (v) => (safeNum(v) < 0 ? `${formatCurrency(-safeNum(v))} credit` : formatCurrency(safeNum(v)));
+
   async function fetchUtilities() {
   // PHASE 2: the page reads BILLS now, not accounts.
   //
@@ -1198,7 +1202,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div key={u.id} className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{u.provider}{u.is_final_bill && <span className="ml-1.5 text-2xs px-1.5 py-0.5 rounded-full bg-warn-100 text-warn-700 align-middle" title="Closeout bill in the owner's name after the tenant took over">Final bill</span>}</div><div className="text-xs text-neutral-400 mt-0.5">{u.property}</div></div>
-  <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">${u.amount}</div>
+  <div className="text-right"><div className="text-lg font-display font-bold text-neutral-800">{u.amount === null ? "—" : balanceLabel(u.amount)}</div>
   <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${STATUS_CLASS[(BILL_STATUS[u.status] || BILL_STATUS.pending_review).tone]}`}>{(BILL_STATUS[u.status] || BILL_STATUS.pending_review).label}</span></div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -1257,7 +1261,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       { key: "amount", label: "Amount", sort: true, width: 100, align: "right", className: "font-semibold",
         render: u => u.amount === null
           ? <span className="text-neutral-300">—</span>
-          : formatCurrency(safeNum(u.amount)) },
+          : <span className={safeNum(u.amount) < 0 ? "text-positive-600" : ""}>{balanceLabel(u.amount)}</span> },
       { key: "due", label: "Due", sort: true, width: 100, className: "text-neutral-400 whitespace-nowrap",
         render: u => <>{fmtDate(u.due)}</> },
       { key: "status", label: "Status", sort: true, width: 120, render: u => {
@@ -1465,9 +1469,18 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             </div>
             ) : (
             <div>
-              <div className="text-sm text-neutral-700">{b.statement_period || (b.due_date ? fmtDate(b.due_date) : "—")}</div>
+              {/* The statement as the statement describes itself (read from
+                  the PDF) -- NOT the account's current balance, which is
+                  what b.amount holds. Older rows without those fields show
+                  only their period. */}
+              <div className="text-sm text-neutral-700">
+                {b.bill_date ? `Bill ${fmtDate(b.bill_date)}` : (b.statement_period || "Statement")}
+                {b.statement_period_start && b.statement_period_end ? ` · ${fmtDate(b.statement_period_start)} – ${fmtDate(b.statement_period_end)}` : ""}
+              </div>
               <div className="text-2xs text-neutral-400">
-                {formatCurrency(safeNum(b.amount))}{b.due_date ? ` · due ${fmtDate(b.due_date)}` : ""}
+                {b.statement_total != null
+                  ? `${safeNum(b.statement_total) < 0 ? `${formatCurrency(-safeNum(b.statement_total))} credit` : `Total due ${formatCurrency(safeNum(b.statement_total))}`}${(b.statement_due_date || b.due_date) ? ` · due ${fmtDate(b.statement_due_date || b.due_date)}` : ""}`
+                  : (/-snapshot\.pdf$/i.test(b.pdf_storage_path || "") ? "Page snapshot — the provider's statement was not available; retried daily" : "Statement details not read")}
               </div>
             </div>
             )}

@@ -28,6 +28,7 @@ const { setCors } = require("./_cors");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 const { aiConfigured, askJson } = require("./_ai");
 const { ingestChunks } = require("./_ai-chunk");
+const { statementFields, pdfText } = require("./_statement-fields");
 const { embed, toVectorLiteral } = require("./_ai-embed");
 const { extractLicense } = require("./_ai-extract");
 const { loadPropertyArchiveIndex } = require("./_archived-properties");
@@ -856,8 +857,21 @@ module.exports = async function handler(req, res) {
         .upload(path, buf, { contentType: "application/pdf", upsert: false });
       if (upErr) return res.status(500).json({ error: upErr.message });
 
+      // The statement's OWN figures (bill date, period, total, due), read from
+      // the PDF, so the Statements list shows the statement rather than the
+      // account's current balance. A page snapshot ("-snapshot" in the name)
+      // is not a statement: its fields are cleared, never read. Best effort --
+      // a PDF that cannot be parsed still attaches.
+      let stmt = { bill_date: null, statement_total: null, statement_period_start: null, statement_period_end: null, statement_due_date: null };
+      if (!/-snapshot$/i.test(safe)) {
+        try {
+          const f = statementFields(await pdfText(buf));
+          stmt = { bill_date: f.bill_date, statement_total: f.total_due, statement_period_start: f.period_start,
+                   statement_period_end: f.period_end, statement_due_date: f.due_date };
+        } catch (e) { console.warn("[attach-bill-document] statement parse failed:", e.message); }
+      }
       const { error: setErr } = await sb.from("utility_bills")
-        .update({ pdf_storage_path: path, updated_at: new Date().toISOString() })
+        .update({ pdf_storage_path: path, ...stmt, updated_at: new Date().toISOString() })
         .eq("id", billId).eq("company_id", cid);
       if (setErr) return res.status(500).json({ error: setErr.message });
 
