@@ -83,6 +83,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [showFilters, setShowFilters] = useState(false); // filter popover open
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
+  const [utilReceipts, setUtilReceipts] = useState([]); // confirmed payments with a receipt PDF
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -518,7 +519,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     // receipt PDF and the Receipts picker can list every one -- the same
     // documents already filed under the property, surfaced where the bill lives.
     supabase.from("utility_payments")
-      .select("bill_id, receipt_storage_path, created_at")
+      .select("id, bill_id, receipt_storage_path, created_at, approved_at, observed_amount, approved_amount, confirmation_ref")
       .eq("company_id", companyId).not("receipt_storage_path", "is", null)
       .order("created_at", { ascending: false }),
   ]);
@@ -535,6 +536,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     if (r.bill_id != null && !receiptByBill.has(r.bill_id)) receiptByBill.set(r.bill_id, r.receipt_storage_path);
   }
   const billsAll = (billsRes.data || []).map(b => ({ ...b, receipt_path: receiptByBill.get(b.id) || null }));
+  // Every receipt, as the PAYMENT it records (when, how much, confirmation),
+  // tied to its account through its bill -- the Receipts picker lists these.
+  const acctByBill = new Map(billsAll.map(b => [b.id, b.utility_account_id]));
+  setUtilReceipts((receiptsRes.data || []).map(r => ({ ...r, account_id: acctByBill.get(r.bill_id) ?? null })).filter(r => r.account_id != null));
 
   // Which accounts have at least one statement / at least one receipt on file,
   // so a row only offers a picker that would have something in it.
@@ -1211,7 +1216,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       : <span className="text-xs text-neutral-300 border border-neutral-200 px-3 py-1 rounded-lg cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Online Payment</span>
   )}
   {u.has_statements && <TextLink tone="neutral" size="xs" underline={false} onClick={() => setDocPicker({ kind: "statements", accountId: u.id })} className="border border-neutral-200 px-3 py-1 rounded-lg hover:bg-neutral-50">Statements</TextLink>}
-  {u.has_receipts && <TextLink tone="positive" size="xs" underline={false} onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipts</TextLink>}
+  {<TextLink tone="positive" size="xs" underline={false} onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">Receipts</TextLink>}
   <div className="relative ml-auto">
     <button aria-label="More actions" onClick={() => setMenuOpenId(menuOpenId === u.id ? null : u.id)} className="w-8 h-8 rounded-lg border border-neutral-200 text-neutral-400 hover:text-neutral-700 hover:border-neutral-300 leading-none text-lg">⋯</button>
     {menuOpenId === u.id && (<>
@@ -1287,7 +1292,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             : (u.website
                 ? <a href={u.website} target="_blank" rel="noopener noreferrer" title={u.website}
                     className="text-brand-600 hover:underline truncate">{u.website.replace(/^https?:\/\//, "")}</a>
-                : <span className="text-neutral-300">\u2014</span>)}
+                : <span className="text-neutral-300">{"\u2014"}</span>)}
           {u.username_encrypted && (
             <TextLink tone="brand" size="xs" className="shrink-0" onClick={async () => {
               const s = new Set(showCreds);
@@ -1309,7 +1314,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
             : <span className="text-2xs text-neutral-300 cursor-not-allowed" title="Tenant-owed — an admin must approve before it can be paid on their behalf">Pay online</span>
         )}
         {u.has_statements && <TextLink tone="neutral" size="xs" onClick={() => setDocPicker({ kind: "statements", accountId: u.id })}>Stmts</TextLink>}
-        {u.has_receipts && <TextLink tone="positive" size="xs" onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })}>Rcpts</TextLink>}
+        {<TextLink tone="positive" size="xs" onClick={() => setDocPicker({ kind: "receipts", accountId: u.id })}>Rcpts</TextLink>}
         <button aria-label="More actions" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setTableMenu(tableMenu?.id === u.id ? null : { id: u.id, top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); }} className="w-7 h-7 rounded-md border border-neutral-200 text-neutral-400 hover:text-neutral-700 hover:border-neutral-300 leading-none text-base">⋯</button>
         </div>
       ) },
@@ -1436,7 +1441,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // Every statement / receipt for this biller at this property, newest first.
   // These are the same PDFs filed under the property's Documents -- listed here
   // where the bill lives, so the user opens the one they want without hunting.
-  const rows = historyFor(docPicker.accountId).filter(b => isReceipts ? b.receipt_path : b.pdf_storage_path);
+  const rows = isReceipts
+    ? utilReceipts.filter(r => r.account_id === docPicker.accountId)
+    : historyFor(docPicker.accountId).filter(b => b.pdf_storage_path);
   return (
   <Modal title={`${acct?.provider || "Utility"} — ${isReceipts ? "receipts" : "statements"}`} onClose={() => setDocPicker(null)}>
   <div className="space-y-3">
@@ -1449,15 +1456,24 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     : <ul className="divide-y divide-neutral-100">
         {rows.map(b => (
           <li key={b.id} className="flex items-center justify-between py-2">
+            {isReceipts ? (
+            <div>
+              <div className="text-sm text-neutral-700">Paid {fmtDate(b.approved_at || b.created_at)} · {formatCurrency(safeNum(b.observed_amount ?? b.approved_amount))}</div>
+              <div className="text-2xs text-neutral-400">
+                {b.confirmation_ref ? `Confirmation ${b.confirmation_ref}` : "No confirmation number captured"}
+              </div>
+            </div>
+            ) : (
             <div>
               <div className="text-sm text-neutral-700">{b.statement_period || (b.due_date ? fmtDate(b.due_date) : "—")}</div>
               <div className="text-2xs text-neutral-400">
                 {formatCurrency(safeNum(b.amount))}{b.due_date ? ` · due ${fmtDate(b.due_date)}` : ""}
               </div>
             </div>
+            )}
             <TextLink tone="brand" size="xs" underline={false} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30"
               onClick={async () => {
-                const path = isReceipts ? b.receipt_path : b.pdf_storage_path;
+                const path = isReceipts ? b.receipt_storage_path : b.pdf_storage_path;
                 const url = await getSignedUrl("documents", path, 300);
                 if (url) window.open(url, "_blank", "noopener");
                 else showToast(`Could not open that ${isReceipts ? "receipt" : "statement"}.`, "error");

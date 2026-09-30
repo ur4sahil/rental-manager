@@ -22,7 +22,11 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
 
   const provider = bill.provider_display || bill.provider;
   const amount = full ? due : safeNum(other);
-  const amountValid = full ? true : amount > 0;
+  // Portal minimums: Pepco refuses a payment under $5.00 and silently takes
+  // its own minimum instead, so the app would record one amount while the
+  // card was charged another (2026-09-29: $1 approved, $5.13 charged).
+  const minPay = /pepco/i.test(String(provider || "")) ? 5 : 0;
+  const amountValid = full ? true : (amount > 0 && amount >= minPay);
 
   const start = useCallback(async () => {
     setError(null); setBusy(true);
@@ -138,6 +142,7 @@ export default function PayBillModal({ bill, companyId, onClose, onPaid, showToa
                 className="w-28 rounded-lg border border-neutral-200 pl-5 pr-2 py-1 text-sm text-right" />
             </span>
           </button>
+          {!full && minPay > 0 && <p className={`text-xs mt-1 ${amount > 0 && amount < minPay ? "text-danger-600" : "text-neutral-400"}`}>{provider}'s minimum payment is {formatCurrency(minPay)}.</p>}
         </div>
 
         {/* Method */}

@@ -480,7 +480,18 @@ wss.on("connection", async (ws, req) => {
       // receipt's truth, which can differ from the approved figure (a portal
       // minimum, a fee, or an amount changed on the portal). Best-effort parse
       // near a payment/total label, plus any labelled convenience fee.
-      const amtM = body.match(/(?:payment amount|amount paid|total (?:amount )?(?:paid|charged|due)?|you (?:paid|are paying)|paid)\s*:?\s*\$\s*([\d,]+\.\d{2})/i);
+      // Labels tried IN ORDER, most specific first. One alternation with a
+      // bare "paid" in it matched the first figure after any "paid" on the
+      // page -- Pepco's receipt reads "Payment Amount $5.13 · $0.13
+      // Convenience Fee Included" and the payment was recorded as $0.13.
+      const AMT_LABELS = [
+        /payment amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+        /amount paid\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+        /total (?:amount )?(?:paid|charged)\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+        /you (?:paid|are paying)\s*:?\s*\$\s*([\d,]+\.\d{2})/i,
+      ];
+      let amtM = null;
+      for (const re of AMT_LABELS) { amtM = body.match(re); if (amtM) break; }
       const observedAmount = amtM ? Number(amtM[1].replace(/,/g, "")) : null;
       const feeM = body.match(/\$\s*([\d,]+\.\d{2})\s*(?:convenience|service|processing)\s*fee|(?:convenience|service|processing)\s*fee[^$]{0,24}\$\s*([\d,]+\.\d{2})/i);
       const observedFee = feeM ? Number((feeM[1] || feeM[2]).replace(/,/g, "")) : null;
