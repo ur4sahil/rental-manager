@@ -50,6 +50,15 @@ const PORT = Number(process.env.PORT) || 3010;
 // STREAM_TOKEN is honoured too, but only for local dev when no secret is set.
 const JWT_SECRET = process.env.STREAM_JWT_SECRET || "";
 const TOKEN = process.env.STREAM_TOKEN || "";
+// Browser origins allowed to open a session (see the Origin check below).
+const ALLOWED_ORIGINS = new Set((process.env.STREAM_ALLOWED_ORIGINS || "https://housify365.com,https://test.housify365.com")
+  .split(",").map(s => s.trim()).filter(Boolean));
+// Tokens already used to open a browser here, jti -> expiry ms; swept as they expire.
+const SPENT_JTI = new Map();
+setInterval(() => { const now = Date.now(); for (const [k, exp] of SPENT_JTI) if (exp < now) SPENT_JTI.delete(k); }, 60 * 1000).unref();
+// Browsers open on this box right now.
+const LIVE_SESSIONS = new Set();
+const MAX_SESSIONS = Math.max(1, Number(process.env.STREAM_MAX_SESSIONS) || 3);
 // Residential exit: a SOCKS5 proxy that Sheeba (the home Mac) publishes on
 // this box's localhost through a reverse SSH tunnel. Checked per session so a
 // sleeping Sheeba never blocks a payment -- it just goes direct.
@@ -559,10 +568,26 @@ wss.on("connection", async (ws, req) => {
   // Wide-open running is possible only in bare local dev (no secret, no token).
   const claims = verifyToken(url.searchParams.get("token"));
   if ((JWT_SECRET || TOKEN) && !claims) { ws.close(4001, "unauthorized"); return; }
-  // Provider/amount come from the SIGNED token when present, so the client
-  // can't widen its own grant by editing a query string.
-  const provider = resolveProviderKey(claims?.provider || url.searchParams.get("provider") || "");
-  const startUrl = url.searchParams.get("url") || null;
+  // A page on another site could open this socket from a victim's browser
+  // (browsers always send Origin). Only the app's origins may; non-browser
+  // clients (the delegating Oracle server, test tools) send no Origin.
+  const origin = String(req.headers.origin || "");
+  if (origin && !ALLOWED_ORIGINS.has(origin)) { log(`origin refused: ${origin}`); ws.close(4003, "origin not allowed"); return; }
+  // Provider comes from the SIGNED token whenever a secret is configured --
+  // never from the query string, which would let the client pick which
+  // portal's saved sign-in and stored credentials get loaded. The bare
+  // query-string form survives only for secret-less local dev.
+  const provider = resolveProviderKey(JWT_SECRET ? (claims?.provider || "") : (claims?.provider || url.searchParams.get("provider") || ""));
+  if (JWT_SECRET && !provider) { ws.close(4001, "token names no provider"); return; }
+  // This box serves ONE company's portals. A token minted for another company
+  // must not open its sessions here.
+  if (process.env.HOUSY_COMPANY_ID && claims?.companyId && claims.companyId !== process.env.HOUSY_COMPANY_ID) {
+    log(`company refused: ${claims.companyId}`); ws.close(4003, "wrong company"); return;
+  }
+  // The landing page is always the portal's own entry. A client-chosen URL
+  // used to be honoured here: a real Chromium holding the portal's cookies,
+  // steerable to any address (2026-09-30 audit).
+  const startUrl = null;
   const sessionId = crypto.randomBytes(4).toString("hex");
   const send = (obj) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {} };
   log(`[${sessionId}] connect provider=${provider || "-"}`);
@@ -587,6 +612,24 @@ wss.on("connection", async (ws, req) => {
     up.on("error", (e) => { send({ type: "status", message: "Couldn't reach the home computer for this payment \u2014 please try again." }); done("error " + e.message); });
     return;
   }
+
+  // One browser per token, a few browsers per box. The token's jti was minted
+  // but never checked, so a captured token opened unlimited parallel
+  // sessions until it expired; and nothing capped how many Chromiums a box
+  // would launch. (Marked here, after delegation, so a Washington Gas token
+  // is spent on Sheeba where the browser actually runs, not on both boxes.)
+  const jti = claims?.jti ? String(claims.jti) : null;
+  if (jti) {
+    if (SPENT_JTI.has(jti)) { log(`[${sessionId}] token already used`); ws.close(4001, "token already used"); return; }
+    SPENT_JTI.set(jti, Number(claims.exp) || Date.now() + 15 * 60 * 1000);
+  }
+  if (LIVE_SESSIONS.size >= MAX_SESSIONS) {
+    log(`[${sessionId}] refused: ${LIVE_SESSIONS.size} sessions already open`);
+    send({ type: "status", message: "The payment browser is busy right now — please try again in a few minutes." });
+    ws.close(4029, "busy"); return;
+  }
+  LIVE_SESSIONS.add(sessionId);
+  ws.once("close", () => LIVE_SESSIONS.delete(sessionId));
 
   // Make sure the signed-in session is live before opening the browser, so the
   // stream never lands the person on the portal's login page.
