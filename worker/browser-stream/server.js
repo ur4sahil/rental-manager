@@ -232,10 +232,15 @@ async function autoFillLogin(page, book, companyId, send, sessionId) {
     const passBox = page.locator(book.loginFields?.pass || 'input[type="password"]').first();
     await passBox.click(); await passBox.fill("").catch(() => {}); await passBox.pressSequentially(creds.password, { delay: 55 });
     log(`[${sessionId}] login: pre-filled ${book.provider}`);
+    // Sign in BY ITSELF now that this browser exits through Sheeba's home
+    // connection: submit the form, and for BGE fetch the emailed code from
+    // Sheeba's Mail through the tunnel (agent/code-service.js). Anything that
+    // does not complete falls back to asking the person, as before.
+    if (await autoSubmitLogin(page, book, send, sessionId).catch(() => false)) return "signed-in";
     // reCAPTCHA v3 returns "Invalid Captcha" for an automated click (tested on
-    // Washington Gas), so the person clicks Log In themselves -- their genuine
-    // interaction is what passes v3. BGE has no captcha but a mailed/texted
-    // verification code (mfa), which also needs the person, so we stop here too.
+    // Washington Gas from the data-centre IP), so the person clicks Log In
+    // themselves -- their genuine interaction is what passes v3. BGE has no
+    // captcha but a mailed/texted verification code (mfa).
     const codeHint = book.mfa ? " and enter the verification code they send you" : "";
     send({ type: "status", message: `Your ${book.provider} login is filled in \u2014 click \u201cLog In\u201d${codeHint}.` });
     return true;
@@ -263,6 +268,60 @@ async function waitSignedIn(page, book, timeoutMs) {
     // Two clear polls in a row, so a page mid-redirect is not taken as done.
     clearFor = (!onLogin && !onCode) ? clearFor + 1 : 0;
     if (clearFor >= 2) { await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {}); return true; }
+  }
+  return false;
+}
+
+// Ask Sheeba's code service (through the tunnel) for a BGE code received after
+// sinceMs. null until one arrives.
+function fetchBgeCode(sinceMs) {
+  return new Promise(resolve => {
+    const url = process.env.HOUSY_CODE_SERVICE_URL, tok = process.env.HOUSY_CODE_SERVICE_TOKEN, proxy = STREAM_HOME_PROXY;
+    if (!url || !tok || !proxy) return resolve(null);
+    const { execFile } = require("child_process");
+    execFile("curl", ["-s", "-m", "60", "--socks5-hostname", proxy.replace(/^socks5h?:\/\//, ""),
+      "-H", `x-code-token: ${tok}`, `${url}/bge-code?since=${sinceMs}`], { timeout: 65000 }, (err, out) => {
+      if (err) return resolve(null);
+      try { const c = JSON.parse(out).code; resolve(/^\d{6}$/.test(c || "") ? c : null); } catch { resolve(null); }
+    });
+  });
+}
+
+// Submit the filled login; for BGE, enter the emailed code. Returns true once
+// the login form (and any code box) is gone -- i.e. signed in -- else false.
+async function autoSubmitLogin(page, book, send, sessionId) {
+  const submitSig = (book.signedOutSignals || []).find(s => s.role === "button");
+  const submit = book.loginFields?.submit ? page.locator(book.loginFields.submit).first()
+    : submitSig ? page.getByRole("button", { name: submitSig.name }).first()
+    : page.getByRole("button", { name: /log ?in|sign ?in|continue/i }).first();
+  send({ type: "status", message: `Signing in to ${book.provider}\u2026` });
+  const sentAt = Date.now();
+  await submit.click({ timeout: 8000 });
+  log(`[${sessionId}] login: submitted ${book.provider} automatically`);
+  const codeBox = page.locator('#emailVerificationCode, input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="code" i], input[id*="verification" i]').first();
+  const userBox = book.loginFields?.user ? page.locator(book.loginFields.user).first() : page.locator('input[type="password"]').first();
+  let codeDone = false;
+  const end = Date.now() + 4 * 60 * 1000;
+  let clear = 0;
+  while (Date.now() < end) {
+    await new Promise(r => setTimeout(r, 2500));
+    if (!codeDone && await codeBox.isVisible().catch(() => false)) {
+      send({ type: "status", message: `${book.provider} sent a sign-in code \u2014 reading it from the inbox\u2026` });
+      const code = await (async () => { for (let i = 0; i < 24 && Date.now() < end; i++) { const c = await fetchBgeCode(sentAt - 30000); if (c) return c; await new Promise(r => setTimeout(r, 4000)); } return null; })();
+      if (!code) { log(`[${sessionId}] login: no ${book.provider} code arrived`); return false; }
+      await codeBox.click().catch(() => {}); await codeBox.fill("").catch(() => {}); await codeBox.pressSequentially(code, { delay: 80 });
+      const cont = page.getByRole("button", { name: /continue|verify|submit|confirm|next/i }).first();
+      if (await cont.isVisible().catch(() => false)) await cont.click({ timeout: 8000 }).catch(() => {}); else await codeBox.press("Enter").catch(() => {});
+      codeDone = true;
+      log(`[${sessionId}] login: entered ${book.provider} code from Sheeba's Mail`);
+      continue;
+    }
+    const onLogin = await userBox.isVisible().catch(() => false);
+    const onCode = await codeBox.isVisible().catch(() => false);
+    clear = (!onLogin && !onCode) ? clear + 1 : 0;
+    if (clear >= 2) { log(`[${sessionId}] login: ${book.provider} signed in automatically`); return true; }
+    // Still on the login form after 25s (e.g. reCAPTCHA refused the click): hand back.
+    if (onLogin && !book.mfa && Date.now() - sentAt > 25000) { log(`[${sessionId}] login: automatic ${book.provider} sign-in not accepted -- asking the person`); return false; }
   }
   return false;
 }
@@ -632,7 +691,7 @@ wss.on("connection", async (ws, req) => {
       ? await autoFillLogin(page, getBook(provider), claims.companyId, send, sessionId).catch(() => false)
       : false;
     if (filled) {
-      send({ type: "status", message: pay ? "Click “Log In” — once you're signed in, it takes you straight to the payment page." : "Once you're signed in, close this window and it's connected." });
+      if (filled !== "signed-in") send({ type: "status", message: pay ? "Click “Log In” — once you're signed in, it takes you straight to the payment page." : "Once you're signed in, close this window and it's connected." });
       // The person clicks Log In (their real click is what passes reCAPTCHA v3)
       // and types any emailed code; then carry on BY ITSELF to the payment
       // page instead of leaving them to find the bill. Runs in the background
