@@ -267,9 +267,30 @@ async function revealAccount(page, number) {
   }
 
   // 1. A search box filters server- or client-side and is the cheapest.
-  const search = page.getByRole("textbox", { name: /account\s*(number|#)?\s*search|search/i })
-    .or(page.locator('input[type="search"], input[placeholder*="search" i]')).first();
-  if (await search.count().catch(() => 0)) {
+  // The TABLE's own search box, never the site-wide one. BGE's header has a
+  // "Search" box above the chooser's "Account Number Search:" -- a bare
+  // /search/i matched the header first, the account number was typed into
+  // the site search, the table stayed unfiltered and the drive stopped
+  // (2026-10-01 09:44). Most specific first; the generic match only when
+  // the page has no labelled account search and no DataTables filter.
+  const candidates = [
+    page.getByRole("textbox", { name: /account\s*(number|#|no\.?)?\s*search|search\s*(by\s*)?account/i }),
+    page.locator('.dataTables_filter input, [id$="_filter"] input, table ~ * input[type="search"]'),
+    page.getByRole("textbox", { name: /search/i }),
+    page.locator('input[type="search"], input[placeholder*="search" i]'),
+  ];
+  let search = null;
+  for (const c of candidates) {
+    const n = await c.count().catch(() => 0);
+    for (let i = 0; i < n && !search; i++) {
+      const el = c.nth(i);
+      // Skip anything inside the page header / site navigation.
+      const inHeader = await el.evaluate(e => !!e.closest("header, nav, [role=banner], [role=navigation], .header, #header")).catch(() => false);
+      if (!inHeader && await el.isVisible().catch(() => false)) search = el;
+    }
+    if (search) break;
+  }
+  if (search) {
     // fill() is enough: it dispatches an input event and DataTables filters on
     // it -- verified live, ten rows down to one. Enter is harmless but does
     // nothing here, so nothing depends on it.
