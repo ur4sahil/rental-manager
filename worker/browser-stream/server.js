@@ -382,7 +382,7 @@ async function autoSubmitLogin(page, book, send, sessionId) {
         const c = await fetchBgeCode(sentAt - 30000); if (c) return c;
         // No code after 30s: BGE sometimes shows the code screen without
         // sending one (after several sign-ins in a day). Ask once for a new one.
-        if (!resent && Date.now() - sentAt > 30000) {
+        if (false && !resent && Date.now() - sentAt > 30000) { // disabled 2026-10-01: the code was never late; a resend can void it
           const again = page.getByRole("button", { name: /send new code|send code again|resend/i }).first();
           if (await again.isVisible().catch(() => false)) { await again.click({ timeout: 5000 }).catch(() => {}); resent = true; log(`[${sessionId}] login: no code after 30s -- pressed "Send New Code"`); }
           else { const link = page.getByText(/send code again/i).first(); if (await link.isVisible().catch(() => false)) { await link.click({ timeout: 5000 }).catch(() => {}); resent = true; log(`[${sessionId}] login: no code after 30s -- pressed "Send code again"`); } }
@@ -964,8 +964,8 @@ wss.on("connection", async (ws, req) => {
       // so the stream starts immediately.
       if (pay) {
         (async () => {
-          const ok = await waitSignedIn(page, getBook(provider), 5 * 60 * 1000);
-          if (!ok) { log(`[${sessionId}] auto-drive: not signed in within 5 min -- left for the person`); return; }
+          const ok = await waitSignedIn(page, getBook(provider), 10 * 60 * 1000);
+          if (!ok) { log(`[${sessionId}] auto-drive: not signed in within 10 min -- left for the person`); return; }
           log(`[${sessionId}] signed in by the person -- continuing to the payment page`);
           send({ type: "status", message: "Signed in — taking you to the payment page…" });
           await autoDrive(page, provider, claims, send, sessionId).catch(() => {});

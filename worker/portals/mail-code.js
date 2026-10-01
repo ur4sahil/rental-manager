@@ -200,7 +200,11 @@ function readCodeFromMail(sinceMs, sender = process.env.HOUSY_CODE_SENDER || "no
     const code = extractCode(messageText(raw));
     if (code) return code;
   }
-  return null;
+  // Nothing usable in the store yet: ask the Mail app. Measured 2026-10-01:
+  // BGE's code was in Mail's Inbox ~5s after sending, but reached the on-disk
+  // index 2 minutes later and its body file later still, so a store-only
+  // read returned "none yet" for 6 minutes while the code sat in the Inbox.
+  return readCodeViaMailApp(sinceMs, sender);
 }
 
 module.exports = { emlxMessage, messageText, extractCode, emlxPathFor, readCodeFromMail, readCodeViaMailApp };
