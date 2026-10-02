@@ -13,6 +13,7 @@ export const CLOCK_KINDS = {
   move_out_due: { label: "Move-out", icon: "logout" },
   lease_change_failed: { label: "Lease change", icon: "error_outline" },
   late_notice_due: { label: "Late rent", icon: "schedule" },
+  ftpr_deadline: { label: "Failure to pay rent", icon: "gavel" },
 };
 
 const SEVERITY_ORDER = { overdue: 0, high: 1, normal: 2 };
@@ -49,6 +50,11 @@ export function clockAction(item) {
       return hasTenant
         ? { label: "Write the notice", page: "doc_builder", action: { templateKey: "late_fee_notice", tenantId: Number(item.tenant_id), returnTo: BACK } }
         : null;
+    case "ftpr_deadline": {
+      // The key is "ftpr_deadline:<case id>".
+      const caseId = String(item.item_key || "").split(":")[1] || "";
+      return caseId ? { label: "Open the case", page: "evictions", action: { openCaseId: caseId } } : { label: "Open cases", page: "evictions", action: null };
+    }
     default:
       return null;
   }

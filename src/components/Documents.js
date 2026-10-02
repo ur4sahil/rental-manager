@@ -2672,6 +2672,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-xs text-neutral-400">· {fmtDate(d.created_at)}</span>
   </div>
   </div>
+  {/* A court form is the court's own PDF, stored as made: there is no
+      body to re-render, re-export or email from here. */}
+  {d.output_type === "court_form" ? (
+  <div className="flex gap-2 shrink-0">
+  {d.pdf_output_path && <Btn variant="danger" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.pdf_output_path); if (url) window.open(url, "_blank", "noopener,noreferrer"); else showToast("That file could not be opened.", "error"); }} title="PDF">PDF</Btn>}
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteGeneratedDoc(d)}>✕</TextLink>
+  </div>
+  ) : (
   <div className="flex gap-2 shrink-0">
   <Btn variant="danger" size="xs" onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} title="PDF">PDF</Btn>
   <Btn variant="secondary" size="xs" onClick={() => exportDOCX(d)} title="DOCX">DOCX</Btn>
@@ -2684,6 +2692,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>Email</Btn>}
   <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteGeneratedDoc(d)}>✕</TextLink>
   </div>
+  )}
   </div>
   {hasEnvelope && sigs.length > 0 && (
   <div className="mt-3 pt-3 border-t border-neutral-100 grid grid-cols-1 md:grid-cols-2 gap-1.5">

@@ -737,3 +737,70 @@ logged-out browser as the applicant.
 Tests: `tests/lease-clock.test.mjs` (67), a seeded check of every kind of
 line on TEST (rolled back), the daily job run twice locally (second run
 emails nothing), and a browser run of the dashboard card.
+
+---
+
+## Phase 4 as built (2026-10-02, on `staging`; database change on TEST only)
+
+**Changed from the plan, and why.** The plan said both court forms would be
+filled on the official PDFs. Only one can be:
+- **DC-CV-115, Notice of Intent** is published by the court as a fillable
+  PDF (Rev. 10/2024). The app fills in the court's own fields and stores
+  the result. `public/dccv115.pdf` is the court's file, unchanged; if the
+  court revises it, filling refuses rather than guesses.
+- **DC-CV-082, the complaint** cannot be done that way. The court's own
+  copy says: "This form is not printable, and cannot be completed online...
+  The Court requires the carbonless multi-part form." So the app makes a
+  **worksheet**: every answer the form asks for, numbered as on the form,
+  to copy onto the court's paper.
+
+**What it does.**
+- **Arrears, worked out in the app** (`src/utils/arrears.js`). Payments are
+  applied to the oldest charge first. What reaches the form is unpaid RENT
+  and LATE FEES, each with its period. Utilities, deposits, repairs and
+  court costs are never claimed (the form says so); they are shown as "left
+  off". Staff can correct what a charge counts as, or enter the amounts
+  themselves.
+- **Voucher tenancies**: only the tenant's own share is claimed. If the
+  split between tenant and housing authority does not add up, no number is
+  offered and staff must enter the tenant's share.
+- **Step 1, the notice** (tenant page "Prepare filing", or "Failure to pay
+  rent" on the case screen). Date and method as on the form: first-class
+  mail, on the door, or electronic (only if the tenant asked for it). A
+  case opens at the notice stage with the amounts, the deadline (10 days),
+  the court for the property's county, and the notice on file as served.
+  The tenant's status does NOT change: it is not a notice to vacate.
+- **Step 2, the complaint worksheet**, only from the 11th day and only with
+  rent still owed. Carries the notice's date and method, the rental licence
+  number and expiry, the lead certificate number, whether the tenancy is
+  subsidised, and asks for military service and prior judgments. Missing
+  licence or lead numbers are printed on it as things to check.
+- **Case screen**: claimed amounts, notice date and method, deadline with
+  days left, court, case number, hearing, judgment and warrant dates, the
+  documents, "Record the filing", and "The tenant paid — close the case".
+- **Dashboard**: "the 10 days are up" appears in Needs attention.
+- **Settings → Company Details**: the landlord's address, phone and email
+  (printed on the notice) could not be edited anywhere before.
+
+**[CHOSEN]**
+- Money paid on the same day as rent and another charge goes to rent
+  first, so the claim errs low, never high.
+- The notice is left unsigned, to be signed by hand.
+- The old generic "Pay or Quit" printout is hidden for Maryland
+  failure-to-pay cases (it is not the form the court requires). It remains
+  for other case types and for Virginia and DC.
+- Maryland only. A home in VA or DC is refused with a message.
+
+**[LAW] for the attorney before this is used for a real filing**
+- That payments may be applied oldest-charge-first across all charges, and
+  the "less tenant payments for utility bills, fees and security deposits"
+  line (PU 7-309 / RP 8-212.3), which the worksheet shows as $0.
+- Whether mailing adds days to the 10.
+- The 5% late-fee cap (the app only warns).
+- Voucher cases: what may be claimed from the tenant.
+- The military-service affidavit wording.
+
+Migration: `20261003080000_ftpr_cases.sql` (new columns on
+`eviction_cases`; additive). Tests: `tests/ftpr.test.mjs` (102, including
+filling the court's real PDF) and a browser run of notice → worksheet →
+filing → paid.

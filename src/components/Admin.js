@@ -1316,6 +1316,55 @@ function ErrorLogDashboard({ companyId, showToast }) {
   );
 }
 
+// ============ COMPANY CONTACT DETAILS ============
+// The landlord's name, address, phone and email as printed on notices and
+// court forms. They were asked for once, when the company was created, and
+// could not be changed afterwards: a company made without an address could
+// not produce a notice that requires one.
+function CompanyContactCard({ companyId, showToast, userProfile }) {
+  const [row, setRow] = useState(null);
+  const [form, setForm] = useState({ address: "", phone: "", email: "" });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let live = true;
+    supabase.from("companies").select("name, address, phone, email").eq("id", companyId).maybeSingle().then(({ data }) => {
+      if (!live || !data) return;
+      setRow(data); setForm({ address: data.address || "", phone: data.phone || "", email: data.email || "" });
+    });
+    return () => { live = false; };
+  }, [companyId]);
+  if (!row) return null;
+  const dirty = form.address !== (row.address || "") || form.phone !== (row.phone || "") || form.email !== (row.email || "");
+  const badEmail = form.email.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+  async function save() {
+    if (badEmail) { showToast("That email address does not look right.", "error"); return; }
+    setSaving(true);
+    const next = { address: form.address.trim(), phone: form.phone.trim(), email: form.email.trim() };
+    const { data, error } = await supabase.from("companies").update(next).eq("id", companyId).select("id");
+    setSaving(false);
+    if (error || !(data || []).length) { pmError("PM-8006", { raw: error || new Error("no row updated"), context: "save company contact details" }); return; }
+    setRow({ ...row, ...next }); setForm(next);
+    logAudit("update", "settings", "Updated company contact details", "", userProfile?.email, "admin", companyId);
+    showToast("Company details saved.", "success");
+  }
+  return (
+  <div className="bg-white rounded-xl border border-neutral-200 p-4" data-testid="company-contact">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-1 flex items-center gap-1"><span className="material-icons-outlined text-sm">business</span>Company Details</div>
+  <p className="text-xs text-neutral-400 mb-3">Printed as the landlord on notices and court forms for {row.name}.</p>
+  <div className="grid grid-cols-3 gap-4">
+  <div className="col-span-3">
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Address</label>
+  <Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Street, City, ST 12345" />
+  <span className="text-xs text-neutral-400">On one line, ending with the city, state and ZIP: 100 Main St, Bowie, MD 20715</span>
+  </div>
+  <div><label className="text-xs font-medium text-neutral-500 block mb-1">Phone</label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-500 block mb-1">Email</label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+  </div>
+  <div className="mt-3"><Btn size="sm" onClick={save} disabled={!dirty || saving}>{saving ? "Saving…" : "Save company details"}</Btn></div>
+  </div>
+  );
+}
+
 // ============ ADMIN PAGE (Audit Trail + Team & Roles + Error Log) ============
 // ============ COMPANY SETTINGS PANEL ============
 function CompanySettingsPanel({ companyId, showToast, userProfile, companySettings, setCompanySettings }) {
@@ -1369,6 +1418,8 @@ function CompanySettingsPanel({ companyId, showToast, userProfile, companySettin
   <Btn onClick={handleSave} disabled={saving || !dirty}>{saving ? "Saving..." : "Save Settings"}</Btn>
   </div>
   </div>
+
+  <CompanyContactCard companyId={companyId} showToast={showToast} userProfile={userProfile} />
 
   {/* Late Fees */}
   <div className="bg-white rounded-xl border border-neutral-200 p-4">

@@ -79,6 +79,11 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     ["company_settings", "lease_clock_digest"],
     ["company_settings", "auto_remind_signers_days"],
     ["tenants", "notice_given_on"],
+    // Failure to pay rent (20261003080000): what the case screen writes.
+    ["eviction_cases", "case_number"],
+    ["eviction_cases", "claim_detail"],
+    ["eviction_cases", "notice_doc_id"],
+    ["eviction_cases", "cured_on"],
     ["tenants", "forwarding_address"],
   ];
   for (const [table, col] of required) {

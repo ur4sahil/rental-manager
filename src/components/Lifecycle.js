@@ -13,6 +13,7 @@ import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPrope
 import { recurringRentRefsForMonth, pickMoveOutRentCharge, isRentSchedule } from "../utils/paymentRules";
 import { depositStatement, depositStatementValues, depositDueBy } from "../utils/noticeRules";
 import { StatCard, Spinner, PropertySelect } from "./shared";
+import { FtprNoticeDialog, FtprCasePanel } from "./FtprFiling";
 
 function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm, initialAction = null, companySettings = {} }) {
   const [step, setStep] = useState(1);
@@ -779,7 +780,7 @@ const EVICTION_STAGES = [
   { id: "closed", label: "Closed", icon: "check_circle", color: "bg-neutral-500" },
 ];
 
-function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, activeCompany, initialAction }) {
   const [cases, setCases] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -791,8 +792,38 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const [stageNote, setStageNote] = useState("");
   const [stageCost, setStageCost] = useState("");
   const [stageDate, setStageDate] = useState(formatLocalDate(new Date()));
+  // Failure to pay rent: the tenant whose Notice of Intent is being made,
+  // and whether the "which tenant?" picker is open.
+  const [ftprTenantId, setFtprTenantId] = useState(null);
+  const [ftprPick, setFtprPick] = useState(null);
+  const handledAction = useRef(null);
 
   useEffect(() => { fetchCases(); fetchTenants(); }, [companyId]);
+
+  // Arriving from a tenant's "Prepare filing" (the tenant is carried) or
+  // from the dashboard's "the 10 days are up" (the case is).
+  useEffect(() => {
+    if (!initialAction || handledAction.current === initialAction || loading) return;
+    handledAction.current = initialAction;
+    if (initialAction.openCaseId) {
+      const c = cases.find(x => String(x.id) === String(initialAction.openCaseId));
+      if (c) setSelectedCase(c);
+    } else if (initialAction.tenantId != null) {
+      const open = cases.find(x => x.status === "active" && x.reason === "non_payment" && String(x.tenant_id) === String(initialAction.tenantId));
+      if (open) setSelectedCase(open); else setFtprTenantId(initialAction.tenantId);
+    }
+  }, [initialAction, loading, cases]);
+
+  async function afterFtprNotice(out) {
+    const { data } = await companyQuery("eviction_cases", companyId).order("created_at", { ascending: false });
+    setCases(data || []);
+    if (out?.caseId) { const c = (data || []).find(x => x.id === out.caseId); if (c) setSelectedCase(c); }
+  }
+  async function refreshSelectedCase() {
+    const { data } = await companyQuery("eviction_cases", companyId).order("created_at", { ascending: false });
+    setCases(data || []);
+    setSelectedCase(cur => (cur ? (data || []).find(x => x.id === cur.id) || cur : cur));
+  }
 
   async function fetchTenants() {
   const { data } = await supabase.from("tenants").select("id, name, property, lease_status, balance").eq("company_id", companyId).is("archived_at", null);
@@ -979,7 +1010,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   if (!await showConfirm({ message: `Close this eviction case as "${outcome}"?\n\n${outcome === "completed" ? "This will also: set tenant to inactive, mark property vacant, terminate lease, and disable autopay." : outcome === "tenant_cured" ? "Tenant status will return to active." : "No tenant/property changes will be made."}` })) return;
   const history = JSON.parse(evCase.stage_history || "[]");
   history.push({ stage: "closed", date: formatLocalDate(new Date()), note: `Case closed — ${outcome}`, cost: 0, by: userProfile?.email });
-  await supabase.from("eviction_cases").update({ status: "closed", current_stage: "closed", outcome, stage_history: JSON.stringify(history) }).eq("id", evCase.id).eq("company_id", companyId);
+  await supabase.from("eviction_cases").update({ status: "closed", current_stage: "closed", outcome, stage_history: JSON.stringify(history), ...(outcome === "tenant_cured" ? { cured_on: formatLocalDate(new Date()) } : {}) }).eq("id", evCase.id).eq("company_id", companyId);
 
   // #2: Cascade updates based on outcome
   if (outcome === "completed") {
@@ -998,8 +1029,11 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("tenant_name", evCase.tenant_name).eq("status", "active");
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", evCase.tenant_name).eq("property", evCase.property);
   } else if (outcome === "tenant_cured") {
-  // Tenant cured — restore to active
-  if (evCase.tenant_id) {
+  // Tenant cured — restore to active. Not for a failure-to-pay case that
+  // began with a Notice of Intent: that never changed the tenant's status
+  // (it is not a notice to vacate), so there is nothing to restore, and
+  // "restoring" would wipe a real notice to vacate given for another reason.
+  if (evCase.tenant_id && evCase.notice_type !== "notice_of_intent") {
   await supabase.from("tenants").update({ lease_status: "active" }).eq("id", evCase.tenant_id).eq("company_id", companyId);
   }
   // No lease write here either. Filing never moved the lease off
@@ -1037,8 +1071,31 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <PageHeader title="Eviction Tracker" />
   <p className="text-sm text-neutral-400">Manage eviction cases from notice to resolution</p>
   </div>
+  <div className="flex gap-2">
+  <Btn variant="secondary" onClick={() => setFtprPick({ tenant_id: "" })}>Failure to pay rent</Btn>
   <Btn variant="danger-fill" onClick={() => setShowForm(!showForm)}>+ New Case</Btn>
   </div>
+  </div>
+
+  {ftprPick && (
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
+  <h3 className="font-semibold text-neutral-700 mb-1">Failure to pay rent (Maryland)</h3>
+  <p className="text-xs text-neutral-500 mb-3">Starts with the court's Notice of Intent (DC-CV-115), filled in from the tenant's ledger. The tenant then has 10 days to pay before a complaint can be filed.</p>
+  <div className="flex gap-2 flex-wrap items-end">
+  <div className="flex-1 min-w-64">
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label>
+  <Select value={ftprPick.tenant_id} onChange={e => setFtprPick({ tenant_id: e.target.value })}>
+  <option value="">Select tenant...</option>
+  {tenants.filter(t => !t.archived_at && safeNum(t.balance) > 0).map(t => <option key={t.id} value={t.id}>{t.name} — {t.property} (owes {formatCurrency(t.balance)})</option>)}
+  </Select>
+  </div>
+  <Btn disabled={!ftprPick.tenant_id} onClick={() => { setFtprTenantId(ftprPick.tenant_id); setFtprPick(null); }}>Continue</Btn>
+  <Btn variant="ghost" onClick={() => setFtprPick(null)}>Cancel</Btn>
+  </div>
+  {tenants.filter(t => !t.archived_at && safeNum(t.balance) > 0).length === 0 && <p className="text-xs text-neutral-400 mt-2">No tenant has a balance.</p>}
+  </div>
+  )}
+  {ftprTenantId != null && <FtprNoticeDialog tenantId={Number(ftprTenantId)} companyId={companyId} activeCompany={activeCompany} userProfile={userProfile} userRole={userRole} showToast={showToast} onClose={() => { setFtprTenantId(null); fetchTenants(); }} onDone={afterFtprNotice} />}
 
   {/* Stats */}
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
@@ -1180,10 +1237,19 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   </div>
 
-  {/* Generate Legal Notice */}
+  {/* Failure to pay rent: the notice, the deadline, the court's number, the documents */}
+  {selectedCase.reason === "non_payment" && (
+  <FtprCasePanel evCase={selectedCase} companyId={companyId} activeCompany={activeCompany} userProfile={userProfile} userRole={userRole} showToast={showToast}
+    onChanged={refreshSelectedCase} onClosePaid={(c) => closeCase(c, "tenant_cured")} />
+  )}
+
+  {/* Generate Legal Notice. Not for a Maryland failure-to-pay case: the
+      court requires its own Notice of Intent there, made above. */}
+  {!(selectedCase.reason === "non_payment" && !/, (VA|DC)\b/.test(selectedCase.property || "")) && (
   <div className="px-6 py-3 border-b border-brand-50 flex gap-2">
   <Btn variant="amber" size="sm" icon="print" onClick={() => generateEvictionNotice(selectedCase)}>Generate Legal Notice</Btn>
   </div>
+  )}
 
   {/* Advance Stage */}
   {selectedCase.status === "active" && (

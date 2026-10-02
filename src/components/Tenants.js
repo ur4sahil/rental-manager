@@ -1362,7 +1362,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         onSetRent={startEdit}
         onExportPdf={exportLedgerPDF}
         onApplyLateFee={() => setPage("latefees")}
-        onPrepareFiling={() => setPage("evictions")}
+        onPrepareFiling={t => setPage("evictions", { tenantId: (t || selectedTenant).id })}
         onUploadDoc={t => setShowDocUpload({ property: t.property || "", tenant: t.name || "" })}
         onViewDoc={pageViewDoc}
         onSetDocType={pageSetDocType}

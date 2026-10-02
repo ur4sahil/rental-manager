@@ -28,7 +28,7 @@ export const DOC_KIND_LABEL = {
 // when one was served is a fact worth recording: it is what a court asks.
 export const SERVED_KINDS = ["notice_to_vacate", "rent_increase_notice", "late_notice", "notice_of_intent", "move_out_acknowledgment", "deposit_disposition"];
 export const SERVE_METHODS = [["email", "Email"], ["hand", "By hand"], ["mail", "First-class mail"], ["certified", "Certified mail"], ["posted", "Posted on the door"]];
-const SERVE_METHOD_LABEL = Object.fromEntries(SERVE_METHODS);
+const SERVE_METHOD_LABEL = { ...Object.fromEntries(SERVE_METHODS), text: "Text message", portal: "Tenant portal" };
 const SIG_LABEL = { pending: "waiting their turn", sent: "emailed", viewed: "opened", signed: "signed", declined: "declined", voided: "cancelled" };
 
 /** Where a generated document stands, in words. Exported for tests and for badges elsewhere. */
