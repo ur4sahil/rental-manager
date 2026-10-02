@@ -481,30 +481,34 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     }
     setImportingDocx(true);
     try {
-      const mammoth = (await import("mammoth")).default || (await import("mammoth"));
       const arrayBuffer = await file.arrayBuffer();
-      // styleMap fills gaps in mammoth's default mapping:
-      //  - underlines (u/ins) — mammoth drops them by default; preserve as <u>
-      //  - lettered Word numbering (a., i., etc.) survives as text inside <p>s
-      // includeDefaultStyleMap is on so headings/bold/italic still work.
-      const result = await mammoth.convertToHtml(
-        { arrayBuffer },
-        { styleMap: ["u => u", "r[style-name='Strong'] => strong"] }
-      );
-      let html = (result && result.value) || "";
-      if (!html.trim()) { showToast("No content found in the Word document", "error"); return; }
-      html = promoteHeadings(html);
+      // convertDocxToHtml wraps mammoth and carries across what mammoth
+      // drops on purpose -- alignment, indents, line spacing, fonts and
+      // sizes -- plus the footer text, so the import looks like the Word
+      // document rather than a plain-text copy of it.
+      const { convertDocxToHtml } = await import("../utils/docxImport");
+      const result = await convertDocxToHtml(arrayBuffer);
+      const html = result.html || "";
+      if (!html.replace(/<[^>]*>/g, "").trim()) { showToast("No content found in the Word document", "error"); return; }
+      const footer = result.footer || {};
+      // The Word file's own page: size, margins, and its footer. A footer
+      // it doesn't have stays empty rather than gaining a page number.
+      const pageSetup = (result.page || footer.left || footer.right)
+        ? { ...(result.page || {}), headerLeft: "", headerRight: "", footerLeft: footer.left || "", footerRight: footer.right || "" }
+        : null;
       // When triggered from the landing splash, the TipTap editor hasn't
       // mounted yet — htmlEditor is null. Seed templateForm.body so the
       // editor takes the imported HTML as its initial content when it
       // mounts. When triggered from inside the editor (the toolbar
       // button), use commands.setContent for an immediate swap. Either
       // path also flips template_type to html and dismisses the landing.
-      setTemplateForm(prev => ({ ...prev, template_type: "html", body: html }));
+      setTemplateForm(prev => ({
+        ...prev, template_type: "html", body: html,
+        field_config: pageSetup ? { ...(prev.field_config || {}), page_setup: pageSetup } : prev.field_config,
+      }));
       setTemplateLandingSkipped(true);
       if (htmlEditor) htmlEditor.commands.setContent(html);
-      const messages = (result && result.messages) || [];
-      const warnCount = messages.filter(m => m.type === "warning").length;
+      const warnCount = result.warnings || 0;
       showToast("Imported" + (warnCount ? ` (${warnCount} formatting warning${warnCount > 1 ? "s" : ""})` : ""), "success");
     } catch (e) {
       showToast("Import failed: " + (e?.message || "unknown error"), "error");
@@ -551,56 +555,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   setPdfPages(pages);
   return pages;
-  }
-
-  // Real-world Word leases are often authored without applying Heading
-  // styles — section titles like "SECTION I - PROPERTY RENT" are just
-  // plain <p>s, sometimes wrapped in <strong>. Mammoth correctly emits
-  // what's there, but the result reads as one undifferentiated wall
-  // of text. This pass promotes obvious heading patterns to <h2>:
-  //   1. <p><strong>...</strong></p> where the strong covers the whole
-  //      paragraph and the text is ≤80 chars (titles, not emphasized
-  //      sentences).
-  //   2. <p> starting with SECTION/ARTICLE/PART followed by a roman
-  //      numeral or arabic number (very common in legal templates).
-  //   3. Short ALL-CAPS paragraphs (≤80 chars, mostly letters).
-  // Conservative thresholds — we'd rather miss a heading than promote
-  // a bolded sentence mid-paragraph by mistake.
-  function promoteHeadings(html) {
-    if (!html || typeof html !== "string") return html;
-    // Strip simple inline wrappers (<u>, <strong>, <em>, <b>, <i>, <span>)
-    // from a paragraph's inner HTML to get the plain text used for the
-    // heading-pattern checks. We deliberately don't try to preserve the
-    // wrappers in the resulting <h2> — a heading is a heading, the
-    // visual emphasis comes from the heading style itself.
-    const stripInline = (s) => String(s)
-      .replace(/<\/?(?:u|strong|em|b|i|span)\b[^>]*>/gi, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const isSentence = (t) => /[.?!](\s|$)/.test(t);
-    return html.replace(/<p>([\s\S]*?)<\/p>/g, (m, inner) => {
-      const t = stripInline(inner);
-      if (!t || t.length > 120) return m;
-      // (1) SECTION/ARTICLE/PART followed by a roman or arabic numeral.
-      if (/^(SECTION|ARTICLE|PART)\s+([IVXLCDM]+|\d+)\b/i.test(t) && !isSentence(t)) {
-        return `<h2>${t}</h2>`;
-      }
-      // (2) Whole-paragraph emphasis (<strong> or <u> wrapping the entire
-      // visible content) with short text and not sentence-shaped.
-      const wholeWrapped = /^<(strong|u)>([\s\S]*?)<\/\1>$/i.test(inner.trim());
-      if (wholeWrapped && t.length <= 80 && !isSentence(t) && /[A-Za-z]/.test(t)) {
-        return `<h2>${t}</h2>`;
-      }
-      // (3) Short ALL-CAPS title-shaped paragraph.
-      if (t.length >= 4 && t.length <= 80 && t === t.toUpperCase() && !isSentence(t)) {
-        const letters = (t.match(/[A-Z]/g) || []).length;
-        if (letters >= 4 && letters / t.length >= 0.5) {
-          return `<h2>${t}</h2>`;
-        }
-      }
-      return m;
-    });
   }
 
   // Slugify a label fragment ("Tenant Name:") into a stable field name.
@@ -1790,6 +1744,31 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
+  {/* Page setup — header/footer printed on every page (HTML templates) */}
+  {templateForm.template_type === "html" && (() => {
+  const ps = { headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", pageWidth: 816, pageHeight: 1056, marginTop: 96, marginBottom: 96, ...(templateForm.field_config?.page_setup || {}) };
+  const setPs = (key, value) => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), page_setup: { ...ps, [key]: value } } }));
+  const slot = (key, label) => (
+  <div>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">{label}</label>
+  <textarea rows={2} value={ps[key]} onChange={e => setPs(key, e.target.value)} aria-label={label}
+    className="w-full text-xs border border-neutral-200 rounded-lg px-2 py-1 resize-none focus:outline-none focus:border-brand-400" />
+  </div>
+  );
+  return (
+  <div className="bg-white border border-neutral-100 rounded-xl p-3">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Page Setup</h3>
+  <p className="text-2xs text-neutral-400 mb-2">{+(ps.pageWidth / 96).toFixed(2)} × {+(ps.pageHeight / 96).toFixed(2)} in page, {+(ps.marginTop / 96).toFixed(2)} in top and {+(ps.marginBottom / 96).toFixed(2)} in bottom margins. Header and footer repeat on every page. Type <code className="bg-neutral-100 px-1 rounded">{"{page}"}</code> for the page number.</p>
+  <div className="grid grid-cols-2 gap-2">
+  {slot("headerLeft", "Header left")}
+  {slot("headerRight", "Header right")}
+  {slot("footerLeft", "Footer left")}
+  {slot("footerRight", "Footer right")}
+  </div>
+  </div>
+  );
+  })()}
+
   {/* Advanced Field Config — collapsible */}
   {templateForm.fields.length > 0 && (
   <div className="bg-white border border-neutral-100 rounded-xl">
@@ -2052,6 +2031,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   placeholder="Start typing… drag a field from the left rail or click a merge-chip to insert."
   hideToolbar
   paperCanvas
+  pageSetup={templateForm.field_config?.page_setup || null}
   onEditorReady={setHtmlEditor}
   />
   )}

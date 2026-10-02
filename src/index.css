@@ -413,6 +413,27 @@ select {
 }
 .ProseMirror-focused .merge-tag:hover::before { content: none; }
 
+/* Paged document editor (tiptap-pagination-plus).
+   The add-on makes page breaks out of full-width floats that the text
+   wraps around. It pulls each float out to the page edges with negative
+   side margins -- which leaves the float's MARGIN box only as wide as
+   the text column. A paragraph indented into the right margin (Word
+   allows a negative right indent, and leases use it) is wider than
+   that, so its words trickled down a sliver beside the footer and
+   across the page gap. Dropping the right margin makes the float's
+   margin box reach the page edge, so nothing fits beside it. */
+.paged-editor .rm-with-pagination .rm-page-break .breaker {
+  margin-right: 0 !important;
+}
+.paged-editor .rm-with-pagination .rm-page-header,
+.paged-editor .rm-with-pagination .rm-page-footer {
+  /* Fixed metrics: the editor works out how deep the page body is from
+     the number of header/footer lines (FURNITURE_LINE_PX). */
+  font: 12pt/20px "Times New Roman", Times, serif;
+  color: #171717;
+  cursor: default !important;
+}
+
 /* A scroll affordance only when there is something to scroll.
    TabBar carries overflow-x-auto so a long tab strip can scroll on a phone.
    With two short tabs there is nothing to scroll, but macOS still reserves
