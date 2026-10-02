@@ -92,3 +92,64 @@ export function describeTenancyCharges(plan, money = (n) => "$" + Number(n).toFi
   out.push(`Rent ${money(plan.monthly)} on the 1st of every month from ${date(plan.scheduleFrom)}`);
   return out;
 }
+
+// ── New tenancy, or someone who already lives there? ───────────────────
+// Five screens can start a tenant's books (Prospects, the Tenants page, the
+// property wizard, the property form and Leases "Create lease"). They used
+// to disagree: one charged the deposit and first month, three charged the
+// deposit and left the rent schedule to a pop-up that could be closed, and
+// none could tell a move-in from a renewal. All five now go through
+// startTenancyBooks (tenantOnboarding.js), which works in one of two modes:
+//
+//   "new"      a move-in: deposit, first (possibly part) month, the whole
+//              months already passed, and the monthly schedule;
+//   "running"  someone who is already a tenant and was billed some other
+//              way up to now: the monthly schedule only.
+//
+// The rules that pick between them are here, pure, so they can be tested.
+
+/** Is this ledger line a rent charge (as opposed to a deposit or a late fee)? */
+export function isRentCharge({ reference = "", memo = "", description = "" } = {}) {
+  const ref = String(reference || ""), text = (String(memo || "") + " " + String(description || "")).toLowerCase();
+  if (/^DEP-/.test(ref) || /deposit/.test(text)) return false;
+  if (/late\s*fee|late\s*charge/.test(text)) return false;
+  if (/^(RECUR|RENT1|PRORENT)-/.test(ref)) return true;
+  return /\brent\b|\brental\b/.test(text);
+}
+
+/**
+ * Which mode a screen should offer first. A lease that started long ago is
+ * someone being entered late, not a move-in: charging their deposit and
+ * every month since would bill them a second time for what was collected
+ * outside the app.
+ *
+ * "new" when the lease starts in the future, this month or last month;
+ * otherwise "running". `continuing` (the tenant's ledger already carries
+ * charges from before the lease start: a renewal) always means "running".
+ */
+export function defaultTenancyMode({ leaseStart, today, continuing = false }) {
+  if (continuing) return "running";
+  const s = String(leaseStart || "").slice(0, 10).match(ISO), t = String(today || "").slice(0, 10).match(ISO);
+  if (!s || !t) return "running";
+  const lastMonth = Number(t[2]) === 1 ? `${Number(t[1]) - 1}-12` : `${t[1]}-${pad(Number(t[2]) - 1)}`;
+  return `${s[1]}-${s[2]}` >= lastMonth ? "new" : "running";
+}
+
+/**
+ * For "running": the first month the schedule bills. This month, unless
+ * this month's rent is already on the tenant's ledger.
+ */
+export function runningBillFrom({ today, chargedThisMonth = false }) {
+  const t = String(today || "").slice(0, 10).match(ISO);
+  if (!t) return "";
+  const thisMonth = `${t[1]}-${t[2]}`;
+  return (chargedThisMonth ? nextMonth(thisMonth) : thisMonth) + "-01";
+}
+
+/** "running" as plain sentences, to show before anything is saved. */
+export function describeRunningTenancy({ monthly, billFrom }, money = (n) => "$" + Number(n).toFixed(2), date = (d) => d) {
+  return [
+    `Rent ${money(monthly)} on the 1st of every month from ${date(billFrom)}`,
+    "No deposit and no first-month charge are posted: those were handled before",
+  ];
+}

@@ -171,24 +171,20 @@ assert("tenantOwnArAccountId refuses when there is no tenant id", /tenantId === 
 const leaseSave = fnBody(leases, "async function saveLease(");
 assert("Leases page: deposit no longer debits Checking",
   !/account_id: "1000"[^\n]*debit: dep/.test(leaseSave) && !/Security deposit from[^\n]*\n[^\n]*"1000"/.test(leaseSave));
-assert("Leases page: deposit debits the tenant's own AR", /tenantOwnArAccountId\(companyId, form\.tenant_name, tenant\?\.id\)/.test(leaseSave)
-  && /account_id: depArId[^\n]*debit: dep, credit: 0/.test(leaseSave));
-assert("Leases page: deposit credits 2100", /account_id: "2100"[^\n]*debit: 0, credit: dep/.test(leaseSave));
-assert("Leases page: refuses (with a message) when no own AR", /if \(!depArId\) \{\s*showToast\(/.test(leaseSave));
-for (const [label, body] of [["Tenants page", tenants], ["property form / wizard", props]]) {
-  assert(`${label}: uses tenantOwnArAccountId for the deposit`, /tenantOwnArAccountId\(/.test(body));
+// (2026-10-02) The deposit is posted by ONE engine now, not by each screen.
+const engine = src("utils/tenantOnboarding.js");
+const depStep = engine.slice(engine.indexOf("// ── 3. security deposit"), engine.indexOf("// ── 4. first month's rent"));
+assert("engine: the tenant's ledger comes from tenantOwnArAccountId (never the shared 1100)",
+  /const arId = await tenantOwnArAccountId\(companyId, String\(tenantName \|\| ""\)\.trim\(\), tid\)/.test(engine));
+assert("engine: stops (with a reason) when the tenant has no own AR", /if \(!arId \|\| !revenueId \|\| !facts\.ok\) \{\s*add\("ledger", "Tenant ledger", "failed"/.test(engine));
+assert("engine: deposit debits the tenant's own AR", /account_id: arId[^\n]*debit: plan\.deposit\.amount, credit: 0/.test(depStep));
+assert("engine: deposit credits 2100", /account_id: "2100"[^\n]*debit: 0, credit: plan\.deposit\.amount/.test(depStep));
+assert("engine: the deposit posting uses depositReference and never a 1000 line", /reference: depositReference\(tid\)/.test(depStep) && !/account_id: ['"]1000['"]/.test(depStep));
+for (const [label, body] of [["Leases", leases], ["Tenants", tenants], ["Properties", props]]) {
+  assert(`${label}: no deposit posting of its own`, !/description: ['"]Security deposit received/.test(body));
 }
 assert("Tenants page: no deposit leg on getOrCreateTenantAR any more",
   !/getOrCreateTenantAR\(companyId, _name, tenantId\)\]\)/.test(tenants));
-assert("wizard: deposit AR is the tenant's own", /const tenantArId = await tenantOwnArAccountId\(companyId, tName, resTenantId\)/.test(props));
-assert("property form: deposit AR is the tenant's own", /const tenantArId = await tenantOwnArAccountId\(companyId, form\.tenant\.trim\(\), tenantId\)/.test(props));
-// Every "Security deposit received" posting is DR <tenant AR var> / CR 2100.
-for (const [label, body] of [["Leases", leases], ["Tenants", tenants], ["Properties", props]]) {
-  const sites = body.split(/description: ['"]Security deposit received/).slice(1).map(s => s.slice(0, 900));
-  assert(`${label}: every deposit posting uses depositReference and never a 1000 line`,
-    sites.length > 0 && sites.every(s => /depositReference\(|depRef/.test(s) && !/account_id: ['"]1000['"]/.test(s)),
-    `${sites.length} site(s)`);
-}
 
 console.log("\n📒 RELEASED ONCE");
 assert("accounting.js re-exports the rules and binds the check", /export function depositReleaseState\(/.test(acct) && /depositReleaseStateWith\(supabase/.test(acct));

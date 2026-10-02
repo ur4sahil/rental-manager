@@ -35,12 +35,14 @@ assert(!/p_amount_change:\s*postAmount/.test(acctUtils),
 assert(/sync_tenant_balance_lines|recompute_tenant_balance|single source of truth/.test(acctUtils),
   'recurring path documents reliance on the balance-sync trigger');
 
-// ─── 2. RecurringEntryModal writes tenant_id as bigint ──────
-console.log('\n2. RecurringEntryModal writer');
-assert(/payload\.tenant_id = Number\(entry\.tenantId\)/.test(sharedJs),
-  'shared.js casts tenantId to Number before insert (no UUID guard)');
-assert(!/isUUID\(String\(entry\.tenantId\)\)/.test(sharedJs),
-  'Old UUID guard removed');
+// ─── 2. the one writer of a tenant's rent schedule writes tenant_id as bigint ──────
+// (2026-10-02) RecurringEntryModal is gone; startTenancyBooks creates the schedule.
+console.log('\n2. Rent schedule writer');
+const engineJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'utils', 'tenantOnboarding.js'), 'utf8');
+assert(/const tid = Number\(tenantId\);/.test(engineJs) && /tenant_name: name, tenant_id: tid, property,/.test(engineJs),
+  'the engine casts tenantId to Number before insert (no UUID guard)');
+assert(!/RecurringEntryModal/.test(sharedJs) && !/isUUID\(String\(entry\.tenantId\)\)/.test(sharedJs),
+  'Old modal and its UUID guard removed');
 
 // ─── 3. Live — every non-null recurring tenant_id points at a real tenant ───
 console.log('\n3. Live — tenant_id referential integrity');

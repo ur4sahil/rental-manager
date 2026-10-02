@@ -143,8 +143,8 @@ assert("rent increase syncs the recurring amount", /syncTenantRecurringAmount\(c
 assert("no inline recurring amount update remains in Tenants/Leases",
   !/from\("recurring_journal_entries"\)[\s\S]{0,80}update\(\{ amount/.test(tenants + leases));
 const save = leases.slice(leases.indexOf("async function saveLease"), leases.indexOf("function resetForm"));
-assert("lease create queues the shared RecurringEntryModal", /setPendingRecurringEntry\(_queueRecurring\)/.test(save)
-  && /<RecurringEntryModal entry=\{pendingRecurringEntry\}/.test(leases) && /RecurringEntryModal \} from "\.\/shared"/.test(leases));
+assert("lease create queues the shared Start billing dialog", /setPendingRecurringEntry\(_queueRecurring\)/.test(save)
+  && /<StartTenancyModal entry=\{pendingRecurringEntry\}/.test(leases) && /StartTenancyModal \} from "\.\/StartTenancyModal"/.test(leases));
 assert("the do-nothing 'backdated rent accruals' prompt is gone", !/backdated rent accrual/.test(leases) && !/autoPostRentCharges\(/.test(leases));
 
 // ─── 2b. PART A: one tenant-status vocabulary ─────────────────────────────

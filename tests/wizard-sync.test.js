@@ -49,18 +49,25 @@ for (const [what, needle] of [
 // The references are DEP-T<id>-<leaseStart>. Matching them EXACTLY meant a
 // corrected lease start produced a reference that was not in the posted set,
 // and the deposit posted again. The prefix is stable; the date is not.
+// (2026-10-02) The wizard no longer carries its own copy of these postings.
+// It calls startTenancyBooks (utils/tenantOnboarding.js), the one engine
+// every screen uses, so the three rules below are held there.
+const engine = fs.readFileSync(path.join(__dirname, "..", "src", "utils", "tenantOnboarding.js"), "utf8");
+assert("the wizard posts through the shared engine, not a copy of its own",
+  /await startTenancyBooks\(\{/.test(props) && !/Security deposit received/.test(props) && !/'RENT1-T'|"RENT1-T"/.test(props),
+  "four places posting this deposit, each with its own check, is how it double-posted");
 assert("the deposit check is the SHARED cross-path one",
-  /const depPosted = await depositAlreadyPosted\(companyId, resTenantId\)/.test(props),
+  /await depositAlreadyPosted\(companyId, tid\)/.test(engine),
   "four places post this deposit; each having its own check is how it double-posted");
 
 assert("first-month and prorated rent match by reference PREFIX, not the date",
-  /\.like\('reference', fam \+ tPrefix \+ '%'\)/.test(props)
-  && /const tPrefix = escapeFilterValue\('T' \+ resTenantId \+ '-'\)/.test(props),
+  /\.like\("reference", fam \+ prefix \+ "%"\)/.test(engine)
+  && /const prefix = escapeFilterValue\("T" \+ tid \+ "-"\)/.test(engine),
   "an exact-reference check charges the first month again when the lease start moves");
 
-assert("a FAILED posted-already lookup counts as posted",
-  /r\.error \|\| \(r\.data \|\| \[\]\)\.length/.test(props),
-  "treating a query error as 'nothing posted' is how a duplicate deposit gets through");
+assert("a FAILED posted-already lookup is never read as 'nothing posted'",
+  /if \(hits\.some\(h => h\.error\)\) add\("first", "First month's rent", "failed"/.test(engine),
+  "treating a query error as 'nothing posted' is how a duplicate charge gets through");
 
 // REGRESSION GUARD. Gating these posts on 'first commit' looks like the
 // obvious fix and silently breaks onboarding: "Add Tenant" on an existing

@@ -17,7 +17,10 @@ import { assignPropertyOwner } from "../utils/owners";
 import { propertyOwnerName } from "../utils/ownerRules";
 import { safeLedgerInsert, atomicPostJEAndLedger, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip, depositReference, depositAlreadyPosted, tenantOwnArAccountId, deactivateTenantRecurring } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
-import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
+import { Badge, Spinner, Modal, DocUploadModal, formatAllTenants } from "./shared";
+import { StartTenancyModal } from "./StartTenancyModal";
+import { startTenancyBooks, tenantHasRentSchedule } from "../utils/tenantOnboarding";
+import { planTenancyCharges, describeTenancyCharges, defaultTenancyMode } from "../utils/onboardingRules";
 import { pathForPage, subPathFor } from "../utils/routes";
 
 // The utilities table stores responsibility SHORT ("owner"/"tenant"/"condo_fee");
@@ -554,6 +557,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // resume on the next upcoming cycle. Defaulting to "next month
   // from today" is wrong there. Empty = use the default (next month).
   const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0, start_date: "" });
+  // A first post date later than the lease start means the lease is being
+  // migrated: it was already running, and billed elsewhere, before that date.
+  const wizardMigrating = !!(recurring.start_date && tenantForm.lease_start && recurring.start_date > tenantForm.lease_start);
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [docUploadType, setDocUploadType] = useState("Lease");
   const [docDescription, setDocDescription] = useState("");
@@ -1627,90 +1633,47 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       // autoPostRecurringEntries still picks up from start_date onward.
       const recurringStartRaw = (recurring?.start_date || '').trim();
       const isLeaseMigration = recurringStartRaw && tenantForm.lease_start && recurringStartRaw > tenantForm.lease_start;
+      // Otherwise: what the Recurring Rent step was told, or -- for a tenant
+      // it did not ask about -- the shared rule (a lease that began before
+      // last month is someone already living there, not a move-in).
+      const tenancyMode = isLeaseMigration ? "running"
+        : (recurring?.tenancy === "new" || recurring?.tenancy === "running") ? recurring.tenancy
+        : defaultTenancyMode({ leaseStart: tenantForm.lease_start, today: formatLocalDate(new Date()) });
+      // Posted by the shared engine (tenantOnboarding.js), the same one
+      // Prospects, the Tenants page, the property form and Leases use, so a
+      // tenant ends up with the same entries whichever screen made them.
+      //   - "running" for a migrated lease: no deposit or first month here;
+      //   - the rent schedule is this wizard's own (the commit RPC writes it
+      //     from the Recurring Rent step), so the engine never creates one;
+      //   - months already passed are charged only in the run that posts the
+      //     first month: this wizard is re-saved for years and must never go
+      //     back and bill;
+      //   - a tenant whose ledger already has charges from before the lease
+      //     start is a renewal, and gets no deposit or first-month charge.
+      // Everything is matched before it is posted (deposit by tenant, first
+      // month by reference prefix, each month by a rent charge already on the
+      // ledger), so re-running after a successful commit posts nothing twice.
+      // It also runs autoPostRecurringEntries, which must happen on every
+      // commit to catch up missed periods.
       try {
-        const tName = tenantForm.tenant.trim();
-        await getOrCreateTenantAR(companyId, tName, resTenantId);
-        const leaseStartKey = (tenantForm.lease_start || '').replace(/-/g, '') || 'START';
-        const depRef = depositReference(resTenantId) || ('DEP-' + shortId());
-        const rentRef = 'RENT1-T' + resTenantId + '-' + leaseStartKey;
-        const prorentRef = 'PRORENT-T' + resTenantId + '-' + leaseStartKey;
-        // The deposit check is SHARED with the property form, the Tenants page
-        // and the Leases page, so all four see each other's postings.
-        const depPosted = await depositAlreadyPosted(companyId, resTenantId);
-        // First-month and prorated rent are posted only here, so they keep the
-        // date-keyed reference -- but still matched by PREFIX, because a
-        // corrected lease start changes the date and an exact match would miss
-        // it and charge the first month twice. The prefix ends with the hyphen
-        // after the tenant id, so T12 cannot match T123.
-        const tPrefix = escapeFilterValue('T' + resTenantId + '-');
-        const [rentHit, prorentHit] = await Promise.all(
-          ['RENT1-', 'PRORENT-'].map(fam =>
-            supabase.from('acct_journal_entries').select('id')
-              .eq('company_id', companyId).neq('status', 'voided')
-              .like('reference', fam + tPrefix + '%').limit(1))
-        );
-        // A FAILED lookup must not read as "nothing posted" -- that is how a
-        // duplicate charge would get through. Treat an error as posted.
-        const posted = r => !!(r.error || (r.data || []).length);
-        const rentPosted = posted(rentHit) || posted(prorentHit);
-        const classId = await getPropertyClassId(compositeAddress, companyId);
-        const dep = Number(tenantForm.security_deposit) || 0;
-        if (!isLeaseMigration && dep > 0 && !depPosted) {
-          // Owed, then paid: DR the tenant's OWN AR (never the shared 1100).
-          const tenantArId = await tenantOwnArAccountId(companyId, tName, resTenantId);
-          if (!tenantArId) phaseCFailures.push('security deposit (tenant receivable account not found)');
-          else await atomicPostJEAndLedger({
-            companyId, date: tenantForm.lease_start,
-            description: 'Security deposit received — ' + tName + ' — ' + compositeAddress,
-            reference: depRef, property: compositeAddress,
-            lines: [
-              { account_id: tenantArId, account_name: 'AR - ' + tName, debit: dep, credit: 0, class_id: classId, memo: 'Security deposit from ' + tName },
-              { account_id: '2100', account_name: 'Security Deposits Held', debit: 0, credit: dep, class_id: classId, memo: tName + ' — ' + compositeAddress },
-            ],
-            ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Security deposit collected', amount: dep, type: 'deposit' },
-          });
-        }
         const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
-        if (!isLeaseMigration && monthlyRent > 0 && tenantForm.lease_start && !rentPosted) {
-          const leaseStart = parseLocalDate(tenantForm.lease_start);
-          const startDay = leaseStart.getDate();
-          const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
-          const tenantArId2 = await getOrCreateTenantAR(companyId, tName, resTenantId);
-          const revenueId2 = await resolveAccountId('4000', companyId);
-          if (startDay > 1) {
-            const remainingDays = daysInMonth - startDay + 1;
-            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
-            await atomicPostJEAndLedger({
-              companyId, date: tenantForm.lease_start,
-              description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days) — ' + tName + ' — ' + compositeAddress.split(',')[0],
-              reference: prorentRef, property: compositeAddress,
-              lines: [
-                { account_id: tenantArId2, account_name: 'AR - ' + tName, debit: proratedAmount, credit: 0, class_id: classId, memo: 'Prorated first month rent' },
-                { account_id: revenueId2, account_name: 'Rental Income', debit: 0, credit: proratedAmount, class_id: classId, memo: remainingDays + '/' + daysInMonth + ' days @ $' + monthlyRent + '/mo' },
-              ],
-              ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days)', amount: proratedAmount, type: 'charge' },
-            });
-            // tenants.balance now updated by sync_tenant_balance_lines trigger.
-          } else {
-            await atomicPostJEAndLedger({
-              companyId, date: tenantForm.lease_start,
-              description: 'First month rent — ' + tName + ' — ' + compositeAddress.split(',')[0],
-              reference: rentRef, property: compositeAddress,
-              lines: [
-                { account_id: tenantArId2, account_name: 'AR - ' + tName, debit: monthlyRent, credit: 0, class_id: classId, memo: 'First month rent' },
-                { account_id: revenueId2, account_name: 'Rental Income', debit: 0, credit: monthlyRent, class_id: classId, memo: 'Full month rent' },
-              ],
-              ledgerEntry: { tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'First month rent', amount: monthlyRent, type: 'charge' },
-            });
-          }
+        // No rent or no lease start yet (a half-filled wizard): there is
+        // nothing to charge, but the schedules still catch up.
+        if (!(monthlyRent > 0) || (tenancyMode === "new" && !tenantForm.lease_start)) {
+          await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), resTenantId);
+          await autoPostRecurringEntries(companyId);
+        } else {
+          const books = await startTenancyBooks({
+            companyId, tenantId: resTenantId, tenantName: tenantForm.tenant.trim(), property: compositeAddress,
+            leaseStart: tenantForm.lease_start, rent: monthlyRent,
+            deposit: Number(tenantForm.security_deposit) || 0, userEmail: userProfile?.email || "",
+            mode: tenancyMode, createSchedule: false, catchUp: "first-run",
+          });
+          // A closed period is not a failure of this save: an old lease's
+          // first month simply cannot be posted, and never could.
+          for (const st of books.steps) if (st.status === "failed") phaseCFailures.push(st.label.toLowerCase() + (st.detail ? " (" + st.detail + ")" : ""));
         }
-      } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit first-month rent JE', silent: true }); phaseCFailures.push('first-month rent / deposit journal entry'); }
-      // autoPostRentCharges is a no-op stub. The real catch-up worker
-      // is autoPostRecurringEntries — it walks each active recurring
-      // entry from last_posted_date forward and posts every missed
-      // period up to today (honouring next_post_date as the PM's
-      // chosen start-date floor).
-      try { await autoPostRecurringEntries(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post recurring entries', silent: true }); phaseCFailures.push('recurring entries catch-up'); }
+      } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit tenancy books', silent: true }); phaseCFailures.push('first-month rent / deposit journal entry'); }
     }
 
     // Re-stamp any docs we uploaded during this wizard to the final
@@ -2605,6 +2568,35 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   Use this when you're migrating a lease that started in the past. The recurring charge will post (or back-post) on the date you pick; anything before it is assumed to have been handled in your prior system.
                 </p>
               </div>
+              {/* A tenant being added now: is this a move-in, or someone who
+                  already lives there and is only now being entered? Asked
+                  rather than guessed, because the two are charged very
+                  differently -- and a tenant of years entered as a move-in
+                  would be billed a deposit and every month since. Not shown
+                  for a tenant this wizard loaded from the records, or once a
+                  first post date says the lease is being migrated. */}
+              {!tenantLoadedRef.current && tenantForm.tenant.trim() && tenantForm.lease_start && !wizardMigrating && (() => {
+                const today = formatLocalDate(new Date());
+                const mode = recurring.tenancy || defaultTenancyMode({ leaseStart: tenantForm.lease_start, today });
+                const plan = planTenancyCharges({ leaseStart: tenantForm.lease_start, rent: Number(tenantForm.rent) || Number(recurring.amount) || 0, deposit: Number(tenantForm.security_deposit) || 0, today });
+                const lines = plan.ok ? describeTenancyCharges(plan, formatCurrency, fmtDate).slice(0, -1) : [];
+                const card = (on) => "w-full text-left rounded-xl border p-3 transition-colors " + (on ? "border-brand-500 bg-brand-50" : "border-neutral-200 bg-white hover:bg-neutral-50");
+                return (
+                  <div role="radiogroup" aria-label="What kind of tenancy is this">
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">When this is saved</label>
+                    <div className="space-y-2">
+                      <button type="button" role="radio" aria-checked={mode === "new"} className={card(mode === "new")} onClick={() => setRecurring({ ...recurring, tenancy: "new" })}>
+                        <span className="block text-sm font-semibold text-neutral-800">Moving in: charge the deposit and rent from the lease start</span>
+                        {lines.map((line, i) => <span key={i} className="block text-xs text-neutral-600 mt-0.5">{line}</span>)}
+                      </button>
+                      <button type="button" role="radio" aria-checked={mode === "running"} className={card(mode === "running")} onClick={() => setRecurring({ ...recurring, tenancy: "running" })}>
+                        <span className="block text-sm font-semibold text-neutral-800">Already lives there: just bill the monthly rent</span>
+                        <span className="block text-xs text-neutral-600 mt-0.5">No deposit and no first-month charge are posted: those were handled before</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
                 <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
                 <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
@@ -3428,6 +3420,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   return;
   }
   if (!guardSubmit("saveProperty")) { showToast("Save already in progress — please wait.", "warning"); return; }
+  let _startBilling = null;   // a tenant added on this form: billing starts from the shared dialog
   try {
   // Check for duplicate address (new properties only — requires DB query, so after guard)
   if (!editingProperty) {
@@ -3547,31 +3540,12 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   if (!existingLease) {
   await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.tenant.trim(), tenant_id: tenantId || null, property: compositeAddress, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
-  // Post security deposit JE if deposit amount provided
-  const dep = Number(form.security_deposit) || 0;
-  // Same cross-path guard as the wizard, the Tenants page and the Leases page.
-  const _depAlready = await depositAlreadyPosted(companyId, tenantId);
-  if (dep > 0 && !_depAlready) {
-  const classId = await getPropertyClassId(compositeAddress, companyId);
-  // Owed, then paid: DR the tenant's OWN AR, never the shared 1100 parent
-  // that getOrCreateTenantAR falls back to (e.g. when the tenant insert failed).
-  const tenantArId = await tenantOwnArAccountId(companyId, form.tenant.trim(), tenantId);
-  const _depResult = !tenantArId ? null : await atomicPostJEAndLedger({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: compositeAddress,
-  lines: [
-  { account_id: tenantArId, account_name: "AR - " + form.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
-  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },
-  ],
-  ledgerEntry: tenantId ? { tenant: form.tenant.trim(), tenant_id: tenantId, property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit" } : null
-  });
-  if (!tenantArId) showToast("Security deposit not booked: this tenant's receivable account could not be found or created. Add the deposit charge in Accounting.", "error");
-  else if (!_depResult?.jeId) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
+  // The deposit, first month's rent and monthly schedule are posted by the
+  // shared engine, from the "Start billing" dialog. This form used to post
+  // the deposit itself and set up no rent schedule at all.
+  if (tenantId && (!existingTenant || !(await tenantHasRentSchedule(companyId, tenantId)))) {
+    _startBilling = { tenantName: form.tenant.trim(), tenantId, property: compositeAddress, rent: Number(form.rent), deposit: Number(form.security_deposit) || 0, leaseStart: form.lease_start, leaseEnd: form.lease_end };
   }
-  // Post rent charges for this lease (awaited so errors surface)
-  try {
-  const result = await autoPostRentCharges(companyId);
-  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
-  } catch (e) { pmError("PM-4008", { raw: e, context: "auto rent post after property save", silent: true }); }
-  // Recurring rent is now handled by PropertySetupWizard (Step 5)
   }
   }
   // #12: Sync security deposit to active lease when editing property
@@ -3634,6 +3608,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   // Show doc upload prompt for occupied properties (form is now closed)
   setSavingProperty(false);
   showToast("Property updated successfully", "success");
+  if (_startBilling) setPendingRecurringEntry(_startBilling);
   } catch (e) {
   pmError("PM-2002", { raw: e, context: "saveProperty" });
   setSavingProperty(false);
@@ -4037,7 +4012,6 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
-  const [showRecurringSetup, setShowRecurringSetup] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedProperties, setArchivedProperties] = useState([]); // { tenant, property, rent }
   // "Setup Drafts" = in_progress wizards. With deferred commit these
@@ -5015,59 +4989,6 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   </Modal>
   )}
 
-  {/* Recurring Rent Setup Modal */}
-  {showRecurringSetup && (
-  <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
-  <div className="space-y-4">
-  <p className="text-sm text-subtle-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
-  <div className="bg-brand-50 rounded-lg p-3">
-  <div className="grid grid-cols-2 gap-3">
-  <div><div className="text-xs text-subtle-500">Monthly Rent</div><div className="font-bold text-subtle-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
-  <div><div className="text-xs text-subtle-500">Posts On</div><div className="font-bold text-subtle-800">1st of each month</div></div>
-  </div>
-  </div>
-  <div className="bg-warn-50 rounded-lg p-3">
-  <div className="text-xs font-semibold text-warn-700 mb-1">Late Fee Settings</div>
-  <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-subtle-500">Grace Period (days)</label><Input type="number" defaultValue={5} id="rr-grace" className="mt-1" /></div>
-  <div><label className="text-xs text-subtle-500">Late Fee ($)</label><Input type="number" defaultValue={50} id="rr-latefee" className="mt-1" /></div>
-  </div>
-  </div>
-  <div className="flex gap-2">
-  <Btn className="flex-1" onClick={async () => {
-  const grace = Number(document.getElementById("rr-grace")?.value) || 5;
-  const lateFee = Number(document.getElementById("rr-latefee")?.value) || 50;
-  const { error } = await supabase.from("recurring_journal_entries").insert([{
-  company_id: companyId,
-  description: "Monthly rent — " + showRecurringSetup.tenant + " — " + showRecurringSetup.property,
-  frequency: "monthly",
-  day_of_month: 1,
-  amount: showRecurringSetup.rent,
-  tenant_name: showRecurringSetup.tenant,
-  tenant_id: showRecurringSetup.tenantId,
-  property: showRecurringSetup.property,
-  debit_account_id: "1200",
-  debit_account_name: "Accounts Receivable",
-  credit_account_id: "4000",
-  credit_account_name: "Rental Income",
-  status: "active",
-  late_fee_enabled: true,
-  grace_period_days: grace,
-  late_fee_amount: lateFee,
-  next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
-  created_by: userProfile?.email || "",
-  }]);
-  if (error) { pmError("PM-4008", { raw: error, context: "create recurring entry for " + showRecurringSetup.tenant }); }
-  else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
-  setShowRecurringSetup(null);
-  }}>Yes, Set Up Recurring Rent</Btn>
-  <Btn variant="ghost" className="flex-1" onClick={() => setShowRecurringSetup(null)}>Skip for Now</Btn>
-  </div>
-  </div>
-  </Modal>
-  )}
-
-
   </>)}
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { setDocsRefreshKey(k => k + 1); setPropertyDetailTab("documents"); } }} />}
   {savingProperty && (
@@ -5080,7 +5001,7 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   </div>
   )}
   {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} allowedPages={allowedPages} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
-  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
+  {pendingRecurringEntry && <StartTenancyModal entry={pendingRecurringEntry} companyId={companyId} userEmail={userProfile?.email || ""} showToast={showToast} onComplete={() => { setPendingRecurringEntry(null); fetchProperties(); }} />}
   {showLicenseForm && <LicenseFormModal license={showLicenseForm.license} propertyId={showLicenseForm.propertyId} propertyAddress={showLicenseForm.propertyAddress} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onClose={() => setShowLicenseForm(null)} onSaved={async () => { if (selectedProperty) { const { data } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", selectedProperty.id).is("archived_at", null).order("expiry_date", { ascending: true }); setPropertyLicenses(data || []); } }} />}
   </div>
   );

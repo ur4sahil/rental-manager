@@ -8,11 +8,12 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { fileApprovalRequest, terminateLeaseCascade } from "../utils/destructive";
 import { queueNotification } from "../utils/notifications";
-import { sendSignatureRequests, resendSignatureRequest, summarizeSends } from "../utils/docService";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, tenantOwedFromGL, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
-import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
+import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
+import { StartTenancyModal } from "./StartTenancyModal";
+import { TenancyDocuments } from "./TenancyDocuments";
 
-function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm, setPage }) {
   const [leases, setLeases] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -25,9 +26,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const [showDepositModal, setShowDepositModal] = useState(null);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [showESign, setShowESign] = useState(null);
-  // Same hand-off as the Tenants create path: a new lease queues the
-  // shared RecurringEntryModal, which creates (or replaces) the tenant's one
-  // recurring rent schedule on their own AR account.
+  // Same hand-off as the Tenants create path: a new lease queues the shared
+  // "Start billing" dialog, which posts the deposit, the first month and the
+  // tenant's one rent schedule through startTenancyBooks.
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
 
   const defaultChecklist = ["Keys handed over","Smoke detectors tested","Appliances working","Walls condition documented","Floors condition documented","Plumbing checked","Electrical checked","Windows & doors checked","HVAC filter replaced","Photos taken"];
@@ -131,31 +132,9 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
   if (tenantErr) pmError("PM-3002", { raw: tenantErr, context: "tenant status update", silent: true });
   }
-  // Skip when this tenant's deposit is already on the books from another path
-  // (wizard, property form, Tenants page). The unique index is the backstop;
-  // this keeps the "Accounting entry failed" toast for real failures.
-  const _depAlready = await depositAlreadyPosted(companyId, tenant?.id);
-  if (!error && Number(form.security_deposit) > 0 && !_depAlready) {
-  // Owed, then paid: the deposit is a CHARGE on the tenant's own AR, which
-  // the tenant then pays like rent. This used to debit Checking directly, as
-  // if the money had already arrived -- so recording the actual payment
-  // afterwards counted the cash twice and left the tenant showing a credit.
-  const classId = await getPropertyClassId(form.property, companyId);
-  const dep = Number(form.security_deposit);
-  const depArId = await tenantOwnArAccountId(companyId, form.tenant_name, tenant?.id);
-  if (!depArId) {
-  showToast("Lease saved, but the security deposit was not booked: this tenant's receivable account could not be found or created. Add the deposit charge in Accounting.", "error");
-  } else {
-  const _depResult = await atomicPostJEAndLedger({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: depositReference(tenant?.id) || ("DEP-" + shortId()), property: form.property,
-  lines: [
-  { account_id: depArId, account_name: "AR - " + form.tenant_name, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
-  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
-  ],
-  ledgerEntry: { tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date, description: "Security deposit collected", amount: dep, type: "deposit" }
-  });
-  if (!_depResult?.jeId) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  }
-  }
+  // The deposit is no longer posted here. It, the first month's rent and the
+  // monthly schedule are posted together by the shared engine, from the
+  // "Start billing" dialog queued below (see StartTenancyModal).
   }
   if (error) { pmError("PM-3004", { raw: error, context: "save lease" }); return; }
   // Update properties table to reflect lease assignment
@@ -168,7 +147,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // Tenants page does it. This used to offer to "post N backdated rent
   // accruals" and then call autoPostRentCharges, a stub that posts nothing --
   // the lease was saved with no rent schedule at all.
-  const _queueRecurring = !editingLease && tenant ? { tenantName: form.tenant_name, tenantId: tenant.id || null, property: form.property, rent: Number(form.rent_amount), leaseStart: form.start_date, leaseEnd: form.end_date } : null;
+  const _queueRecurring = !editingLease && tenant?.id ? { tenantName: form.tenant_name, tenantId: tenant.id, property: form.property, rent: Number(form.rent_amount), deposit: Number(form.security_deposit || 0), leaseStart: form.start_date, leaseEnd: form.end_date } : null;
   logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
   // Queue lease notification
   if (!editingLease) {
@@ -481,7 +460,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </Modal>
   )}
 
-  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} addNotification={addNotification} />}
+  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} companyId={companyId} showToast={showToast} showConfirm={showConfirm} setPage={setPage} />}
 
   {showDepositModal && (
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => { setShowDepositModal(null); setDepositCtx(null); }}>
@@ -611,7 +590,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
-  <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</Btn>
+  <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : ["pending", "partially_signed"].includes(l.signature_status) ? "Out for signature" : "Lease document"}</Btn>
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
   {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn>}
@@ -627,7 +606,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {filteredLeases.length === 0 && <EmptyState size="inline" title={"No leases found"} />}
   </div>
 
-  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
+  {pendingRecurringEntry && <StartTenancyModal entry={pendingRecurringEntry} companyId={companyId} userEmail={userProfile?.email || ""} showToast={showToast} onComplete={() => { setPendingRecurringEntry(null); fetchData(); }} />}
 
   {/* Rent Increase Modal */}
   {showRentIncrease && (
@@ -671,238 +650,31 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   );
 }
 
-// E-signature for a lease. Uses the unified doc_signatures engine: creates
-// (or loads) a doc_generated row tied to the lease and fires magic-link
-// envelopes so tenant + landlord can sign remotely at /sign/:token.
-// Previously this modal wrote to lease_signatures + called sign_lease; that
-// old path never saw production traffic (0 rows at migration time) and has
-// been retired in favor of the unified engine.
-function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, companyId, showToast, addNotification }) {
-  const [loading, setLoading] = useState(true);
-  const [doc, setDoc] = useState(null);
-  const [sigs, setSigs] = useState([]);
-  const [sending, setSending] = useState(false);
-  const [tenantEmail, setTenantEmail] = useState("");
-  const [landlordEmail, setLandlordEmail] = useState(userProfile?.email || "");
-
-  useEffect(() => { loadEnvelope(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [lease.id]);
-
-  async function loadEnvelope() {
-    setLoading(true);
-    // Find existing lease envelope (doc_generated with field_values.lease_id = this lease)
-    const { data: existing } = await supabase
-      .from("doc_generated")
-      .select("*")
-      .eq("company_id", companyId)
-      .eq("lease_id", lease.id)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (existing) {
-      setDoc(existing);
-      const { data: ss } = await supabase
-        .from("doc_signatures")
-        .select("*")
-        .eq("company_id", companyId)
-        .eq("doc_id", existing.id)
-        .order("sign_order", { ascending: true });
-      setSigs(ss || []);
-    } else {
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("email")
-        .eq("company_id", companyId)
-        .ilike("name", escapeFilterValue(lease.tenant_name || ""))
-        .is("archived_at", null)
-        .maybeSingle();
-      if (tenant?.email) setTenantEmail(tenant.email);
-    }
-    setLoading(false);
-  }
-
-  function buildLeaseHtml() {
-    const l = lease;
-    return ''
-      + '<h1 style="text-align:center;color:' + printTheme.signatureInk + ';">Residential Lease Agreement</h1>'
-      + printTable({
-        // A key/value detail block, so no header row -- see printTable's
-        // hideHeader. It used to hand-write padding:6px 10px on all ten
-        // cells and a width:30% on the first, which is exactly the kind of
-        // per-table styling the primitive exists to end.
-        hideHeader: true,
-        columns: [
-          { label: "", style: "font-weight:600;width:30%", render: r => r.label },
-          { label: "", render: r => r.value },
-        ],
-        rows: [
-          { label: "Property",         value: escapeHtml(l.property || "") },
-          { label: "Tenant",           value: escapeHtml(l.tenant_name || "") },
-          { label: "Lease Term",       value: escapeHtml(l.start_date || "") + ' through ' + escapeHtml(l.end_date || "") },
-          { label: "Monthly Rent",     value: '$' + safeNum(l.rent_amount).toLocaleString() },
-          { label: "Security Deposit", value: '$' + safeNum(l.security_deposit).toLocaleString() },
-        ],
-      })
-      + (l.clauses ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Lease Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.clauses) + '</div>' : '')
-      + (l.special_terms ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Special Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.special_terms) + '</div>' : '')
-      + '<hr style="margin-top:32px;"/><p style="font-size:11px;color:' + printTheme.inkMuted + ';">By signing below each party confirms they have read and agree to the terms set out above.</p>';
-  }
-
-  async function sendForSignature() {
-    if (!guardSubmit("leaseSend", lease.id)) return;
-    const te = (tenantEmail || "").trim().toLowerCase();
-    const le = (landlordEmail || "").trim().toLowerCase();
-    if (!te || !te.includes("@")) { showToast("Tenant email is required", "error"); guardRelease("leaseSend", lease.id); return; }
-    if (!le || !le.includes("@")) { showToast("Landlord email is required", "error"); guardRelease("leaseSend", lease.id); return; }
-
-    setSending(true);
-    try {
-      const rendered = buildLeaseHtml();
-      const docName = "Lease Agreement — " + (lease.tenant_name || "") + " — " + (lease.property || "");
-      const { data: newDoc, error: docErr } = await supabase.from("doc_generated").insert([{
-        company_id: companyId,
-        template_id: null,
-        name: docName,
-        rendered_body: rendered,
-        field_values: { lease_id: lease.id },
-        // Linked by record, so the lease can tell when it has been signed.
-        lease_id: lease.id,
-        tenant_id: lease.tenant_id ?? null,
-        property_id: lease.property_id ?? null,
-        doc_kind: "lease",
-        property_address: lease.property || "",
-        tenant_name: lease.tenant_name || "",
-        output_type: "lease",
-        status: "sent",
-        created_by: userProfile?.email || null,
-      }]).select().single();
-      if (docErr) { pmError("PM-3004", { raw: docErr, context: "create lease envelope doc" }); return; }
-
-      const signers = [
-        { role: "tenant", label: "Tenant", name: lease.tenant_name || "", email: te, order: 1 },
-        { role: "landlord", label: "Landlord", name: userProfile?.name || "Property Manager", email: le, order: 2 },
-      ];
-      // Tenant first, then landlord. The envelope keeps the lease's
-      // signature status up to date in the database as each one signs.
-      const { error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: newDoc.id, p_signers: signers, p_signing_mode: "sequential" });
-      if (envErr) { pmError("PM-3004", { raw: envErr, context: "lease create_doc_envelope" }); return; }
-
-      const sent = await sendSignatureRequests(companyId, newDoc.id);
-      const sum = sent.ok ? summarizeSends(sent.results) : { text: "the emails could not be sent (" + sent.error + "). Use Resend.", tone: "error" };
-      logAudit("update", "leases", "Lease sent for e-signature (unified engine): " + lease.tenant_name + " → " + te + " + " + le, lease.id, userProfile?.email, userRole, companyId);
-      if (addNotification) addNotification("✍️", "Lease sent for signature: " + (lease.tenant_name || ""));
-      showToast("Lease out for signature: " + sum.text, sum.tone);
-
-      setDoc(newDoc);
-      const { data: ss } = await supabase.from("doc_signatures").select("*").eq("company_id", companyId).eq("doc_id", newDoc.id).order("sign_order", { ascending: true });
-      setSigs(ss || []);
-      if (onSigned) onSigned();
-    } finally {
-      setSending(false);
-      guardRelease("leaseSend", lease.id);
-    }
-  }
-
-  async function resendSignerEmail(sig) {
-    if (!sig?.id) return;
-    const r = await resendSignatureRequest(companyId, sig.id);
-    if (!r.ok) { showToast("Could not resend: " + r.error, "error"); return; }
-    const sum = summarizeSends([{ status: r.status, email: sig.signer_email, delivered_to: r.delivered_to, error: r.error }]);
-    showToast("Reminder to " + (sig.signer_name || sig.signer_email) + ": " + sum.text, sum.tone);
-  }
-
-  async function copySignerLink(sig) {
-    const url = window.location.origin + "/sign/" + sig.access_token;
-    try { await navigator.clipboard.writeText(url); showToast("Signing link copied", "success"); }
-    catch { showToast("Copy failed — link: " + url, "info"); }
-  }
-
-  if (loading) return <Modal title="E-Signature" onClose={onClose}><Spinner /></Modal>;
-
-  const allSigned = doc && sigs.length > 0 && sigs.every(s => s.status === "signed");
-  const envelopeOpen = doc && !allSigned;
-
+// ============ LEASE SIGNING ============
+// The lease document is made in the Document Builder from the company's own
+// lease template, filled in for this lease's tenant, and sent for signature
+// there. This window shows what has been made for the lease and who has
+// signed. It used to compose its own lease text (a table of five facts plus
+// the clauses typed on the lease form) and send that instead of the real
+// lease: a third lease, next to the Builder's and the Tenants page's.
+function ESignatureModal({ lease, onClose, onSigned, companyId, showToast, showConfirm, setPage }) {
   return (
-    <Modal title={"E-Signature — " + (lease.tenant_name || "Lease")} onClose={onClose}>
+    <Modal title={"Lease signing — " + (lease.tenant_name || "Lease")} onClose={onClose}>
       <div className="space-y-4">
-        {/* Lease summary */}
         <div className="bg-brand-50 rounded-lg p-3">
           <div className="text-sm font-semibold text-brand-800">{lease.property}</div>
           <div className="text-xs text-brand-600">{fmtDate(lease.start_date)} to {fmtDate(lease.end_date)} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
         </div>
-
-        {!doc && (
-          <div className="border border-brand-100 rounded-xl p-4 bg-white">
-            <div className="text-sm font-semibold text-neutral-700 mb-2">Send Lease for Signature</div>
-            <p className="text-xs text-neutral-400 mb-3">Both parties will receive a secure magic link by email. No account required to sign. Links expire in 30 days.</p>
-            <div className="space-y-2 mb-3">
-              <div>
-                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Tenant email</label>
-                <Input size="sm" type="email" value={tenantEmail} onChange={e => setTenantEmail(e.target.value)} placeholder="tenant@example.com" />
-              </div>
-              <div>
-                <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-1">Landlord / PM email</label>
-                <Input size="sm" type="email" value={landlordEmail} onChange={e => setLandlordEmail(e.target.value)} placeholder="you@example.com" />
-              </div>
-            </div>
-            <Btn variant="primary" className="w-full" onClick={sendForSignature} disabled={sending}>
-              {sending ? "Sending…" : "Send for Signature"}
-            </Btn>
-          </div>
+        {lease.tenant_id == null && (
+          <p className="text-xs text-warn-700">This lease is not linked to a tenant record, so a lease document cannot be filled in for it. Edit the lease and choose the tenant.</p>
         )}
-
-        {doc && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold text-neutral-700">Signer progress</div>
-              {allSigned ? (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-success-100 text-success-700">✓ Fully signed</span>
-              ) : (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">Awaiting signatures</span>
-              )}
-            </div>
-            <div className="space-y-2">
-              {sigs.map(s => {
-                const cls = s.status === "signed" ? "bg-positive-50 border-positive-200"
-                  : s.status === "viewed" ? "bg-brand-50 border-brand-200"
-                  : s.status === "sent" ? "bg-warn-50 border-warn-200"
-                  : "bg-neutral-50 border-neutral-200";
-                return (
-                  <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg border " + cls}>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-neutral-800 truncate">{s.signer_name || s.signer_email}</div>
-                      <div className="text-xs text-neutral-400 capitalize">{(s.signer_role || "").replace(/_/g, " ")} · {s.signer_email}</div>
-                      {s.signed_at && <div className="text-2xs text-neutral-400 mt-0.5">Signed {fmtDateTime(s.signed_at)}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {s.status === "signed" ? (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full text-positive-700 bg-positive-100">🔒 Signed</span>
-                      ) : (
-                        <>
-                          <TextLink tone="brand" size="xs" onClick={() => copySignerLink(s)}  title="Copy signing link" className="px-1.5 py-0.5">Copy link</TextLink>
-                          <TextLink tone="neutral" size="xs" onClick={() => resendSignerEmail(s)}  title="Resend signing email" className="px-1.5 py-0.5">Resend</TextLink>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {envelopeOpen && (
-              <p className="text-2xs text-neutral-400 mt-3">
-                Signers receive a unique link per role. Signatures are verified server-side; IP, user-agent, and a SHA-256 integrity hash are captured at signing time.
-              </p>
-            )}
-
-            {allSigned && (
-              <div className="bg-positive-50 border border-positive-200 rounded-xl p-3 mt-3 text-center">
-                <div className="text-sm font-bold text-positive-700">Lease fully executed</div>
-                <div className="text-xs text-positive-600 mt-1">Download the signed document and certificate of completion from the Documents tab → History.</div>
-              </div>
-            )}
-          </div>
-        )}
+        <TenancyDocuments companyId={companyId} leaseId={lease.id} tenantId={lease.tenant_id}
+          title="Lease documents" kinds={["lease", "renewal", "addendum"]}
+          actions={lease.tenant_id != null ? [{ label: "Create lease", templateKey: "md_residential_lease" }] : []}
+          setPage={setPage} returnTo={{ page: "leases" }}
+          showToast={showToast} showConfirm={showConfirm} onChanged={onSigned}
+          emptyText="No lease document has been created for this lease yet." />
+        <p className="text-2xs text-neutral-400">Signers get their own link by email and need no account. Links stop working after 30 days. The signed copy is filed on the tenant's page.</p>
       </div>
     </Modal>
   );

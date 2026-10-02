@@ -26,28 +26,33 @@ const PATHS = {
 
 console.log("\n=== SECURITY DEPOSIT IDEMPOTENCY ===\n");
 
-// ---- 1. no path invents its own reference any more ---------------------
+// ---- 1. ONE place posts a deposit: the shared engine --------------------
+// (2026-10-02) The four screens used to carry four copies of the posting.
+// They now hand over to startTenancyBooks (utils/tenantOnboarding.js), so
+// "every path uses the same reference and the same check" is true by
+// construction rather than by four people remembering.
+const engine = src("utils/tenantOnboarding.js");
 for (const [label, file] of Object.entries(PATHS)) {
   const body = src(file);
-  const randomDepositRefs = (body.match(/reference: "DEP-" \+ shortId\(\)/g) || []).length
-                          + (body.match(/reference: 'DEP-' \+ shortId\(\)/g) || []).length;
-  assert(`${label} no longer posts a deposit under a random reference`,
-    randomDepositRefs === 0,
-    "a random reference cannot be de-duplicated by anything");
+  assert(`${label} no longer posts a deposit itself`,
+    !/description: ['"]Security deposit received/.test(body),
+    "a second copy of the posting is how the four paths drifted apart");
+  assert(`${label} no longer mints a random deposit reference`,
+    !/['"]DEP-['"] \+ shortId\(\)/.test(body));
 }
-
-// ---- 2. every path uses the one shared reference and the one check -----
 for (const file of new Set(Object.values(PATHS))) {
-  const body = src(file);
-  assert(`${file} imports the shared deposit helpers`,
-    /depositReference/.test(body) && /depositAlreadyPosted/.test(body));
+  assert(`${file} hands over to the shared engine`,
+    /startTenancyBooks\(|<StartTenancyModal /.test(src(file)));
 }
-const depositCallSites = Object.values(PATHS).map(src)
-  .join("\n").match(/description: "Security deposit received/g) || [];
-const guards = Object.values(PATHS).map(src).join("\n").match(/depositAlreadyPosted\(/g) || [];
-assert("there is a guard for every place that posts a deposit",
-  guards.length >= depositCallSites.length,
-  `${depositCallSites.length} posting sites vs ${guards.length} guards`);
+assert("the dialog three screens share calls the engine", /startTenancyBooks\(\{/.test(src("components/StartTenancyModal.js")));
+
+// ---- 2. the engine uses the one shared reference and the one check -----
+const depositCallSites = engine.match(/description: "Security deposit received/g) || [];
+assert("the engine posts the deposit in exactly one place", depositCallSites.length === 1, `${depositCallSites.length} site(s)`);
+const depStep = engine.slice(engine.indexOf("// ── 3. security deposit"), engine.indexOf("// ── 4. first month's rent"));
+assert("the deposit is checked with depositAlreadyPosted BEFORE it is posted",
+  depStep.indexOf("depositAlreadyPosted(companyId, tid)") > -1 && depStep.indexOf("depositAlreadyPosted(companyId, tid)") < depStep.indexOf("atomicPostJEAndLedger("));
+assert("the deposit is posted under depositReference(tenant id)", /reference: depositReference\(tid\)/.test(depStep));
 
 // ---- 3. the reference must not collapse when the id is missing ---------
 // 'DEP-T' + undefined is 'DEP-Tundefined'. Under a UNIQUE index that is ONE
@@ -56,13 +61,8 @@ assert("there is a guard for every place that posts a deposit",
 assert("depositReference returns null rather than 'DEP-Tundefined'",
   /tenantId === null \|\| tenantId === undefined \|\| tenantId === ''\) \? null/.test(acct),
   "a stringified undefined in a unique key blocks every later tenant-less deposit");
-
-for (const [label, file] of Object.entries(PATHS)) {
-  const body = src(file);
-  assert(`${label} falls back to a random reference when there is no tenant id`,
-    /depositReference\([^)]*\) \|\| \((?:"DEP-"|'DEP-') \+ shortId\(\)\)/.test(body),
-    "without an id there is nothing to key on, so the old behaviour is correct");
-}
+assert("the engine refuses to run at all without a tenant id (nothing to key a deposit on)",
+  /tenantId === null \|\| tenantId === undefined \|\| tenantId === "" \|\| !tenantName \|\| !property\) \{\s*add\("input", "Tenant details", "failed"/.test(engine));
 
 // ---- 4. the check must fail CLOSED ------------------------------------
 const fn = acct.slice(acct.indexOf("export async function depositAlreadyPosted"));

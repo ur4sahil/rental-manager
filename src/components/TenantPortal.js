@@ -191,6 +191,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   const [messages, setMessages] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [toSign, setToSign] = useState([]);   // documents waiting for THIS tenant's signature
   const [newMessage, setNewMessage] = useState("");
   const [msgAttachment, setMsgAttachment] = useState(null);
   const [sendingMsg, setSendingMsg] = useState(false);
@@ -284,6 +285,14 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   setPayments(p.data || []);
   setWorkOrders(w.data || []);
   setDocuments(d.data || []);
+  // What is waiting for this person's signature. doc_signatures is staff-only
+  // (the row holds the signing link); my_pending_signatures returns only the
+  // requests addressed to the caller's own login email. A failure here is not
+  // worth failing the portal over: the emailed link still works.
+  supabase.rpc("my_pending_signatures", { p_company_id: companyId }).then(({ data, error }) => {
+    if (error) pmError("PM-8006", { raw: error, context: "tenant portal: pending signatures", silent: true });
+    setToSign(error ? [] : (data || []));
+  }, () => setToSign([]));
   // Resolve the destination staff for outbound message notifications.
   // The staff roster is deliberately NOT fetched here any more. A tenant
   // can no longer read other members' rows at all, and the message
@@ -736,6 +745,22 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* ---- OVERVIEW TAB ---- */}
   {activeTab === "overview" && (
   <div className="space-y-4">
+  {toSign.length > 0 && (
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-4">
+  <div className="text-sm font-semibold text-warn-800 mb-2">{toSign.length === 1 ? "A document is waiting for your signature" : toSign.length + " documents are waiting for your signature"}</div>
+  <div className="space-y-2">
+  {toSign.map(t => (
+  <div key={t.signature_id} className="flex items-center justify-between gap-3 bg-white border border-warn-100 rounded-lg px-3 py-2">
+  <div className="min-w-0">
+  <div className="text-sm font-medium text-neutral-800 truncate">{t.doc_name}</div>
+  <div className="text-xs text-neutral-400">Sent {fmtDate(t.sent_at)}{t.token_expires_at ? " · sign by " + fmtDate(t.token_expires_at) : ""}</div>
+  </div>
+  <Btn size="xs" onClick={() => window.open("/sign/" + encodeURIComponent(t.access_token), "_blank", "noopener")}>Review and sign</Btn>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
   <div className="bg-white rounded-xl border border-neutral-200 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
   {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", fmtDate(tenantData.lease_start || tenantData.move_in, "—")], ["Lease End", fmtDate(tenantData.lease_end_date || tenantData.move_out, "—")], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
@@ -1110,6 +1135,22 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   {/* ---- DOCUMENTS TAB ---- */}
   {activeTab === "documents" && (
   <div>
+  {toSign.length > 0 && (
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-4 mb-4">
+  <div className="text-sm font-semibold text-warn-800 mb-2">{toSign.length === 1 ? "A document is waiting for your signature" : toSign.length + " documents are waiting for your signature"}</div>
+  <div className="space-y-2">
+  {toSign.map(t => (
+  <div key={t.signature_id} className="flex items-center justify-between gap-3 bg-white border border-warn-100 rounded-lg px-3 py-2">
+  <div className="min-w-0">
+  <div className="text-sm font-medium text-neutral-800 truncate">{t.doc_name}</div>
+  <div className="text-xs text-neutral-400">Sent {fmtDate(t.sent_at)}{t.token_expires_at ? " · sign by " + fmtDate(t.token_expires_at) : ""}</div>
+  </div>
+  <Btn size="xs" onClick={() => window.open("/sign/" + encodeURIComponent(t.access_token), "_blank", "noopener")}>Review and sign</Btn>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-semibold text-neutral-700">My Documents</h3>
   <Btn size="xs" onClick={() => setShowTenantDocUpload(true)}>+ Upload</Btn>

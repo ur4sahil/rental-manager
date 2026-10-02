@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
@@ -12,7 +12,7 @@ import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../u
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
-import { loadDocContext, signerDefaultFor, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
+import { loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
 import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
@@ -365,6 +365,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // The records the document in hand is about (tenant, lease, property),
   // loaded by id. Saved onto the generated document as real links.
   const [docContext, setDocContext] = useState(null);
+  // The template's signers, plus a slot for each adult on the tenancy beyond
+  // the template's own tenant slots (see effectiveSignerRoles).
+  const signerRoles = useMemo(() => effectiveSignerRoles(selectedTemplate?.signer_roles, docContext?.signers?.tenants?.length || 0), [selectedTemplate, docContext]);
   const [emailLogFor, setEmailLogFor] = useState(null);   // { doc, rows } for the History "Email log" modal
   // When another screen opened the builder for a tenant, where to go back to.
   const returnTo = useRef(null);
@@ -909,7 +912,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     const emails = {};
     const names = {};
     const source = ctx || { signers: { tenants: [], landlord: { name: userProfile?.name || "", email: userProfile?.email || "" } } };
-    for (const r of (template.signer_roles || [])) {
+    for (const r of effectiveSignerRoles(template.signer_roles, source.signers?.tenants?.length || 0)) {
       const g = signerDefaultFor(r.role, source);
       emails[r.role] = g.email;
       names[r.role] = g.name;
@@ -1434,7 +1437,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   async function sendForSignature() {
   if (!selectedTemplate) return;
-  const roles = selectedTemplate.signer_roles || [];
+  const roles = signerRoles;
   if (roles.length === 0) { showToast("This template has no signer roles defined", "error"); return; }
 
   // Validate emails
@@ -1446,6 +1449,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       showToast("Email required for " + (r.label || r.role), "error");
       return;
     }
+    // Someone named on the document with no email would simply be left off
+    // the envelope. Say so instead of sending a lease one signature short.
+    if (!email && name) { showToast(name + " has no email address. Add one, or clear the name to send without their signature.", "error"); return; }
     if (!email) continue;
     if (!email.includes("@") || !email.includes(".")) {
       showToast("Invalid email for " + (r.label || r.role) + ": " + email, "error");
@@ -2310,8 +2316,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <p className="text-xs text-neutral-400 mb-3">Each signer will receive a unique magic-link email. No account required on their end; the link expires in 30 days.</p>
   <div className="space-y-2 mb-3">
-  {(selectedTemplate.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map(r => {
-  const color = getRoleColor(r.role, selectedTemplate.signer_roles);
+  {[...signerRoles].sort((a,b) => (a.order||0) - (b.order||0)).map(r => {
+  const color = getRoleColor(r.role, signerRoles);
   return (
   <div key={r.role} className="border border-neutral-100 rounded-xl p-2.5 bg-white">
   <div className="flex items-center justify-between mb-1">

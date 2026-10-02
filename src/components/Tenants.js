@@ -11,7 +11,9 @@ import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId, autoOwnerDistribution } from "../utils/accounting";
 import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
 import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
-import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal, generatePaymentReceipt } from "./shared";
+import { Badge, Spinner, Modal, PropertySelect, DocUploadModal, generatePaymentReceipt } from "./shared";
+import { StartTenancyModal } from "./StartTenancyModal";
+import { TenancyDocuments } from "./TenancyDocuments";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -463,39 +465,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!existingLease) {
   await supabase.from("leases").insert([{ company_id: companyId, tenant_name: _name, tenant_id: tenantId, property: _property, start_date: _leaseStart, end_date: _leaseEnd, rent_amount: _rent, security_deposit: _secDep, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
-  // Security deposit + rent charges in parallel
-  if (_secDep > 0 && tenantId) {
-  // Owed, then paid: DR the tenant's OWN AR -- tenantOwnArAccountId returns
-  // null rather than the shared 1100 fallback, and resolveJELineAccounts
-  // below then refuses to post.
-  const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), tenantOwnArAccountId(companyId, _name, tenantId)]);
-  // "2100" is a bare code and post_je_and_ledger casts account_id to
-  // ::uuid, so leaving it bare 400s the RPC and drops the deposit onto
-  // the non-atomic fallback. Resolve both legs up front; refuse to
-  // post if either is unresolvable rather than writing a null
-  // account_id. (The AR leg is already the per-tenant sub-account and
-  // deliberately passes no balanceUpdate — the balance trigger owns it.)
-  // Another path may already have posted this tenant's deposit -- the wizard,
-  // the property form or the Leases page. The unique index would refuse the
-  // duplicate anyway; checking first means the user gets no spurious "entry
-  // failed" toast for what is actually correct de-duplication.
-  const _depDone = await depositAlreadyPosted(companyId, tenantId);
-  const _depResolved = _depDone ? { lines: null, skipped: true } : await resolveJELineAccounts([
-  { account_id: tenantArId, account_name: "AR - " + _name, debit: _secDep, credit: 0, class_id: classId, memo: "Security deposit from " + _name },
-  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
-  ], companyId);
-  if (!_depResolved.lines && !_depResolved.skipped) { showToast("Security deposit accounting entry failed — could not resolve account " + _depResolved.missing + ".", "error"); }
-  const _depResult = _depResolved.lines ? await atomicPostJEAndLedger({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: depositReference(tenantId) || ("DEP-" + shortId()), property: _property,
-  lines: _depResolved.lines,
-  ledgerEntry: { tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit" }
-  }) : null;
-  if (_depResolved.lines && !_depResult?.jeId) showToast("Security deposit accounting entry failed.", "error");
-  }
-  // Rent charges — fire and forget (don't block the popup)
-  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charge posting", silent: true }));
+  // The deposit, the first month's rent and the monthly schedule are all
+  // posted by ONE shared engine (startTenancyBooks), from the dialog queued
+  // here. This screen used to post the deposit itself and leave the rent to a
+  // pop-up that could be closed -- which is how a tenant ended up with a
+  // deposit and no rent schedule.
   setSavingTenant(false);
-  // Queue recurring entry popup
-  setPendingRecurringEntry({ tenantName: _name, tenantId: tenantId, property: _property, rent: _rent, leaseStart: _leaseStart, leaseEnd: _leaseEnd });
+  if (tenantId) setPendingRecurringEntry({ tenantName: _name, tenantId: tenantId, property: _property, rent: _rent, deposit: _secDep, leaseStart: _leaseStart, leaseEnd: _leaseEnd });
+  else showToast("The tenant was saved but could not be read back, so billing was not set up. Set it up on the Recurring rent page.", "warning");
   } else {
   setSavingTenant(false);
   }
@@ -1195,96 +1172,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setMessages([]);
   }
 
-  function openLeaseForSigning(tenant) {
-  // Open in new tab with signing canvas
-  const html = `
-  <!DOCTYPE html>
-  <html>
-  <head>
-  <title>Lease Agreement \u2014 ${escapeHtml(tenant.name)}</title>
-  <style>
-  body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: ${printTheme.inkStrong}; }
-  h1 { text-align: center; color: ${printTheme.signatureInk}; border-bottom: 2px solid ${printTheme.signatureInk}; padding-bottom: 10px; }
-  h2 { color: ${printTheme.signatureInk}; margin-top: 30px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-  .field { background: ${printTheme.surfaceMuted}; border: 1px solid ${printTheme.borderLight}; padding: 8px 12px; margin: 5px 0; border-radius: 4px; }
-  .clause { margin: 10px 0; font-size: 13px; line-height: 1.6; }
-  .signature-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
-  canvas { border: 2px solid ${printTheme.inkStrong}; border-radius: 4px; cursor: crosshair; background: white; }
-  .btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
-  .btn-primary { background: ${printTheme.brand}; color: white; }
-  .btn-clear { background: ${printTheme.borderLight}; color: ${printTheme.inkStrong}; }
-  .signed-badge { display:none; background: ${printTheme.success}; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; }
-  @media print { .no-print { display: none; } }
-  </style>
-  </head>
-  <body>
-  <h1>RESIDENTIAL LEASE AGREEMENT</h1>
-  <p style="text-align:center;color:${printTheme.inkMuted};">Generated on ${fmtDate(new Date())}</p>
-  <h2>Parties</h2>
-  <div class="field"><strong>Tenant:</strong> ${escapeHtml(tenant.name)}</div>
-  <div class="field"><strong>Email:</strong> ${escapeHtml(tenant.email)}</div>
-  <div class="field"><strong>Property:</strong> ${escapeHtml(tenant.property)}</div>
-  <h2>Lease Terms</h2>
-  <div class="field"><strong>Monthly Rent:</strong> $${escapeHtml(String(tenant.rent))}/month</div>
-  <div class="field"><strong>Move-In Date:</strong> ${escapeHtml(fmtDate(tenant.move_in, "\u2014"))}</div>
-  <div class="field"><strong>Move-Out Date:</strong> ${escapeHtml(fmtDate(tenant.move_out, "\u2014"))}</div>
-  <h2>Terms & Conditions</h2>
-  <div class="clause">1. <strong>Rent Payment.</strong> Tenant agrees to pay $${escapeHtml(String(tenant.rent))} per month on the 1st of each month. A late fee will be applied after the grace period.</div>
-  <div class="clause">2. <strong>Security Deposit.</strong> A security deposit equal to one month's rent is required prior to occupancy and will be returned within " + (companySettings?.deposit_return_days || 30) + " days of move-out, less any deductions for damages.</div>
-  <div class="clause">3. <strong>Property Use.</strong> The property shall be used solely as a private residence. No illegal activities are permitted on the premises.</div>
-  <div class="clause">4. <strong>Maintenance.</strong> Tenant is responsible for minor maintenance. Landlord is responsible for major repairs.</div>
-  <div class="clause">5. <strong>Entry.</strong> Landlord may enter the property with 24-hour notice for inspections, repairs, or showings.</div>
-  <div class="clause">6. <strong>Termination.</strong> Either party may terminate this lease with " + (companySettings?.termination_notice_days || 30) + " days written notice.</div>
-  <div class="signature-section">
-  <div>
-  <h2>Landlord Signature</h2>
-  <canvas id="landlord-canvas" width="320" height="100"></canvas>
-  <div class="no-print" style="margin-top:8px;display:flex;gap:8px;">
-  <button class="btn btn-clear" onclick="clearCanvas('landlord-canvas')">Clear</button>
-  </div>
-  </div>
-  <div>
-  <h2>Tenant Signature</h2>
-  <canvas id="tenant-canvas" width="320" height="100"></canvas>
-  <div class="no-print" style="margin-top:8px;display:flex;gap:8px;">
-  <button class="btn btn-clear" onclick="clearCanvas('tenant-canvas')">Clear</button>
-  </div>
-  </div>
-  </div>
-  <div class="no-print" style="text-align:center;margin-top:30px;display:flex;gap:12px;justify-content:center;">
-  <button class="btn btn-primary" onclick="saveAndPrint()">✓ Sign & Save as PDF</button>
-  <button class="btn btn-clear" onclick="window.print()">\u{1F5A8}\uFE0F Print</button>
-  </div>
-  <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">✅ SIGNED — ${fmtDate(new Date())}</div>
-  <script>
-  function makeDrawable(canvasId) {
-  const canvas = document.getElementById(canvasId);
-  const ctx = canvas.getContext('2d');
-  let drawing = false;
-  canvas.addEventListener('mousedown', e => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); });
-  canvas.addEventListener('mousemove', e => { if (!drawing) return; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '${printTheme.signatureInk}'; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); });
-  canvas.addEventListener('mouseup', () => drawing = false);
-  canvas.addEventListener('mouseleave', () => drawing = false);
-  // Touch support
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; const r = canvas.getBoundingClientRect(); ctx.beginPath(); ctx.moveTo(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top); });
-  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drawing) return; const r = canvas.getBoundingClientRect(); ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '${printTheme.signatureInk}'; ctx.lineTo(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top); ctx.stroke(); });
-  canvas.addEventListener('touchend', () => drawing = false);
-  }
-  function clearCanvas(id) { const c = document.getElementById(id); c.getContext('2d').clearRect(0, 0, c.width, c.height); }
-  function saveAndPrint() {
-  document.getElementById('signed-badge').style.display = 'block';
-  setTimeout(() => window.print(), 300);
-  }
-  makeDrawable('landlord-canvas');
-  makeDrawable('tenant-canvas');
-  </script>
-  </body>
-  </html>
-  `;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const safeWin = window.open(url, "_blank", "noopener,noreferrer");
-  if (safeWin) safeWin.onload = () => URL.revokeObjectURL(url);
+  // The lease is made in the Document Builder from the company's own lease
+  // template (md_residential_lease), filled in for this tenant, and sent for
+  // signature there. This used to open a browser tab with a fixed six-clause
+  // text and a drawing box, where nothing was saved and nothing was sent.
+  const LEASE_ACTIONS = [{ label: "Create lease", templateKey: "md_residential_lease" }];
+  function createLeaseFor(tenant) {
+    if (!setPage || !tenant?.id) return;
+    setPage("doc_builder", { templateKey: "md_residential_lease", tenantId: Number(tenant.id), returnTo: { page: "tenants", action: { openTenantId: tenant.id, tenantName: tenant.name, panel: "detail" } } });
   }
 
   if (loading) return <Spinner />;
@@ -1461,10 +1356,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   <div className="space-y-2">
-  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-3 text-left">
+  <button onClick={() => createLeaseFor(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
-  <div className="text-sm font-medium text-brand-800">✍️ Generate & E-Sign Lease</div>
-  <div className="text-xs text-brand-400">Opens PDF with signature canvas</div>
+  <div className="text-sm font-medium text-brand-800">Create lease</div>
+  <div className="text-xs text-brand-400">Your lease, filled in for this tenant, then sent for signature</div>
   </div>
   <span className="text-brand-300">→</span>
   </button>
@@ -1504,6 +1399,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         onMessage={openMessages}
         onInvite={inviteTenant}
         onRenew={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }}
+        leaseCard={selectedTenant?.id ? (
+          <TenancyDocuments key={selectedTenant.id} companyId={companyId} tenantId={selectedTenant.id}
+            actions={selectedTenant.archived_at ? [] : LEASE_ACTIONS} setPage={setPage}
+            returnTo={{ page: "tenants", action: { openTenantId: selectedTenant.id, tenantName: selectedTenant.name, panel: "detail" } }}
+            showToast={showToast} showConfirm={showConfirm}
+            emptyText="No lease or notice has been created for this tenant in the app yet." />
+        ) : null}
         onMoveOut={pageMoveOut}
         onArchive={t => deleteTenant(t.id, t.name)}
         onAddEntry={() => setShowAddTxn(true)}
@@ -2429,7 +2331,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   )}
-  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
+  {pendingRecurringEntry && <StartTenancyModal entry={pendingRecurringEntry} companyId={companyId} userEmail={userProfile?.email || ""} showToast={showToast} onComplete={() => { setPendingRecurringEntry(null); fetchTenants(); }} />}
   </div>
   );
 }

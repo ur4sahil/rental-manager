@@ -311,25 +311,46 @@ test('a lease is created with every value typed, links the tenant by id, moves t
 
   // Tenant select prefills property + rent; we then set every field
   // explicitly so the assertions test typed values, not defaults.
-  await byLabel(form, 'Tenant *', 'select').selectOption(TENANT_NAME);
+  // The option's value is the tenant id; its text is "Name — property".
+  await byLabel(form, 'Tenant *', 'select').selectOption(String(tenantId));
   await byLabel(form, 'Property *', 'select').selectOption(ADDRESS);
   await byLabel(form, 'Lease Start *').fill(start);
   await byLabel(form, 'Lease End *').fill(end);
-  await byLabel(form, 'Monthly Rent ($) *').fill('2450.50');
-  await byLabel(form, 'Security Deposit ($)').fill('2450.50');
+  // Money fields reformat themselves on focus, so .fill() on one that
+  // already holds a value (the rent is prefilled from the tenant) appends.
+  // Type like a person: click, select all, type.
+  const typeMoney = async (label, value) => {
+    const input = byLabel(form, label);
+    await input.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type(value);
+  };
+  await typeMoney('Monthly Rent ($) *', '2450.50');
+  await typeMoney('Security Deposit ($)', '2450.50');
   await byLabel(form, 'Annual Escalation %').fill('3.5');
   await byLabel(form, 'Payment Due Day').fill('5');
   await byLabel(form, 'Lease Type', 'select').selectOption('month_to_month');
   await byLabel(form, 'Renewal Notice (days)').fill('45');
   await byLabel(form, 'Grace Period (days)').fill('7');
   await byLabel(form, 'Fee Type', 'select').selectOption('percent');
-  await byLabel(form, 'Fee Percentage (%)').fill('5');
+  await typeMoney('Fee Percentage (%)', '5');
   await form.locator('input[type="checkbox"]').first().check();
   await byLabel(form, 'Lease Clauses', 'textarea').fill('Tenant maintains lawn. Landlord maintains HVAC.');
   await byLabel(form, 'Special Terms', 'textarea').fill('Garage included. Two off-street spaces.');
 
   await form.locator('button:text-is("Create Lease")').click();
   await expect(form, 'the create form should close on a successful save').toBeHidden({ timeout: 60000 });
+
+  // The books are started from ONE shared dialog (2026-10-02): the deposit,
+  // the first month's rent and the monthly schedule together, through the
+  // same engine Prospects and the property wizard use. A lease starting this
+  // month for a tenant with an empty ledger is offered as a move-in.
+  const billing = page.locator('[role="dialog"]', { hasText: 'Start billing' });
+  await expect(billing, 'creating a lease should open the Start billing dialog').toBeVisible({ timeout: 30000 });
+  await expect(billing.locator('[role="radio"][aria-checked="true"]')).toContainText('Moving in', { timeout: 30000 });
+  await expect(billing).toContainText('Security deposit');
+  await billing.locator('button:text-is("Start billing")').click();
+  await expect(billing, 'the dialog should close once everything is posted').toBeHidden({ timeout: 120000 });
 
   // ── the row ──
   const { data: lease, error } = await sb.from('leases')
@@ -391,6 +412,21 @@ test('a lease is created with every value typed, links the tenant by id, moves t
   expect(dr).toBeCloseTo(2450.50, 2);
   expect(cr).toBeCloseTo(2450.50, 2);
 
+  // The first month's rent (a lease starting on the 1st is a full month) and
+  // ONE rent schedule that carries the tenant id and bills from next month.
+  const { data: firstRent } = await sb.from('acct_journal_entries')
+    .select('id, reference, date').eq('company_id', COMPANY).like('reference', `RENT1-T${tenantId}-%`).neq('status', 'voided');
+  expect((firstRent || []).length, 'the first month should be charged exactly once').toBe(1);
+  expect(firstRent[0].date).toBe(start);
+  const { data: schedules } = await sb.from('recurring_journal_entries')
+    .select('id, amount, tenant_id, next_post_date, status, debit_account_id').eq('company_id', COMPANY).eq('tenant_id', tenantId).eq('status', 'active').is('archived_at', null);
+  expect((schedules || []).length, 'the tenant should have exactly one active rent schedule').toBe(1);
+  expect(Number(schedules[0].amount)).toBe(2450.50);
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  expect(schedules[0].next_post_date).toBe(`${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`);
+  const { data: arAcct } = await sb.from('acct_accounts').select('tenant_id, code').eq('id', schedules[0].debit_account_id).maybeSingle();
+  expect(String(arAcct?.tenant_id), 'the schedule must bill the tenant\'s own ledger').toBe(String(tenantId));
+
   // And the tenant is told about it.
   await expect.poll(async () => {
     const { count } = await sb.from('notification_queue')
@@ -400,7 +436,7 @@ test('a lease is created with every value typed, links the tenant by id, moves t
   }, { timeout: 25000, message: 'lease_created was never queued for the tenant' }).toBeGreaterThan(0);
 
   // ── EDIT ──
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.locator('button:text-is("Edit")').click();
   await expect(form.locator('h3')).toHaveText('Edit Lease', { timeout: 15000 });
@@ -423,7 +459,7 @@ test('a lease is created with every value typed, links the tenant by id, moves t
 
   // The list has to agree after a reload — not just in React state.
   await openRoute(page, 'leases', 'Lease Management');
-  const reloaded = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const reloaded = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(reloaded).toContainText('$2,600/mo', { timeout: 30000 });
 
   // ── TERMINATE ──
@@ -527,7 +563,7 @@ test('a rent increase writes the new rent, appends to the history, follows throu
   await seedLease();
   await openRoute(page, 'leases', 'Lease Management');
 
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.locator('button').filter({ hasText: 'Rent Increase' }).first().click();
   const modal = page.locator('div.fixed.inset-0.z-\\[60\\]').first();
@@ -564,7 +600,7 @@ test('a rent increase writes the new rent, appends to the history, follows throu
   const { data: tenantRow } = await sb.from('tenants').select('rent').eq('id', tenantId).maybeSingle();
   expect(Number(tenantRow.rent), 'the increase must follow through to the tenant record').toBe(2175.25);
 
-  await expect(page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first())
+  await expect(page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first())
     .toContainText('$2,175.25/mo', { timeout: 20000 });
 
   expect(realProblems(problems), realProblems(problems).join('\n')).toEqual([]);
@@ -579,7 +615,7 @@ test('a partial deposit return records the split, posts both journal entries, an
   await openRoute(page, 'leases', 'Lease Management');
   await page.locator('main button:text-is("Terminated")').click();
 
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.locator('button:text-is("Return Deposit")').click();
   const modal = page.locator('div.fixed.inset-0.z-\\[60\\]').first();
@@ -631,7 +667,7 @@ test('a partial deposit return records the split, posts both journal entries, an
   // A second attempt has to be refused — the money has already moved.
   await openRoute(page, 'leases', 'Lease Management');
   await page.locator('main button:text-is("Terminated")').click();
-  const card2 = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const card2 = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(card2).toBeVisible({ timeout: 30000 });
   await expect(card2.locator('button:text-is("Return Deposit")'),
     'a processed deposit must not offer Return Deposit again').toHaveCount(0);
@@ -645,7 +681,7 @@ test('ticking a move-in checklist item persists it, and completing every item fl
   await seedLease();
   await openRoute(page, 'leases', 'Lease Management');
 
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: TENANT_NAME }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: TENANT_NAME }).first();
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.locator('button').filter({ hasText: 'Move-In' }).first().click();
   const modal = page.locator('div.fixed.inset-0.z-\\[60\\]').first();
@@ -856,7 +892,7 @@ test('a document template is created with its body and fields, edited, and soft-
   expect(tmpl.fields.every(f => f.section === 'Notice')).toBe(true);
 
   // ── EDIT ──
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: name }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: name }).first();
   await expect(card).toBeVisible({ timeout: 20000 });
   await card.locator('button:text-is("Edit")').click();
   const shell2 = editorShell(page);
@@ -874,7 +910,7 @@ test('a document template is created with its body and fields, edited, and soft-
   expect(edited.body).toContain('{{tenant_name}}');
 
   // ── DELETE (soft) ──
-  const card2 = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: name }).first();
+  const card2 = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: name }).first();
   await expect(card2).toBeVisible({ timeout: 20000 });
   await card2.locator('button:text-is("✕")').click();
   await confirmDialog(page, 'Delete');
@@ -909,7 +945,7 @@ test('generating a document writes the typed values, merges them into the body, 
 
   await openRoute(page, 'doc_builder', 'Document Builder');
   await templatesTab(page).click();
-  const card = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: tmplName }).first();
+  const card = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: tmplName }).first();
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.locator('button:text-is("Use")').click();
 
@@ -961,7 +997,7 @@ test('generating a document writes the typed values, merges them into the body, 
   // ── delete it: History → ✕ ──
   await openRoute(page, 'doc_builder', 'Document Builder');
   await page.locator('main button').filter({ hasText: 'History' }).first().click();
-  const histRow = page.locator('main div.rounded-xl.shadow-sm').filter({ hasText: tmplName }).first();
+  const histRow = page.locator('main div.rounded-xl.shadow-card').filter({ hasText: tmplName }).first();
   await expect(histRow).toBeVisible({ timeout: 30000 });
   await histRow.locator('button:text-is("✕")').click();
   await confirmDialog(page, 'Delete');

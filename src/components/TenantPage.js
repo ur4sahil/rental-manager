@@ -51,7 +51,7 @@ export default function TenantPage({
   // Rendered by Tenants.js and handed in whole: the add-entry form and the
   // message thread carry too much of that component's state to be worth
   // marshalling through a dozen props, and neither is a layout decision.
-  addEntryForm, messagesPanel, lateFeeAction,
+  addEntryForm, messagesPanel, lateFeeAction, leaseCard,
   ledgerShowAll, onToggleLedgerAll,
 }) {
   if (!tenant) return null;
@@ -311,6 +311,9 @@ export default function TenantPage({
         </div>
 
         <div className="space-y-3.5">
+          {/* The lease and notices made for this tenant in the Document
+              Builder, with who has signed. Rendered by Tenants.js. */}
+          {leaseCard}
           <DetailCard title="Documents" sub={`${metCount} of ${reqs.length} required`}
             action={<Btn variant="secondary" size="sm" onClick={() => onUploadDoc?.(tenant)}>Upload</Btn>}>
             {reqs.map(r => (

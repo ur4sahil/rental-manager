@@ -15,7 +15,7 @@ import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataInte
 import { COMPANY_DEFAULTS } from "./config";
 import { loadLoginMissingRows, buildLoginMissingTasks } from "./utils/loginMissing";
 import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, fetchAllPaged, autoPostRentCharges, autoPostRecurringEntries, ensureDefaultAccounts, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
-import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
+import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
 import PullToRefresh from "./components/PullToRefresh";
 
 import { LandingPage } from "./components/LandingPage";
