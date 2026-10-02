@@ -374,15 +374,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   const previewRef = useRef();
 
-  // Full-screen split pane
-  const [splitPercent, setSplitPercent] = useState(50);
+  // Full-screen split pane. The document gets the room; the pane beside
+  // it (the form while filling in, the send/actions panel in preview) is
+  // a side column. At 50/50 the inputs stretched across half the screen
+  // and a 17-page lease was squeezed into a card.
+  const [sidePercent, setSidePercent] = useState(30);
   const isDragging = useRef(false);
+  // The side pane is on the LEFT while filling in and on the RIGHT in preview.
+  const sideOnLeft = useRef(true);
 
   useEffect(() => {
   const onMouseMove = (e) => {
   if (!isDragging.current) return;
-  const pct = (e.clientX / window.innerWidth) * 100;
-  setSplitPercent(Math.min(75, Math.max(25, pct)));
+  const fromLeft = (e.clientX / window.innerWidth) * 100;
+  setSidePercent(Math.min(50, Math.max(22, sideOnLeft.current ? fromLeft : 100 - fromLeft)));
   };
   const onMouseUp = () => { isDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
   document.addEventListener("mousemove", onMouseMove);
@@ -2072,6 +2077,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ============ DOCUMENT FILL — FULL SCREEN ============
   if (step === "fill" && selectedTemplate) {
+  sideOnLeft.current = true;
   const fc = selectedTemplate.field_config || {};
   const sections = [...new Set((selectedTemplate.fields || []).map(f => f.section).filter(Boolean))];
   const unsectioned = (selectedTemplate.fields || []).filter(f => !f.section);
@@ -2172,7 +2178,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Split pane */}
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Form fields */}
-  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
+  <div style={{ width: sidePercent + "%", minWidth: 320 }} className="shrink-0 overflow-y-auto p-4 space-y-3">
   {sections.map(section => {
   const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
   if (sectionFields.length === 0) return null;
@@ -2196,8 +2202,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Drag handle */}
   <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
 
-  {/* Right: Live preview */}
-  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6">
+  {/* Right: Live preview. An HTML document fills the pane edge to edge on
+      its pages (the paged view brings its own gutter and scrolling); a
+      PDF-overlay template keeps the padded, scrolling column. */}
+  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6" : "flex flex-col")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2221,14 +2229,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Live Preview</h3>
-  <div className="flex flex-col h-[70vh] border border-neutral-100 rounded-xl overflow-hidden">
+  <>
+  <div className="px-4 py-1.5 border-b border-neutral-100 bg-white text-2xs font-semibold uppercase tracking-wide text-neutral-400 shrink-0">Live preview · updates as you type</div>
   {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
   <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
   ); })()}
-  </div>
-  </div>
+  </>
   )}
   </div>
   </div>
@@ -2238,6 +2244,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ============ PREVIEW + EXPORT — FULL SCREEN ============
   if (step === "preview" && selectedTemplate) {
+  sideOnLeft.current = false;
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   return (
   <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
@@ -2267,7 +2274,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Split pane */}
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Document preview */}
-  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 flex justify-center">
+  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6 flex justify-center" : "flex flex-col")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2291,7 +2298,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="flex flex-col w-full h-full">
+  <div ref={previewRef} className="flex flex-col flex-1 min-h-0">
   {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
   <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
   ); })()}
@@ -2304,7 +2311,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Right: Actions sidebar (Send). Export lives in the top ribbon. Save/Finalize
       moved to a sticky bottom action bar below, Zoho-style. */}
-  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
+  <div style={{ width: sidePercent + "%", minWidth: 320 }} className="shrink-0 overflow-y-auto p-4 space-y-4">
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-brand-200 p-4">
