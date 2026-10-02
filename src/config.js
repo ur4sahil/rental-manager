@@ -54,6 +54,10 @@ export const COMPANY_DEFAULTS = {
   // a term longer than a month ([LAW] in docs/PLAN-tenant-documents.md).
   rent_increase_notice_days: 90,
 
+  // The clock (migration 20261003070000)
+  lease_clock_digest: true,         // morning email to admins when something new needs attention
+  auto_remind_signers_days: 0,      // re-send an unsigned signing request every N days, at most 3 times; 0 = never
+
   // Notification Thresholds
   rent_due_reminder_days: 3,        // days before due date
   lease_expiry_warning_days: 60,    // days before expiry

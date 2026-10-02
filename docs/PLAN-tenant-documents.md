@@ -687,3 +687,53 @@ acknowledgment → served → move-out → statement.
 
 Tests: `tests/application.test.mjs` (35) and a browser run with a second,
 logged-out browser as the applicant.
+
+---
+
+## Phase 5 as built (2026-10-02, on `staging`; database change on TEST only)
+
+- **One list of what needs attention today** (migration 20261003070000,
+  database function `lease_clock_items`). It stores nothing: it reads the
+  records each time, so a line goes away by itself once the thing is done.
+  - a lease ending within 90 days with no renewal offered (said again at 60
+    and at 30 days)
+  - a document still unsigned after three days, and when a signing link has
+    stopped working or is about to
+  - a prospect whose lease start date has arrived and who is not a tenant
+    yet (signed or not)
+  - a tenancy that ended with a deposit and no deposit statement written,
+    with the date it is due
+  - a tenant on notice whose move-out is within a week, or past and not run
+  - a renewal or rent change that could not take effect on its day
+  - a late fee charged this month with no late notice written
+- **Dashboard card "Needs attention"** (`LeaseClock.js`). Each line has a
+  button that opens the right screen (the tenant, the prospect, the
+  move-out, the deposit statement, the late notice), "Send a reminder" for
+  unsigned documents, and "Dismiss".
+- **Daily job** (`api/_lease-clock-impl.js`, 7am Eastern, runs on
+  production only). For every company: lease changes whose day has come
+  take effect; admins get ONE morning email listing what is newly waiting
+  (each thing is emailed once); signers are reminded automatically if the
+  company turned that on.
+- **[CHOSEN]** the morning email is ON by default and goes to admins only
+  (Settings has a switch). Automatic reminders to people who have not
+  signed are OFF by default (Settings: every N days, at most three times,
+  each one renews their link).
+- **[CHOSEN] late fees now run every day** instead of on the 5th. The 5th
+  is inside a five-day grace period, so the scheduled job could never
+  charge anyone; daily, the fee posts the first morning after grace ends.
+  The amount, the grace period and the once-a-month rule are unchanged.
+  **This starts charging late fees automatically once it is on
+  production** for any company with a late-fee rule. It needs a yes.
+- **Not automatic, on purpose**: the late notice itself. A late fee makes a
+  line on the list with a "Write the notice" button; nothing is sent to a
+  tenant without a person pressing Send.
+- **Gap**: the deposit statement started from the dashboard is not
+  pre-filled with the deductions (those are only known on the move-out's
+  last screen). Staff fill them in.
+- **Release order**: the migration must reach a database before this code
+  does, or saving Settings fails there (two new settings columns).
+
+Tests: `tests/lease-clock.test.mjs` (67), a seeded check of every kind of
+line on TEST (rolled back), the daily job run twice locally (second run
+emails nothing), and a browser run of the dashboard card.

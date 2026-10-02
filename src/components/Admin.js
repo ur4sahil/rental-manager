@@ -1405,7 +1405,15 @@ function CompanySettingsPanel({ companyId, showToast, userProfile, companySettin
   <Field label="Rent Due Reminder" field="rent_due_reminder_days" suffix="days before" min={1} max={14} />
   <Field label="Lease Expiry Warning" field="lease_expiry_warning_days" suffix="days before" min={7} max={180} />
   <Field label="Insurance Expiry Warning" field="insurance_expiry_warning_days" suffix="days before" min={7} max={180} />
+  <Field label="Remind People Who Have Not Signed" field="auto_remind_signers_days" suffix="days (0 = never)" min={0} max={30} />
   </div>
+  <label className="flex items-start gap-2 mt-4 text-sm text-neutral-700 cursor-pointer">
+    <input type="checkbox" className="mt-0.5" checked={form.lease_clock_digest !== false} onChange={e => update("lease_clock_digest", e.target.checked)} />
+    <span>Email the admins each morning when something new needs attention
+      <span className="block text-xs text-neutral-400">A lease ending, a document nobody has signed, a move-out or a deposit statement coming due. Each thing is emailed once; the dashboard always shows the full list.</span>
+    </span>
+  </label>
+  <p className="text-xs text-neutral-400 mt-2">Reminders to signers go out at most three times per person, and each one renews their signing link.</p>
   </div>
 
   {/* Legal */}

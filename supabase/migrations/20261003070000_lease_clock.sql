@@ -1,0 +1,175 @@
+-- The clock (Phase 5 of docs/PLAN-tenant-documents.md).
+--
+-- Dates used to be stored and never acted on: a lease reached its end with
+-- nobody told, a document sat unsigned for weeks, a signed applicant's start
+-- date came and went, and a deposit statement's deadline passed in silence.
+--
+-- lease_clock_items says what needs a person's attention TODAY for one
+-- company. It stores nothing: it reads the records each time, so an item
+-- disappears by itself the moment the thing is done. The dashboard shows
+-- it, and the daily job (api/_lease-clock-impl.js) emails staff when
+-- something new appears. An item that is not wanted can be dismissed.
+
+CREATE TABLE IF NOT EXISTS public.lease_clock_dismissed (
+  company_id text NOT NULL,
+  item_key text NOT NULL,
+  dismissed_by text,
+  dismissed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, item_key)
+);
+ALTER TABLE public.lease_clock_dismissed ENABLE ROW LEVEL SECURITY;
+DO $pol$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'lease_clock_dismissed' AND policyname = 'lease_clock_dismissed_staff') THEN
+    CREATE POLICY lease_clock_dismissed_staff ON public.lease_clock_dismissed
+      FOR ALL TO authenticated
+      USING (public.is_company_staff(company_id))
+      WITH CHECK (public.is_company_staff(company_id));
+  END IF;
+END $pol$;
+REVOKE ALL ON public.lease_clock_dismissed FROM anon;
+GRANT SELECT, INSERT ON public.lease_clock_dismissed TO authenticated;
+GRANT ALL ON public.lease_clock_dismissed TO service_role;
+
+-- What the daily email has already told staff about, so it is said once.
+CREATE TABLE IF NOT EXISTS public.lease_clock_notified (
+  company_id text NOT NULL,
+  item_key text NOT NULL,
+  notified_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, item_key)
+);
+ALTER TABLE public.lease_clock_notified ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.lease_clock_notified FROM anon, authenticated;
+GRANT ALL ON public.lease_clock_notified TO service_role;
+
+ALTER TABLE public.company_settings
+  -- Email staff a morning summary when something new needs attention.
+  ADD COLUMN IF NOT EXISTS lease_clock_digest boolean NOT NULL DEFAULT true,
+  -- Re-send a signing request to a signer who has not signed, every this
+  -- many days (at most three times). 0 = never automatically.
+  ADD COLUMN IF NOT EXISTS auto_remind_signers_days integer NOT NULL DEFAULT 0;
+
+CREATE OR REPLACE FUNCTION public.lease_clock_items(p_company_id text)
+RETURNS TABLE(item_key text, kind text, severity text, title text, detail text, due_date date,
+              tenant_id bigint, lease_id uuid, prospect_id uuid, doc_id uuid)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+#variable_conflict use_column
+DECLARE
+  v_today date := (now() AT TIME ZONE 'America/New_York')::date;
+  v_dep_days integer;
+  v_month text := to_char((now() AT TIME ZONE 'America/New_York')::date, 'YYYYMM');
+BEGIN
+  IF COALESCE(NULLIF(auth.role(), ''), 'postgres') NOT IN ('service_role', 'postgres')
+     AND NOT public.is_company_staff(p_company_id) THEN
+    RAISE EXCEPTION 'You do not have access to this company.' USING ERRCODE = '42501';
+  END IF;
+  SELECT cs.deposit_return_days INTO v_dep_days FROM company_settings cs WHERE cs.company_id = p_company_id;
+  v_dep_days := COALESCE(v_dep_days, 30);
+
+  RETURN QUERY
+  WITH items AS (
+    -- A lease reaching its end with no renewal in flight. The key carries the
+    -- 90/60/30 band, so one dismissed at 90 days comes back at 60 and at 30.
+    SELECT 'renewal:' || l.id::text || ':' || CASE WHEN l.end_date - v_today <= 30 THEN '30' WHEN l.end_date - v_today <= 60 THEN '60' ELSE '90' END AS item_key,
+           'renewal_due'::text AS kind,
+           CASE WHEN l.end_date - v_today <= 30 THEN 'high' ELSE 'normal' END AS severity,
+           l.tenant_name || ': lease ends ' || to_char(l.end_date, 'Mon FMDD, YYYY') AS title,
+           'In ' || (l.end_date - v_today) || ' days. Offer a renewal, or it carries on month to month.' AS detail,
+           l.end_date AS due_date, l.tenant_id::bigint AS tenant_id, l.id AS lease_id, NULL::uuid AS prospect_id, NULL::uuid AS doc_id
+      FROM leases l JOIN tenants t ON t.id = l.tenant_id
+     WHERE l.company_id = p_company_id AND l.status = 'active' AND l.archived_at IS NULL
+       AND l.end_date BETWEEN v_today AND v_today + 90
+       AND t.archived_at IS NULL AND t.lease_status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM lease_changes c WHERE c.lease_id = l.id AND c.kind = 'renewal' AND c.status IN ('awaiting_signature', 'scheduled'))
+
+    UNION ALL
+    -- A document still out for signature: after three days, or sooner when a
+    -- signer's link is about to stop working or already has (nobody can sign
+    -- until a reminder renews it). One line per document. The key changes
+    -- when a link is about to expire, so the morning email mentions it again.
+    SELECT 'unsigned:' || d.id::text || CASE WHEN w.soonest < now() + interval '5 days' THEN ':expiring' ELSE '' END, 'unsigned_doc',
+           CASE WHEN d.envelope_sent_at < now() - interval '7 days' OR w.expired > 0 OR w.soonest < now() + interval '5 days' THEN 'high' ELSE 'normal' END,
+           d.name,
+           'Out for signature for ' || GREATEST(1, (v_today - (d.envelope_sent_at AT TIME ZONE 'America/New_York')::date)) || ' days. Waiting for: '
+             || COALESCE(w.names, 'nobody') || '.'
+             || CASE WHEN w.expired > 0 THEN ' A signing link has stopped working: send a reminder to renew it.'
+                     WHEN w.soonest < now() + interval '5 days' THEN ' A signing link stops working on ' || to_char(w.soonest AT TIME ZONE 'America/New_York', 'Mon FMDD') || ': send a reminder to renew it.'
+                     ELSE '' END,
+           CASE WHEN w.soonest < now() + interval '5 days' THEN (w.soonest AT TIME ZONE 'America/New_York')::date END,
+           d.tenant_id, d.lease_id, d.prospect_id, d.id
+      FROM doc_generated d
+      LEFT JOIN LATERAL (
+        SELECT string_agg(COALESCE(NULLIF(s.signer_name, ''), s.signer_email), ', ' ORDER BY s.sign_order, s.created_at) AS names,
+               count(*) FILTER (WHERE s.status IN ('sent', 'viewed') AND s.token_expires_at IS NOT NULL AND s.token_expires_at <= now()) AS expired,
+               min(s.token_expires_at) FILTER (WHERE s.status IN ('sent', 'viewed') AND s.token_expires_at > now()) AS soonest
+          FROM doc_signatures s WHERE s.doc_id = d.id AND s.status IN ('pending', 'sent', 'viewed')
+      ) w ON true
+     WHERE d.company_id = p_company_id AND d.archived_at IS NULL AND d.envelope_status = 'out_for_signature'
+       AND (d.envelope_sent_at < now() - interval '3 days' OR w.expired > 0 OR w.soonest < now() + interval '5 days')
+
+    UNION ALL
+    -- A prospect whose lease start has arrived and who is not a tenant yet.
+    SELECT 'prospect_start:' || p.id::text, 'prospect_not_converted', 'high',
+           p.name || ': lease start ' || to_char(p.lease_start, 'Mon FMDD, YYYY'),
+           CASE WHEN p.status = 'signed' THEN 'The lease is signed and they have not been converted to a tenant.'
+                ELSE 'The lease start date has arrived and the lease is not signed.' END,
+           p.lease_start, NULL::bigint, NULL::uuid, p.id, NULL::uuid
+      FROM prospects p
+     WHERE p.company_id = p_company_id AND p.archived_at IS NULL AND p.status IN ('new', 'lease_sent', 'signed')
+       AND p.lease_start IS NOT NULL AND p.lease_start <= v_today
+
+    UNION ALL
+    -- A tenancy that ended with a deposit and no statement made.
+    SELECT 'deposit:' || l.id::text, 'deposit_statement_due',
+           CASE WHEN t.move_out + v_dep_days < v_today THEN 'overdue' WHEN t.move_out + v_dep_days <= v_today + 7 THEN 'high' ELSE 'normal' END,
+           l.tenant_name || ': security deposit statement',
+           'The tenancy ended ' || to_char(t.move_out, 'Mon FMDD, YYYY') || '. The itemised statement is due by ' || to_char(t.move_out + v_dep_days, 'Mon FMDD, YYYY') || '.',
+           t.move_out + v_dep_days, t.id::bigint, l.id, NULL::uuid, NULL::uuid
+      FROM leases l JOIN tenants t ON t.id = l.tenant_id
+     WHERE l.company_id = p_company_id AND l.status = 'terminated' AND COALESCE(l.security_deposit, 0) > 0
+       AND t.move_out IS NOT NULL AND t.move_out <= v_today AND t.move_out >= v_today - 120
+       AND COALESCE(t.lease_status, '') NOT IN ('active', 'notice')
+       AND NOT EXISTS (SELECT 1 FROM doc_generated d WHERE d.company_id = p_company_id AND d.tenant_id = t.id
+                         AND d.doc_kind = 'deposit_disposition' AND d.archived_at IS NULL AND COALESCE(d.status, '') <> 'draft')
+
+    UNION ALL
+    -- A tenant on notice whose move-out is near, or past and not run.
+    SELECT 'moveout:' || t.id::text, 'move_out_due',
+           CASE WHEN t.move_out < v_today THEN 'overdue' ELSE 'high' END,
+           t.name || ': moving out ' || to_char(t.move_out, 'Mon FMDD, YYYY'),
+           CASE WHEN t.move_out < v_today THEN 'The move-out date has passed and the move-out has not been run.'
+                WHEN t.move_out = v_today THEN 'Moving out today.'
+                ELSE 'In ' || (t.move_out - v_today) || ' days.' END,
+           t.move_out, t.id::bigint, NULL::uuid, NULL::uuid, NULL::uuid
+      FROM tenants t
+     WHERE t.company_id = p_company_id AND t.archived_at IS NULL AND t.lease_status = 'notice'
+       AND t.move_out IS NOT NULL AND t.move_out <= v_today + 7
+
+    UNION ALL
+    -- A lease change whose day came and which could not be applied.
+    SELECT 'change_failed:' || c.id::text, 'lease_change_failed', 'overdue',
+           'A lease change could not take effect', COALESCE(c.note, ''),
+           c.effective_date, c.tenant_id, c.lease_id, NULL::uuid, c.doc_id
+      FROM lease_changes c
+     WHERE c.company_id = p_company_id AND c.status = 'scheduled' AND c.effective_date <= v_today AND c.note LIKE 'Could not be applied%'
+
+    UNION ALL
+    -- A late fee charged this month with no late notice made.
+    SELECT 'late_notice:' || t.id::text || ':' || v_month, 'late_notice_due', 'normal',
+           t.name || ': late fee charged, no notice sent',
+           'A late fee was posted this month. Send a late rent notice from their page.',
+           NULL::date, t.id::bigint, NULL::uuid, NULL::uuid, NULL::uuid
+      FROM tenants t
+     WHERE t.company_id = p_company_id AND t.archived_at IS NULL
+       AND EXISTS (SELECT 1 FROM acct_journal_entries je WHERE je.company_id = p_company_id AND je.reference = 'LATEFEE-' || t.id::text || '-' || v_month AND je.status = 'posted')
+       AND NOT EXISTS (SELECT 1 FROM doc_generated d WHERE d.company_id = p_company_id AND d.tenant_id = t.id AND d.doc_kind = 'late_notice' AND d.archived_at IS NULL
+                         AND to_char((d.created_at AT TIME ZONE 'America/New_York')::date, 'YYYYMM') = v_month)
+  )
+  SELECT i.item_key, i.kind, i.severity, i.title, i.detail, i.due_date, i.tenant_id, i.lease_id, i.prospect_id, i.doc_id
+    FROM items i
+   WHERE NOT EXISTS (SELECT 1 FROM lease_clock_dismissed x WHERE x.company_id = p_company_id AND x.item_key = i.item_key)
+   ORDER BY CASE i.severity WHEN 'overdue' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, i.due_date NULLS LAST, i.title;
+END $$;
+REVOKE ALL ON FUNCTION public.lease_clock_items(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.lease_clock_items(text) TO authenticated, service_role;
+
+NOTIFY pgrst, 'reload schema';

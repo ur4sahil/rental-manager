@@ -76,6 +76,8 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     ["documents", "prospect_id"],
     ["acct_accounts", "prospect_id"],
     ["company_settings", "rent_increase_notice_days"],
+    ["company_settings", "lease_clock_digest"],
+    ["company_settings", "auto_remind_signers_days"],
     ["tenants", "notice_given_on"],
     ["tenants", "forwarding_address"],
   ];

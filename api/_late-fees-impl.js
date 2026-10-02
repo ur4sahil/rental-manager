@@ -13,6 +13,13 @@
 // double-trigger or a fee already charged from the app cannot produce a
 // second one. Tenants whose AR account could not be established come back
 // in each result's skipped_no_ar_account.
+//
+// Runs EVERY DAY. It used to run on the 5th only, and the function charges
+// only once a tenant is past the due day plus the grace period -- so with
+// rent due on the 1st and five days' grace, the one day it ran was a day
+// nobody could be charged, and no fee was ever posted automatically. Daily,
+// the fee lands the first morning after grace ends, for whichever due day
+// each tenant has; the once-a-month rule makes the other runs do nothing.
 const { createClient } = require("@supabase/supabase-js");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 

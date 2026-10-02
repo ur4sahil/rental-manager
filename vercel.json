@@ -37,6 +37,9 @@
     "api/integrity-check.js": {
       "maxDuration": 300
     },
+    "api/daily-reminders.js": {
+      "maxDuration": 60
+    },
     "api/ai.js": {
       "includeFiles": "node_modules/pdfjs-dist/legacy/build/{pdf.mjs,pdf.worker.mjs}"
     }
@@ -64,7 +67,11 @@
     },
     {
       "path": "/api/daily-reminders?task=late-fees",
-      "schedule": "0 13 5 * *"
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/daily-reminders?task=lease-clock",
+      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/ai?action=sweep",

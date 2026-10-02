@@ -130,6 +130,24 @@ async function emailPendingSigners(sb, req, doc, { createdBy = null } = {}) {
   return results;
 }
 
+// Remind one signer whose turn it is, and give their link a full term: a
+// reminder is useless if the link died yesterday. Used by the "Remind"
+// button and by the daily clock (api/_lease-clock-impl.js).
+async function remindSigner(sb, req, { sig, doc, company, createdBy = null }) {
+  const expires = new Date(Date.now() + LINK_DAYS * 86400000).toISOString();
+  await sb.from("doc_signatures").update({ token_expires_at: expires }).eq("id", sig.id);
+  const mail = signRequestEmail({ sig, doc, company, base: appUrl(req), reminder: !!sig.request_emailed_at });
+  const r = await deliver(sb, { companyId: doc.company_id, docId: doc.id, signatureId: sig.id, kind: sig.request_emailed_at ? "sign_reminder" : "sign_request", to: sig.signer_email, replyTo: company.email, createdBy, ...mail });
+  if (r.status !== "failed") {
+    await sb.from("doc_signatures").update({
+      request_emailed_at: sig.request_emailed_at || new Date().toISOString(),
+      reminder_count: (sig.reminder_count || 0) + (sig.request_emailed_at ? 1 : 0),
+      last_reminded_at: new Date().toISOString(),
+    }).eq("id", sig.id);
+  }
+  return { r, expires };
+}
+
 // After the signed PDF is stored: file it where people look, send every
 // signer their copy, tell the person who sent it.
 async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
@@ -257,19 +275,8 @@ async function handler(req, res) {
     if (!["sent", "viewed"].includes(sig.status)) { res.status(409).json({ error: sig.status === "pending" ? "it is not this signer's turn yet" : "this signer is " + sig.status }); return; }
     const doc = await loadDoc(sig.doc_id);
     if (!doc || doc.envelope_status !== "out_for_signature") { res.status(409).json({ error: "this document is not out for signature" }); return; }
-    // A reminder is useless if the link died yesterday: give it a full term.
-    const expires = new Date(Date.now() + LINK_DAYS * 86400000).toISOString();
-    await sb.from("doc_signatures").update({ token_expires_at: expires }).eq("id", sig.id);
     const company = await companyOf(sb, companyId);
-    const mail = signRequestEmail({ sig, doc, company, base: appUrl(req), reminder: !!sig.request_emailed_at });
-    const r = await deliver(sb, { companyId, docId: doc.id, signatureId: sig.id, kind: sig.request_emailed_at ? "sign_reminder" : "sign_request", to: sig.signer_email, replyTo: company.email, createdBy: actor, ...mail });
-    if (r.status !== "failed") {
-      await sb.from("doc_signatures").update({
-        request_emailed_at: sig.request_emailed_at || new Date().toISOString(),
-        reminder_count: (sig.reminder_count || 0) + (sig.request_emailed_at ? 1 : 0),
-        last_reminded_at: new Date().toISOString(),
-      }).eq("id", sig.id);
-    }
+    const { r, expires } = await remindSigner(sb, req, { sig, doc, company, createdBy: actor });
     res.status(200).json({ status: r.status, delivered_to: r.to, error: r.error, expires_at: expires });
     return;
   }
@@ -356,3 +363,6 @@ module.exports = handler;
 module.exports.deliver = deliver;
 module.exports.afterSignedPdfStored = afterSignedPdfStored;
 module.exports.SEND_ROLES = SEND_ROLES;
+module.exports.remindSigner = remindSigner;
+module.exports.companyOf = companyOf;
+module.exports.mail = { shell, button, esc, appUrl };

@@ -6,9 +6,10 @@ import { PageHeader, TextLink, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, priorityColors, fmtDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Badge, StatCard, Spinner } from "./shared";
+import { NeedsAttentionCard } from "./LeaseClock";
 
 // ============ DASHBOARD ============
-function Dashboard({ companySettings = {}, notifications, setPage, companyId, addNotification, showToast, showConfirm }) {
+function Dashboard({ companySettings = {}, notifications, setPage, companyId, addNotification, showToast, showConfirm, userProfile }) {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -162,6 +163,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-notice-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending" && u.responsibility !== "condo_fee" && safeNum(u.amount) > 0).length} sub="awaiting payment" color="text-caution-600" />
   </div>
+  <NeedsAttentionCard companyId={companyId} setPage={setPage} showToast={showToast} userEmail={userProfile?.email || ""} />
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Expirations</h3>

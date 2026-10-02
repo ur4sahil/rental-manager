@@ -10,6 +10,8 @@
 // Cron entries in vercel.json call:
 //   /api/daily-reminders?task=licenses   at 13:00 UTC
 //   /api/daily-reminders?task=tax-bills  at 14:00 UTC
+//   /api/daily-reminders?task=late-fees  at 13:00 UTC, every day
+//   /api/daily-reminders?task=lease-clock at 11:00 UTC (early morning Eastern)
 //
 // The two implementation files are renamed to _-prefixed names so
 // Vercel doesn't treat them as separate routes — they're internal
@@ -18,6 +20,7 @@
 const taxHandler = require("./_tax-bill-reminders-impl");
 const licenseHandler = require("./_license-expiry-reminders-impl");
 const lateFeeHandler = require("./_late-fees-impl");
+const leaseClockHandler = require("./_lease-clock-impl");
 const { setCors } = require("./_cors");
 
 module.exports = async (req, res) => {
@@ -29,6 +32,7 @@ module.exports = async (req, res) => {
   if (task === "tax-bills") return taxHandler(req, res);
   if (task === "licenses") return licenseHandler(req, res);
   if (task === "late-fees") return lateFeeHandler(req, res);
+  if (task === "lease-clock") return leaseClockHandler(req, res);
   // Allow running both back-to-back when invoked with ?task=all (or no task)
   if (task === "all" || !task) {
     // Each handler responds independently — when chaining we have to
@@ -50,5 +54,5 @@ module.exports = async (req, res) => {
     res.status(200).json({ ok: true, results });
     return;
   }
-  res.status(400).json({ error: 'unknown task; expected ?task=licenses|tax-bills|all' });
+  res.status(400).json({ error: 'unknown task; expected ?task=licenses|tax-bills|late-fees|lease-clock|all' });
 };
