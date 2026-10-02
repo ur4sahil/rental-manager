@@ -64,8 +64,11 @@ async function deliver(sb, { companyId, docId = null, signatureId = null, kind, 
     }
     if (status === "sent" && (process.env.DOC_EMAIL_TRANSPORT || "") === "log") { status = "suppressed"; error = "DOC_EMAIL_TRANSPORT=log"; }
     if (status === "sent") {
-      const key = process.env.RESEND_API_KEY || "";
-      if (!key) throw new Error("RESEND_API_KEY is not configured");
+      // DOC_RESEND_API_KEY lets a test site send THESE emails (allowlisted
+      // above) while its general RESEND_API_KEY stays a dead value, so the
+      // reminder and invite routes there still cannot email real people.
+      const key = process.env.DOC_RESEND_API_KEY || process.env.RESEND_API_KEY || "";
+      if (!key) throw new Error("no email key is configured");
       const resend = new Resend(key);
       const msg = { from: process.env.EMAIL_FROM || "Housify <notifications@housify365.com>", to: actual, subject: subj, html, text: text || undefined };
       if (replyTo && EMAIL_RE.test(replyTo)) msg.replyTo = replyTo;
