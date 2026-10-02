@@ -60,7 +60,7 @@
       "required": true,
       "options": [],
       "default_value": "",
-      "prefill_from": "tenant.name"
+      "prefill_from": "tenant.all_names"
     },
     {
       "name": "premises_address",
@@ -160,7 +160,7 @@
       "required": false,
       "options": [],
       "default_value": "",
-      "prefill_from": ""
+      "prefill_from": "lease.landlord_utilities"
     },
     {
       "name": "tenant_utilities",
@@ -170,7 +170,7 @@
       "required": false,
       "options": [],
       "default_value": "",
-      "prefill_from": ""
+      "prefill_from": "lease.tenant_utilities"
     }
   ],
   "field_config": {

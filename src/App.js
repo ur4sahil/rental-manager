@@ -23,6 +23,7 @@ import { LoginPage } from "./components/LoginPage";
 import { Dashboard } from "./components/Dashboard";
 import { PropertySetupWizard, Properties } from "./components/Properties";
 import Tenants from "./components/Tenants";
+import { Prospects } from "./components/Prospects";
 import { Payments, Autopay } from "./components/Payments";
 import { Maintenance, Inspections, VendorManagement } from "./components/Maintenance";
 import { Utilities } from "./components/Utilities";
@@ -162,13 +163,13 @@ let _toastIdCounter = 0;
 const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_qbimport","acct_reconcile","acct_classes","acct_reports"];
 
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees","housy"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","prospects","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","latefees","housy"] },
   // Manager sits between admin and the customizable staff roles. Can
   // review / approve requests submitted by staff who've been explicitly
   // assigned to them via manager_email. Can't administer the company
   // (no members page, no role edits).
-  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","property_import","property_import_add","property_import_edit","tenants","prospects","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","prospects","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions","housy"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting",...ACCT_SUB_PAGES,"payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   // Tenant sees the portal split into per-tab sidebar items, mirroring
@@ -191,6 +192,7 @@ const ALL_NAV = [
     { id: "tax_bills", label: "Tax Bills", icon: "receipt_long" },
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
+  { id: "prospects", label: "Prospects", icon: "person_search" },
   { id: "payments", label: "Payments", icon: "payments" },
   // impliesChildren: holding "accounting" grants the acct_* sub-pages.
   // Properties deliberately does NOT carry this flag -- its children
@@ -241,6 +243,7 @@ const pageComponents = {
   tasks: TasksAndApprovals,
   properties: Properties,
   tenants: Tenants,
+  prospects: Prospects,
   payments: Payments,
   maintenance: Maintenance,
   utilities: Utilities,

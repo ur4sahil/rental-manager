@@ -71,10 +71,23 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     ["utility_accounts", "credential_key_fp"],
     ["utilities", "credential_key_fp"],
     ["property_loans", "credential_key_fp"],
+    // Prospects (20261003010000): the lease link and the files.
+    ["doc_generated", "prospect_id"],
+    ["documents", "prospect_id"],
   ];
   for (const [table, col] of required) {
     const { error } = await sb.from(table).select(col).limit(1);
     assert(`${table}.${col} exists`, !error, error ? error.message : "");
+  }
+
+  // The prospects table holds applicants' names, emails and lease terms, and
+  // nothing public reads it. A logged-out request must be refused outright
+  // (no table privilege at all), not merely filtered to zero rows by RLS --
+  // "permission denied" proves both that the table exists and that the
+  // public key cannot touch it.
+  {
+    const { error } = await sb.from("prospects").select("id, attention, converted_tenant_id").limit(1);
+    assert("prospects exists and refuses the public key", !!error && /permission denied/i.test(error.message || ""), error ? error.message : "anon could read it");
   }
 
   console.log(`\n✅ Passed: ${passed}\n❌ Failed: ${failed}`);

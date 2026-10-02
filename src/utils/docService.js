@@ -99,11 +99,24 @@ const joinNames = (names) => names.length <= 1 ? (names[0] || "") : names.slice(
  * property" mode; if several tenants live there the caller gets
  * `tenantChoices` and should ask which one.
  *
- * @returns {Promise<{ data: object, tenant, lease, property, coTenants: Array, tenantChoices: Array, signers: object }>}
+ * A prospectId is someone who is not a tenant yet. Their own details and the
+ * lease terms agreed with them fill the same fields a tenant's would
+ * (tenant.name, lease.rent_amount, ...), so one lease template serves both.
+ * The CURRENT occupant of the property is deliberately not looked up: a
+ * prospect's lease must never be filled in with someone else's name.
+ *
+ * @returns {Promise<{ data: object, tenant, lease, property, prospect, coTenants: Array, tenantChoices: Array, signers: object }>}
  */
-export async function loadDocContext({ companyId, tenantId = null, leaseId = null, propertyAddress = null, userProfile = null, activeCompany = null }) {
+export async function loadDocContext({ companyId, tenantId = null, leaseId = null, prospectId = null, propertyAddress = null, userProfile = null, activeCompany = null }) {
   const data = {};
-  let tenant = null, property = null, lease = null, tenantChoices = [];
+  let tenant = null, property = null, lease = null, tenantChoices = [], prospect = null;
+
+  if (prospectId) {
+    prospect = (await supabase.from("prospects").select("*").eq("company_id", companyId).eq("id", prospectId).maybeSingle()).data || null;
+    if (prospect?.property_id != null) {
+      property = (await supabase.from("properties").select("*").eq("company_id", companyId).eq("id", prospect.property_id).maybeSingle()).data || null;
+    }
+  }
 
   if (tenantId != null) {
     const r = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
@@ -113,7 +126,7 @@ export async function loadDocContext({ companyId, tenantId = null, leaseId = nul
   // an ARCHIVED copy of the property (re-created properties leave the old
   // rows behind, and tenants keep the old id), so among records with the
   // same address the live one wins.
-  const address = propertyAddress || tenant?.property || null;
+  const address = propertyAddress || tenant?.property || property?.address || null;
   let sameAddress = [];
   if (address) sameAddress = (await supabase.from("properties").select("*").eq("company_id", companyId).eq("address", address).order("id", { ascending: false })).data || [];
   if (tenant?.property_id) {
@@ -123,7 +136,7 @@ export async function loadDocContext({ companyId, tenantId = null, leaseId = nul
   const liveSame = sameAddress.filter(p => !p.archived_at);
   if (!property || (property.archived_at && liveSame.length)) property = liveSame[0] || property || sameAddress[0] || null;
 
-  if (!tenant && (property || address)) {
+  if (!tenant && !prospect && (property || address)) {
     // Everyone not archived at this address: by the property link (to any
     // record with this address) OR by the address text. More than one row
     // is normal (a past tenant not yet archived, a tenant on notice with
@@ -145,7 +158,7 @@ export async function loadDocContext({ companyId, tenantId = null, leaseId = nul
     const rows = (await supabase.from("leases").select("*").eq("company_id", companyId).eq("tenant_id", tenant.id).in("status", ["active", "draft"]).order("start_date", { ascending: false }).limit(5)).data || [];
     lease = rows.find(l => l.status === "active") || rows[0] || null;
   }
-  if (!lease && property?.id && !tenant) {
+  if (!lease && property?.id && !tenant && !prospect) {
     lease = (await supabase.from("leases").select("*").eq("company_id", companyId).eq("property_id", property.id).eq("status", "active").order("start_date", { ascending: false }).limit(1)).data?.[0] || null;
   }
 
@@ -200,6 +213,33 @@ export async function loadDocContext({ companyId, tenantId = null, leaseId = nul
     }
     data["tenant.co_tenant_names"] = coTenants.map(c => c.name).join(", ");
     data["tenant.all_names"] = joinNames([tenant.name, ...coTenants.map(c => c.name)].filter(Boolean));
+  }
+
+  // ── A prospect: the same fields, from what was agreed with them.
+  if (prospect && !tenant) {
+    const others = (Array.isArray(prospect.co_applicants) ? prospect.co_applicants : [])
+      .map(c => ({ name: String(c?.name || "").trim(), email: String(c?.email || "").trim(), phone: String(c?.phone || "").trim() }))
+      .filter(c => c.name && c.name.toLowerCase() !== String(prospect.name || "").trim().toLowerCase());
+    coTenants.push(...others);
+    data["tenant.name"] = prospect.name || "";
+    data["tenant.email"] = prospect.email || "";
+    data["tenant.phone"] = prospect.phone || "";
+    data["tenant.first_name"] = prospect.first_name || "";
+    data["tenant.last_name"] = prospect.last_name || "";
+    data["tenant.move_in"] = prospect.lease_start || "";
+    data["tenant.security_deposit"] = prospect.security_deposit != null ? formatCurrency(prospect.security_deposit) : "";
+    data["tenant.co_tenant_names"] = coTenants.map(c => c.name).join(", ");
+    data["tenant.all_names"] = joinNames([prospect.name, ...coTenants.map(c => c.name)].filter(Boolean));
+    data["lease.start_date"] = prospect.lease_start || "";
+    data["lease.end_date"] = prospect.lease_end || "";
+    data["lease.rent_amount"] = prospect.rent != null ? formatCurrency(prospect.rent) : "";
+    data["lease.security_deposit"] = prospect.security_deposit != null ? formatCurrency(prospect.security_deposit) : "";
+    data["lease.payment_due_day"] = 1;
+    data["lease.landlord_utilities"] = prospect.landlord_utilities || "";
+    data["lease.tenant_utilities"] = prospect.tenant_utilities || "";
+    // What the property record says about the unit is right; what it says
+    // about who lives there and what they pay is the CURRENT tenant's.
+    if (prospect.rent != null) data["property.rent"] = prospect.rent;
   }
 
   // ── Lease
@@ -268,13 +308,44 @@ export async function loadDocContext({ companyId, tenantId = null, leaseId = nul
   // Who signs, by role. Tenants first, the landlord last.
   const signers = {
     tenants: [
-      ...(tenant ? [{ name: tenant.name || "", email: tenant.email || "" }] : []),
+      ...(tenant ? [{ name: tenant.name || "", email: tenant.email || "" }]
+        : prospect ? [{ name: prospect.name || "", email: prospect.email || "" }] : []),
       ...coTenants.map(c => ({ name: c.name, email: c.email })),
     ],
     landlord: { name: userProfile?.name || activeCompany?.name || "", email: userProfile?.email || "" },
   };
 
-  return { data, tenant, lease, property, coTenants, tenantChoices, signers };
+  return { data, tenant, lease, property, prospect, coTenants, tenantChoices, signers };
+}
+
+// ── A prospect's lease terms, read back out of a filled-in document ─────
+// Staff adjust the rent or the dates while filling in the lease; the
+// prospect record has to agree with the lease that was actually sent,
+// because conversion charges what the record says. The template's own
+// prefill_from mapping says which field holds which term, so this works
+// for any lease template rather than for one field-naming scheme.
+const TERM_BY_PREFILL = { "lease.start_date": "lease_start", "lease.end_date": "lease_end", "lease.rent_amount": "rent", "lease.security_deposit": "security_deposit" };
+const isoDate = (v) => {
+  const s = String(v ?? "").trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}` : null;
+};
+export function prospectTermsFromFields(template, fieldValues) {
+  const out = {};
+  for (const f of (template?.fields || [])) {
+    const term = TERM_BY_PREFILL[f.prefill_from];
+    const raw = fieldValues?.[f.name];
+    if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+    if (term === "lease_start" || term === "lease_end") { const d = isoDate(raw); if (d) out[term] = d; }
+    else if (term === "rent" || term === "security_deposit") {
+      const n = parseFloat(String(raw).replace(/[^0-9.-]/g, ""));
+      if (Number.isFinite(n) && n >= 0) out[term] = Math.round(n * 100) / 100;
+    }
+    else if (f.name === "landlord_utilities" || f.name === "tenant_utilities") out[f.name] = String(raw).trim();
+  }
+  return out;
 }
 
 /** Default name + email for a template's signer role, from a loaded context. */

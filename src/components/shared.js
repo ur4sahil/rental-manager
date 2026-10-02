@@ -388,7 +388,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   );
 }
 
-export function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded, isTenantUpload }) {
+export function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded, isTenantUpload, prospectId = null }) {
   const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: !!isTenantUpload });
   const [uploading, setUploading] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -412,6 +412,8 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   company_id: companyId, name: form.name.trim(), file_name: fileName, url: fileName,
   property: property || "", tenant: tenant || "", type: form.type,
   tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
+  // A file for someone who is not a tenant yet; it follows them on conversion.
+  ...(prospectId ? { prospect_id: prospectId } : {}),
   }]);
   if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "document record insert after upload" }); setUploading(false); return; }
   if (tenant) await recomputeTenantDocStatus(companyId, { tenantName: tenant, property });

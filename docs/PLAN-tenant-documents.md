@@ -349,3 +349,53 @@ before it. **[V]**
   email. It should start with signing requests only.
 - **Co-tenant data is thin.** Leases that need three signatures need three
   email addresses that are not on file today.
+
+---
+
+## Phase 1 as built (2026-10-02): Prospects
+
+Phase 1 changed shape after discussion with Sahil. Instead of sending a
+lease from a tenant record that already bills, a **prospect** is a person
+the books know nothing about.
+
+Decisions:
+
+- Prospects have their own sidebar page. Adding a tenant directly (Tenants
+  page, property wizard) is unchanged: it is still how someone onboarded
+  outside the app gets in.
+- A prospect holds contact details, co-applicants, the property, the lease
+  terms, files and notes. Nothing is posted for them.
+- Several prospects may be sent a lease for the same property. The first
+  lease to be fully signed wins; the others are cancelled by the database in
+  the same transaction, the applicants are not emailed, and staff are told
+  (a note on each losing prospect and a line in the "fully signed" email).
+- A lease may be signed at any time. Conversion is one click and is refused
+  while the property still has a live tenant or an active lease.
+- Rent starts on the lease start date. Conversion posts the deposit and the
+  first (possibly part) month dated the lease start, creates the monthly
+  schedule from the 1st of the following month, and charges any whole
+  months that had already passed.
+- A lease signed on paper can be converted by ticking a box; any e-sign
+  request still out is withdrawn.
+
+Where it lives:
+
+- `supabase/migrations/20261003010000_prospects.sql` — table, RLS,
+  `doc_generated.prospect_id`, `documents.prospect_id`, the envelope trigger.
+- `supabase/migrations/20261003011000_prospect_convert.sql` —
+  `convert_prospect_to_tenant()` (tenant, lease, occupied property, documents
+  relinked, one transaction) and the shared "cancel competing leases" helper.
+- `src/utils/onboardingRules.js` — what gets charged, as a pure plan.
+- `src/utils/tenantOnboarding.js` — posts that plan; every step re-runnable.
+- `src/components/Prospects.js` — the page.
+- `src/utils/docService.js` `loadDocContext({ prospectId })` — fills the
+  lease from the prospect and never from the current occupant.
+
+Both migrations are applied to the TEST database only. Production needs
+them (and 20261002010000 / 20261002011000 before them) applied first, and
+the lease template installed, before this reaches `main`.
+
+Still to do in Phase 1: retire the two throwaway lease generators (Tenants
+`openLeaseForSigning`, the Leases page's own HTML), a lease/sign entry on the
+tenant page for existing tenants, and "to sign" / "my documents" in the
+tenant portal.

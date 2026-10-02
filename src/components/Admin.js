@@ -22,9 +22,9 @@ import AdminNotificationRules from "./AdminNotificationRules";
 // tax_bills, messages, latefees); keeping one canonical shape here
 // prevents that from silently happening again.
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
-  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","prospects","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","tenants","prospects","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","prospects","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
@@ -43,6 +43,7 @@ const ALL_NAV = [
     { id: "insurance", label: "Insurance", icon: "verified_user" },
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
+  { id: "prospects", label: "Prospects", icon: "person_search" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },

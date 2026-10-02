@@ -148,6 +148,10 @@ async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
         company_id: doc.company_id, name: `${doc.name} (signed).pdf`, type: KIND_TYPE[doc.doc_kind] || "Other",
         url: path, file_name: path, tenant: doc.tenant_name || "", property: doc.property_address || "",
         tenant_id: doc.tenant_id || null, property_id: doc.property_id || null, tenant_visible: true,
+        // A prospect's lease: there is no tenant yet. The file is kept with
+        // the prospect and follows them when they are converted. (Sent only
+        // when set, so a database that predates prospects is unaffected.)
+        ...(doc.prospect_id ? { prospect_id: doc.prospect_id } : {}),
       }).select("id").maybeSingle();
       if (error) throw new Error(error.message);
       if (row) { await sb.from("doc_generated").update({ filed_document_id: row.id }).eq("id", doc.id); out.filed_document_id = row.id; }
@@ -175,8 +179,30 @@ async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
 
   // 3. The person who sent it.
   if (doc.created_by && EMAIL_RE.test(doc.created_by) && !seen.has(String(doc.created_by).toLowerCase())) {
-    const html = shell("Fully signed", `<p><strong>${esc(doc.name)}</strong> has been signed by everyone.</p>` + button(`${appUrl(req)}/document-builder`, "Open Document Builder"), company.name);
-    await deliver(sb, { companyId: doc.company_id, docId: doc.id, kind: "completed_staff", to: doc.created_by, subject: "Fully signed: " + doc.name, html, text: `"${doc.name}" has been signed by everyone.`, attachments: attach });
+    // A prospect's lease: say what happens next, and who lost out. Other
+    // applicants sent a lease for the same property were cancelled by the
+    // database the moment this one was fully signed; they are NOT emailed,
+    // so the person who sent this is the one who has to know.
+    let extra = "", extraText = "", where = "/document-builder", whereLabel = "Open Document Builder";
+    if (doc.prospect_id) {
+      where = "/prospects"; whereLabel = "Open Prospects";
+      extra = `<p>The lease is signed, but they are not a tenant yet. Convert them on the Prospects page once the property is vacant: that is what adds the tenant, the deposit and the rent.</p>`;
+      extraText = " Convert them to a tenant on the Prospects page once the property is vacant.";
+      try {
+        const { data: lost } = await sb.from("doc_generated").select("prospect_id").eq("company_id", doc.company_id).eq("voided_by_doc_id", doc.id);
+        const ids = [...new Set((lost || []).map(r => r.prospect_id).filter(Boolean))];
+        if (ids.length) {
+          const { data: names } = await sb.from("prospects").select("name").in("id", ids);
+          const list = (names || []).map(n => n.name).filter(Boolean);
+          if (list.length) {
+            extra += `<p><strong>Cancelled automatically:</strong> the lease${list.length === 1 ? "" : "s"} sent to ${esc(list.join(", "))} for the same property. ${list.length === 1 ? "They have" : "They have"} not been told.</p>`;
+            extraText += ` Cancelled automatically (not told): ${list.join(", ")}.`;
+          }
+        }
+      } catch (e) { console.error("[doc] could not list cancelled prospect leases:", e.message); }
+    }
+    const html = shell("Fully signed", `<p><strong>${esc(doc.name)}</strong> has been signed by everyone.</p>` + extra + button(`${appUrl(req)}${where}`, whereLabel), company.name);
+    await deliver(sb, { companyId: doc.company_id, docId: doc.id, kind: "completed_staff", to: doc.created_by, subject: "Fully signed: " + doc.name, html, text: `"${doc.name}" has been signed by everyone.` + extraText, attachments: attach });
   }
   return out;
 }

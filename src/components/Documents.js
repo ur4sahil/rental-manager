@@ -12,7 +12,7 @@ import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../u
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
-import { loadDocContext, signerDefaultFor, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY } from "../utils/docService";
+import { loadDocContext, signerDefaultFor, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
 import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
@@ -408,13 +408,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // and start the document already filled in for that tenant.
   useEffect(() => {
   if (!initialAction || handledAction.current === initialAction || templates.length === 0) return;
-  const { templateKey, templateId, tenantId, leaseId } = initialAction;
+  const { templateKey, templateId, tenantId, leaseId, prospectId } = initialAction;
   if (!templateKey && !templateId) return;
   handledAction.current = initialAction;
   const t = templates.find(x => (templateId && x.id === templateId) || (templateKey && x.template_key === templateKey));
-  if (!t) { showToast("That document template is not set up for this company yet", "error"); return; }
+  if (!t) {
+    showToast("That document template is not set up for this company yet", "error");
+    // Do not strand the user on the builder's front page: go back where they came from.
+    if (initialAction.returnTo && setPage) setPage(initialAction.returnTo.page, initialAction.returnTo.action || null);
+    return;
+  }
   returnTo.current = initialAction.returnTo || null;
-  startDocument(t, tenantId != null ? "prefill" : "blank", { tenantId, leaseId });
+  startDocument(t, (tenantId != null || prospectId) ? "prefill" : "blank", { tenantId, leaseId, prospectId });
   // startDocument is a plain function of this render; the action object is the trigger.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction, templates]);
@@ -839,7 +844,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // id when another screen supplied one; otherwise the property picked in
   // "Prefill from Property".
   async function loadPrefillData(propertyAddress, opts = {}) {
-  const ctx = await loadDocContext({ companyId, propertyAddress, tenantId: opts.tenantId ?? null, leaseId: opts.leaseId ?? null, userProfile, activeCompany });
+  const ctx = await loadDocContext({ companyId, propertyAddress, tenantId: opts.tenantId ?? null, leaseId: opts.leaseId ?? null, prospectId: opts.prospectId ?? null, userProfile, activeCompany });
   setPrefillData(ctx.data);
   setDocContext(ctx);
   return ctx;
@@ -877,9 +882,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   setMode(docMode);
   const fc = template.field_config || {};
   let ctx = null;
-  if (docMode === "prefill" && (prefillProperty || opts.tenantId != null)) {
-  ctx = await loadPrefillData(opts.tenantId != null ? null : prefillProperty, opts);
-  setFieldValues(recalcFields(applyPrefill(template, ctx.data), fc));
+  if (docMode === "prefill" && (prefillProperty || opts.tenantId != null || opts.prospectId)) {
+  ctx = await loadPrefillData((opts.tenantId != null || opts.prospectId) ? null : prefillProperty, opts);
+  const filled = applyPrefill(template, ctx.data);
+  // Agreed with a prospect but with no merge key of their own in older
+  // templates: who pays which utilities.
+  if (ctx.prospect) {
+    for (const key of ["landlord_utilities", "tenant_utilities"]) {
+      if (!filled[key] && ctx.prospect[key] && (template.fields || []).some(f => f.name === key)) filled[key] = ctx.prospect[key];
+    }
+  }
+  setFieldValues(recalcFields(filled, fc));
   } else {
   setDocContext(null);
   setFieldValues(recalcFields(applyDefaults(template), fc));
@@ -967,7 +980,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   field_values: fieldValues, rendered_body: attachPageSetup(rendered, selectedTemplate.field_config?.page_setup), status,
   output_type: selectedTemplate.template_type === "pdf_overlay" ? "pdf_overlay" : "html",
   property_address: fieldValues.property_address || fieldValues.premises_address || docContext?.data?.["property.address"] || "",
-  tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || docContext?.tenant?.name || "",
+  tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || docContext?.tenant?.name || docContext?.prospect?.name || "",
   // The records this document is about. tenant_id used to be guessed
   // from the name by a trigger (and left empty when two tenants shared
   // one); lease and property were not recorded at all.
@@ -977,8 +990,23 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   doc_kind: DOC_KIND_BY_TEMPLATE_KEY[selectedTemplate.template_key] || "other",
   created_by: userProfile?.email,
   };
+  // Someone who is not a tenant yet. The link is what lets the Prospects
+  // page show this lease, lets the database cancel the other applicants'
+  // leases when this one is signed, and carries the document over to the
+  // tenant on conversion. (Only sent when there is one.)
+  if (docContext?.prospect?.id) payload.prospect_id = docContext.prospect.id;
   const { data, error } = await supabase.from("doc_generated").insert([payload]).select().maybeSingle();
   if (error) { pmError("PM-7003", { raw: error, context: "save generated document" }); return null; }
+  // The prospect's record must agree with the lease that was actually
+  // written: conversion charges what the record says, not what the PDF says.
+  if (docContext?.prospect?.id && payload.doc_kind === "lease") {
+    const terms = prospectTermsFromFields(selectedTemplate, fieldValues);
+    if (Object.keys(terms).length) {
+      const { error: syncErr } = await supabase.from("prospects").update({ ...terms, updated_at: new Date().toISOString() })
+        .eq("company_id", companyId).eq("id", docContext.prospect.id);
+      if (syncErr) { pmError("PM-7003", { raw: syncErr, context: "copy lease terms back to the prospect", silent: true }); showToast("Saved, but the prospect's rent and dates could not be updated to match this lease. Check them on the Prospects page.", "warning"); }
+    }
+  }
   showToast("Document saved", "success");
   addNotification("📄", "Document created: " + docName);
   logAudit("create", "doc_builder", "Generated: " + docName, data?.id, userProfile?.email, userRole, companyId);
@@ -1319,6 +1347,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   let email = "";
   if (doc.tenant_id != null) email = (await supabase.from("tenants").select("email").eq("company_id", companyId).eq("id", doc.tenant_id).maybeSingle()).data?.email || "";
   if (!email && docContext?.tenant?.email) email = docContext.tenant.email;
+  if (!email && docContext?.prospect?.email) email = docContext.prospect.email;
   if (email) recipients.push(email);
   else showToast("No email on file for " + (doc.tenant_name || "this tenant"), "warning");
   }

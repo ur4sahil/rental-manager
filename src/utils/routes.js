@@ -16,7 +16,7 @@
 // written for a reader: hyphens not underscores, words not abbreviations,
 // nesting that mirrors the sidebar.
 export const PAGE_PATHS = {
-  dashboard: "/dashboard", tasks: "/tasks", tenants: "/tenants", payments: "/payments",
+  dashboard: "/dashboard", tasks: "/tasks", tenants: "/tenants", prospects: "/prospects", payments: "/payments",
   leases: "/leases", latefees: "/late-fees", moveout: "/move-out", evictions: "/evictions",
   properties: "/properties", property_import: "/properties/import",
   property_import_add: "/properties/import/add", property_import_edit: "/properties/import/edit",

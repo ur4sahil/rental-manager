@@ -67,7 +67,9 @@ const template = {
   fields: [
     F("lease_date", "Lease date (date this lease is made)", "date", "Parties", "today"),
     F("landlord_name", "Landlord (leasing LLC) name", "text", "Parties", "company.name"),
-    F("tenant_name", "Tenant name", "text", "Parties", "tenant.name"),
+    // Every adult on the lease, not just the first: "A, B and C". For a
+    // tenant with no co-tenants this is simply their name.
+    F("tenant_name", "Tenant name", "text", "Parties", "tenant.all_names"),
     F("premises_address", "Leased premises: full address with city, state and ZIP", "text", "Premises and term", "property.address"),
     F("lease_start_date", "Lease start date", "date", "Premises and term", "lease.start_date"),
     F("lease_end_date", "Lease end date", "date", "Premises and term", "lease.end_date"),
@@ -77,8 +79,8 @@ const template = {
     F("total_lease_rent", "Total lease rent", "currency", "Rent and deposit", "", false),
     F("security_deposit", "Security deposit", "currency", "Rent and deposit", "lease.security_deposit"),
     F("late_charge", "Late charge (5% of monthly rent)", "currency", "Rent and deposit", "", false),
-    F("landlord_utilities", "Utilities the landlord pays (comma separated)", "text", "Utilities", "", false),
-    F("tenant_utilities", "Utilities the tenant pays (comma separated)", "text", "Utilities", "", false),
+    F("landlord_utilities", "Utilities the landlord pays (comma separated)", "text", "Utilities", "lease.landlord_utilities", false),
+    F("tenant_utilities", "Utilities the tenant pays (comma separated)", "text", "Utilities", "lease.tenant_utilities", false),
   ],
   field_config: {
     page_setup: { ...(r.page || {}), headerLeft: "", headerRight: "", footerLeft: r.footer.left, footerRight: r.footer.right },
