@@ -386,3 +386,36 @@ export function effectiveSignerRoles(roles, tenantCount = 0) {
   }
   return list;
 }
+
+// ── The device's own mail app ──────────────────────────────────────────
+// The app's own sending (Resend, from notifications@...) is what makes
+// reminders and "next signer" emails possible, and it logs every send. But
+// staff sometimes want a message to come from their own address and sit in
+// their own Sent folder. These build a draft for whatever mail program the
+// device uses. Two limits, both stated on screen: a web page cannot attach
+// a file to a mailto: draft (so a computer gets a link to the PDF, while a
+// phone's share sheet can carry the file itself), and the app cannot know
+// whether the draft was ever sent.
+export function mailtoUrl({ to = [], subject = "", body = "" }) {
+  const list = (Array.isArray(to) ? to : [to]).map(e => String(e || "").trim()).filter(e => /^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(e));
+  const q = [];
+  if (subject) q.push("subject=" + encodeURIComponent(subject));
+  if (body) q.push("body=" + encodeURIComponent(body));
+  return "mailto:" + list.map(encodeURIComponent).join(",") + (q.length ? "?" + q.join("&") : "");
+}
+/** A draft asking one signer to sign, carrying their own link. */
+export function signingMailto({ signer, docName, origin, senderName = "" }) {
+  const link = String(origin || "").replace(/\/$/, "") + "/sign/" + signer.access_token;
+  const first = String(signer.signer_name || "").trim().split(/\s+/)[0];
+  return mailtoUrl({
+    to: [signer.signer_email],
+    subject: "Please sign: " + docName,
+    body: (first ? "Hi " + first + "," : "Hello,") + "\n\n" + docName + " is ready for your signature. Use this link to read and sign it (no account needed):\n\n" + link
+      + "\n\nThe link is yours alone; please do not forward it." + (senderName ? "\n\n" + senderName : ""),
+  });
+}
+/** Can this device hand a file to its share sheet (which includes its mail app)? */
+export function canShareFile(file) {
+  try { return typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] }); }
+  catch { return false; }
+}

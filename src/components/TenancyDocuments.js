@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { Btn, TextLink, DetailCard, MenuItem } from "../ui";
 import { fmtDate, fmtDateTime, getSignedUrl } from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { resendSignatureRequest, voidEnvelope, summarizeSends } from "../utils/docService";
+import { resendSignatureRequest, voidEnvelope, summarizeSends, signingMailto } from "../utils/docService";
 
 // ============ A TENANCY'S DOCUMENTS ============
 // The leases, renewals, addenda and notices made for one tenant (or one
@@ -160,6 +160,9 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
                 <span className="flex-1 min-w-0 truncate text-neutral-600">{s.signer_name || s.signer_email} <span className="text-neutral-400">· {SIG_LABEL[s.status] || s.status}{s.status === "signed" && s.signed_at ? " " + fmtDateTime(s.signed_at) : ""}</span></span>
                 {canAct && ["sent", "viewed"].includes(s.status) && (<>
                   <TextLink tone="neutral" size="xs" onClick={() => copyLink(s)}>Copy link</TextLink>
+                  {/* From the device's own mail app: a real link, so it opens
+                      straight from the click. Not logged: the app cannot see it sent. */}
+                  <a className="text-xs text-neutral-500 underline hover:text-brand-600" title="Opens a draft in your own mail app, with their signing link" href={signingMailto({ signer: s, docName: d.name, origin: window.location.origin })}>My mail app</a>
                   <TextLink tone="brand" size="xs" onClick={() => remind(s)}>Remind</TextLink>
                 </>)}
               </div>

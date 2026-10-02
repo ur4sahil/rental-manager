@@ -84,5 +84,18 @@ ok("not callable without a login", /REVOKE ALL ON FUNCTION public\.my_pending_si
 const impl = fs.readFileSync(new URL("../api/_doc-email-impl.js", import.meta.url), "utf8");
 ok("a signed copy is filed where the tenant's portal lists it", /tenant_id: doc\.tenant_id \|\| null, property_id: doc\.property_id \|\| null, tenant_visible: true/.test(impl));
 
+// ── the device's own mail app (asked for by Sahil, 2026-10-02)
+const mail = new Function(lift(svc, "export function mailtoUrl").replace(/export /g, "") + "\nreturn { mailtoUrl, signingMailto, canShareFile };")();
+ok("a draft carries the recipient, subject and message, safely encoded", mail.mailtoUrl({ to: ["a@x.com"], subject: "Lease & notice", body: "Line 1\nLine 2?" }) === "mailto:a%40x.com?subject=Lease%20%26%20notice&body=Line%201%0ALine%202%3F");
+ok("several recipients are comma-separated; junk and header-injection attempts are dropped", mail.mailtoUrl({ to: ["a@x.com", "", "not an email", "b@y.org", "c@z.com?bcc=evil@x.com,d@q.com"] }) === "mailto:a%40x.com,b%40y.org");
+ok("no recipient still makes a usable draft", mail.mailtoUrl({ subject: "Hi" }) === "mailto:?subject=Hi");
+const sm = decodeURIComponent(mail.signingMailto({ signer: { signer_email: "t@x.com", signer_name: "Pat Tenant", access_token: "tok123" }, docName: "Lease", origin: "https://housify365.com/" }));
+ok("a signing draft goes to that signer with their own link", sm.startsWith("mailto:t@x.com?subject=Please sign: Lease") && sm.includes("https://housify365.com/sign/tok123") && sm.includes("Hi Pat,"));
+ok("a device with no share sheet is reported as such, not as an error", mail.canShareFile({}) === false);
+ok("the builder prepares first and opens the share sheet or draft from a second click", /async function prepareMailDraft\(doc\)/.test(docs) && /onClick=\{shareMailDraft\}/.test(docs) && /href=\{mailtoUrl\(\{ to: mailDraft\.recipients, subject: mailDraft\.subject, body: mailDraft\.body \}\)\}/.test(docs));
+ok("the app's own Send stays, and stays the first button", docs.indexOf('{sending ? "Sending..." : "Send Email"}') > 0 && docs.indexOf('{sending ? "Sending..." : "Send Email"}') < docs.indexOf("Open in my mail app"));
+ok("the screen says the app cannot see whether it was sent", /The app cannot see whether you did, so it is not in the email log/.test(docs));
+ok("a signer can be emailed from the device's own mail app, with their link", /href=\{signingMailto\(\{ signer: s, docName: d\.name, origin: window\.location\.origin \}\)\}/.test(card));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

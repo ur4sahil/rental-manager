@@ -14,7 +14,7 @@ import { attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
 import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
-import { loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
+import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
 import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
@@ -356,6 +356,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Send modal
   const [sendModal, setSendModal] = useState(null);
+  const [mailDraft, setMailDraft] = useState(null);   // { doc, file, recipients, link, canShare, subject, body } once prepared
   const [sendTo, setSendTo] = useState({ self: false, tenant: false, custom: "" });
   const [sending, setSending] = useState(false);
   const [signerEmails, setSignerEmails] = useState({});       // { [role]: "email" }
@@ -1385,16 +1386,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Email ----
-  async function sendEmail(doc) {
-  if (!doc?.id) { showToast("Save the document first", "error"); return; }
-  setSending(true);
-  try {
+  // Who a document goes to, from the tick boxes. By record when the document
+  // has one. (This used to look the tenant up by the name in the form being
+  // filled in -- empty when sending from History, and ambiguous for two
+  // tenants with one name.)
+  async function resolveRecipients(doc) {
   const recipients = [];
   if (sendTo.self && userProfile?.email) recipients.push(userProfile.email);
   if (sendTo.tenant) {
-  // By record when the document has one. (This used to look the tenant
-  // up by the name in the form being filled in -- empty when sending from
-  // History, and ambiguous for two tenants with one name.)
   let email = "";
   if (doc.tenant_id != null) email = (await supabase.from("tenants").select("email").eq("company_id", companyId).eq("id", doc.tenant_id).maybeSingle()).data?.email || "";
   if (!email && docContext?.tenant?.email) email = docContext.tenant.email;
@@ -1405,16 +1404,26 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (sendTo.custom) {
   sendTo.custom.split(",").map(e => e.trim()).filter(e => e.includes("@")).forEach(e => recipients.push(e));
   }
+  return recipients;
+  }
+  // The document as a PDF: the same pages as the preview. Null for a PDF
+  // form template, which is exported by its own path.
+  async function renderDocPdf(doc) {
+  const template = doc._template || templates.find(t => t.id === doc.template_id) || selectedTemplate;
+  if (template?.template_type === "pdf_overlay") return null;
+  const paged = pagedBody(doc, template, doc.field_values || fieldValues);
+  return renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
+  }
+
+  async function sendEmail(doc) {
+  if (!doc?.id) { showToast("Save the document first", "error"); return; }
+  setSending(true);
+  try {
+  const recipients = await resolveRecipients(doc);
   if (recipients.length === 0) { showToast("No recipients specified", "error"); return; }
 
-  // The document goes as a PDF attachment -- the same pages as the preview --
-  // not pasted into the body of the email.
-  const template = doc._template || templates.find(t => t.id === doc.template_id) || selectedTemplate;
-  let pdfBytes = null;
-  if (template?.template_type !== "pdf_overlay") {
-  const paged = pagedBody(doc, template, doc.field_values || fieldValues);
-  pdfBytes = await renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
-  }
+  // The document goes as a PDF attachment, not pasted into the body of the email.
+  const pdfBytes = await renderDocPdf(doc);
   const out = await emailDocument(companyId, doc.id, { to: recipients, pdfBytes, filename: pdfFileName(doc.name) });
   if (!out.ok) { showToast("Could not send: " + out.error, "error"); return; }
   const sum = summarizeSends(out.results);
@@ -1427,6 +1436,59 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   pmError("PM-1007", { raw: err, context: "email document" });
   } finally {
   setSending(false);
+  }
+  }
+
+  // ---- The device's own mail app ----
+  // Step 1 (this function): make the PDF, keep a copy in storage, and work
+  // out a link to it. Step 2 is a button in the dialog that opens: a browser
+  // only lets a page open the share sheet or a mail draft straight from a
+  // click, and making the PDF takes longer than that allowance lasts.
+  const MAIL_LINK_DAYS = 14;
+  async function prepareMailDraft(doc) {
+  if (!doc?.id) { showToast("Save the document first", "error"); return; }
+  setSending(true);
+  try {
+  const recipients = (await resolveRecipients(doc)).filter(e => e !== userProfile?.email);
+  const pdfBytes = await renderDocPdf(doc);
+  if (!pdfBytes) { showToast("A PDF form cannot be opened in the mail app from here. Export it and attach it yourself.", "info"); return; }
+  const filename = pdfFileName(doc.name);
+  const path = companyId + "/generated/" + doc.id + ".pdf";
+  const up = await supabase.storage.from("documents").upload(path, new Blob([pdfBytes], { type: "application/pdf" }), { contentType: "application/pdf", upsert: true });
+  let link = "";
+  if (up.error) pmError("PM-7003", { raw: up.error, context: "store PDF for mail draft", silent: true });
+  else {
+    await supabase.from("doc_generated").update({ pdf_output_path: path }).eq("company_id", companyId).eq("id", doc.id);
+    link = await getSignedUrl("documents", path, MAIL_LINK_DAYS * 86400);
+  }
+  let file = null;
+  try { file = new File([pdfBytes], filename, { type: "application/pdf" }); } catch (_e) { file = null; }
+  const who = doc.tenant_name ? String(doc.tenant_name).split(/\s+/)[0] : "";
+  setSendModal(null);
+  setMailDraft({
+    doc, file, recipients, link, canShare: !!file && canShareFile(file),
+    subject: doc.name,
+    body: (who ? "Hi " + who + "," : "Hello,") + "\n\nPlease find " + doc.name + (link ? " here:\n\n" + link + "\n\nThe link works for " + MAIL_LINK_DAYS + " days." : " attached.") + "\n\n" + (userProfile?.name || ""),
+  });
+  } catch (err) {
+  pmError("PM-1007", { raw: err, context: "prepare mail draft" });
+  showToast("The document could not be prepared for your mail app.", "error");
+  } finally {
+  setSending(false);
+  }
+  }
+  function noteMailDraftUsed(how) {
+  logAudit("send", "doc_builder", "Opened in the device's mail app (" + how + "): " + mailDraft.doc.name + (mailDraft.recipients.length ? " to " + mailDraft.recipients.join(", ") : ""), mailDraft.doc.id, userProfile?.email, userRole, companyId);
+  }
+  async function shareMailDraft() {
+  if (!mailDraft?.file) return;
+  try {
+    await navigator.share({ files: [mailDraft.file], title: mailDraft.subject, text: mailDraft.subject });
+    noteMailDraftUsed("share sheet, PDF attached");
+    setMailDraft(null);
+  } catch (e) {
+    // Closing the share sheet is not an error.
+    if (e?.name !== "AbortError") showToast("This device would not open its share sheet. Use the draft with a link instead.", "error");
   }
   }
 
@@ -2410,6 +2472,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }} disabled={sending}>
   {sending ? "Sending..." : "Send Email"}
   </Btn>
+  <Btn variant="secondary" className="w-full mt-2" onClick={async () => {
+  const doc = await saveDocument("sent");
+  if (doc) await prepareMailDraft(doc);
+  }} disabled={sending}>Open in my mail app</Btn>
+  <p className="text-2xs text-neutral-400 mt-1.5">Send Email goes out from the app and is logged. Your mail app sends it from your own address.</p>
   </div>
   )}
   </div>
@@ -2689,6 +2756,33 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Btn variant="success-fill" className="w-full" onClick={() => sendEmail(sendModal)} disabled={sending}>
   {sending ? "Sending..." : "Send"}
   </Btn>
+  <Btn variant="secondary" className="w-full" onClick={() => prepareMailDraft(sendModal)} disabled={sending}>Open in my mail app</Btn>
+  </div>
+  </Modal>
+  )}
+
+  {/* Prepared: now a click can open the share sheet or a draft. */}
+  {mailDraft && (
+  <Modal title="Send from your own mail app" onClose={() => setMailDraft(null)}>
+  <div className="space-y-3">
+  <p className="text-sm text-neutral-600">{mailDraft.doc.name} is ready.</p>
+  <div className="text-sm">
+  <span className="text-neutral-400">To: </span>
+  {mailDraft.recipients.length ? <span className="text-neutral-800 break-all">{mailDraft.recipients.join(", ")}</span> : <span className="text-warn-700">nobody chosen: add the address in your mail app</span>}
+  </div>
+  {mailDraft.canShare && (
+  <Btn className="w-full" onClick={shareMailDraft}>Share with the PDF attached</Btn>
+  )}
+  {mailDraft.canShare && <p className="text-2xs text-neutral-400 -mt-1.5">Opens this device's share sheet: choose Mail. You add the recipient there.</p>}
+  {mailDraft.link ? (<>
+  <a className="block w-full text-center rounded-lg border border-brand-200 text-brand-700 font-semibold text-sm py-2 hover:bg-brand-50"
+     href={mailtoUrl({ to: mailDraft.recipients, subject: mailDraft.subject, body: mailDraft.body })}
+     onClick={() => { noteMailDraftUsed("draft with a link"); setMailDraft(null); }}>Open a draft with a link to the PDF</a>
+  <p className="text-2xs text-neutral-400 -mt-1.5">Opens your default mail program with the recipient, subject and message filled in. A draft opened this way cannot carry an attachment, so it carries a private link that works for {MAIL_LINK_DAYS} days.</p>
+  </>) : !mailDraft.canShare ? (
+  <p className="text-sm text-danger-600">The PDF could not be stored, so there is no link to put in a draft. Use Send instead.</p>
+  ) : null}
+  <p className="text-xs text-neutral-400 border-t border-neutral-100 pt-2">It is sent when you press Send in your mail app. The app cannot see whether you did, so it is not in the email log.</p>
   </div>
   </Modal>
   )}
