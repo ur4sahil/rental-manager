@@ -76,6 +76,7 @@ export const DOC_KIND_BY_TEMPLATE_KEY = {
   lease_renewal_offer: "renewal",
   lease_renewal: "renewal",
   lease_addendum: "addendum",
+  lease_change_addendum: "addendum",
   rent_increase_notice: "rent_increase_notice",
   notice_to_vacate: "notice_to_vacate",
   move_out_acknowledgment: "move_out_acknowledgment",

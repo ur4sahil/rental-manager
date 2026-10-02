@@ -137,9 +137,12 @@ assert("bulk status 'past' stops rent", /newStatus === "past"[\s\S]{0,120}deacti
 
 console.log("\n💲 AMOUNT SYNC + LEASE CREATE");
 assert("tenant edit uses the shared syncTenantRecurringAmount", /syncTenantRecurringAmount\(companyId, editingTenant\.id, _rent\)/.test(tenants));
-const renew = leases.slice(leases.indexOf("async function renewLease"), leases.indexOf("async function terminateLease"));
-assert("lease renew syncs the recurring amount", /syncTenantRecurringAmount\(companyId, lease\.tenant_id,/.test(renew));
-assert("rent increase syncs the recurring amount", /syncTenantRecurringAmount\(companyId, showRentIncrease\.tenant_id, newAmt\)/.test(leases));
+// (2026-10-02) Renewals and rent changes are applied by the database on their
+// effective date (_apply_lease_change); the Leases page no longer does it.
+const leaseChangesSql = fs.readFileSync(new URL("../supabase/migrations/20261003040000_lease_changes.sql", import.meta.url), "utf8");
+assert("a renewal or rent change that takes effect moves the recurring amount with it",
+  /IF v_new_rent IS NOT NULL AND v_new_rent <> v_old_rent AND v_l\.tenant_id IS NOT NULL THEN\s+UPDATE recurring_journal_entries SET amount = v_new_rent/.test(leaseChangesSql));
+assert("...matched on tenant_id and only live schedules", /WHERE company_id = v_c\.company_id AND tenant_id = v_l\.tenant_id AND status IN \('active', 'paused'\) AND archived_at IS NULL/.test(leaseChangesSql));
 assert("no inline recurring amount update remains in Tenants/Leases",
   !/from\("recurring_journal_entries"\)[\s\S]{0,80}update\(\{ amount/.test(tenants + leases));
 const save = leases.slice(leases.indexOf("async function saveLease"), leases.indexOf("function resetForm"));

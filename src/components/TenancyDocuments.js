@@ -15,7 +15,7 @@ import { resendSignatureRequest, voidEnvelope, summarizeSends } from "../utils/d
 // way the three lease generators did. "New" opens the Document Builder with
 // the tenant already chosen: no screen writes its own lease text any more.
 //
-//   actions = [{ label, templateKey }]   what can be started from here
+//   actions = [{ label, templateKey } | { label, onClick }]   what can be started from here
 //   returnTo = { page, action }          where the builder comes back to
 
 export const DOC_KIND_LABEL = {
@@ -77,6 +77,9 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
 
   function start(action) {
     setMenuOpen(false);
+    // Some things need a question answered first (a renewal's dates, the
+    // new rent): those open their own dialog, which then opens the builder.
+    if (action.onClick) { action.onClick(); return; }
     if (!setPage) return;
     setPage("doc_builder", { templateKey: action.templateKey, tenantId: tenantId != null ? Number(tenantId) : undefined, leaseId: leaseId || undefined, returnTo });
   }
@@ -109,7 +112,7 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  const headerAction = !canAct || !actions.length || !setPage ? null
+  const headerAction = !canAct || !actions.length ? null
     : actions.length === 1
       ? <TextLink tone="brand" size="xs" onClick={() => start(actions[0])}>{actions[0].label}</TextLink>
       : (
@@ -119,7 +122,7 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
               <div role="menu" className="absolute right-0 mt-1 z-20 w-60 bg-white border border-neutral-200 rounded-xl shadow-pop py-1">
-                {actions.map(a => <MenuItem key={a.templateKey + a.label} onClick={() => start(a)}>{a.label}</MenuItem>)}
+                {actions.map(a => <MenuItem key={(a.templateKey || "") + a.label} onClick={() => start(a)}>{a.label}</MenuItem>)}
               </div>
             </>
           )}

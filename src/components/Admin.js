@@ -1394,6 +1394,7 @@ function CompanySettingsPanel({ companyId, showToast, userProfile, companySettin
   <Field label="Rent Escalation" field="rent_escalation_pct" suffix="% / year" min={0} max={25} step="0.5" />
   <Field label="Payment Due Day" field="payment_due_day" suffix="of month" min={1} max={31} />
   <Field label="Renewal Notice" field="renewal_notice_days" suffix="days" min={0} max={180} />
+  <Field label="Rent Increase Notice" field="rent_increase_notice_days" suffix="days" min={0} max={180} />
   </div>
   </div>
 

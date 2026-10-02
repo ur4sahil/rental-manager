@@ -12,6 +12,8 @@ import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPrope
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 import { StartTenancyModal } from "./StartTenancyModal";
 import { TenancyDocuments } from "./TenancyDocuments";
+import { LeaseChangeDialog, LeaseChangesCard } from "./LeaseChanges";
+import { leaseTermState } from "../utils/leaseChangeRules";
 
 function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm, setPage }) {
   const [leases, setLeases] = useState([]);
@@ -42,8 +44,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   clauses: "", special_terms: "", template_id: "",
   late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
   });
-  const [showRentIncrease, setShowRentIncrease] = useState(null);
-  const [rentIncreaseForm, setRentIncreaseForm] = useState({ new_amount: "", effective_date: "", reason: "" });
+  const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", lease }
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: "1" });
   // Deposit release entries (DEPRET-/DEPDED-, any status) for the company, so
   // "Return Deposit" is not offered for a deposit already released elsewhere.
@@ -174,47 +175,12 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   setShowForm(true);
   }
 
-  async function renewLease(lease) {
-  // Apply escalation based on frequency (Bug 19: was ignoring frequency)
-  let escalationMultiplier = 1;
-  const pct = lease.rent_escalation_pct > 0 ? lease.rent_escalation_pct / 100 : 0;
-  if (pct > 0) {
-  const freq = lease.escalation_frequency || "annual";
-  if (freq === "semi-annual") escalationMultiplier = Math.min(Math.pow(1 + pct, 2), 10);
-  else if (freq === "quarterly") escalationMultiplier = Math.min(Math.pow(1 + pct, 4), 10);
-  else escalationMultiplier = 1 + pct; // annual or default
-  }
-  const escalated = lease.rent_amount * escalationMultiplier;
-  const newStart = lease.end_date;
-  const newEnd = parseLocalDate(newStart); newEnd.setFullYear(newEnd.getFullYear() + 1);
-  // Bug 15: Clamp for leap year (Feb 29 in non-leap year → Feb 28)
-  const endLastDay = new Date(newEnd.getFullYear(), newEnd.getMonth() + 1, 0).getDate();
-  if (newEnd.getDate() > endLastDay) newEnd.setDate(endLastDay);
-  if (!await showConfirm({ message: "Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + formatLocalDate(newEnd) })) return;
-  // Bug 1-2: Check errors and rollback on failure
-  const { error: updateErr } = await supabase.from("leases").update({ status: "renewed" }).eq("company_id", companyId).eq("id", lease.id);
-  if (updateErr) { showToast("Error updating old lease: " + updateErr.message, "error"); return; }
-  const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, deposit_status: lease.deposit_status || "held", deposit_returned: lease.deposit_returned ?? 0, deposit_return_date: lease.deposit_return_date || null, deposit_deductions: lease.deposit_deductions || "", rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
-  if (insertErr) {
-  const { error: _err4650 } = await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("id", lease.id); // rollback
-  if (_err4650) { showToast("Error updating leases: " + _err4650.message, "error"); return; }
-  showToast("Error creating renewed lease: " + insertErr.message, "error"); return;
-  }
-  if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("id", lease.tenant_id);
-  // The recurring schedule is what bills rent; without this the renewal's
-  // escalated rent never reached the books.
-  if (lease.tenant_id) {
-    const recSync = await syncTenantRecurringAmount(companyId, lease.tenant_id, Math.round(escalated * 100) / 100);
-    if (!recSync.ok) showToast("Lease renewed, but the recurring rent entry could not be updated — please update it manually.", "warning");
-  }
-  // Sync autopay schedule to new rent amount
-  await supabase.from("autopay_schedules").update({ amount: Math.round(escalated * 100) / 100 }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("enabled", true);
-  // Update property table to reflect new lease end date
-  const { error: _err4655 } = await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
-  if (_err4655) { showToast("Error updating properties: " + _err4655.message, "error"); return; }
-  logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
-  fetchData();
-  }
+  // Renew and Rent Increase used to change the lease the moment they were
+  // pressed (the renewal raised the rent today for a term starting months
+  // away; the increase ignored its own effective date) and neither produced
+  // a document. Both, and addenda, now go through LeaseChangeDialog: written
+  // up, signed where it has to be, and in effect on its date.
+  const tenantOfLease = (l) => tenants.find(t => String(t.id) === String(l.tenant_id)) || { id: l.tenant_id, name: l.tenant_name, co_tenants: [] };
 
   async function terminateLease(lease) {
   // Termination is a management-tier action (the database enforces it).
@@ -427,7 +393,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
   <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn></div>
+  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => setLeaseChangeFor({ kind: "renewal", lease: l })}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn></div>
   </div>
   ); })}
   </div>
@@ -460,7 +426,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </Modal>
   )}
 
-  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} companyId={companyId} showToast={showToast} showConfirm={showConfirm} setPage={setPage} />}
+  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} companyId={companyId} showToast={showToast} showConfirm={showConfirm} setPage={setPage} userEmail={userProfile?.email || ""} userRole={userRole} />}
 
   {showDepositModal && (
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => { setShowDepositModal(null); setDepositCtx(null); }}>
@@ -587,12 +553,16 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div><span className="text-neutral-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
   <div><span className="text-neutral-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
   <div><span className="text-neutral-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
+  {/* A lease that is not renewed carries on month to month: said plainly,
+      not flagged as expired. */}
+  {l.status === "active" && leaseTermState(l, formatLocalDate(new Date())).key === "month_to_month" && <div><span className="text-neutral-400">Term:</span> <span className="font-medium">Month-to-month since {fmtDate(l.end_date)}</span></div>}
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
   <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : ["pending", "partially_signed"].includes(l.signature_status) ? "Out for signature" : "Lease document"}</Btn>
-  {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
-  {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
+  {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => setLeaseChangeFor({ kind: "renewal", lease: l })}>Renew</Btn>}
+  {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => setLeaseChangeFor({ kind: "rent", lease: l })}>Change rent</Btn>}
+  {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => setLeaseChangeFor({ kind: "addendum", lease: l })}>Addendum</Btn>}
   {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn>}
   <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
   <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
@@ -609,42 +579,11 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {pendingRecurringEntry && <StartTenancyModal entry={pendingRecurringEntry} companyId={companyId} userEmail={userProfile?.email || ""} showToast={showToast} onComplete={() => { setPendingRecurringEntry(null); fetchData(); }} />}
 
   {/* Rent Increase Modal */}
-  {showRentIncrease && (
-  <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
-  <div className="space-y-3">
-  <div className="bg-brand-50/30 rounded-xl p-3 text-sm">
-  <div className="flex justify-between"><span className="text-neutral-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
-  <div className="flex justify-between"><span className="text-neutral-400">Property:</span><span>{showRentIncrease.property}</span></div>
-  </div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">New Monthly Rent ($) *</label><MoneyInput min="0" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={v => setRentIncreaseForm({...rentIncreaseForm, new_amount: v})} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
-  {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
-  <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-danger-50 text-danger-600" : "bg-positive-50 text-positive-600"}`}>
-  {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
-  </div>
-  )}
-  <Btn className="w-full" onClick={async () => {
-  if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { showToast("Amount and date required.", "error"); return; }
-  const newAmt = Number(rentIncreaseForm.new_amount);
-  const { error: _err4960 } = await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
-  if (_err4960) { showToast("Error updating leases: " + _err4960.message, "error"); return; }
-  if (showRentIncrease.tenant_id) {
-    await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
-    // Same helper the tenant edit uses: the increase must reach the
-    // recurring schedule, or the old rent keeps posting.
-    const recSync = await syncTenantRecurringAmount(companyId, showRentIncrease.tenant_id, newAmt);
-    if (!recSync.ok) showToast("Rent updated, but the recurring rent entry could not be updated — please update it manually.", "warning");
-  }
-  addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
-  // Tenant-facing copy.
-  if (showRentIncrease.tenant_email) addNotification("📈", `Your rent was updated to ${formatCurrency(newAmt)}/mo, effective ${fmtDate(rentIncreaseForm.effective_date)}.`, { recipient: showRentIncrease.tenant_email, type: "rent_increase" });
-  logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
-  setShowRentIncrease(null);
-  fetchData();
-  }}>Apply Rent Increase</Btn>
-  </div>
-  </Modal>
+  {leaseChangeFor && (
+    <LeaseChangeDialog kind={leaseChangeFor.kind} lease={leaseChangeFor.lease} tenant={tenantOfLease(leaseChangeFor.lease)}
+      companyId={companyId} companySettings={companySettings} userEmail={userProfile?.email || ""} userRole={userRole}
+      setPage={setPage} returnTo={{ page: "leases" }} showToast={showToast}
+      onClose={() => setLeaseChangeFor(null)} onSaved={() => fetchData()} />
   )}
   </div>
   );
@@ -657,7 +596,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
 // signed. It used to compose its own lease text (a table of five facts plus
 // the clauses typed on the lease form) and send that instead of the real
 // lease: a third lease, next to the Builder's and the Tenants page's.
-function ESignatureModal({ lease, onClose, onSigned, companyId, showToast, showConfirm, setPage }) {
+function ESignatureModal({ lease, onClose, onSigned, companyId, showToast, showConfirm, setPage, userEmail = "", userRole = "" }) {
   return (
     <Modal title={"Lease signing — " + (lease.tenant_name || "Lease")} onClose={onClose}>
       <div className="space-y-4">
@@ -668,6 +607,7 @@ function ESignatureModal({ lease, onClose, onSigned, companyId, showToast, showC
         {lease.tenant_id == null && (
           <p className="text-xs text-warn-700">This lease is not linked to a tenant record, so a lease document cannot be filled in for it. Edit the lease and choose the tenant.</p>
         )}
+        <LeaseChangesCard companyId={companyId} leaseId={lease.id} userEmail={userEmail} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onChanged={onSigned} />
         <TenancyDocuments companyId={companyId} leaseId={lease.id} tenantId={lease.tenant_id}
           title="Lease documents" kinds={["lease", "renewal", "addendum"]}
           actions={lease.tenant_id != null ? [{ label: "Create lease", templateKey: "md_residential_lease" }] : []}

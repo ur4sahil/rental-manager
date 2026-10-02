@@ -217,8 +217,11 @@ assert("tenantOwedFromGL sums the tenant's own AR, voided excluded", /\.eq\("ten
 assert("Leases page: button uses depositReturnOfferable", /depositReturnOfferable\(l, depositReleases\)/.test(leases) && !/l\.deposit_status === "held" && \(l\.status/.test(leases));
 assert("Leases page: release entries are fetched paged, with amounts", /fetchAllPaged\(\(\) => supabase\.from\("acct_journal_entries"\)\.select\("reference, status, acct_journal_lines\(debit\)"\)/.test(leases));
 // Bug 2a: renewal
-const renew = fnBody(leases, "async function renewLease(");
-assert("2a: renewal carries deposit_status (and return details) to the new lease", /deposit_status: lease\.deposit_status \|\| "held"/.test(renew) && /deposit_returned: lease\.deposit_returned/.test(renew));
+// (2026-10-02) A renewal is applied by the database on its effective date.
+const renewSql = fs.readFileSync(new URL("../supabase/migrations/20261003040000_lease_changes.sql", import.meta.url), "utf8");
+assert("2a: renewal carries deposit_status (and return details) to the new lease",
+  /security_deposit, deposit_status, deposit_returned, deposit_return_date, deposit_deductions,/.test(renewSql)
+  && /v_l\.security_deposit, COALESCE\(v_l\.deposit_status, 'held'\), COALESCE\(v_l\.deposit_returned, 0\), v_l\.deposit_return_date/.test(renewSql));
 // Bug 4: tenant by id
 const save = fnBody(leases, "async function saveLease(");
 assert("4: Leases form picks the tenant by id", /const tenant = form\.tenant_id \? tenants\.find\(t => String\(t\.id\) === String\(form\.tenant_id\)\)/.test(save)

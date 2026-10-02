@@ -12,6 +12,8 @@ import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../u
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
+import { ensureStandardTemplates } from "../utils/standardTemplates";
+import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
 import { loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
 import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
@@ -365,6 +367,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // The records the document in hand is about (tenant, lease, property),
   // loaded by id. Saved onto the generated document as real links.
   const [docContext, setDocContext] = useState(null);
+  const pendingChange = useRef(null);   // { kind, leaseId, tenantId, effective_date, payload, fieldMap, noticeDate }
   // The template's signers, plus a slot for each adult on the tenancy beyond
   // the template's own tenant slots (see effectiveSignerRoles).
   const signerRoles = useMemo(() => effectiveSignerRoles(selectedTemplate?.signer_roles, docContext?.signers?.tenants?.length || 0), [selectedTemplate, docContext]);
@@ -422,7 +425,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     return;
   }
   returnTo.current = initialAction.returnTo || null;
-  startDocument(t, (tenantId != null || prospectId) ? "prefill" : "blank", { tenantId, leaseId, prospectId });
+  // A lease change this document carries (a renewal, a rent change, an
+  // addendum): scheduled when the document is sent, never before.
+  pendingChange.current = initialAction.change || null;
+  startDocument(t, (tenantId != null || prospectId) ? "prefill" : "blank", { tenantId, leaseId, prospectId, values: initialAction.values || null });
   // startDocument is a plain function of this render; the action object is the trigger.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction, templates]);
@@ -774,6 +780,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const { data: inserted } = await supabase.from("doc_templates").insert(clones).select();
   all = inserted || [];
   }
+  // The templates the tenant workflows open by key (renewal, addendum, ...)
+  // are installed the first time they are missing; an existing template is
+  // never overwritten. See utils/standardTemplates.js.
+  try { all = [...all, ...(await ensureStandardTemplates(companyId, all, userProfile?.email))]; }
+  catch (e) { pmError("PM-7003", { raw: e, context: "install standard templates", silent: true }); }
   setTemplates(all);
   // Fetch generated documents
   const { data: docs } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(200);
@@ -895,10 +906,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       if (!filled[key] && ctx.prospect[key] && (template.fields || []).some(f => f.name === key)) filled[key] = ctx.prospect[key];
     }
   }
+  // Values the calling screen decided (the new rent, the renewal dates):
+  // they win over what the records say, for fields this template has.
+  for (const [k, v] of Object.entries(opts.values || {})) if ((template.fields || []).some(f => f.name === k)) filled[k] = v;
   setFieldValues(recalcFields(filled, fc));
   } else {
   setDocContext(null);
-  setFieldValues(recalcFields(applyDefaults(template), fc));
+  const blank = applyDefaults(template);
+  for (const [k, v] of Object.entries(opts.values || {})) if ((template.fields || []).some(f => f.name === k)) blank[k] = v;
+  setFieldValues(recalcFields(blank, fc));
   }
   // Load PDF for overlay templates
   if (template.template_type === "pdf_overlay" && template.pdf_storage_path) {
@@ -973,9 +989,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Save generated document ----
-  async function saveDocument(status = "draft") {
+  async function saveDocument(status = "draft", { signing = false } = {}) {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return null; }
+  // A document that carries a lease change: what will be scheduled is what
+  // the document says, so read it back from the fields, and make sure there
+  // is not already one in flight BEFORE anything is saved or sent.
+  const carried = status !== "draft" && pendingChange.current ? changeRowFromDocument(pendingChange.current, fieldValues) : null;
+  if (carried) {
+    if (carried.kind !== "addendum") {
+      const open = await openChangeOfKind(companyId, pendingChange.current.leaseId, carried.kind);
+      if (open.error) { showToast("Could not check for a change already in progress. Try again.", "error"); return null; }
+      if (open.change) { showToast("There is already a " + (carried.kind === "renewal" ? "renewal" : "rent change") + " waiting to take effect for this lease. Cancel it on the tenant's page first.", "error"); return null; }
+    }
+    if (carried.kind === "renewal" && !(carried.payload.end_date > carried.effective_date)) { showToast("The renewal must end after it starts.", "error"); return null; }
+  }
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   const docName = selectedTemplate.name + " — " + (fieldValues.tenant_name || fieldValues.recipient_name || "Document") + " " + formatLocalDate(new Date());
   const payload = {
@@ -1009,6 +1037,26 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
         .eq("company_id", companyId).eq("id", docContext.prospect.id);
       if (syncErr) { pmError("PM-7003", { raw: syncErr, context: "copy lease terms back to the prospect", silent: true }); showToast("Saved, but the prospect's rent and dates could not be updated to match this lease. Check them on the Prospects page.", "warning"); }
     }
+  }
+  if (carried && data?.id) {
+    const made = await createLeaseChange({
+      companyId, leaseId: pendingChange.current.leaseId, tenantId: pendingChange.current.tenantId, kind: carried.kind,
+      effectiveDate: carried.effective_date, payload: carried.payload, docId: data.id,
+      // Out to be signed: nothing is agreed yet. A notice (no signatures) is
+      // issued the moment it is finalised or emailed.
+      status: signing ? "awaiting_signature" : "scheduled",
+      noticeDate: carried.kind === "rent_increase" ? (pendingChange.current.noticeDate || formatLocalDate(new Date())) : null,
+      userEmail: userProfile?.email || "",
+    });
+    if (!made.ok) {
+      // Do not leave a document behind that promises a change nothing will carry out.
+      await supabase.from("doc_generated").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || "" }).eq("company_id", companyId).eq("id", data.id);
+      showToast("Not saved: " + made.error, "error");
+      return null;
+    }
+    pendingChange.current = null;
+  } else if (status === "draft" && pendingChange.current) {
+    showToast("Saved as a draft. Nothing is scheduled until the document is sent or finalised.", "info");
   }
   showToast("Document saved", "success");
   addNotification("📄", "Document created: " + docName);
@@ -1463,13 +1511,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   setSending(true);
   try {
-    const doc = await saveDocument("sent");
+    const doc = await saveDocument("sent", { signing: true });
     if (!doc) { setSending(false); return; }
 
     const mode = ["parallel", "sequential"].includes(selectedTemplate.signing_mode) ? selectedTemplate.signing_mode : null;
     const { error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: doc.id, p_signers: signers, p_signing_mode: mode });
     if (envErr) {
       pmError("PM-7003", { raw: envErr, context: "create doc envelope" });
+      // Nothing went out, so a lease change this document carried must not
+      // sit there waiting for signatures that were never asked for.
+      await supabase.from("lease_changes").update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancelled_by: userProfile?.email || "", cancel_reason: "The signature request could not be created" })
+        .eq("company_id", companyId).eq("doc_id", doc.id).eq("status", "awaiting_signature");
       setSending(false);
       return;
     }
@@ -1528,6 +1580,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ---- Reset flow ----
   function resetFlow() {
   setDocContext(null);
+  pendingChange.current = null;
   // Opened from another screen for a tenant: closing goes back there.
   if (returnTo.current && setPage) { const r = returnTo.current; returnTo.current = null; setPage(r.page, r.action || null); }
   setSelectedTemplate(null);

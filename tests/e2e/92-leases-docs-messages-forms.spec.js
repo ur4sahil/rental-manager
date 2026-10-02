@@ -557,7 +557,12 @@ async function seedLease(extra = {}) {
   return data;
 }
 
-test('a rent increase writes the new rent, appends to the history, follows through to the tenant, and refuses an empty amount', async ({ page }) => {
+// (2026-10-02) A rent change no longer takes effect the moment a button is
+// pressed: it is written up as a notice, checked against the notice period,
+// and applied by the database on its effective date. The rules and the
+// database are covered by tests/lease-changes.test.mjs; this browser test
+// described the old on-the-spot behaviour and needs rewriting for the new one.
+test.fixme('a rent increase writes the new rent, appends to the history, follows through to the tenant, and refuses an empty amount', async ({ page }) => {
   const sb = await db();
   const problems = watchForFailures(page);
   await seedLease();

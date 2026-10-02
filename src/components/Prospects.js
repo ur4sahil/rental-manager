@@ -69,7 +69,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     const ids = list.map(p => p.id);
     const [props, tens] = await Promise.all([
       supabase.from("properties").select("id, address, status, tenant").eq("company_id", companyId).is("archived_at", null).order("address"),
-      supabase.from("tenants").select("id, name, property, property_id, lease_status").eq("company_id", companyId).is("archived_at", null),
+      supabase.from("tenants").select("id, name, property, property_id, lease_status, move_out").eq("company_id", companyId).is("archived_at", null),
     ]);
     // .in() is capped at 100 ids per request.
     const docRows = [], fileRows = [];
@@ -119,6 +119,9 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     if (!prop) return null;
     return occupants.find(t => t.property_id === prop.id || t.property === prop.address) || null;
   }, [propById, occupants]);
+  // A tenant who has given (or been given) notice has a move-out date: the
+  // home is spoken for until then and free after.
+  const untilOf = (occ) => (occ && String(occ.lease_status || "").toLowerCase() === "notice" && occ.move_out ? occ.move_out : null);
   const docsOf = useCallback((id) => docs.filter(d => d.prospect_id === id), [docs]);
   const leaseOf = useCallback((id) => {
     const leases = docsOf(id).filter(d => d.doc_kind === "lease");
@@ -374,7 +377,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
               <div className="flex gap-1.5 flex-wrap mt-2">
                 <Badge label={st.label} color={st.color} />
                 {others.length > 0 && <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">{others.length + 1} on the lease</span>}
-                {prop && p.status !== "converted" && <span className={"text-xs font-semibold px-2.5 py-0.5 rounded-full " + (occupant ? "bg-warn-50 text-warn-700" : "bg-positive-50 text-positive-700")}>{occupant ? "Occupied by " + occupant.name : "Vacant"}</span>}
+                {prop && p.status !== "converted" && <span className={"text-xs font-semibold px-2.5 py-0.5 rounded-full " + (occupant ? "bg-warn-50 text-warn-700" : "bg-positive-50 text-positive-700")}>{occupant ? "Occupied by " + occupant.name + (untilOf(occupant) ? " until " + fmtDate(untilOf(occupant)) : "") : "Vacant"}</span>}
               </div>
             </div>
             <div className="text-right shrink-0 max-[620px]:text-left">
@@ -547,7 +550,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
 
             <FormField label="Property" className="col-span-2">
               <PropertySelect value={form.property} companyId={companyId} onChange={(address, prop) => setForm({ ...form, property: address, property_id: prop?.id ?? null })} />
-              {form.property_id != null && occupantOf(form.property_id) && <p className="text-xs text-warn-700 mt-1">Occupied now by {occupantOf(form.property_id).name}. A lease can be sent, but the prospect can only be converted once the property is vacant.</p>}
+              {form.property_id != null && occupantOf(form.property_id) && <p className="text-xs text-warn-700 mt-1">Occupied now by {occupantOf(form.property_id).name}{untilOf(occupantOf(form.property_id)) ? ", who has given notice: available from " + fmtDate(untilOf(occupantOf(form.property_id))) : ""}. A lease can be sent, but the prospect can only be converted once the property is vacant.</p>}
             </FormField>
             <FormField label="Lease start"><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></FormField>
             <FormField label="Lease end"><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></FormField>
@@ -664,7 +667,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
               { key: "property", label: "Property", className: "text-neutral-700",
                 render: p => { const occ = p.property_id != null ? occupantOf(p.property_id) : null; return (<>
                   <div>{p.property_id != null ? propertyLabel(propById[p.property_id]?.address || p.property || "") : <span className="text-neutral-300">—</span>}</div>
-                  {p.property_id != null && p.status !== "converted" && <div className={"text-xs " + (occ ? "text-warn-700" : "text-neutral-400")}>{occ ? "occupied" : "vacant"}</div>}
+                  {p.property_id != null && p.status !== "converted" && <div className={"text-xs " + (occ ? "text-warn-700" : "text-neutral-400")}>{occ ? (untilOf(occ) ? "available from " + fmtDate(untilOf(occ)) : "occupied") : "vacant"}</div>}
                 </>); } },
               { key: "term", label: "Lease", className: "text-neutral-500 whitespace-nowrap tabular-nums",
                 render: p => (<>{p.lease_start ? fmtDate(p.lease_start) + " – " + fmtDate(p.lease_end, "?") : <span className="text-neutral-300">—</span>}</>) },

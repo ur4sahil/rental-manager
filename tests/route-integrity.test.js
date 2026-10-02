@@ -75,6 +75,7 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     ["doc_generated", "prospect_id"],
     ["documents", "prospect_id"],
     ["acct_accounts", "prospect_id"],
+    ["company_settings", "rent_increase_notice_days"],
   ];
   for (const [table, col] of required) {
     const { error } = await sb.from(table).select(col).limit(1);
@@ -89,6 +90,13 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
   {
     const { error } = await sb.from("prospects").select("id, attention, converted_tenant_id").limit(1);
     assert("prospects exists and refuses the public key", !!error && /permission denied/i.test(error.message || ""), error ? error.message : "anon could read it");
+  }
+
+  // Same for lease_changes (20261003040000): a tenant's upcoming rent and
+  // renewal terms. Refused outright for the public key.
+  {
+    const { error } = await sb.from("lease_changes").select("id, doc_id, effective_date, payload").limit(1);
+    assert("lease_changes exists and refuses the public key", !!error && /permission denied/i.test(error.message || ""), error ? error.message : "no error: the public key can read it");
   }
 
   console.log(`\n✅ Passed: ${passed}\n❌ Failed: ${failed}`);

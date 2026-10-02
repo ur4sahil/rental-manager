@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
+import { applyDueLeaseChanges } from "./utils/leaseChanges";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink, CompanyScope, SearchTrigger, MenuItem} from "./ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest, fmtDate } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
@@ -845,8 +846,12 @@ function AppInner() {
   ensureDefaultAccounts(company.id).then(() => {
   // Auto-post rent accruals (idempotent — skips already posted months)
   autoPostRentCharges(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charges on login", silent: true }));
+  // Lease changes whose day has come (a renewal, a rent change, an addendum)
+  // take effect FIRST, so the rent posted just below is the new amount.
+  // A failure here must not stop the month's rent from posting.
+  applyDueLeaseChanges(company.id).catch(() => ({ ok: false })).then(() =>
   // Auto-post recurring journal entries (idempotent — skips already posted months)
-  autoPostRecurringEntries(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto recurring entries on login", silent: true }));
+  autoPostRecurringEntries(company.id)).catch(e => pmError("PM-4008", { raw: e, context: "auto recurring entries on login", silent: true }));
   }).catch(e => pmError("PM-4006", { raw: e, context: "chart of accounts seed", silent: true }));
   }
   setCompanyRole(role);

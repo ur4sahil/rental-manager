@@ -50,6 +50,9 @@ export const COMPANY_DEFAULTS = {
   rent_escalation_pct: 3,
   payment_due_day: 1,
   renewal_notice_days: 60,
+  // Days of written notice before a rent INCREASE may start. Maryland: 90 for
+  // a term longer than a month ([LAW] in docs/PLAN-tenant-documents.md).
+  rent_increase_notice_days: 90,
 
   // Notification Thresholds
   rent_due_reminder_days: 3,        // days before due date

@@ -14,6 +14,7 @@ import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFee
 import { Badge, Spinner, Modal, PropertySelect, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { StartTenancyModal } from "./StartTenancyModal";
 import { TenancyDocuments } from "./TenancyDocuments";
+import { LeaseChangeDialog, LeaseChangesCard } from "./LeaseChanges";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -139,6 +140,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [selectedTenants, setSelectedTenants] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [leaseModal, setLeaseModal] = useState(null);
+  const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", tenant }
+  const [leaseChangesKey, setLeaseChangesKey] = useState(0);     // bump to reload the tenant page's lease-changes card
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [reviewBusy, setReviewBusy] = useState(null);
@@ -1095,54 +1098,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   } finally { guardRelease("addLedgerEntry"); }
   }
 
-  async function renewLease(newMoveOut) {
-  if (!guardSubmit("renewLease")) return;
-  try {
-  if (!newMoveOut) return;
-  if (!selectedTenant?.id) return;
-  const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
-  if (error) { pmError("PM-3004", { raw: error, context: "renew lease" }); return; }
-  // #4: Update active lease end_date if one exists, or create one
-  // Scoped to this tenant, not to their name. Matching on tenant_name
-  // alone picked whichever active lease came first among namesakes, and
-  // the update below then wrote the new end_date onto that lease --
-  // extending a different person's tenancy. tenant_id is authoritative;
-  // (name, property) is the fallback for rows predating the backfill and
-  // is unique among active tenants (idx_tenants_unique_name_property).
-  let activeLeaseQ = supabase.from("leases").select("id, rent_amount").eq("company_id", companyId).eq("status", "active");
-  activeLeaseQ = selectedTenant.id
-    ? activeLeaseQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant_name.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
-    : activeLeaseQ.eq("tenant_name", selectedTenant.name).eq("property", selectedTenant.property || "");
-  const { data: activeLease, error: leaseErr } = await activeLeaseQ.limit(1);
-  if (leaseErr) { showToast("Lease lookup failed: " + leaseErr.message, "error"); }
-  if (activeLease?.[0]) {
-  const { error: leaseUpErr } = await supabase.from("leases").update({ end_date: newMoveOut }).eq("company_id", companyId).eq("id", activeLease[0].id);
-  if (leaseUpErr) showToast("Lease update failed: " + leaseUpErr.message, "error");
-  } else if (selectedTenant.property && selectedTenant.rent) {
-  const { error: leaseInsErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: selectedTenant.name, tenant_id: selectedTenant.id, property: selectedTenant.property, start_date: formatLocalDate(new Date()), end_date: newMoveOut, rent_amount: safeNum(selectedTenant.rent), status: "active", payment_due_day: 1 }]);
-  if (leaseInsErr) showToast("Lease creation failed: " + leaseInsErr.message, "error");
-  }
-  // Update property lease_end
-  if (selectedTenant.property) {
-  await supabase.from("properties").update({ lease_end: newMoveOut }).eq("company_id", companyId).eq("address", selectedTenant.property);
-  }
-  // #4: Sync autopay schedule end_date
-  // Same hazard, worse consequence: an unscoped name match set end_date
-  // on EVERY autopay row carrying that name, silently ending a namesake's
-  // rent collection.
-  let apSyncQ = supabase.from("autopay_schedules").update({ end_date: newMoveOut }).eq("company_id", companyId);
-  apSyncQ = selectedTenant.id
-    ? apSyncQ.or(`tenant_id.eq.${selectedTenant.id},and(tenant.eq.${pgrestQuote(selectedTenant.name)},property.eq.${pgrestQuote(selectedTenant.property || "")})`)
-    : apSyncQ.eq("tenant", selectedTenant.name).eq("property", selectedTenant.property || "");
-  const { error: apSyncErr } = await apSyncQ;
-  if (apSyncErr) pmError("PM-3004", { raw: apSyncErr, context: "sync autopay end_date on renew", silent: true });
-  addNotification("\u{1F4C4}", `Lease extended for ${selectedTenant.name} until ${newMoveOut}`);
-  logAudit("update", "tenants", `Lease renewed for ${selectedTenant.name} until ${newMoveOut}`, selectedTenant.id, userProfile?.email, userRole, companyId);
-  setLeaseModal(null);
-  fetchTenants();
-  setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "active" });
-  } finally { guardRelease("renewLease"); }
-  }
+  // Renewing used to move the end date on the same lease from here (no new
+  // rent, no document, no history), while the Leases page did something
+  // else again. Both are now LeaseChangeDialog: written up, signed, and in
+  // effect on its date.
 
   async function generateMoveOutNotice(days) {
   if (!guardSubmit("generateMoveOutNotice")) return;
@@ -1176,7 +1135,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // template (md_residential_lease), filled in for this tenant, and sent for
   // signature there. This used to open a browser tab with a fixed six-clause
   // text and a drawing box, where nothing was saved and nothing was sent.
-  const LEASE_ACTIONS = [{ label: "Create lease", templateKey: "md_residential_lease" }];
+  const leaseActionsFor = (t) => [
+    { label: "Create lease", templateKey: "md_residential_lease" },
+    { label: "Renew the lease…", onClick: () => setLeaseChangeFor({ kind: "renewal", tenant: t }) },
+    { label: "Change the rent…", onClick: () => setLeaseChangeFor({ kind: "rent", tenant: t }) },
+    { label: "Addendum…", onClick: () => setLeaseChangeFor({ kind: "addendum", tenant: t }) },
+  ];
+  const tenantReturnTo = (t) => ({ page: "tenants", action: { openTenantId: t.id, tenantName: t.name, panel: "detail" } });
   function createLeaseFor(tenant) {
     if (!setPage || !tenant?.id) return;
     setPage("doc_builder", { templateKey: "md_residential_lease", tenantId: Number(tenant.id), returnTo: { page: "tenants", action: { openTenantId: tenant.id, tenantName: tenant.name, panel: "detail" } } });
@@ -1291,6 +1256,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // branches from one definition rather than being copied into each.
   function renderLeasePanel() {
     return (<>
+  {/* Renewal / rent change / addendum. Here, not in the list's markup: this
+      fragment is the one piece both the list and the tenant page render. */}
+  {leaseChangeFor && (
+    <LeaseChangeDialog kind={leaseChangeFor.kind} tenant={leaseChangeFor.tenant} companyId={companyId} companySettings={companySettings}
+      userEmail={userProfile?.email || ""} userRole={userRole} setPage={setPage} returnTo={tenantReturnTo(leaseChangeFor.tenant)}
+      showToast={showToast} onClose={() => setLeaseChangeFor(null)} onSaved={() => { setLeaseChangesKey(k => k + 1); fetchTenants(); }} />
+  )}
   {activePanel && selectedTenant && activePanel === "lease" && (
   <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-pop">
@@ -1332,16 +1304,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   </div>
-  {leaseModal === "renew" && (
-  <div className="bg-brand-50 rounded-xl p-4 mb-3 border border-brand-100">
-  <div className="text-sm font-semibold text-brand-700 mb-2">Enter New Lease End Date</div>
-  <Input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="mb-2" />
-  <div className="flex gap-2">
-  <Btn variant="primary" size="sm" onClick={() => renewLease(leaseInput)}>Confirm Renewal</Btn>
-  <Btn variant="ghost" size="sm" onClick={() => setLeaseModal(null)}>Cancel</Btn>
-  </div>
-  </div>
-  )}
   {leaseModal === "notice" && (
   <div className="bg-notice-50 rounded-xl p-4 mb-3 border border-notice-100">
   <div className="text-sm font-semibold text-notice-700 mb-2">Select Notice Period</div>
@@ -1364,10 +1326,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className="text-brand-300">→</span>
   </button>
   {[
-  { label: "\u{1F504} Renew Lease", desc: "Extend lease term", modal: "renew" },
+  { label: "\u{1F504} Renew Lease", desc: "New term and rent, signed, in effect on its date", change: "renewal" },
   { label: "\u{1F4CB} Generate Move-Out Notice", desc: "30/60 day notice", modal: "notice" },
   ].map(item => (
-  <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-lg px-4 py-3 text-left">
+  <button key={item.label} onClick={() => { if (item.change) { setLeaseChangeFor({ kind: item.change, tenant: selectedTenant }); return; } setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
   <div className="text-sm font-medium text-neutral-800">{item.label}</div>
   <div className="text-xs text-neutral-400">{item.desc}</div>
@@ -1398,14 +1360,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         onEdit={startEdit}
         onMessage={openMessages}
         onInvite={inviteTenant}
-        onRenew={() => { setLeaseModal("renew"); setLeaseInput(""); setActivePanel("lease"); }}
-        leaseCard={selectedTenant?.id ? (
-          <TenancyDocuments key={selectedTenant.id} companyId={companyId} tenantId={selectedTenant.id}
-            actions={selectedTenant.archived_at ? [] : LEASE_ACTIONS} setPage={setPage}
-            returnTo={{ page: "tenants", action: { openTenantId: selectedTenant.id, tenantName: selectedTenant.name, panel: "detail" } }}
-            showToast={showToast} showConfirm={showConfirm}
+        onRenew={t => setLeaseChangeFor({ kind: "renewal", tenant: t })}
+        leaseCard={selectedTenant?.id ? (<>
+          <LeaseChangesCard key={"lc-" + selectedTenant.id} companyId={companyId} tenantId={selectedTenant.id}
+            userEmail={userProfile?.email || ""} userRole={userRole} showToast={showToast} showConfirm={showConfirm}
+            canAct={!selectedTenant.archived_at} reloadKey={leaseChangesKey} />
+          <TenancyDocuments key={selectedTenant.id + "-" + leaseChangesKey} companyId={companyId} tenantId={selectedTenant.id}
+            actions={selectedTenant.archived_at ? [] : leaseActionsFor(selectedTenant)} setPage={setPage}
+            returnTo={tenantReturnTo(selectedTenant)}
+            showToast={showToast} showConfirm={showConfirm} onChanged={() => setLeaseChangesKey(k => k + 1)}
             emptyText="No lease or notice has been created for this tenant in the app yet." />
-        ) : null}
+        </>) : null}
         onMoveOut={pageMoveOut}
         onArchive={t => deleteTenant(t.id, t.name)}
         onAddEntry={() => setShowAddTxn(true)}

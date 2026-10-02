@@ -58,8 +58,8 @@ ok("the lease button reports signed / out for signature truthfully", /l\.signatu
 
 // ── the tenant's page shows what was made and who has signed
 ok("the tenant page has a slot for the lease card, above the uploaded documents", /leaseCard,/.test(page) && page.indexOf("{leaseCard}") < page.indexOf('<DetailCard title="Documents"') && page.indexOf("{leaseCard}") > 0);
-ok("Tenants.js fills that slot for the tenant by id", /leaseCard=\{selectedTenant\?\.id \? \(\s*<TenancyDocuments key=\{selectedTenant\.id\} companyId=\{companyId\} tenantId=\{selectedTenant\.id\}/.test(tenants));
-ok("an archived tenant's documents are shown but nothing new can be started", /actions=\{selectedTenant\.archived_at \? \[\] : LEASE_ACTIONS\}/.test(tenants));
+ok("Tenants.js fills that slot for the tenant by id", /leaseCard=\{selectedTenant\?\.id \? \(<>/.test(tenants) && /<TenancyDocuments key=\{selectedTenant\.id \+ "-" \+ leaseChangesKey\} companyId=\{companyId\} tenantId=\{selectedTenant\.id\}/.test(tenants));
+ok("an archived tenant's documents are shown but nothing new can be started", /actions=\{selectedTenant\.archived_at \? \[\] : leaseActionsFor\(selectedTenant\)\}/.test(tenants) && /canAct=\{!selectedTenant\.archived_at\}/.test(tenants));
 ok("documents are found by tenant or lease RECORD, never by name", /q = leaseId \? q\.eq\("lease_id", leaseId\) : q\.eq\("tenant_id", Number\(tenantId\)\)/.test(card) && !/\.eq\("tenant_name"/.test(card) && !/ilike\("name"/.test(card));
 ok("the card is scoped to the company", /\.eq\("company_id", companyId\)\.is\("archived_at", null\)/.test(card));
 ok("a signer whose turn it is can be reminded or given the link; cancel voids the envelope", /resendSignatureRequest\(companyId, sig\.id\)/.test(card) && /voidEnvelope\(companyId, doc\.id/.test(card) && /\["sent", "viewed"\]\.includes\(s\.status\)/.test(card));

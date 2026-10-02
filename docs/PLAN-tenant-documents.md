@@ -574,3 +574,50 @@ tenant page card, and money held through to conversion.
 
 Not on production: the code (staging 34fdae1 and later) and migrations
 20261003020000, 20261003030000.
+
+---
+
+## Phase 2 as built (2026-10-02, on `staging`; database changes on TEST only)
+
+**A lease change is a row that waits for its date** (`lease_changes`,
+migration 20261003040000): `awaiting_signature` → `scheduled` → `applied`,
+or `cancelled`. The document drives it: a trigger moves the change when its
+envelope is completed or cancelled. `_apply_lease_change` changes the lease,
+the tenant (whose trigger carries rent, names and dates onto the property),
+the rent schedule and autopay together. `apply_due_lease_changes` runs when
+staff open a company, before the month's rent is posted, and is what the
+Phase 5 daily job will call.
+
+- **Renew** (tenant page and Leases tab, one dialog): new term and rent,
+  then either the Lease Renewal Agreement for signature or "already signed on
+  paper". On its day the old lease becomes `renewed` and a new lease row runs
+  the new term, carrying the deposit. The two old renewals (one moved the end
+  date; one raised the rent on the spot) are deleted.
+- **Change the rent**: an increase is refused inside the notice period
+  (company setting `rent_increase_notice_days`, default 90 **[LAW]**); a
+  decrease needs none. Creates the Rent Increase Notice, or records that
+  notice was already given. The old modal that ignored its effective date is
+  deleted.
+- **Addendum**: a person joins, a person leaves, the rent changes, or
+  wording only. Signed, or already signed on paper. Co-tenant names and
+  their emails are rebuilt together, so a removal cannot leave one person's
+  email against another's name.
+- One renewal and one rent change in flight per lease (a unique index).
+- What is scheduled is read back from the finished document, so an amount
+  edited in the builder is the amount that takes effect.
+- **Month-to-month**: a passed end date reads "Month-to-month since ..." in
+  the Leases tab and on the tenant page. Nothing ends a tenancy by itself.
+- **Available from**: on Prospects, a home whose tenant is on notice shows
+  the date it becomes free.
+- Standard templates now live in code (`src/utils/standardTemplates.js`:
+  `lease_renewal`, `lease_change_addendum`, `rent_increase_notice`) and are
+  installed into a company the first time they are missing; an existing
+  template is never overwritten. The wording is plain and needs the
+  attorney's read **[LAW]**.
+
+Tests: `tests/lease-changes.test.mjs` (84); a rolled-back database run of ten
+cases; a browser run of renewal → sign → takes effect, a refused and then a
+valid rent change, cancel, and an addendum on paper.
+
+Known gap: when a change takes effect on opening the app, a page already on
+screen shows the old figures until it is reloaded.
