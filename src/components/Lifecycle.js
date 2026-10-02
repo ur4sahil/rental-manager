@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, TextLink, EmptyState} from "../ui";
@@ -11,9 +11,10 @@ import { queueNotification } from "../utils/notifications";
 import { companyQuery, companyInsert } from "../utils/company";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, resolveAccountId, fetchAllPaged, deactivateTenantRecurring, depositReleaseState } from "../utils/accounting";
 import { recurringRentRefsForMonth, pickMoveOutRentCharge, isRentSchedule } from "../utils/paymentRules";
+import { depositStatement, depositStatementValues, depositDueBy } from "../utils/noticeRules";
 import { StatCard, Spinner, PropertySelect } from "./shared";
 
-function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
+function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm, initialAction = null, companySettings = {} }) {
   const [step, setStep] = useState(1);
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
@@ -31,6 +32,15 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   // { released, reason } for the selected tenant's deposit -- see selectTenant.
   const [depositRelease, setDepositRelease] = useState(null);
+  // Where the deposit statement goes. A tick-box "forwarding address
+  // collected" used to be the only trace of it.
+  const [forwardingAddress, setForwardingAddress] = useState("");
+  const [forwardingEmail, setForwardingEmail] = useState("");
+  // What happened, kept for the finished screen: the deposit statement is
+  // written from these figures, not re-derived from a tenant who is now archived.
+  const [summary, setSummary] = useState(null);
+  const [waiting, setWaiting] = useState(null);   // a prospect with a lease for this home
+  const preselected = useRef(false);
 
   const defaultChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review","Photos taken"];
 
@@ -62,9 +72,26 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   load();
   }, [companyId]);
 
+  // Opened from a tenant's page: start on that tenant, not a blank picker.
+  useEffect(() => {
+    const id = initialAction?.tenantId;
+    if (id == null || preselected.current || loading || tenants.length === 0) return;
+    preselected.current = true;
+    if (tenants.some(x => String(x.id) === String(id))) selectTenant(id);
+    // selectTenant is a plain function of this render; the loaded list is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAction, loading, tenants]);
+
   async function selectTenant(tenantId) {
   const t = tenants.find(x => String(x.id) === String(tenantId));
   setSelectedTenant(t || null);
+  // A tenant on notice already has a move-out date; and what is on file for
+  // where their deposit statement goes.
+  if (t) {
+    if (String(t.lease_status || "").toLowerCase() === "notice" && t.move_out) setMoveOutDate(String(t.move_out).slice(0, 10));
+    setForwardingAddress(t.forwarding_address || "");
+    setForwardingEmail(t.forwarding_email || "");
+  }
   if (!t) { setSelectedLease(null); setOutstandingBalance(0); return; }
   // Whose lease is this? By tenant_id first; a lease with no tenant_id only
   // when its name AND property both match. Never by property alone, and
@@ -215,6 +242,15 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
       else showToast("Move-out request sent for approval. Once approved, run this move-out again to complete it. Nothing was changed.", "success");
       return;
     }
+  }
+  // Where to send the deposit statement, saved while the tenant record is
+  // still live. Not worth failing a move-out over: it is also asked for on
+  // the statement itself.
+  if (forwardingAddress.trim() || forwardingEmail.trim()) {
+    const { error: fwdErr } = await supabase.from("tenants")
+      .update({ forwarding_address: forwardingAddress.trim() || null, forwarding_email: forwardingEmail.trim().toLowerCase() || null })
+      .eq("company_id", cid).eq("id", selectedTenant.id);
+    if (fwdErr) pmError("PM-3004", { raw: fwdErr, context: "save forwarding address at move-out", silent: true });
   }
   const { data: stateRes, error: stateErr } = await supabase.rpc("move_out_commit_state", {
     p_company_id: cid,
@@ -432,6 +468,21 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   addNotification("🚪", `Move-out completed: ${tName} from ${selectedLease.property}`);
   queueNotification("move_out", selectedTenant?.email || "", { tenant: tName, property: selectedLease?.property, moveOutDate: formatLocalDate(new Date()) }, cid);
 
+  // For the finished screen: the deposit statement, and whoever is waiting.
+  setSummary({
+    tenantId: selectedTenant.id, tenantName: tName, property: selectedLease.property, moveOutDate,
+    forwardingAddress: forwardingAddress.trim(), forwardingEmail: forwardingEmail.trim().toLowerCase(),
+    statement: depositStatement({ held: depositAmount, released: releasedAmount, deductions, balanceBefore: outstandingBalance, waived: arAction === "waive" }),
+  });
+  try {
+    // Someone with a lease for this home (signed, or still out) can be
+    // converted now that it is vacant. By property record when the lease has one.
+    let pq = supabase.from("prospects").select("id, name, status").eq("company_id", cid).is("archived_at", null).in("status", ["signed", "lease_sent"]);
+    pq = selectedLease.property_id != null ? pq.eq("property_id", selectedLease.property_id) : pq.eq("property", selectedLease.property);
+    const { data: next } = await pq.order("status", { ascending: false }).limit(1);
+    setWaiting((next || [])[0] || null);
+  } catch (_e) { setWaiting(null); }
+
   setCompleted(true);
   } catch (e) {
   showToast("Move-out failed: " + e.message, "error");
@@ -443,16 +494,59 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   if (loading) return <Spinner />;
 
-  if (completed) return (
-  <div className="max-w-xl mx-auto text-center py-20">
+  if (completed) {
+  const st = summary?.statement;
+  const dueBy = summary ? depositDueBy(summary.moveOutDate, companySettings.deposit_return_days || 45) : "";
+  const openStatement = () => setPage("doc_builder", {
+    templateKey: "deposit_disposition", tenantId: Number(summary.tenantId),
+    returnTo: { page: "tenants", action: { openTenantId: summary.tenantId, tenantName: summary.tenantName, panel: "detail" } },
+    values: depositStatementValues(st, { moveOutDate: summary.moveOutDate, forwardingAddress: summary.forwardingAddress, money: formatCurrency }),
+  });
+  return (
+  <div className="max-w-xl mx-auto py-12">
+  <div className="text-center">
   <div className="w-16 h-16 bg-success-50 text-success-600 rounded-xl flex items-center justify-center mx-auto mb-4">
   <span className="material-icons-outlined text-3xl">check_circle</span>
   </div>
   <PageHeader title="Move-Out Complete" />
   <p className="text-neutral-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
-  <Btn onClick={() => setPage("dashboard")}>Back to Dashboard</Btn>
+  </div>
+
+  {st && (
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-5 mb-4 text-left">
+  <h3 className="font-semibold text-neutral-800 mb-1">Security deposit statement</h3>
+  <p className="text-sm text-neutral-500 mb-3">
+    {st.released > 0 || st.items.length > 0
+      ? <>The itemised statement for {summary.tenantName} must go to their forwarding address within {companySettings.deposit_return_days || 45} days of the tenancy ending: by <strong>{fmtDate(dueBy)}</strong>.</>
+      : <>No deposit was released at this move-out. A statement can still be sent.</>}
+  </p>
+  <div className="text-sm space-y-1 mb-3">
+  <div className="flex justify-between"><span className="text-neutral-400">Deposit released</span><span className="tabular-nums">{formatCurrency(st.released)}</span></div>
+  {st.releasedEarlier > 0 && <div className="flex justify-between"><span className="text-neutral-400">Returned earlier</span><span className="tabular-nums">{formatCurrency(st.releasedEarlier)}</span></div>}
+  <div className="flex justify-between"><span className="text-neutral-400">Withheld for damage</span><span className="tabular-nums">{formatCurrency(st.totalDeductions)}</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Applied to unpaid rent and charges</span><span className="tabular-nums">{formatCurrency(st.appliedToBalance)}</span></div>
+  <div className="flex justify-between font-semibold"><span>{st.owed > 0 ? "Still owed by the tenant" : "To return to the tenant"}</span><span className="tabular-nums">{formatCurrency(st.owed > 0 ? st.owed : st.returned)}</span></div>
+  {st.writtenOff > 0 && <div className="flex justify-between"><span className="text-neutral-400">Written off</span><span className="tabular-nums">{formatCurrency(st.writtenOff)}</span></div>}
+  </div>
+  {!summary.forwardingAddress && <p className="text-xs text-warn-700 mb-3">No forwarding address was entered. The statement asks for one before it can be finalised.</p>}
+  <Btn onClick={openStatement}>Create the deposit statement</Btn>
+  </div>
+  )}
+
+  {waiting && (
+  <div className="bg-brand-50 border border-brand-200 rounded-xl p-4 mb-4 text-left">
+  <p className="text-sm text-brand-800"><strong>{waiting.name}</strong> has {waiting.status === "signed" ? "a signed lease" : "a lease out for signature"} for this home. Now that it is vacant, they can be converted to the tenant.</p>
+  <Btn size="sm" className="mt-2" onClick={() => setPage("prospects", { openProspectId: waiting.id })}>Open {waiting.name}</Btn>
+  </div>
+  )}
+
+  <div className="text-center">
+  <Btn variant="secondary" onClick={() => setPage("tenants", summary ? { openTenantId: summary.tenantId, tenantName: summary.tenantName, panel: "detail" } : null)}>{summary ? "Open " + summary.tenantName : "Back to Tenants"}</Btn>
+  <Btn variant="ghost" className="ml-2" onClick={() => setPage("dashboard")}>Dashboard</Btn>
+  </div>
   </div>
   );
+  }
 
   // Nothing to move out: the tenants query above is deliberately scoped to
   // lease_status = "active" (moving out a tenant who already left would
@@ -513,6 +607,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div>
   <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
   <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  className="w-40" />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Forwarding address</label>
+  <Textarea rows={2} value={forwardingAddress} onChange={e => setForwardingAddress(e.target.value)} placeholder="Where their deposit statement is to be mailed" />
+  <Input type="email" className="mt-2" value={forwardingEmail} onChange={e => setForwardingEmail(e.target.value)} placeholder="Email after move-out (optional)" />
+  <p className="text-xs text-neutral-400 mt-1">Can be left blank now and added on the deposit statement.</p>
   </div>
   <div className="bg-brand-50/30 rounded-xl p-4 space-y-2 text-sm">
   <div className="flex justify-between"><span className="text-neutral-400">Property</span><span className="font-medium text-neutral-700">{selectedTenant.property}</span></div>

@@ -107,6 +107,115 @@ ${SIGN_BLOCK}`,
 <p>This notice is given {{notice_days}} days before the change takes effect. Every other term of your lease stays the same.</p>
 <p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
   },
+
+  // ── Phase 3: notices and move-out ───────────────────────────────────
+  move_out_acknowledgment: {
+    name: "Acknowledgment of Notice to Vacate", category: "notices", template_type: "html", signing_mode: "none", signer_roles: [],
+    description: "Confirms in writing that the tenant has given notice, the date it was received and the move-out date. Not signed.",
+    fields: [
+      field("letter_date", "Date", "date", "Notice", "today", true),
+      field("tenant_name", "Tenant(s)", "text", "Notice", "tenant.all_names", true),
+      field("property_address", "Premises", "text", "Notice", "property.address", true),
+      field("notice_received", "Notice received on", "date", "Notice", "", true),
+      field("move_out_date", "Move-out date", "date", "Notice", "", true),
+      field("deposit_days", "Days to return the deposit", "number", "Deposit"),
+      field("sender_name", "Sent by", "text", "From", "user.name"),
+      field("landlord_name", "Landlord", "text", "From", "company.name"),
+    ],
+    field_config: {},
+    body: `${H1("ACKNOWLEDGMENT OF NOTICE TO VACATE")}
+<p><strong>Date:</strong> {{letter_date}}</p>
+<p><strong>To:</strong> {{tenant_name}}<br/>{{property_address}}</p>
+<p>We received your notice on <strong>{{notice_received}}</strong> that you will move out of the premises above. Your tenancy ends, and the premises must be vacated, on <strong>{{move_out_date}}</strong>.</p>
+<p>Rent remains due as your lease provides until that date.</p>
+<h2 style="font-size:16px;">Before you leave</h2>
+<ul><li>Return every key and access device.</li><li>Remove all belongings and leave the premises clean.</li><li>Give us your forwarding address in writing, so your security deposit accounting reaches you.</li><li>Transfer or close the utilities in your name.</li></ul>
+<h2 style="font-size:16px;">Your security deposit</h2>
+<p>You may be present when the premises are inspected; tell us in writing if you wish to be. Within {{deposit_days}} days after your tenancy ends we will send, to your forwarding address, your deposit and a written list of anything withheld from it.</p>
+<p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
+  },
+
+  notice_to_vacate: {
+    name: "Notice to Vacate", category: "notices", template_type: "html", signing_mode: "none", signer_roles: [],
+    description: "Notice from the landlord that the tenancy will not continue past a date. Not signed by the tenant.",
+    fields: [
+      field("notice_date", "Notice date", "date", "Notice", "today", true),
+      field("tenant_name", "Tenant(s)", "text", "Notice", "tenant.all_names", true),
+      field("property_address", "Premises", "text", "Notice", "property.address", true),
+      field("vacate_date", "Vacate by", "date", "Notice", "", true),
+      field("vacate_reason", "Reason (optional)", "textarea", "Notice"),
+      field("sender_name", "Sent by", "text", "From", "user.name"),
+      field("landlord_name", "Landlord", "text", "From", "company.name"),
+    ],
+    field_config: {},
+    body: `${H1("NOTICE TO VACATE")}
+<p><strong>Date:</strong> {{notice_date}}</p>
+<p><strong>To:</strong> {{tenant_name}}<br/>{{property_address}}</p>
+<p>This is written notice that your tenancy at the premises above will end on <strong>{{vacate_date}}</strong>. You are required to vacate and surrender possession of the premises on or before that date.</p>
+<p>{{vacate_reason}}</p>
+<p>Rent remains due as your lease provides until that date. Please return every key, remove all belongings, and give us your forwarding address in writing for your security deposit accounting.</p>
+<p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
+  },
+
+  late_fee_notice: {
+    name: "Late Rent Notice", category: "notices", template_type: "html", signing_mode: "none", signer_roles: [],
+    description: "Tells the tenant that rent is past due, what is owed and any late charge. Not signed.",
+    fields: [
+      field("notice_date", "Notice date", "date", "Notice", "today", true),
+      field("tenant_name", "Tenant(s)", "text", "Notice", "tenant.all_names", true),
+      field("property_address", "Premises", "text", "Notice", "property.address", true),
+      field("total_due", "Total now due", "currency", "Amounts", "tenant.balance", true),
+      field("late_fee_amount", "Late charge included", "currency", "Amounts"),
+      field("rent_period", "For the period", "text", "Amounts"),
+      field("sender_name", "Sent by", "text", "From", "user.name"),
+      field("landlord_name", "Landlord", "text", "From", "company.name"),
+    ],
+    field_config: {},
+    body: `${H1("LATE RENT NOTICE")}
+<p><strong>Date:</strong> {{notice_date}}</p>
+<p><strong>To:</strong> {{tenant_name}}<br/>{{property_address}}</p>
+<p>Our records show that rent for <strong>{{rent_period}}</strong> has not been paid in full. The total now due is <strong>{{total_due}}</strong>, which includes a late charge of {{late_fee_amount}} as your lease provides.</p>
+<p>Please pay the total due now. If you have already paid, or believe this is in error, contact us right away.</p>
+<p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
+  },
+
+  deposit_disposition: {
+    name: "Security Deposit Statement", category: "notices", template_type: "html", signing_mode: "none", signer_roles: [],
+    description: "The itemised accounting of a security deposit after move-out: what was held, what was withheld and why, and what is returned or still owed.",
+    fields: [
+      field("letter_date", "Date", "date", "Statement", "today", true),
+      field("tenant_name", "Former tenant(s)", "text", "Statement", "tenant.all_names", true),
+      field("forwarding_address", "Sent to (forwarding address)", "textarea", "Statement", "", true),
+      field("property_address", "Premises", "text", "Statement", "property.address", true),
+      field("move_out_date", "Tenancy ended", "date", "Statement", "", true),
+      field("deposit_held", "Security deposit held", "currency", "Amounts", "", true),
+      field("deposit_interest", "Interest on the deposit", "currency", "Amounts"),
+      field("deductions_list", "Withheld: each item, its cost", "textarea", "Amounts"),
+      field("total_deductions", "Total withheld", "currency", "Amounts"),
+      field("other_owed", "Unpaid rent and charges applied", "currency", "Amounts"),
+      field("amount_returned", "Amount returned to you", "currency", "Amounts"),
+      field("balance_owed", "Balance you still owe", "currency", "Amounts"),
+      field("sender_name", "Sent by", "text", "From", "user.name"),
+      field("landlord_name", "Landlord", "text", "From", "company.name"),
+    ],
+    field_config: {},
+    body: `${H1("SECURITY DEPOSIT STATEMENT")}
+<p><strong>Date:</strong> {{letter_date}}</p>
+<p><strong>To:</strong> {{tenant_name}}<br/>{{forwarding_address}}</p>
+<p><strong>Premises:</strong> {{property_address}}<br/><strong>Tenancy ended:</strong> {{move_out_date}}</p>
+<p>This is the written accounting of your security deposit.</p>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;">
+<tr><td style="padding:6px 0;border-bottom:1px solid #ddd;">Security deposit held</td><td style="padding:6px 0;border-bottom:1px solid #ddd;text-align:right;">{{deposit_held}}</td></tr>
+<tr><td style="padding:6px 0;border-bottom:1px solid #ddd;">Interest</td><td style="padding:6px 0;border-bottom:1px solid #ddd;text-align:right;">{{deposit_interest}}</td></tr>
+<tr><td style="padding:6px 0;border-bottom:1px solid #ddd;">Withheld for damage (itemised below)</td><td style="padding:6px 0;border-bottom:1px solid #ddd;text-align:right;">{{total_deductions}}</td></tr>
+<tr><td style="padding:6px 0;border-bottom:1px solid #ddd;">Applied to unpaid rent and charges</td><td style="padding:6px 0;border-bottom:1px solid #ddd;text-align:right;">{{other_owed}}</td></tr>
+<tr><td style="padding:6px 0;"><strong>Returned to you</strong></td><td style="padding:6px 0;text-align:right;"><strong>{{amount_returned}}</strong></td></tr>
+<tr><td style="padding:6px 0;"><strong>Balance you still owe</strong></td><td style="padding:6px 0;text-align:right;"><strong>{{balance_owed}}</strong></td></tr>
+</table>
+<h2 style="font-size:16px;">Items withheld, and the cost actually incurred</h2>
+<p>{{deductions_list}}</p>
+<p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
+  },
 };
 
 // The stable key decides which kind of document a template makes; see

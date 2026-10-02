@@ -150,6 +150,13 @@ export default function TenantPage({
               </span>
             </DetailRow>
             {standing && <DetailRow label="Status" tone={standing.expired ? "warn" : undefined}>{standing.text}</DetailRow>}
+            {/* On notice: who gave it and when are the two facts a dispute turns on. */}
+            {String(tenant.lease_status || "").toLowerCase() === "notice" && (
+              <DetailRow label="Notice" tone="warn">
+                {tenant.notice_given_on ? `${tenant.notice_given_by === "landlord" ? "Given by you" : "Given by tenant"} ${fmtDate(tenant.notice_given_on)}` : "On notice"}
+                {tenant.move_out ? ` · out ${fmtDate(tenant.move_out)}` : ""}
+              </DetailRow>
+            )}
             <DetailRow label="Rent" tone={rentSet ? undefined : "warn"}>
               {rentSet ? formatCurrency(tenant.rent) : "Not set"}
             </DetailRow>

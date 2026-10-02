@@ -621,3 +621,42 @@ valid rent change, cancel, and an addendum on paper.
 
 Known gap: when a change takes effect on opening the app, a page already on
 screen shows the old figures until it is reloaded.
+
+---
+
+## Phase 3 as built (2026-10-02, on `staging`; database change on TEST only)
+
+- **Notice to vacate** (tenant page, "New…" and the lease drawer):
+  `NoticeDialog` records WHO gave notice, WHEN, and the move-out date on the
+  tenant (`notice_given_on`, `notice_given_by`; migration 20261003050000),
+  then writes it up: an Acknowledgment of Notice to Vacate when the tenant
+  gave it, a Notice to Vacate when the landlord did. A notice shorter than
+  the company's `termination_notice_days` is recorded and flagged, never
+  refused. The lease stays active; only the move-out ends it. The old
+  30/60-day buttons that set a status and produced nothing are deleted.
+- **Late rent notice**: offered on the tenant page when something is owed,
+  filled in with the amount. Sending one automatically after a late fee posts
+  is Phase 5.
+- **Served**: a notice can be marked served, with the date and how (email,
+  by hand, first-class or certified mail, posted). Shown on the document.
+- **Move-out**: opened from a tenant's page the wizard starts on that tenant
+  and on the move-out date from their notice. It asks for the forwarding
+  address (saved on the tenant before they are archived).
+- **Security Deposit Statement**: the finished screen shows the accounting
+  (released, withheld for damage, applied to unpaid rent, returned or still
+  owed) and the date the statement is due, and opens the statement filled in
+  for the former tenant. The figures are the ledger's own arithmetic
+  (`depositStatement`): the browser test checks the ledger ends at exactly
+  what the statement says is returned.
+- **Waiting prospect (G9)**: the finished screen names a prospect with a
+  lease for the vacated home and links to them.
+- New standard templates: `move_out_acknowledgment`, `notice_to_vacate`,
+  `late_fee_notice`, `deposit_disposition` (installed only when a company has
+  no template under that key).
+
+For the attorney **[LAW]**: the statement's deadline uses the company's
+`deposit_return_days`, whose default is 30; Maryland's figure is 45. Interest
+on the deposit is a field on the statement but is not calculated.
+
+Tests: `tests/notices.test.mjs` (56) and a browser run of notice →
+acknowledgment → served → move-out → statement.

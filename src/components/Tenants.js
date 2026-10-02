@@ -15,6 +15,8 @@ import { Badge, Spinner, Modal, PropertySelect, DocUploadModal, generatePaymentR
 import { StartTenancyModal } from "./StartTenancyModal";
 import { TenancyDocuments } from "./TenancyDocuments";
 import { LeaseChangeDialog, LeaseChangesCard } from "./LeaseChanges";
+import { NoticeDialog } from "./Notices";
+import { rentPeriodLabel } from "../utils/noticeRules";
 import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 import { queueNotification } from "../utils/notifications";
 import { pathForPage, subPathFor } from "../utils/routes";
@@ -140,6 +142,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [selectedTenants, setSelectedTenants] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
   const [leaseModal, setLeaseModal] = useState(null);
+  const [noticeFor, setNoticeFor] = useState(null);             // the tenant a notice to vacate is being recorded for
   const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", tenant }
   const [leaseChangesKey, setLeaseChangesKey] = useState(0);     // bump to reload the tenant page's lease-changes card
   const [tenantDocs, setTenantDocs] = useState([]);
@@ -1103,26 +1106,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // else again. Both are now LeaseChangeDialog: written up, signed, and in
   // effect on its date.
 
-  async function generateMoveOutNotice(days) {
-  if (!guardSubmit("generateMoveOutNotice")) return;
-  try {
-  if (!days || !selectedTenant?.id) return;
-  const noticeDate = new Date();
-  noticeDate.setDate(noticeDate.getDate() + parseInt(days));
-  const moveOutDate = formatLocalDate(noticeDate);
-  const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", selectedTenant.id);
-  if (error) { pmError("PM-3006", { raw: error, context: "generate move-out notice" }); return; }
-  // The LEASE is deliberately left "active": notice does not end the
-  // tenancy, the move-out does. This used to write status:"notice" to
-  // leases, which leases_status_check forbids (draft|active|expired|
-  // renewed|terminated), so every notice surfaced a "Lease status update
-  // failed" error. Lifecycle.js's eviction filing made the same change.
-  addNotification("\u{1F4CB}", `${days}-day move-out notice generated for ${selectedTenant.name}`);
-  logAudit("update", "tenants", `${days}-day notice issued for ${selectedTenant.name}`, selectedTenant.id, userProfile?.email, userRole, companyId);
-  setLeaseModal(null);
-  fetchTenants();
-  } finally { guardRelease("generateMoveOutNotice"); }
-  }
+  // Notice to vacate is recorded by NoticeDialog (who gave it, when, and the
+  // move-out date) and then written up. This used to be two 30/60-day
+  // buttons that set a status and produced nothing.
 
   function closePanel() {
   setActivePanel(null);
@@ -1140,6 +1126,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     { label: "Renew the lease…", onClick: () => setLeaseChangeFor({ kind: "renewal", tenant: t }) },
     { label: "Change the rent…", onClick: () => setLeaseChangeFor({ kind: "rent", tenant: t }) },
     { label: "Addendum…", onClick: () => setLeaseChangeFor({ kind: "addendum", tenant: t }) },
+    { label: "Notice to vacate…", onClick: () => setNoticeFor(t) },
+    // Only when something is owed: the notice states the amount due.
+    ...(safeNum(t.balance) > 0 ? [{ label: "Late rent notice", onClick: () => setPage("doc_builder", {
+      templateKey: "late_fee_notice", tenantId: Number(t.id), returnTo: tenantReturnTo(t),
+      values: { total_due: formatCurrency(t.balance), rent_period: rentPeriodLabel(formatLocalDate(new Date())) },
+    }) }] : []),
   ];
   const tenantReturnTo = (t) => ({ page: "tenants", action: { openTenantId: t.id, tenantName: t.name, panel: "detail" } });
   function createLeaseFor(tenant) {
@@ -1170,7 +1162,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       });
       return;
     }
-    setPage("moveout");
+    // Carried through: the wizard opens on this tenant instead of a blank picker.
+    setPage("moveout", { tenantId: t.id });
   }
 
   async function pageSetDocType(d, nextType) {
@@ -1258,6 +1251,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     return (<>
   {/* Renewal / rent change / addendum. Here, not in the list's markup: this
       fragment is the one piece both the list and the tenant page render. */}
+  {noticeFor && (
+    <NoticeDialog tenant={noticeFor} companyId={companyId} companySettings={companySettings} userEmail={userProfile?.email || ""} userRole={userRole}
+      setPage={setPage} returnTo={tenantReturnTo(noticeFor)} showToast={showToast} onClose={() => setNoticeFor(null)}
+      onSaved={(t) => { fetchTenants(); if (selectedTenant && String(selectedTenant.id) === String(t.id)) setSelectedTenant(prev => ({ ...prev, ...t })); }} />
+  )}
   {leaseChangeFor && (
     <LeaseChangeDialog kind={leaseChangeFor.kind} tenant={leaseChangeFor.tenant} companyId={companyId} companySettings={companySettings}
       userEmail={userProfile?.email || ""} userRole={userRole} setPage={setPage} returnTo={tenantReturnTo(leaseChangeFor.tenant)}
@@ -1304,19 +1302,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   </div>
-  {leaseModal === "notice" && (
-  <div className="bg-notice-50 rounded-xl p-4 mb-3 border border-notice-100">
-  <div className="text-sm font-semibold text-notice-700 mb-2">Select Notice Period</div>
-  <div className="flex gap-2 mb-2">
-  <FilterPill tone="notice" active={leaseInput === "30"} onClick={() => setLeaseInput("30")} className="flex-1 py-2 text-sm">30 Days</FilterPill>
-  <FilterPill tone="notice" active={leaseInput === "60"} onClick={() => setLeaseInput("60")} className="flex-1 py-2 text-sm">60 Days</FilterPill>
-  </div>
-  <div className="flex gap-2">
-  <Btn variant="warning-fill" size="sm" onClick={() => generateMoveOutNotice(leaseInput)}>Generate Notice</Btn>
-  <Btn variant="ghost" size="sm" onClick={() => setLeaseModal(null)}>Cancel</Btn>
-  </div>
-  </div>
-  )}
   <div className="space-y-2">
   <button onClick={() => createLeaseFor(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
@@ -1327,9 +1312,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </button>
   {[
   { label: "\u{1F504} Renew Lease", desc: "New term and rent, signed, in effect on its date", change: "renewal" },
-  { label: "\u{1F4CB} Generate Move-Out Notice", desc: "30/60 day notice", modal: "notice" },
+  { label: "\u{1F4CB} Notice to vacate", desc: "Record who gave notice and when, then write it up", notice: true },
   ].map(item => (
-  <button key={item.label} onClick={() => { if (item.change) { setLeaseChangeFor({ kind: item.change, tenant: selectedTenant }); return; } setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-lg px-4 py-3 text-left">
+  <button key={item.label} onClick={() => { if (item.change) { setLeaseChangeFor({ kind: item.change, tenant: selectedTenant }); return; } if (item.notice) { setNoticeFor(selectedTenant); return; } }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-lg px-4 py-3 text-left">
   <div>
   <div className="text-sm font-medium text-neutral-800">{item.label}</div>
   <div className="text-xs text-neutral-400">{item.desc}</div>
@@ -1847,7 +1832,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const moveOutDate = formatLocalDate(noticeDate);
   let count = 0;
   for (const tid of selectedTenants) {
-  const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", tid);
+  const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate, notice_given_on: formatLocalDate(new Date()), notice_given_by: "landlord" }).eq("company_id", companyId).eq("id", tid);
   if (!error) count++;
   }
   addNotification("\u{1F4CB}", `${days}-day notice sent to ${count} tenant(s)`);

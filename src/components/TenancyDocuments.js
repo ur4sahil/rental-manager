@@ -24,6 +24,11 @@ export const DOC_KIND_LABEL = {
   notice_of_intent: "Notice of intent", ftpr_complaint: "Court complaint", court_other: "Court form",
   move_out_statement: "Move-out statement", deposit_disposition: "Deposit letter", letter: "Letter", other: "Document",
 };
+// Documents that are SERVED on a tenant rather than signed by them. How and
+// when one was served is a fact worth recording: it is what a court asks.
+export const SERVED_KINDS = ["notice_to_vacate", "rent_increase_notice", "late_notice", "notice_of_intent", "move_out_acknowledgment", "deposit_disposition"];
+export const SERVE_METHODS = [["email", "Email"], ["hand", "By hand"], ["mail", "First-class mail"], ["certified", "Certified mail"], ["posted", "Posted on the door"]];
+const SERVE_METHOD_LABEL = Object.fromEntries(SERVE_METHODS);
 const SIG_LABEL = { pending: "waiting their turn", sent: "emailed", viewed: "opened", signed: "signed", declined: "declined", voided: "cancelled" };
 
 /** Where a generated document stands, in words. Exported for tests and for badges elsewhere. */
@@ -35,7 +40,7 @@ export function docStanding(doc, signers = []) {
   if (st === "out_for_signature") return { key: "out", label: live.length ? `Out for signature · ${done} of ${live.length} signed` : "Out for signature", tone: "warn" };
   if (st === "voided") return { key: "cancelled", label: "Cancelled", tone: "neutral" };
   if (st === "declined") return { key: "declined", label: "Declined", tone: "danger" };
-  if (doc?.served_at) return { key: "served", label: "Served " + fmtDate(doc.served_at), tone: "positive" };
+  if (doc?.served_at) return { key: "served", label: "Served " + fmtDate(String(doc.served_at).slice(0, 10)) + (doc.served_method ? " (" + (SERVE_METHOD_LABEL[doc.served_method] || doc.served_method).toLowerCase() + ")" : ""), tone: "positive" };
   if (doc?.sent_at) return { key: "sent", label: "Emailed " + fmtDate(doc.sent_at), tone: "neutral" };
   return { key: "draft", label: "Not sent", tone: "neutral" };
 }
@@ -46,6 +51,7 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
   const [sigs, setSigs] = useState([]);
   const [busy, setBusy] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [serving, setServing] = useState(null);   // { doc, date, method } while recording how a notice was served
 
   // A caller's inline array is a new object every render; key on its contents.
   const kindsKey = (kinds || []).join(",");
@@ -106,6 +112,17 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
     showToast("Signature request cancelled", "success");
     changed();
   }
+  async function saveServed() {
+    if (!serving?.date) { showToast("Enter the date it was served.", "error"); return; }
+    setBusy("Saving…");
+    const { error } = await supabase.from("doc_generated").update({ served_at: serving.date + "T12:00:00Z", served_method: serving.method })
+      .eq("company_id", companyId).eq("id", serving.doc.id);
+    setBusy("");
+    if (error) { pmError("PM-7003", { raw: error, context: "record notice served" }); return; }
+    showToast("Recorded: served " + fmtDate(serving.date) + ".", "success");
+    setServing(null);
+    changed();
+  }
   async function openPdf(path) {
     const url = await getSignedUrl("documents", path);
     if (!url) { showToast("That file could not be opened.", "error"); return; }
@@ -153,7 +170,21 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
               {out && canAct && <TextLink tone="danger" size="xs" onClick={() => cancel(d)}>Cancel request</TextLink>}
               {d.envelope_status === "completed" && d.signed_pdf_path && <TextLink tone="brand" size="xs" onClick={() => openPdf(d.signed_pdf_path)}>Signed copy</TextLink>}
               {d.envelope_status !== "completed" && !out && d.pdf_output_path && <TextLink tone="brand" size="xs" onClick={() => openPdf(d.pdf_output_path)}>PDF</TextLink>}
+              {canAct && SERVED_KINDS.includes(d.doc_kind) && !out && d.envelope_status !== "voided" && (
+                <TextLink tone="neutral" size="xs" onClick={() => setServing({ doc: d, date: d.served_at ? String(d.served_at).slice(0, 10) : new Date().toISOString().slice(0, 10), method: d.served_method || "email" })}>{d.served_at ? "Served: edit" : "Mark served"}</TextLink>
+              )}
             </div>
+            {serving?.doc.id === d.id && (
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                <span className="text-neutral-500">Served on</span>
+                <input type="date" aria-label="Date served" className="border border-neutral-200 rounded-md px-2 py-1" value={serving.date} onChange={e => setServing({ ...serving, date: e.target.value })} />
+                <select aria-label="How it was served" className="border border-neutral-200 rounded-md px-2 py-1" value={serving.method} onChange={e => setServing({ ...serving, method: e.target.value })}>
+                  {SERVE_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <TextLink tone="brand" size="xs" onClick={saveServed}>Save</TextLink>
+                <TextLink tone="neutral" size="xs" onClick={() => setServing(null)}>Cancel</TextLink>
+              </div>
+            )}
             {out && signers.filter(s => s.status !== "voided").map(s => (
               <div key={s.id} className="flex items-center gap-2 text-xs mt-1.5 pl-1">
                 <span className={"material-icons-outlined text-sm " + (s.status === "signed" ? "text-positive-600" : "text-neutral-300")}>{s.status === "signed" ? "check_circle" : "radio_button_unchecked"}</span>
