@@ -1,18 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useEditor, useEditorState, EditorContent } from "@tiptap/react";
-import { StarterKit } from "@tiptap/starter-kit";
-import { Underline } from "@tiptap/extension-underline";
-import { Link } from "@tiptap/extension-link";
 import { Placeholder } from "@tiptap/extension-placeholder";
-// TipTap v3 consolidates the Table extensions into one package — use named imports.
-import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { Extension } from "@tiptap/react";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { TextAlign } from "@tiptap/extension-text-align";
-import { TextStyle, FontFamily, FontSize } from "@tiptap/extension-text-style";
-import { PaginationPlus } from "tiptap-pagination-plus";
 import { WORD_SINGLE_LINE } from "../utils/docxImport";
+import { DEFAULT_PAGE_SETUP, PAGE_GUTTER, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, pageGeometry, furnitureHeight, pageSlot, docExtensions, settlePagination } from "../utils/docKit";
 
 // Merge tags used to sit in the page as raw text -- a letter reading
 // "Dear {{recipient_name}}, {{letter_body}}" looks like source code, not
@@ -52,118 +45,22 @@ const MergeTagHighlight = Extension.create({
   },
 });
 
-// Paragraph-level formatting a word processor has and TipTap's schema
-// doesn't: line spacing, first-line indent, left/right indent, space
-// before/after. Stored as inline style on the <p>/<h*>, so the saved body
-// is still plain HTML and the merge + sanitize pipeline needs no changes.
-const PARAGRAPH_STYLES = [
-  ["lineHeight", "line-height"],
-  ["textIndent", "text-indent"],
-  ["marginLeft", "margin-left"],
-  ["marginRight", "margin-right"],
-  ["marginTop", "margin-top"],
-  ["marginBottom", "margin-bottom"],
-];
-const ParagraphFormat = Extension.create({
-  name: "paragraphFormat",
-  addGlobalAttributes() {
-    return [{
-      types: ["paragraph", "heading"],
-      attributes: Object.fromEntries(PARAGRAPH_STYLES.map(([name, css]) => [name, {
-        default: null,
-        parseHTML: el => el.style.getPropertyValue(css) || null,
-        renderHTML: attrs => (attrs[name] ? { style: `${css}: ${attrs[name]}` } : {}),
-      }])),
-    }];
-  },
-  addCommands() {
-    return {
-      setLineHeight: value => ({ commands }) =>
-        ["paragraph", "heading"].map(type => commands.updateAttributes(type, { lineHeight: value })).some(Boolean),
-    };
-  },
-});
-
-// US Letter at 96px/in with 1in margins -- the page Word starts with. An
-// imported document brings its own (docxImport reads them from the file).
-const DEFAULT_PAGE_SETUP = {
-  headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}",
-  pageWidth: 816, pageHeight: 1056,
-  marginTop: 96, marginBottom: 96, marginLeft: 96, marginRight: 96,
-  headerDistance: 48, footerDistance: 48,
-};
-// Word's margins measure to the BODY text; the header and footer sit
-// inside them, a set distance from the paper's edge. The add-on instead
-// stacks edge-margin + header + gap. So: its margin = Word's distance,
-// and the gap is whatever is left of Word's margin once the header or
-// footer has taken its height. Get this wrong by a few px and every page
-// holds a different number of lines than the Word original.
-function pageGeometry(setup, headerHeight, footerHeight) {
-  const num = (v, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : fallback);
-  const d = DEFAULT_PAGE_SETUP;
-  const top = num(setup.marginTop, d.marginTop), bottom = num(setup.marginBottom, d.marginBottom);
-  const headerDistance = Math.min(num(setup.headerDistance, d.headerDistance), top);
-  const footerDistance = Math.min(num(setup.footerDistance, d.footerDistance), bottom);
-  return {
-    // +2: the sheet has a 1px border each side and is border-box, so
-    // without it the text column is 2px narrower than Word's and lines
-    // wrap a word early.
-    pageWidth: num(setup.pageWidth, d.pageWidth) + 2,
-    pageHeight: num(setup.pageHeight, d.pageHeight),
-    marginLeft: num(setup.marginLeft, d.marginLeft), marginRight: num(setup.marginRight, d.marginRight),
-    marginTop: headerDistance, contentMarginTop: Math.max(0, top - headerDistance - headerHeight),
-    // lineSlack: see docxImport -- Word lets the last line's spacing hang
-    // into the bottom margin, so the body is that much deeper than it says.
-    marginBottom: footerDistance, contentMarginBottom: Math.max(0, bottom - footerDistance - footerHeight - num(setup.lineSlack, 0)),
-  };
-}
-// Header/footer text is set at a fixed 20px a line (index.css), so its
-// height is known from the text alone. Measuring it off the DOM instead
-// raced the add-on's own re-layout and came back wrong.
-const FURNITURE_LINE_PX = 20;
-const furnitureHeight = (...texts) => FURNITURE_LINE_PX * Math.max(0, ...texts.map(t => (t ? String(t).split("\n").length : 0)));
-const PAGE_GUTTER = "#f1f2f4";
-// The add-on re-counts pages from a requestAnimationFrame callback and
-// reads editor.view.dom while doing it. If the editor has been unmounted
-// in between (closing the template, React remounting it), TipTap's view
-// stand-in throws "editor view is not available" out of that callback --
-// uncaught, so it lands in error tracking every time. Nothing to
-// paginate without a view: keep the decorations as they were.
-const Pagination = PaginationPlus.extend({
-  addProseMirrorPlugins() {
-    const plugins = this.parent?.() || [];
-    const { editor } = this;
-    const mounted = () => { try { return !!editor.view.dom; } catch { return false; } };
-    plugins.forEach((plugin) => {
-      const state = plugin.spec.state;
-      if (!state || !state.apply) return;
-      const apply = state.apply;
-      state.apply = (tr, value, oldState, newState) => (mounted() ? apply(tr, value, oldState, newState) : value);
-    });
-    return plugins;
-  },
-});
-
-// Header/footer text is typed by the user and ends up as innerHTML in the
-// page furniture, so escape it. Line breaks are kept ("____\nLandlord").
-const pageSlot = (text) => {
-  if (!text) return "";
-  const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return '<span style="white-space:pre-line">' + esc + "</span>";
-};
-
+// Only faces the app bundles and embeds in the PDF (the Liberation
+// family, metric-identical to these three). Offering Georgia or Calibri
+// here would look right on screen and then print in a different font.
 const FONT_OPTIONS = [
-  ["'Times New Roman', Times, serif", "Times New Roman"],
-  ["Georgia, serif", "Georgia"],
-  ["Arial, Helvetica, sans-serif", "Arial"],
-  ["Calibri, Arial, sans-serif", "Calibri"],
-  ["'Courier New', monospace", "Courier New"],
+  ["'Liberation Serif', 'Times New Roman', Times, serif", "Times New Roman"],
+  ["'Liberation Sans', Arial, Helvetica, sans-serif", "Arial"],
+  ["'Liberation Mono', 'Courier New', monospace", "Courier New"],
 ];
 const SIZE_OPTIONS = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"];
 // Word's spacing names -> the CSS multiple that reproduces them.
 const SPACING_OPTIONS = [["Single", 1], ["1.15", 1.15], ["1.5", 1.5], ["Double", 2]]
   .map(([label, mult]) => [String(+(mult * WORD_SINGLE_LINE).toFixed(3)), label]);
-const fontKey = (v) => String(v || "").replace(/['"]/g, "").replace(/\s*,\s*/g, ",").toLowerCase();
+// Two stacks are the same choice if they lead with the same family
+// ("Liberation Serif" from a Word import vs. the toolbar's Times stack).
+const FONT_ALIASES = { "times new roman": "liberation serif", times: "liberation serif", arial: "liberation sans", helvetica: "liberation sans", "courier new": "liberation mono" };
+const fontKey = (v) => { const first = String(v || "").split(",")[0].replace(/['"]/g, "").trim().toLowerCase(); return FONT_ALIASES[first] || first; };
 
 // Conservative paste-cleaner for HTML that came out of Word, Outlook,
 // Google Docs, or Apple Pages. None of those produce HTML the rest of
@@ -350,39 +247,20 @@ function ToolbarInner({ editor, compact }) {
   );
 }
 
-export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false, pageSetup = null }) {
+export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false, pageSetup = null, readOnly = false }) {
   const [dragOver, setDragOver] = useState(false);
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const setupKey = JSON.stringify(setup);
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder }),
-      MergeTagHighlight,
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-      TextStyle,
-      FontFamily,
-      FontSize,
-      ParagraphFormat,
-      // Real pages only on the paper canvas (the template editor). The
-      // add-on never touches the document: it floats page furniture into
-      // the view and the text wraps around it, so the saved body is the
-      // same HTML with or without it.
-      ...(paperCanvas ? [Pagination.configure({
-        ...pageGeometry(setup, furnitureHeight(setup.headerLeft, setup.headerRight), furnitureHeight(setup.footerLeft, setup.footerRight)),
-        pageGap: 24,
-        pageBreakBackground: PAGE_GUTTER,
-        pageGapBorderColor: "#d4d4d8",
-        headerLeft: pageSlot(setup.headerLeft), headerRight: pageSlot(setup.headerRight),
-        footerLeft: pageSlot(setup.footerLeft), footerRight: pageSlot(setup.footerRight),
-      })] : []),
-    ],
+    extensions: docExtensions({
+      // Real pages only on the paper canvas (template editor, previews).
+      paged: paperCanvas,
+      setup,
+      // A read-only view shows the finished document: no "start typing"
+      // hint, and any {{tag}} left unfilled should read as itself.
+      extra: readOnly ? [] : [Placeholder.configure({ placeholder }), MergeTagHighlight],
+    }),
+    editable: !readOnly,
     content: value,
     onUpdate: ({ editor: ed }) => { if (onChange) onChange(ed.getHTML()); },
     editorProps: {
@@ -396,6 +274,19 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   });
 
   useEffect(() => () => { if (editor) editor.destroy(); }, [editor]);
+
+  // A read-only view is driven by its `value`: the live preview re-merges
+  // the document on every keystroke in the form beside it.
+  // Compared against the last value APPLIED, not the editor's HTML: the
+  // editor normalises markup, so the two never match and every unrelated
+  // re-render would reload (and re-paginate) the whole document.
+  const appliedValue = useRef(value);
+  useEffect(() => {
+    if (!editor || !readOnly || editor.isDestroyed) return;
+    if (appliedValue.current === value) return;
+    appliedValue.current = value;
+    editor.commands.setContent(value || "", { emitUpdate: false });
+  }, [editor, readOnly, value]);
 
   // Hand the editor instance up to the parent so it can mount the
   // standalone RichTextToolbar elsewhere (e.g. in the ribbon).
@@ -422,31 +313,15 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, paperCanvas, headerLeft, headerRight, footerLeft, footerRight, geometryKey]);
 
-  // The add-on only re-counts pages when the editor state changes. Its
-  // first count runs before the sheet has its width, so a 16-page lease
-  // sat at 5 pages until something unrelated nudged the editor seconds
-  // later. Nudge it ourselves once layout (and the fonts) have settled,
-  // and again whenever the sheet is re-scaled.
+  // Settle the page count once layout (and the fonts) are in, and again
+  // whenever the sheet is re-scaled. See settlePagination.
   const [zoom, setZoom] = useState(1);
   const paneRef = useRef(null);
   useEffect(() => {
     if (!editor || !paperCanvas) return undefined;
-    // One nudge is one step of the add-on's count (it adds or drops pages
-    // a step at a time), so keep going until the count holds still.
-    let raf = 0, last = -1, stable = 0, tries = 0;
-    const step = () => {
-      let dom;
-      try { if (editor.isDestroyed) return; dom = editor.view.dom; } catch { return; }
-      editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
-      const count = dom.querySelectorAll(".rm-page-break").length;
-      stable = count === last ? stable + 1 : 0;
-      last = count;
-      if (stable < 4 && ++tries < 40) raf = requestAnimationFrame(step);
-    };
-    const settle = () => { cancelAnimationFrame(raf); last = -1; stable = 0; tries = 0; raf = requestAnimationFrame(step); };
-    settle();
-    if (document.fonts?.ready) document.fonts.ready.then(settle).catch(() => {});
-    return () => cancelAnimationFrame(raf);
+    let run = settlePagination(editor);
+    if (document.fonts?.ready) document.fonts.ready.then(() => { run.cancel(); run = settlePagination(editor); }).catch(() => {});
+    return () => run.cancel();
   }, [editor, paperCanvas, zoom]);
 
   // Fit the sheet to the pane. A US Letter page is 816px wide and the pane
@@ -519,12 +394,12 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   if (paperCanvas) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        {!hideToolbar && (
+        {!hideToolbar && !readOnly && (
           <div className="px-2 py-1.5 border-b border-neutral-100 bg-white">
             <RichTextToolbar editor={editor} compact />
           </div>
         )}
-        {mergeFields.length > 0 && (
+        {!readOnly && mergeFields.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap px-3 py-1.5 border-b border-neutral-100 bg-white">
             <span className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
             {mergeFields.filter(f => f.name).map(f => (
@@ -558,9 +433,9 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => editor.chain().focus().run()}
+          onClick={() => { if (!readOnly) editor.chain().focus().run(); }}
         >
-          <div className="mx-auto w-max" style={{ fontFamily: "Georgia, serif", zoom }} onClick={e => e.stopPropagation()}>
+          <div className="mx-auto w-max" style={{ fontFamily: DOC_FONT_FAMILY, fontSize: DOC_FONT_SIZE, lineHeight: DOC_LINE_HEIGHT, zoom }} onClick={e => e.stopPropagation()}>
             <EditorContent editor={editor} className="paged-editor prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:bg-white [&_.ProseMirror]:text-neutral-900 [&_.ProseMirror]:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto" />
           </div>
         </div>

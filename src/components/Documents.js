@@ -10,6 +10,9 @@ import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
 import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../utils/housy";
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
+import { attachPageSetup, splitPageSetup } from "../utils/docKit";
+import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
+import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -358,6 +361,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Phase 5 — template editor 3-col layout
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
   const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
+  const [derivedDraft, setDerivedDraft] = useState({ name: "", from: "", format: "words_whole" }); // "Text made from a field" row being added
   const [importingDocx, setImportingDocx] = useState(false);  // disable the "Import .docx" button while mammoth runs
   // Landing-screen UX: a fresh template starts on a 3-choice splash
   // (Import .docx → HTML mode, Upload .pdf → PDF Overlay mode, Start
@@ -401,40 +405,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const startDrag = () => { isDragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; };
 
   // ---- Advanced field helpers ----
-  function evaluateFormula(formula, values) {
-  try {
-  const expr = formula.replace(/[a-z_][a-z0-9_]*/gi, (m) => {
-  const v = parseFloat(values[m]);
-  return isNaN(v) ? "0" : String(v);
-  });
-  if (!/^[\d\s+\-*/().]+$/.test(expr)) return 0;
-  // Safe math parser — no eval/Function
-  const tokens = expr.match(/(\d+\.?\d*|[+\-*/()])/g) || [];
-  let pos = 0;
-  function parseExpr() {
-    let result = parseTerm();
-    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
-      const op = tokens[pos++]; const right = parseTerm();
-      result = op === "+" ? result + right : result - right;
-    }
-    return result;
-  }
-  function parseTerm() {
-    let result = parseFactor();
-    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
-      const op = tokens[pos++]; const right = parseFactor();
-      result = op === "*" ? result * right : (right !== 0 ? result / right : 0);
-    }
-    return result;
-  }
-  function parseFactor() {
-    if (tokens[pos] === "(") { pos++; const r = parseExpr(); if (tokens[pos] === ")") pos++; return r; }
-    if (tokens[pos] === "-") { pos++; return -parseFactor(); }
-    return parseFloat(tokens[pos++]) || 0;
-  }
-  return parseExpr() || 0;
-  } catch { return 0; }
-  }
+  // Formulas and derived text live in utils/docFields.js (tested on their own).
 
   function isFieldVisible(fieldName, values, fieldConfig) {
   const cond = fieldConfig?.conditional?.[fieldName];
@@ -451,13 +422,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   function recalcFields(values, fieldConfig) {
-  const calc = fieldConfig?.calculated;
-  if (!calc) return values;
-  const updated = { ...values };
-  Object.entries(calc).forEach(([name, cfg]) => {
-  updated[name] = evaluateFormula(cfg.formula, updated);
-  });
-  return updated;
+  return deriveValues(values, fieldConfig);
   }
 
   function formatAddressBlock(val) {
@@ -1040,7 +1005,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const formatted = formatAddressBlock(val);
   return formatted ? escapeHtml(formatted).replace(/\n/g, "<br/>") : '<span style="color:' + printTheme.danger + ';background:' + printTheme.dangerBg + ';padding:0 4px;border-radius:4px;">' + match + '</span>';
   }
-  return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:' + printTheme.danger + ';background:' + printTheme.dangerBg + ';padding:0 4px;border-radius:4px;">' + match + '</span>';
+  if (val !== undefined && val !== "") return escapeHtml(String(val));
+  // Derived text can be blank on purpose (no proration line when a lease
+  // starts on the 1st). Only an unfilled INPUT gets the red marker.
+  if (fieldConfig?.derived?.[fieldName]) return "";
+  return '<span style="color:' + printTheme.danger + ';background:' + printTheme.dangerBg + ';padding:0 4px;border-radius:4px;">' + match + '</span>';
   }));
   }
 
@@ -1071,7 +1040,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const docName = selectedTemplate.name + " — " + (fieldValues.tenant_name || fieldValues.recipient_name || "Document") + " " + formatLocalDate(new Date());
   const payload = {
   company_id: companyId, template_id: selectedTemplate.id, name: docName,
-  field_values: fieldValues, rendered_body: rendered, status,
+  field_values: fieldValues, rendered_body: attachPageSetup(rendered, selectedTemplate.field_config?.page_setup), status,
   output_type: selectedTemplate.template_type === "pdf_overlay" ? "pdf_overlay" : "html",
   property_address: fieldValues.property_address || "",
   tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || "",
@@ -1084,6 +1053,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   logAudit("create", "doc_builder", "Generated: " + docName, data?.id, userProfile?.email, userRole, companyId);
   fetchAll();
   return data;
+  }
+
+  // The body to lay out on pages, and the page setup to lay it out with.
+  // A stored document carries its own setup (attachPageSetup); one still
+  // being filled in takes the template's.
+  function pagedBody(doc, template, values) {
+  const merged = doc?.rendered_body || renderMergedBody(template?.body, values, template?.field_config);
+  const { html, setup } = splitPageSetup(merged);
+  return { html: sanitizeTemplateHtml(html), pageSetup: setup || template?.field_config?.page_setup || null };
   }
 
   // ---- Export: PDF ----
@@ -1144,15 +1122,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return;
   }
 
-  // HTML template: use html2pdf.js
-  const html2pdf = (await import("html2pdf.js")).default;
-  const container = document.createElement("div");
-  container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:700px;margin:0 auto;">' + DOMPurify.sanitize(doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues), { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] }) + '</div>';
-  document.body.appendChild(container);
-  const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
-  await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: "in", format: "letter" } }).from(container).save();
-  document.body.removeChild(container);
+  // HTML template: real-text PDF, paged exactly as the editor and the
+  // preview show it (src/utils/pagedPdf.js).
+  try {
+  showToast("Generating PDF…", "info");
+  const paged = pagedBody(doc, template, values);
+  const bytes = await renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc?.name || template?.name });
+  const { saveAs } = await import("file-saver");
+  saveAs(new Blob([bytes], { type: "application/pdf" }), pdfFileName(doc?.name || template?.name));
   showToast("PDF downloaded", "success");
+  } catch (err) {
+  pmError("PM-8006", { raw: err, context: "PDF export" });
+  }
   }
 
   // ---- Signed PDF + Certificate of Completion (envelope flow) ----
@@ -1274,18 +1255,29 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const html2pdf = (await import("html2pdf.js")).default;
   const signedBlock = renderSignaturesBlock(sigs);
   const certBlock = renderCertificateHtml(doc, sigs, doc._companyName);
-  const bodyHtml = DOMPurify.sanitize(doc?.rendered_body || "", { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] });
+  // The document itself is real text on its own pages, exactly as it was
+  // sent. The signatures and the certificate of completion follow on
+  // pages of their own: they are images and a table, which the old
+  // picture renderer still draws best.
   const container = document.createElement("div");
   container.innerHTML = ''
-    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">' + bodyHtml + signedBlock + '</div>'
+    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">' + signedBlock + '</div>'
     + '<div style="page-break-before:always;"></div>'
     + certBlock;
   document.body.appendChild(container);
-  const filename = "signed-" + (doc.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
   try {
-    await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).save();
+    const paged = pagedBody(doc, doc._template || templates.find(t => t.id === doc.template_id), doc.field_values || {});
+    const [bodyPdf, tailPdf] = await Promise.all([
+      renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name }),
+      html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
+    ]);
+    const bytes = await concatPdfs([bodyPdf, tailPdf]);
+    const { saveAs } = await import("file-saver");
+    saveAs(new Blob([bytes], { type: "application/pdf" }), "signed-" + pdfFileName(doc.name));
     logAudit("export", "doc_builder", "Downloaded signed PDF: " + doc.name, doc.id, userProfile?.email, userRole, companyId);
     showToast("Signed document downloaded", "success");
+  } catch (err) {
+    pmError("PM-8006", { raw: err, context: "signed PDF export" });
   } finally {
     document.body.removeChild(container);
   }
@@ -1295,7 +1287,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   async function exportDOCX(doc) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
   const { saveAs } = await import("file-saver");
-  const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+  const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   // Parse HTML into docx paragraphs
   const temp = document.createElement("div");
   temp.innerHTML = DOMPurify.sanitize(body);
@@ -1362,7 +1354,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ---- Export: TXT ----
   function exportTXT(doc) {
-  const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+  const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   const temp = document.createElement("div");
   temp.innerHTML = DOMPurify.sanitize(body);
   const text = temp.innerText || temp.textContent;
@@ -1392,7 +1384,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   if (recipients.length === 0) { showToast("No recipients specified", "error"); setSending(false); return; }
 
-  const rendered = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+  const rendered = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   const docName = doc?.name || selectedTemplate?.name || "Document";
 
   for (const email of recipients) {
@@ -1774,7 +1766,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white border border-neutral-100 rounded-xl">
   <button type="button" onClick={() => setAdvancedOpen(o => !o)} className="w-full flex items-center justify-between p-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:bg-neutral-50 rounded-xl">
   <span className="flex items-center gap-1.5"><span className="material-icons-outlined text-sm text-neutral-400">{advancedOpen ? "expand_more" : "chevron_right"}</span>Advanced Field Config</span>
-  <span className="text-2xs text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
+  <span className="text-2xs text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.derived || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
   </button>
   {advancedOpen && (
   <div className="px-3 pb-3">
@@ -1803,7 +1795,43 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>✕</TextLink>
   </div>
   ))}
-  {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No calculated fields. Use formulas like <code className="bg-neutral-100 px-1 rounded">rent * days / 30</code></p>}
+  {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No calculated fields. Use formulas like <code className="bg-neutral-100 px-1 rounded">rent * term + prorated</code>, <code className="bg-neutral-100 px-1 rounded">prorate(rent, start_date)</code> or <code className="bg-neutral-100 px-1 rounded">months_between(start_date, end_date)</code></p>}
+  </div>
+
+  {/* Derived text — a field shown another way (rent in words, the day
+      of a date). Not a form input: it follows its source field. */}
+  <div className="mb-4">
+  <h4 className="text-xs font-semibold text-brand-700 uppercase tracking-wide flex items-center gap-1 mb-2"><span className="material-icons-outlined text-sm">auto_fix_high</span>Text made from a field</h4>
+  {Object.entries(templateForm.field_config?.derived || {}).map(([name, cfg]) => (
+  <div key={name} className="flex items-center gap-2 text-xs bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 mb-1">
+  <span className="tnum font-semibold text-brand-800 break-all">{name}</span>
+  <span className="text-brand-400">=</span>
+  <span className="text-brand-700 flex-1 break-words">{cfg.text !== undefined ? cfg.text : (cfg.from + " → " + ((FIELD_FORMATS.find(([k]) => k === cfg.format) || [])[1] || cfg.format))}</span>
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => {
+  const derived = { ...(templateForm.field_config?.derived || {}) };
+  delete derived[name];
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, derived } }));
+  }}>✕</TextLink>
+  </div>
+  ))}
+  {Object.keys(templateForm.field_config?.derived || {}).length === 0 && <p className="text-xs text-neutral-400 italic mb-2">None. Example: rent_words = rent → amount in words.</p>}
+  <div className="grid grid-cols-2 gap-1 mt-2">
+  <Input size="sm" value={derivedDraft.name} onChange={e => setDerivedDraft({ ...derivedDraft, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} placeholder="new_name" aria-label="Derived field name" />
+  <Select value={derivedDraft.from} onChange={e => setDerivedDraft({ ...derivedDraft, from: e.target.value })} className="text-xs" aria-label="Source field">
+  <option value="">from field…</option>
+  {templateForm.fields.filter(f => f.name).map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
+  </Select>
+  <Select value={derivedDraft.format} onChange={e => setDerivedDraft({ ...derivedDraft, format: e.target.value })} className="text-xs" aria-label="Show as">
+  {FIELD_FORMATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+  </Select>
+  <Btn size="xs" variant="secondary" onClick={() => {
+  const name = derivedDraft.name.replace(/^_+|_+$/g, "");
+  if (!name || !derivedDraft.from) { showToast("Give it a name and pick the field it comes from", "error"); return; }
+  if (templateForm.fields.some(f => f.name === name)) { showToast("A form field already uses that name", "error"); return; }
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, derived: { ...(prev.field_config?.derived || {}), [name]: { from: derivedDraft.from, format: derivedDraft.format } } } }));
+  setDerivedDraft({ name: "", from: "", format: derivedDraft.format });
+  }}>+ Add</Btn>
+  </div>
   </div>
 
   {/* Conditional Fields */}
@@ -2027,7 +2055,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   key={editingTemplate?.id || "new-template"}
   value={templateForm.body}
   onChange={html => setTemplateForm(prev => ({ ...prev, body: html }))}
-  mergeFields={templateForm.fields}
+  mergeFields={[...templateForm.fields, ...Object.keys(templateForm.field_config?.derived || {}).filter(n => !templateForm.fields.some(f => f.name === n)).map(n => ({ name: n, label: n.replace(/_/g, " ") }))]}
   placeholder="Start typing… drag a field from the left rail or click a merge-chip to insert."
   hideToolbar
   paperCanvas
@@ -2195,8 +2223,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Live Preview</h3>
-  <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
-  dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
+  <div className="flex flex-col h-[70vh] border border-neutral-100 rounded-xl overflow-hidden">
+  {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
+  <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
+  ); })()}
+  </div>
   </div>
   )}
   </div>
@@ -2260,8 +2291,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="bg-white rounded-xl border border-neutral-200 shadow-card border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: printTheme.ink }}>
-  <div dangerouslySetInnerHTML={{ __html: rendered }} />
+  <div ref={previewRef} className="flex flex-col w-full h-full">
+  {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
+  <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
+  ); })()}
   </div>
   )}
   </div>

@@ -429,7 +429,7 @@ select {
 .paged-editor .rm-with-pagination .rm-page-footer {
   /* Fixed metrics: the editor works out how deep the page body is from
      the number of header/footer lines (FURNITURE_LINE_PX). */
-  font: 12pt/20px "Times New Roman", Times, serif;
+  font: 12pt/20px "Liberation Serif", "Times New Roman", Times, serif;
   color: #171717;
   cursor: default !important;
 }
@@ -456,15 +456,25 @@ select {
   word-spacing: -0.045em;
 }
 
-/* Liberation Serif -- Zoho Writer's default face and what the imported
-   leases are set in. Metric-compatible with Times New Roman, so on a Mac
-   or PC the page breaks are the same either way; bundling it means they
-   are also the same on a phone or tablet, which has neither.
+/* The Liberation family: Serif is Zoho Writer's default face and what the
+   imported leases are set in; Sans and Mono stand in for Arial and
+   Courier New. Each is metric-identical to its counterpart, so on a Mac
+   or PC page breaks are the same either way -- bundling them makes that
+   true on a phone too, and they are the exact files embedded in the PDF
+   (src/utils/pagedPdf.js), so screen and paper agree glyph for glyph.
    SIL Open Font License 1.1 (src/fonts/LiberationFonts-LICENSE.txt). */
 @font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Liberation Sans"; src: url("./fonts/LiberationSans-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Sans"; src: url("./fonts/LiberationSans-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Sans"; src: url("./fonts/LiberationSans-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Liberation Sans"; src: url("./fonts/LiberationSans-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Liberation Mono"; src: url("./fonts/LiberationMono-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Mono"; src: url("./fonts/LiberationMono-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Mono"; src: url("./fonts/LiberationMono-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Liberation Mono"; src: url("./fonts/LiberationMono-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
 
 /* Lists. Tailwind's reset strips list markers and nothing put them back,
    so bulleted and numbered lists showed as plain paragraphs. The marker
@@ -488,6 +498,18 @@ select {
 }
 .paged-editor .ProseMirror ul > li > p:first-child::before { content: "\25CF"; font-size: 0.7em; vertical-align: 0.12em; }
 .paged-editor .ProseMirror ol > li > p:first-child::before { content: counter(hx-ol) "."; }
+
+/* A document shown as flowing text rather than on pages (the public
+   signing page, read on a phone as often as not). Indents that reach
+   into a page's margins have no margin to reach into here, and would
+   push the text out of its card. */
+.hx-flow-doc p, .hx-flow-doc li, .hx-flow-doc h1, .hx-flow-doc h2, .hx-flow-doc h3 {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  overflow-wrap: anywhere;
+}
+.hx-flow-doc ul { list-style: disc; padding-left: 1.5em; }
+.hx-flow-doc ol { list-style: decimal; padding-left: 1.5em; }
 
 /* A scroll affordance only when there is something to scroll.
    TabBar carries overflow-x-auto so a long tab strip can scroll on a phone.

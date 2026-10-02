@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import SignaturePad, { ESIGN_CONSENT_VERSION } from "./SignaturePad";
 import { fmtDate, fmtDateTime } from "../utils/helpers";
+import { splitPageSetup } from "../utils/docKit";
 
 // Public page rendered at /sign/:token — no auth required.
 // Uses anon-callable SECURITY DEFINER RPCs:
@@ -81,12 +82,16 @@ export default function PublicSignPage({ token }) {
       // on 2026-05-01. Sanitize the entire assembled HTML through
       // DOMPurify before assignment so the certificate block can't
       // smuggle scripts/event-handlers from the signer fields.
+      // The document itself is rendered as real text on its own pages,
+      // exactly as the signer saw them (pagedPdf: same layout engine as
+      // the on-page view below). The certificate follows on its own page
+      // through the picture renderer -- it is a short block of hashes,
+      // and keeping it out of the body keeps the body's pages unshifted.
+      const { renderPagedPdf, concatPdfs } = await import("../utils/pagedPdf");
+      const { html: bodyHtml, setup: pageSetup } = splitPageSetup(payload.doc_body);
       const wrapper = document.createElement("div");
-      const safeBody = sanitizeDoc(payload.doc_body);
       const rawCert =
         `<h1 style="font-family:Georgia,serif;font-size:18px;margin:0 0 12px;">${(payload.doc_name || "").slice(0, 200)}</h1>` +
-        safeBody +
-        `<hr style="margin:24px 0;" />` +
         `<h2 style="font-family:Georgia,serif;font-size:14px;">Certificate of Completion</h2>` +
         `<p style="font-family:Georgia,serif;font-size:11px;line-height:1.5;">` +
         `Document hash at send: <code>${(payload.doc_hash_at_send || "").slice(0, 64)}</code><br/>` +
@@ -96,17 +101,23 @@ export default function PublicSignPage({ token }) {
         `Disclosure version: ${ESIGN_CONSENT_VERSION}` +
         `</p>`;
       wrapper.innerHTML = DOMPurify.sanitize(rawCert);
-      const pdfBlob = await html2pdf().set({
-        margin: 12,
-        filename: `${(payload.doc_name || "signed").replace(/[^a-z0-9]/gi, "-")}.pdf`,
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: "pt", format: "letter", orientation: "portrait" },
-      }).from(wrapper).outputPdf("blob");
+      const [bodyPdf, certPdf] = await Promise.all([
+        renderPagedPdf({ html: sanitizeDoc(bodyHtml), pageSetup, title: payload.doc_name }),
+        html2pdf().set({
+          margin: 36,
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: "pt", format: "letter", orientation: "portrait" },
+        }).from(wrapper).outputPdf("arraybuffer"),
+      ]);
+      const pdfBytes = await concatPdfs([bodyPdf, certPdf]);
 
       // Upload via /api/finalize-signed-pdf so the server-side
       // service-role client owns the Storage write + DB update.
-      const arrayBuffer = await pdfBlob.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      // Chunked: spreading a whole PDF into String.fromCharCode overflows
+      // the call stack once the file passes ~100 KB of arguments.
+      let binary = "";
+      for (let i = 0; i < pdfBytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, pdfBytes.subarray(i, i + 0x8000));
+      const base64 = btoa(binary);
       const res = await fetch("/api/finalize-signed-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -275,8 +286,8 @@ export default function PublicSignPage({ token }) {
         <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 mb-4">
           {payload.doc_property_address && <div className="text-xs text-neutral-400 mb-2">Property: <span className="font-semibold text-neutral-600">{payload.doc_property_address}</span></div>}
           <div
-            className="prose prose-sm max-w-none"
-            style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
+            className="hx-flow-doc max-w-none"
+            style={{ fontFamily: "'Liberation Serif', 'Times New Roman', Times, serif", fontSize: "12pt", lineHeight: "1.4" }}
             dangerouslySetInnerHTML={{ __html: sanitizeDoc(payload.doc_body) }}
           />
         </div>
