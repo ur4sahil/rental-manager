@@ -407,8 +407,9 @@ tenant portal.
 
 ## Revision after Prospects (2026-10-02)
 
-PROPOSAL. Nothing in this section is built. Items marked **[V]** were
-checked in the code on `staging` at 912dcd0.
+Nothing in this section is built. Items marked **[V]** were checked in the
+code on `staging` at 912dcd0. The phases below carry Sahil's decisions of
+2026-10-02.
 
 ### What Prospects settled
 
@@ -439,11 +440,11 @@ under "Still to do in Phase 1" above.
 | G9 | **Move-out does not know someone is waiting.** A signed prospect for the same property is not mentioned when the old tenant is moved out | **[V]** |
 | G10 | **Renewals and rent increases are the same shape as a prospect** (offer, sign, takes effect on a date) and should reuse it instead of a third design | Design note for Phase 2 |
 
-### Revised phases
+### Revised phases (as decided by Sahil, 2026-10-02)
 
 Working days. "Was" is the original estimate for what is left.
 
-**Phase 1, finish (was ~3 days, now ~6).**
+**Phase 1, finish (was ~3 days, now 7 to 8).**
 - As planned: retire the two old lease generators; a lease/sign entry on the
   tenant page for existing tenants; tenant portal "to sign" and "my
   documents".
@@ -451,61 +452,51 @@ Working days. "Was" is the original estimate for what is left.
   paths and Leases "Create Lease" call the same engine as Prospects, so all
   five produce identical ledger entries and a rent schedule every time.
   Existing tenants and posted entries are not touched.
-- NEW (G2): no future-dated charges. See Decision A.
+- NEW (G3, Decision B): money received before move-in is recorded against
+  the prospect as held and moves to the tenant's ledger on conversion.
+  Which account holds it, and how a refund to a prospect who never moves in
+  is recorded, are to be agreed with Sahil before this is built. **[LAW]**
 - NEW (G7): signature slots follow the number of adults on the lease.
 
-**Phase 1B, before move-in (NEW, optional, 5 to 7 days).**
-- Application form sent to the prospect by link, filled in and signed, filed
-  on the prospect (G5), plus a short checklist: ID, income proof, renter's
-  insurance, application received.
-- Money received before conversion, recorded against the prospect as held
-  and carried to the tenant's ledger on conversion (G3). See Decision B.
-- On conversion: welcome email with the portal invite, a move-in inspection
-  created, the insurance item carried over (G4). See Decision D.
-- A "this home has been leased" email for a losing applicant, sent only when
-  staff press the button (G6).
-- Application fees and holding deposits have Maryland rules **[LAW]**; they
-  join the attorney list before this phase ships.
-
-**Phase 2, renewal, rent increase, addenda (6 to 8 days, +1).**
+**Phase 2, renewal, rent increase, addenda (7 to 9 days, +1).**
 - Unchanged in scope. Built on the prospect pattern (G10): an offer is a
   document; nothing changes until it is signed and its date arrives.
 - NEW: a non-renewal or a tenant's notice gives the property an "available
   from" date, shown when choosing a property for a prospect.
 
-**Phase 3, notices and move-out (6 to 7 days, +0.5).**
+**Phase 3, notices and move-out (6.5 to 7.5 days, +0.5).**
 - Unchanged, plus (G9): finishing a move-out says "X has a signed lease for
   this home" and offers the conversion.
 
-**Phase 4, failure to pay rent (8 to 10 days).** Unchanged. Still waits on
-the attorney check.
+**Phase 1B, application (NEW, 3 to 4 days, after Phase 3: Decision C).**
+- Application form sent to the prospect by link, filled in and signed, filed
+  on the prospect (G5), plus a short checklist: ID, income proof, renter's
+  insurance, application received.
+- A "this home has been leased" email for a losing applicant, sent only when
+  staff press the button (G6).
+- Application fees have Maryland rules **[LAW]**; attorney list.
 
-**Phase 5, the clock (4 to 5 days, +1).**
+**Phase 5, the clock (5 to 6 days, +1).**
 - Unchanged, plus (G8): reminder for an unsigned lease, warning before a
   signing link expires, and "lease starts today, not converted yet".
-- If Decision A is option 1, the first month's rent of an early conversion
-  is posted by this job on the start date.
 
-**Totals.** Left before this revision: about 27 to 33 days. With the
-additions: about 33 to 39 days, or 38 to 46 with Phase 1B.
+**Phase 4, failure to pay rent (8 to 10 days).** Unchanged. Last, because it
+waits on the attorney check.
 
-**Suggested order:** finish Phase 1, then 1B if wanted, then 2, 3, 5, and 4
-last (it is the one that waits on the attorney).
+**Totals.** Left before this revision: about 27 to 33 days. Now: about 37
+to 45 days. Order: 1, 2, 3, 1B, 5, 4.
 
-### New decisions
+### Decisions (Sahil, 2026-10-02)
 
-- **A. Converting before the lease start date.** (1) Deposit dated the day
-  of conversion; first rent posts on the start date (recommended). (2) As
-  today: both dated the start date even when it is in the future. (3) Do not
-  allow conversion before the start date.
-- **B. Money received before move-in.** (1) Record it against the prospect
-  as held; it moves to the tenant's ledger on conversion (recommended).
-  (2) Leave as today: nothing is recorded until conversion.
-- **C. Application step (Phase 1B).** (1) Build it now, after Phase 1.
-  (2) Later, after Phase 3. (3) Not needed; file uploads are enough.
-- **D. After conversion.** (1) Welcome email with portal invite, and a
-  move-in inspection created automatically. (2) A checklist on screen only;
-  nothing is sent. (3) Nothing.
+- **A. Converting before the lease start date: keep as today.** Deposit and
+  first rent are both dated the lease start date, even when that is in the
+  future. G2 is accepted, not fixed. When Phase 1 routes the other four
+  screens through the shared engine they keep this same dating.
+- **B. Money received before move-in: hold it on the prospect**; it moves to
+  the tenant's ledger on conversion. Built in Phase 1.
+- **C. Application step: build it later**, after Phase 3.
+- **D. After conversion: nothing automatic.** No welcome email, no portal
+  invite, no inspection. G4 is accepted, not fixed.
 
 ### For the attorney list (added)
 
@@ -513,4 +504,4 @@ last (it is the one that waits on the attorney).
   the equivalent of two (2) months' Rent". Section 9 of this plan notes a
   one-month maximum for leases signed from 2024-10-01. The wording is
   Sigma's own and was not changed. **[LAW]**
-- Application fees and holding deposits (Phase 1B). **[LAW]**
+- Money held for a prospect before move-in (Phase 1) and application fees (Phase 1B). **[LAW]**
