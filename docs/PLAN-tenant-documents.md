@@ -660,3 +660,30 @@ on the deposit is a field on the statement but is not calculated.
 
 Tests: `tests/notices.test.mjs` (56) and a browser run of notice →
 acknowledgment → served → move-out → statement.
+
+---
+
+## Phase 1B as built (2026-10-02, on `staging`; database change on TEST only)
+
+- **Rental application** (migration 20261003060000, `PublicApplyPage.js`,
+  `applicationForm.js`). From a prospect's page staff send each adult a
+  private link (`/apply/<token>`). The applicant fills it in with no
+  account, on a phone or a computer, and signs by typing their name. It can
+  be submitted once; the link stops working after 30 days or when a newer
+  one is made. Staff read it on the prospect, and can print it or save it
+  as a PDF.
+- **[CHOSEN]** what it asks: contact details, current address and landlord,
+  work and income, who will live there, pets, vehicles, whether they have
+  been evicted, an emergency contact. It does NOT ask for a Social Security
+  number, a date of birth, bank details or criminal history. The questions
+  and any application fee need the attorney's read **[LAW]**; no fee is
+  collected.
+- **Checklist** on the prospect: application received (ticks itself), photo
+  ID, proof of income, renter's insurance. Each tick records who and when.
+- **Sending**: through the app's logged sender, or "Copy link", or a draft
+  in the device's own mail app.
+- **"Home no longer available" letter (G6)**: a button on a prospect whose
+  home went to someone else. Never sent automatically.
+
+Tests: `tests/application.test.mjs` (35) and a browser run with a second,
+logged-out browser as the applicant.

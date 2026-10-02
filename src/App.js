@@ -49,6 +49,7 @@ import { InsuranceTracker } from "./components/Insurance";
 import { TaxBills } from "./components/TaxBills";
 import { LateFees } from "./components/LateFees";
 import PublicSignPage from "./components/PublicSignPage";
+import PublicApplyPage from "./components/PublicApplyPage";
 import { HOUSY } from "./utils/housy";
 
 // ============ SENTRY INITIALIZATION ============
@@ -1560,6 +1561,11 @@ export default function App() {
   if (path.startsWith("/sign/")) {
     const token = path.slice("/sign/".length).split(/[?#]/)[0];
     return <ErrorBoundary><PublicSignPage token={token} /></ErrorBoundary>;
+  }
+  // The same for a rental application link: an applicant has no account.
+  if (path.startsWith("/apply/")) {
+    const token = path.slice("/apply/".length).split(/[?#]/)[0];
+    return <ErrorBoundary><PublicApplyPage token={token} /></ErrorBoundary>;
   }
   // Rewrite a legacy "/#acct_reports" URL to "/accounting/reports" BEFORE
   // AppInner renders: it resolves its first page from the path in a

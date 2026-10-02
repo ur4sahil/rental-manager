@@ -216,6 +216,27 @@ ${SIGN_BLOCK}`,
 <p>{{deductions_list}}</p>
 <p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
   },
+
+  // ── Phase 1B: applicants ────────────────────────────────────────────
+  home_leased_notice: {
+    name: "Home No Longer Available", category: "notices", template_type: "html", signing_mode: "none", signer_roles: [],
+    description: "Tells an applicant that the home they applied for has been leased to someone else. Sent only when staff choose to.",
+    fields: [
+      field("letter_date", "Date", "date", "Letter", "today", true),
+      field("recipient_name", "Applicant", "text", "Letter", "tenant.name", true),
+      field("property_address", "Home applied for", "text", "Letter", "property.address", true),
+      field("closing_note", "Anything to add (optional)", "textarea", "Letter"),
+      field("sender_name", "Sent by", "text", "From", "user.name"),
+      field("landlord_name", "Landlord", "text", "From", "company.name"),
+    ],
+    field_config: {},
+    body: `<p>{{letter_date}}</p>
+<p>Dear {{recipient_name}},</p>
+<p>Thank you for your interest in <strong>{{property_address}}</strong>. The home has now been leased to another applicant, so we are not able to offer it to you. Any lease that was sent to you for it has been withdrawn and does not need to be signed.</p>
+<p>{{closing_note}}</p>
+<p>We appreciate the time you put into applying and would be glad to hear from you about other homes.</p>
+<p style="margin-top:32px;">{{sender_name}}<br/>{{landlord_name}}</p>`,
+  },
 };
 
 // The stable key decides which kind of document a template makes; see

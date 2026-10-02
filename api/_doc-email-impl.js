@@ -18,6 +18,7 @@
 //   void           { company_id, doc_id, reason }         staff  cancel an envelope
 //   next-signers   { token }                              signer after signing: ask whoever is next
 //   send-document  { company_id, doc_id, to[], message, pdf_base64, filename }   staff
+//   application-request { company_id, application_id }    staff  email an applicant their application link
 //
 // SAFETY: outside production nothing is sent unless DOC_EMAIL_ALLOWLIST is
 // set, and then only to addresses on it -- mail for anyone else is redirected
@@ -318,6 +319,33 @@ async function handler(req, res) {
       await sb.from("doc_generated").update({ status: "sent", sent_at: new Date().toISOString(), recipients: to }).eq("id", doc.id);
     }
     res.status(200).json({ results });
+    return;
+  }
+
+  // Email an applicant the private link to their rental application.
+  if (op === "application-request") {
+    const { data: app } = await sb.from("prospect_applications").select("*").eq("id", String(body.application_id || "")).eq("company_id", companyId).maybeSingle();
+    if (!app) { res.status(404).json({ error: "application not found" }); return; }
+    if (!["sent", "opened"].includes(app.status)) { res.status(409).json({ error: app.status === "submitted" ? "this application has already been submitted" : "this application link has been withdrawn" }); return; }
+    if (!EMAIL_RE.test(String(app.applicant_email || ""))) { res.status(400).json({ error: "there is no email address for this applicant" }); return; }
+    const { data: prospect } = await sb.from("prospects").select("property").eq("id", app.prospect_id).maybeSingle();
+    const company = await companyOf(sb, companyId);
+    // A reminder is useless if the link died yesterday: give it a full term.
+    const expires = new Date(Date.now() + LINK_DAYS * 86400000).toISOString();
+    await sb.from("prospect_applications").update({ token_expires_at: expires }).eq("id", app.id);
+    const link = `${appUrl(req)}/apply/${app.access_token}`;
+    const who = app.applicant_name ? `Hello ${esc(String(app.applicant_name).split(/\s+/)[0])},` : "Hello,";
+    const html = shell("Your rental application",
+      `<p>${who}</p><p><strong>${esc(company.name || "Your property manager")}</strong> has asked you to fill in a rental application`
+      + (prospect && prospect.property ? ` for <strong>${esc(prospect.property)}</strong>` : "") + `.</p>`
+      + `<p>It takes about ten minutes and is signed online. It does not ask for your Social Security number or bank details.</p>`
+      + button(link, "Fill in the application")
+      + `<p style="color:#6b7280;font-size:13px">This link is personal to you and expires in ${LINK_DAYS} days. Please do not forward it.</p>`,
+      company.name);
+    const text = `${company.name || "Your property manager"} has asked you to fill in a rental application.\n\nOpen this link: ${link}\n\nThe link is personal to you and expires in ${LINK_DAYS} days.`;
+    const r = await deliver(sb, { companyId, kind: "application_request", to: app.applicant_email, subject: "Your rental application" + (prospect && prospect.property ? ": " + prospect.property : ""), html, text, replyTo: company.email, createdBy: actor });
+    if (r.status === "sent") await sb.from("prospect_applications").update({ request_emailed_at: new Date().toISOString() }).eq("id", app.id);
+    res.status(200).json({ status: r.status, delivered_to: r.to, error: r.error });
     return;
   }
 

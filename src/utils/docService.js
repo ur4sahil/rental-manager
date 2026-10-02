@@ -40,6 +40,8 @@ export const resendSignatureRequest = (companyId, signatureId) => docApi("resend
 export const voidEnvelope = (companyId, docId, reason) => docApi("void", { company_id: companyId, doc_id: docId, reason });
 /** Called by the public signing page after a signature: ask whoever is next. */
 export const notifyNextSigners = (token) => docApi("next-signers", { token }, { auth: false });
+/** Email an applicant the private link to their rental application. */
+export const sendApplicationRequest = (companyId, applicationId) => docApi("application-request", { company_id: companyId, application_id: applicationId });
 /** Email a document, with its PDF attached, to a list of addresses. */
 export const emailDocument = (companyId, docId, { to, message, pdfBytes, filename }) =>
   docApi("send-document", { company_id: companyId, doc_id: docId, to, message, filename, pdf_base64: pdfBytes ? bytesToBase64(pdfBytes) : undefined });
@@ -87,6 +89,7 @@ export const DOC_KIND_BY_TEMPLATE_KEY = {
   move_out_statement: "move_out_statement",
   deposit_disposition: "deposit_disposition",
   general_letter: "letter",
+  home_leased_notice: "letter",
 };
 
 // ── Facts for a document, by record ───────────────────────────────────
@@ -418,4 +421,16 @@ export function signingMailto({ signer, docName, origin, senderName = "" }) {
 export function canShareFile(file) {
   try { return typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] }); }
   catch { return false; }
+}
+
+/** A draft, in the device's own mail app, carrying an applicant's application link. */
+export function applicationMailto({ application, origin, companyName = "" }) {
+  const link = String(origin || "").replace(/\/$/, "") + "/apply/" + application.access_token;
+  const first = String(application.applicant_name || "").trim().split(/\s+/)[0];
+  return mailtoUrl({
+    to: [application.applicant_email],
+    subject: "Your rental application",
+    body: (first ? "Hi " + first + "," : "Hello,") + "\n\nPlease fill in your rental application here (about ten minutes, signed online, no account needed):\n\n" + link
+      + "\n\nThe link is yours alone; please do not forward it." + (companyName ? "\n\n" + companyName : ""),
+  });
 }

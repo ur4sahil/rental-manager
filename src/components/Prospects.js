@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Textarea, Btn, PageHeader, FormField, FilterPill, DataTable, EmptyState, TextLink, Badge, Alert, Checkbox, DetailPanel, DetailRow, DetailCard, DetailAlert } from "../ui";
-import { safeNum, formatLocalDate, formatCurrency, fmtDate, fmtDateTime, propertyLabel, formatPhoneInput, isValidEmail, normalizeEmail, getSignedUrl } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, fmtDate, fmtDateTime, propertyLabel, formatPhoneInput, isValidEmail, normalizeEmail, getSignedUrl, escapeHtml } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { resendSignatureRequest, voidEnvelope, summarizeSends } from "../utils/docService";
+import { resendSignatureRequest, voidEnvelope, summarizeSends, sendApplicationRequest, applicationMailto } from "../utils/docService";
+import { PROSPECT_CHECKLIST, checklistProgress, toggleChecklist, applicationSummary, APPLICATION_CERTIFICATION } from "../utils/applicationForm";
+import { printHtmlDocument, printFileName } from "../utils/theme";
 import { planTenancyCharges, describeTenancyCharges } from "../utils/onboardingRules";
 import { startTenancyBooks } from "../utils/tenantOnboarding";
 import { heldForProspect, recordProspectMoney, refundProspectMoney } from "../utils/prospectMoney";
@@ -59,7 +61,9 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
   const [lostFor, setLostFor] = useState(null);        // { prospect, reason }
   const [uploadFor, setUploadFor] = useState(null);
   const [held, setHeld] = useState(null);              // { prospectId, ok, balance, entries, account } for the open prospect
-  const [moneyFor, setMoneyFor] = useState(null);      // { prospect, kind: "receive"|"refund", amount, date, memo }
+  const [moneyFor, setMoneyFor] = useState(null);
+  const [apps, setApps] = useState(null);              // { prospectId, rows } applications for the open prospect
+  const [viewApp, setViewApp] = useState(null);        // a submitted application being read      // { prospect, kind: "receive"|"refund", amount, date, memo }
   const handledAction = useRef(null);
 
   const load = useCallback(async () => {
@@ -112,6 +116,15 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
   }, [companyId]);
   useEffect(() => { setHeld(null); loadHeld(heldProspectId); }, [heldProspectId, loadHeld]);
   const heldOf = (id) => (held && held.prospectId === id ? held : null);
+
+  // Applications sent to the people on the open prospect.
+  const loadApps = useCallback(async (id) => {
+    if (!id) { setApps(null); return; }
+    const { data, error } = await supabase.from("prospect_applications").select("*").eq("company_id", companyId).eq("prospect_id", id).order("created_at", { ascending: false });
+    if (error) { pmError("PM-8006", { raw: error, context: "load prospect applications", silent: true }); setApps({ prospectId: id, rows: [], failed: true }); return; }
+    setApps({ prospectId: id, rows: data || [] });
+  }, [companyId]);
+  useEffect(() => { setApps(null); loadApps(selectedId); }, [selectedId, loadApps]);
 
   const propById = useMemo(() => Object.fromEntries(properties.map(p => [p.id, p])), [properties]);
   const occupantOf = useCallback((propertyId) => {
@@ -273,6 +286,50 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     load();
   }
 
+  // ── application and checklist ───────────────────────────────────────
+  // A fresh link for one person; any earlier unsubmitted link of theirs stops working.
+  async function sendApplication(p, person, { email = true } = {}) {
+    if (!guardSubmit("sendApplication", p.id + person.name)) return null;
+    try {
+      setBusy("Preparing the application…");
+      const { data, error } = await supabase.rpc("create_prospect_application", { p_prospect_id: p.id, p_name: person.name, p_email: person.email || null });
+      if (error || !data?.id) { showToast(error?.message || "The application link could not be made.", "error"); return null; }
+      logAudit("create", "prospects", "Application link made for " + person.name + " (" + p.name + ")", p.id, userProfile?.email, userRole, companyId);
+      if (email && person.email) {
+        const r = await sendApplicationRequest(companyId, data.id);
+        if (!r.ok) showToast("The link is ready, but the email could not be sent: " + r.error + ". Use Copy link.", "error");
+        else { const sum = summarizeSends([{ status: r.status, email: person.email, delivered_to: r.delivered_to, error: r.error }]); showToast("Application to " + person.name + ": " + sum.text, sum.tone); }
+      } else showToast("Application link ready for " + person.name + ". Copy it or open it in your mail app.", "success");
+      await loadApps(p.id);
+      return data;
+    } finally { setBusy(""); guardRelease("sendApplication", p.id + person.name); }
+  }
+  async function copyApplicationLink(a) {
+    const url = window.location.origin + "/apply/" + a.access_token;
+    try { await navigator.clipboard.writeText(url); showToast("Application link copied", "success"); }
+    catch { showToast("Copy failed. The link is: " + url, "info"); }
+  }
+  async function tickChecklist(p, key) {
+    const next = toggleChecklist(p.checklist, key, userProfile?.email || "", new Date().toISOString());
+    const { error } = await supabase.from("prospects").update({ checklist: next, updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("id", p.id);
+    if (error) { pmError("PM-8006", { raw: error, context: "update prospect checklist" }); return; }
+    load();
+  }
+  function printApplication(a, p) {
+    const sections = applicationSummary(a.answers).map(sec =>
+      "<h2>" + escapeHtml(sec.title) + "</h2><table>" + sec.rows.map(r => "<tr><th>" + escapeHtml(r.label) + "</th><td>" + escapeHtml(r.value).replace(/\n/g, "<br/>") + "</td></tr>").join("") + "</table>").join("");
+    printHtmlDocument({
+      title: printFileName("Rental Application", a.applicant_name, String(a.submitted_at || "").slice(0, 10)),
+      css: "body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;padding:24px}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:16px 0 4px;border-bottom:1px solid #999;padding-bottom:2px}table{width:100%;border-collapse:collapse}th{text-align:left;font-weight:600;width:38%;vertical-align:top;padding:4px 8px 4px 0}td{padding:4px 0;vertical-align:top}.meta{color:#555;margin:0 0 8px}.sig{margin-top:18px;border-top:1px solid #999;padding-top:8px}",
+      body: "<h1>Rental Application</h1><p class=\"meta\">" + escapeHtml(a.applicant_name) + (p?.property ? " · " + escapeHtml(p.property) : "") + "</p>" + sections
+        + "<div class=\"sig\"><p>" + escapeHtml(a.consent_text || APPLICATION_CERTIFICATION) + "</p><p><strong>Signed electronically by " + escapeHtml(a.signed_name || "") + "</strong> on " + escapeHtml(fmtDateTime(a.submitted_at)) + (a.signer_ip ? " from " + escapeHtml(String(a.signer_ip)) : "") + "</p><p class=\"meta\">Record " + escapeHtml(String(a.integrity_hash || "").slice(0, 24)) + "</p></div>",
+    });
+  }
+  function tellLeased(p) {
+    if (!setPage) return;
+    setPage("doc_builder", { templateKey: "home_leased_notice", prospectId: p.id, returnTo: { page: "prospects", action: { openProspectId: p.id } } });
+  }
+
   // ── money received before move-in ───────────────────────────────────
   async function saveMoney() {
     if (!moneyFor || !guardSubmit("prospectMoney", moneyFor.prospect.id)) return;
@@ -409,6 +466,9 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
                 {p.status === "converted" && p.converted_tenant_id && <Btn size="sm" onClick={() => setPage && setPage("tenants", { openTenantId: p.converted_tenant_id, tenantName: p.name, panel: "detail" })}>Open tenant</Btn>}
                 {p.status === "converted" && p.attention && <Btn size="sm" variant="amber" onClick={() => finishSetup(p)}>Finish setup</Btn>}
                 {["new", "lease_sent", "signed"].includes(p.status) && <Btn size="sm" variant="ghost" onClick={() => setLostFor({ prospect: p, reason: "" })}>Mark lost</Btn>}
+                {/* The database cancels a losing applicant's lease quietly. Telling
+                    them is a person's decision, so it is a button, never automatic. */}
+                {p.status !== "converted" && (rival || /not been told/i.test(p.attention || "")) && <Btn size="sm" variant="secondary" onClick={() => tellLeased(p)}>Tell them it is leased</Btn>}
                 {p.status === "lost" && <Btn size="sm" variant="secondary" onClick={() => reopen(p)}>Reopen</Btn>}
                 {["lost", "converted", "new"].includes(p.status) && <Btn size="sm" variant="ghost" onClick={() => archive(p)}>Remove</Btn>}
               </div>
@@ -418,7 +478,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
         </div>
 
         {p.attention && <DetailAlert fix={p.status === "converted" ? null : "Dismiss"} onFix={() => dismissAttention(p)}>{p.attention}</DetailAlert>}
-        {rival && p.status !== "converted" && <DetailAlert>{rival.name} has already {rival.status === "converted" ? "moved in as the tenant" : "signed a lease"} for this property.</DetailAlert>}
+        {rival && p.status !== "converted" && <DetailAlert fix="Write to them" onFix={() => tellLeased(p)}>{rival.name} has already {rival.status === "converted" ? "moved in as the tenant" : "signed a lease"} for this property. {p.name} has not been told.</DetailAlert>}
         {p.status === "lost" && p.lost_reason && <DetailAlert>Marked lost: {p.lost_reason}</DetailAlert>}
         {next && <p className="text-sm text-neutral-500 mb-3 px-1">{next}</p>}
         {p.status === "converted" && <p className="text-sm text-neutral-500 mb-3 px-1">Converted to a tenant on {fmtDate(p.converted_at)}{p.converted_by ? " by " + p.converted_by : ""}. Their lease and files are now on the tenant's page.</p>}
@@ -471,6 +531,51 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
               </div>
             ))}
           </DetailCard>
+
+          {(() => {
+            // Everyone who will be on the lease fills in their own application.
+            const people = [{ name: p.name, email: p.email || "" }, ...others.map(c => ({ name: c.name, email: c.email || "" }))];
+            const rows = apps && apps.prospectId === p.id ? apps.rows : null;
+            const latest = (name) => (rows || []).find(a => a.applicant_name.trim().toLowerCase() === String(name).trim().toLowerCase() && a.status !== "withdrawn") || null;
+            const prog = checklistProgress(p.checklist);
+            const open = ["new", "lease_sent", "signed"].includes(p.status);
+            return (
+              <DetailCard title="Application and checklist" sub={`${prog.done} of ${prog.total}`} flush>
+                {people.map(person => {
+                  const a = latest(person.name);
+                  const state = !rows ? "…" : !a ? "Not sent" : a.status === "submitted" ? "Submitted " + fmtDate(a.submitted_at) : a.status === "opened" ? "Opened, not finished" : a.request_emailed_at ? "Emailed " + fmtDate(a.request_emailed_at) : "Link made, not emailed";
+                  return (
+                    <div key={person.name} className="px-4 py-2.5 border-b border-brand-50 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={"material-icons-outlined text-base " + (a?.status === "submitted" ? "text-positive-600" : "text-neutral-300")}>{a?.status === "submitted" ? "check_circle" : "radio_button_unchecked"}</span>
+                        <span className="flex-1 min-w-0 truncate text-neutral-700">{person.name} <span className="text-neutral-400">· {state}</span></span>
+                        {a?.status === "submitted" && <TextLink tone="brand" size="xs" onClick={() => setViewApp({ app: a, prospect: p })}>View</TextLink>}
+                        {open && a && a.status !== "submitted" && (<>
+                          <TextLink tone="neutral" size="xs" onClick={() => copyApplicationLink(a)}>Copy link</TextLink>
+                          {a.applicant_email && <a className="text-xs text-neutral-500 underline hover:text-brand-600" href={applicationMailto({ application: a, origin: window.location.origin })}>My mail app</a>}
+                        </>)}
+                        {open && (!a || a.status !== "submitted") && <TextLink tone="brand" size="xs" onClick={() => sendApplication(p, person)}>{a ? "Send again" : person.email ? "Send application" : "Make link"}</TextLink>}
+                      </div>
+                      {open && !person.email && <div className="text-xs text-warn-700 pl-6">No email on file: make a link and send it yourself.</div>}
+                    </div>
+                  );
+                })}
+                {apps?.failed && <p className="px-4 py-2 text-xs text-danger-600">The applications could not be read.</p>}
+                <div className="px-4 py-2.5">
+                  {PROSPECT_CHECKLIST.map(item => {
+                    const c = p.checklist?.[item.key];
+                    return (
+                      <label key={item.key} className="flex items-center gap-2 py-1 text-sm cursor-pointer">
+                        <Checkbox checked={!!c?.done} disabled={p.status === "converted"} onChange={() => tickChecklist(p, item.key)} />
+                        <span className={c?.done ? "text-neutral-700" : "text-neutral-500"}>{item.label}</span>
+                        {c?.done && c.at && <span className="text-xs text-neutral-400">{fmtDate(c.at)}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </DetailCard>
+            );
+          })()}
 
           {(() => {
             const h = heldOf(p.id);
@@ -603,6 +708,29 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
           <div className="flex gap-2 mt-4">
             <Btn variant="danger" onClick={markLost} disabled={!!busy}>{busy || "Mark lost"}</Btn>
             <Btn variant="secondary" onClick={() => setLostFor(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {viewApp && (
+        <Modal title={"Application — " + viewApp.app.applicant_name} onClose={() => setViewApp(null)}>
+          <p className="text-xs text-neutral-400 mb-3">Signed electronically by <strong className="text-neutral-600">{viewApp.app.signed_name}</strong> on {fmtDateTime(viewApp.app.submitted_at)}{viewApp.app.signer_ip ? " from " + viewApp.app.signer_ip : ""}.</p>
+          <div className="max-h-[60vh] overflow-y-auto pr-1">
+            {applicationSummary(viewApp.app.answers).map(sec => (
+              <div key={sec.title} className="mb-4">
+                <h4 className="text-xs font-semibold tracking-[0.06em] uppercase text-neutral-400 mb-1">{sec.title}</h4>
+                {sec.rows.map(r => (
+                  <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3 py-1 border-b border-brand-50 text-sm">
+                    <span className="text-neutral-500">{r.label}</span>
+                    <span className="text-neutral-800 whitespace-pre-wrap break-words">{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-4">
+            <Btn onClick={() => printApplication(viewApp.app, viewApp.prospect)}>Print or save as PDF</Btn>
+            <Btn variant="secondary" onClick={() => setViewApp(null)}>Close</Btn>
           </div>
         </Modal>
       )}
