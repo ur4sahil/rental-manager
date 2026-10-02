@@ -434,6 +434,61 @@ select {
   cursor: default !important;
 }
 
+/* Text set the way Word sets it, so lines -- and therefore pages -- break
+   where they do in the Word file. Each rule below was checked against
+   Word's own PDF of two real leases (word widths agree to 0.03pt):
+   - Word does not kern or use ligatures by default.
+   - A space at the end of a line hangs past the margin in Word. TipTap's
+     default (white-space: break-spaces) makes it take up room instead,
+     which wraps a line one word early whenever it only just fits.
+   - On justified lines Word will narrow the spaces (measured down to
+     ~78% of normal) to fit one more word; browsers only ever stretch.
+     Narrowing the space makes lines break where Word breaks them, and
+     justification then stretches each full line back out. -0.045em is
+     the value that reproduced Word's line count on a fully-justified
+     17-page lease; without it that lease runs a page long. */
+.paged-editor .ProseMirror {
+  font-kerning: none;
+  font-variant-ligatures: none;
+  white-space: pre-wrap;
+}
+.paged-editor .ProseMirror [style*="text-align: justify"] {
+  word-spacing: -0.045em;
+}
+
+/* Liberation Serif -- Zoho Writer's default face and what the imported
+   leases are set in. Metric-compatible with Times New Roman, so on a Mac
+   or PC the page breaks are the same either way; bundling it means they
+   are also the same on a phone or tablet, which has neither.
+   SIL Open Font License 1.1 (src/fonts/LiberationFonts-LICENSE.txt). */
+@font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Liberation Serif"; src: url("./fonts/LiberationSerif-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* Lists. Tailwind's reset strips list markers and nothing put them back,
+   so bulleted and numbered lists showed as plain paragraphs. The marker
+   hangs 0.25in to the left of the text, as in Word, and is drawn on the
+   paragraph (not the <li>) so it follows a paragraph indent brought in
+   from a Word file. */
+.paged-editor .ProseMirror ul,
+.paged-editor .ProseMirror ol {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.5in;
+}
+.paged-editor .ProseMirror ol { counter-reset: hx-ol; }
+.paged-editor .ProseMirror ol > li { counter-increment: hx-ol; }
+.paged-editor .ProseMirror li > p:first-child::before {
+  display: inline-block;
+  width: 0.25in;
+  margin-left: -0.25in;
+  text-indent: 0;
+  text-align: left;
+}
+.paged-editor .ProseMirror ul > li > p:first-child::before { content: "\25CF"; font-size: 0.7em; vertical-align: 0.12em; }
+.paged-editor .ProseMirror ol > li > p:first-child::before { content: counter(hx-ol) "."; }
+
 /* A scroll affordance only when there is something to scroll.
    TabBar carries overflow-x-auto so a long tab strip can scroll on a phone.
    With two short tabs there is nothing to scroll, but macOS still reserves

@@ -15,8 +15,9 @@
 // verified by comparing text, and dropped to the document default if the
 // two ever disagree, so a mismatch costs fidelity, never correctness.
 
-const OPEN = "";
-const CLOSE = "";
+const LIST_INDENT_TWIPS = 720; // the editor's list indent, 0.5in
+const OPEN = "\uE000";
+const CLOSE = "\uE001";
 
 // Word's "single" spacing is the font's natural line height, about 1.15x
 // the font size for Times/Arial-class faces. CSS line-height is a plain
@@ -168,12 +169,23 @@ export async function convertDocxToHtml(arrayBuffer) {
   let xmlParagraphs = [];
   let footer = { left: "", right: "" };
   let page = null;
+  let mammothInput = arrayBuffer;
   try {
     const zip = await JSZip.loadAsync(arrayBuffer);
     const read = async (path) => (zip.file(path) ? zip.file(path).async("string") : "");
+    // Zoho Writer exports a soft line break as <w:br w:type="line"/>. The
+    // spec only knows page/column/textWrapping, so mammoth warns
+    // "unsupported break type" and drops it -- two sentences that sat on
+    // separate lines arrive glued together. Rewrite it as a plain <w:br/>
+    // and hand mammoth the corrected file.
+    const rawDoc = await read("word/document.xml");
+    if (/<w:br\b[^>]*w:type="line"/.test(rawDoc)) {
+      zip.file("word/document.xml", rawDoc.replace(/<w:br\b[^>]*w:type="line"[^>]*\/>/g, "<w:br/>"));
+      mammothInput = await zip.generateAsync({ type: "arraybuffer" });
+    }
     const themeDoc = parseXml(await read("word/theme/theme1.xml"));
     styles = readStyles(parseXml(await read("word/styles.xml")), themeDoc);
-    const docXml = parseXml(await read("word/document.xml"));
+    const docXml = parseXml(rawDoc);
     if (docXml) {
       xmlParagraphs = Array.from(docXml.getElementsByTagName("w:p")).map((p) => ({
         props: resolveParagraph(p, styles),
@@ -222,6 +234,7 @@ export async function convertDocxToHtml(arrayBuffer) {
 
   // -- Tag paragraphs and runs while mammoth walks the document.
   const paraCss = [];   // index -> css, filled in after the walk
+  const listLeft = [];  // index -> Word's left indent (twips), for list items
   const seen = [];      // mammoth paragraphs, in the order it visits them
   const runCss = [];
   const tagRuns = (node, isHeading) => {
@@ -246,7 +259,7 @@ export async function convertDocxToHtml(arrayBuffer) {
   });
 
   const result = await mammoth.convertToHtml(
-    { arrayBuffer },
+    { arrayBuffer: mammothInput },
     { styleMap: ["u => u", "r[style-name='Strong'] => strong"], transformDocument, ignoreEmptyParagraphs: false }
   );
   let html = (result && result.value) || "";
@@ -263,6 +276,7 @@ export async function convertDocxToHtml(arrayBuffer) {
       left: s.indent?.start, right: s.indent?.end, firstLine: s.indent?.firstLine, hanging: s.indent?.hanging,
     };
     paraCss[i] = paragraphCss(props);
+    listLeft[i] = props.left || 0;
   });
 
   // Word lets the spacing under the LAST line of a page hang into the
@@ -295,10 +309,20 @@ export async function convertDocxToHtml(arrayBuffer) {
   for (const node of hits) {
     const m = node.nodeValue.match(paraRe);
     node.nodeValue = node.nodeValue.replace(paraRe, "");
-    const css = paraCss[Number(m[1])];
+    let css = paraCss[Number(m[1])];
     let block = node.parentElement?.closest("p,h1,h2,h3,h4,h5,h6,li");
     if (!block || !css) continue;
     if (block.tagName === "LI") {
+      // In Word a bullet is a hanging indent: the paragraph's left edge
+      // and a negative first line make room for the marker. In HTML the
+      // list does that itself (index.css: 0.5in indent, marker hanging
+      // 0.25in), so keeping them drags the first line back over the bullet.
+      // Word's left edge for the text is measured from the page margin;
+      // the list here already indents by LIST_INDENT_TWIPS, so store the
+      // difference.
+      const left = listLeft[Number(m[1])];
+      css = css.split(";").filter((d) => !/^(text-indent|margin-left):/.test(d))
+        .concat(left != null && left !== LIST_INDENT_TWIPS ? ["margin-left:" + inches(left - LIST_INDENT_TWIPS)] : []).join(";");
       // mammoth writes list text straight into the <li>; the editor keeps
       // paragraph formatting on a <p>, so give the text one.
       const p = dom.createElement("p");
@@ -311,7 +335,7 @@ export async function convertDocxToHtml(arrayBuffer) {
   // Word tabs survive as raw \t, which HTML then collapses to one space.
   const tabs = dom.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = tabs.nextNode(); n; n = tabs.nextNode()) {
-    if (n.nodeValue.includes("\t")) n.nodeValue = n.nodeValue.replace(/\t/g, "  ");
+    if (n.nodeValue.includes("\t")) n.nodeValue = n.nodeValue.replace(/\t/g, "\u2003\u2003");
   }
   // Runs that held only a marker leave an empty span behind.
   root.querySelectorAll("span").forEach((s) => { if (!s.textContent && !s.children.length) s.remove(); });
