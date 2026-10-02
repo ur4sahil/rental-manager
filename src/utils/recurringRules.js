@@ -74,3 +74,26 @@ export function arAlreadyBilledInMonth(lines, arAccountId, monthStr) {
     return d >= start && d <= end;
   });
 }
+
+// Should this month's rent be cut down to the days the lease covers?
+//
+// Only for a NEW tenancy. A lease that starts mid-month is prorated on the
+// way in -- but a lease that starts mid-month can just as well be a RENEWAL
+// for someone who already lives there, and the same date test then shaved
+// their rent: a tenant billed $2,900 every month, whose renewal began on
+// the 3rd, would have been charged 28/30 of it that month. "Already lives
+// there" is read off the tenant's own ledger: if it carries a charge dated
+// before this month, this is not their first month.
+//
+// Returns null (charge the full amount) or { amount, days, daysInMonth }.
+export function leaseStartProration({ leaseStart, monthStr, amount, hasEarlierCharges }) {
+  const start = String(leaseStart || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start.slice(0, 7) !== String(monthStr)) return null;
+  if (hasEarlierCharges) return null;
+  const [y, m] = String(monthStr).split("-").map(n => parseInt(n, 10));
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startDay = parseInt(start.slice(8, 10), 10) || 1;
+  const days = Math.max(1, daysInMonth - startDay + 1);
+  if (days >= daysInMonth) return null;
+  return { amount: Math.round(num(amount) * days / daysInMonth * 100) / 100, days, daysInMonth };
+}

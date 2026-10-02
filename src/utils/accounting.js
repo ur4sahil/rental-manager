@@ -5,7 +5,7 @@ import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 import { RENT_CHARGE_PREFIXES, pickLegacyNamedArAccount, nextTenantArSeq } from "./paymentRules";
 import { syncOwnerAccruals, tenantRentChargeInMonth } from "./ownerRules";
-import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth } from "./recurringRules";
+import { BILLABLE_LEASE_STATUSES, isTenantBillable, hasTenantId, recurringTenantSkipReason, pickTenantArAccount, monthBounds, arAlreadyBilledInMonth, leaseStartProration } from "./recurringRules";
 import { RELEASED_DEPOSIT_STATUSES, depositReleaseKey, depositReleaseReference, depositDeductionReference, depositReleaseReferences, decideDepositRelease, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, isKeyedReleaseRef, depositReleaseStateWith } from "./depositRules";
 
 // Phase 4: ledger_entries is now a Postgres view derived from the GL
@@ -898,20 +898,34 @@ export async function autoPostRecurringEntries(companyId) {
     leaseQ = entry.tenant_id ? leaseQ.eq("tenant_id", entry.tenant_id) : leaseQ.eq("tenant_name", entry.tenant_name);
     const { data: leaseRows } = await leaseQ.order("start_date", { ascending: false }).limit(1);
     const lease = leaseRows?.[0] || null;
-    const yr = parseInt(monthStr.split("-")[0], 10) || 2026;
-    const mo = parseInt(monthStr.split("-")[1], 10) || 1;
-    const daysInMonth = new Date(yr, mo, 0).getDate();
     // Only prorate on the move-in edge. Leases in this app are treated
     // as month-to-month — a lease_end set to "end of term" shouldn't
     // auto-truncate the last month's bill. Final-month proration is
     // the move-out wizard's responsibility.
-    const startsMidMonth = lease?.start_date && lease.start_date.slice(0, 7) === monthStr;
-    if (startsMidMonth) {
-      const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
-      const days = Math.max(1, daysInMonth - startDay + 1);
-      if (days < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth * 100) / 100;
-        postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease starts ${lease.start_date})`;
+    //
+    // And only for a NEW tenancy: a renewal that starts mid-month is not a
+    // move-in. Whether the tenant was already being charged is read off
+    // their own ledger (leaseStartProration explains why). A lookup that
+    // fails counts as "no earlier charges", i.e. the old behaviour.
+    if (lease?.start_date && lease.start_date.slice(0, 7) === monthStr) {
+      let hasEarlierCharges = false;
+      if (isTenantSchedule && debitAcct?.id) {
+        const { data: earlier, error: earlierErr } = await supabase.from("acct_journal_lines")
+          .select("id, acct_journal_entries!inner(date, status)")
+          .eq("company_id", cid).eq("account_id", debitAcct.id).gt("debit", 0)
+          .neq("acct_journal_entries.status", "voided")
+          .lt("acct_journal_entries.date", monthStr + "-01")
+          // A deposit taken before move-in is not rent: it does not make
+          // this a renewal. (A null memo must still count -- imported rent
+          // lines have none -- hence the explicit is.null.)
+          .or("memo.is.null,memo.not.ilike.%deposit%")
+          .limit(1);
+        hasEarlierCharges = !earlierErr && (earlier || []).length > 0;
+      }
+      const pro = leaseStartProration({ leaseStart: lease.start_date, monthStr, amount: entry.amount, hasEarlierCharges });
+      if (pro) {
+        postAmount = pro.amount;
+        postDesc = (entry.description || "Recurring entry") + ` (prorated ${pro.days}/${pro.daysInMonth} days — lease starts ${lease.start_date})`;
       }
     }
   }

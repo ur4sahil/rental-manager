@@ -202,5 +202,24 @@ try {
   assert("live query shape check ran", false, e.message);
 }
 
+// ── A renewal is not a move-in ────────────────────────────────────────
+// Toni Tillman: billed $2,900 a month, renewal lease starting 2026-11-03.
+// The lease-start test alone prorated November to 28/30.
+{
+  const p = rules.leaseStartProration;
+  const fresh = p({ leaseStart: "2026-11-03", monthStr: "2026-11", amount: 2900, hasEarlierCharges: false });
+  assert("a NEW tenancy starting on the 3rd is prorated 28/30", fresh && fresh.days === 28 && fresh.daysInMonth === 30 && fresh.amount === 2706.67, JSON.stringify(fresh));
+  assert("a RENEWAL starting on the 3rd is charged in full", p({ leaseStart: "2026-11-03", monthStr: "2026-11", amount: 2900, hasEarlierCharges: true }) === null);
+  assert("a lease starting on the 1st is never prorated", p({ leaseStart: "2026-11-01", monthStr: "2026-11", amount: 2900, hasEarlierCharges: false }) === null);
+  assert("a later month is never prorated", p({ leaseStart: "2026-11-03", monthStr: "2026-12", amount: 2900, hasEarlierCharges: false }) === null);
+  assert("the last day of a month is one day's rent", p({ leaseStart: "2026-02-28", monthStr: "2026-02", amount: 2800, hasEarlierCharges: false })?.amount === 100);
+  assert("a missing or malformed lease start is charged in full", p({ leaseStart: null, monthStr: "2026-11", amount: 2900 }) === null && p({ leaseStart: "11/03/2026", monthStr: "2026-11", amount: 2900 }) === null);
+  const acct = src("utils/accounting.js");
+  assert("the recurring worker prorates through leaseStartProration, not its own date test",
+    /leaseStartProration\(\{ leaseStart: lease\.start_date, monthStr, amount: entry\.amount, hasEarlierCharges \}\)/.test(acct) && !/const startsMidMonth/.test(acct));
+  assert("…and asks the tenant's own ledger whether they were charged before this month",
+    /\.eq\("account_id", debitAcct\.id\)\.gt\("debit", 0\)[\s\S]{0,200}\.lt\("acct_journal_entries\.date", monthStr \+ "-01"\)/.test(acct));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
