@@ -7,6 +7,7 @@ import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickCo
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
 import { printTheme, chartPalette, printTable, printFileName, printHtmlDocument } from "../utils/theme";
+import { RecurringJournalEntries } from "./RecurringRent";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged, fetchAllPaged } from "../utils/accounting";
@@ -192,185 +193,9 @@ export function LedgerLink({ ids, title, onOpenLedger, className = "", children 
 // the parent hasn't wired the prop — the .X || fallback pattern below
 // tolerates missing keys. Without this, the page threw ReferenceError
 // and fired the PM-8009 ErrorBoundary.
-export function RecurringJournalEntries({ companyId, companySettings = {}, addNotification, userProfile, showToast, showConfirm }) {
-  const [entries, setEntries] = useState([]);
-  const [tenants, setTenants] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingEntry, setEditingEntry] = useState(null);
-  const [form, setForm] = useState({
-  description: "", frequency: "monthly", day_of_month: 1, amount: "",
-  tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable",
-  credit_account_id: "4000", credit_account_name: "Rental Income",
-  late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50,
-  });
-
-  useEffect(() => { fetchEntries(); fetchTenants(); }, [companyId]);
-  async function fetchTenants() {
-  const { data } = await supabase.from("tenants").select("id, name, property, rent").eq("company_id", companyId).is("archived_at", null).order("name");
-  setTenants(data || []);
-  }
-
-  async function fetchEntries() {
-  setLoading(true);
-  const { data } = await supabase.from("recurring_journal_entries").select("*")
-  .eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(200);
-  setEntries(data || []);
-  setLoading(false);
-  }
-
-  async function saveEntry() {
-  if (!form.description.trim() || !form.amount) { showToast("Description and amount are required.", "error"); return; }
-  const payload = {
-  company_id: companyId,
-  description: form.description, frequency: form.frequency,
-  day_of_month: Number(form.day_of_month) || 1, amount: Number(form.amount),
-  tenant_name: form.tenant_name, property: form.property,
-  debit_account_id: form.debit_account_id, debit_account_name: form.debit_account_name,
-  credit_account_id: form.credit_account_id, credit_account_name: form.credit_account_name,
-  status: "active", late_fee_enabled: form.late_fee_enabled,
-  grace_period_days: Number(form.grace_period_days) || 5,
-  late_fee_amount: Number(form.late_fee_amount) || 0,
-  next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, Number(form.day_of_month) || 1).toISOString().split("T")[0],
-  created_by: userProfile?.email || "",
-  };
-  if (editingEntry) {
-  const { error } = await supabase.from("recurring_journal_entries").update(payload).eq("id", editingEntry.id).eq("company_id", companyId);
-  if (error) { pmError("PM-4007", { raw: error, context: "updating recurring journal entry" }); return; }
-  addNotification("✏️", "Updated recurring entry: " + form.description);
-  } else {
-  const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
-  if (error) { pmError("PM-4008", { raw: error, context: "creating recurring journal entry" }); return; }
-  addNotification("🔄", "Created recurring entry: " + form.description);
-  }
-  setShowForm(false); setEditingEntry(null);
-  setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 });
-  fetchEntries();
-  }
-
-  async function toggleStatus(entry) {
-  const newStatus = entry.status === "active" ? "paused" : "active";
-  const { error } = await supabase.from("recurring_journal_entries").update({ status: newStatus }).eq("id", entry.id).eq("company_id", companyId);
-  if (error) { pmError("PM-4009", { raw: error, context: "toggling recurring entry status" }); return; }
-  addNotification(newStatus === "active" ? "▶️" : "⏸️", (newStatus === "active" ? "Resumed" : "Paused") + ": " + entry.description);
-  fetchEntries();
-  }
-
-  async function deleteEntry(entry) {
-  if (!await showConfirm({ message: "Delete this recurring entry? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
-  const { error } = await supabase.from("recurring_journal_entries").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", entry.id).eq("company_id", companyId);
-  if (error) { pmError("PM-4010", { raw: error, context: "deleting recurring journal entry" }); return; }
-  addNotification("🗑️", "Deleted: " + entry.description);
-  fetchEntries();
-  }
-
-  async function runNow() {
-  if (!await showConfirm({ message: "Post all active recurring entries for this month now?" })) return;
-  const result = await autoPostRecurringEntries(companyId);
-  if (result?.posted > 0) { addNotification("⚡", "Posted " + result.posted + " entry(ies)"); showToast("Posted " + result.posted + " recurring entry(ies)", "success"); }
-  else showToast("No new entries to post this period", "info");
-  fetchEntries();
-  }
-
-  if (loading) return <Spinner />;
-
-  const active = entries.filter(e => e.status === "active");
-  const paused = entries.filter(e => e.status === "paused");
-
-  // The edit form renders inside the row being edited, not at the top
-  // of the page. Editing the fifth entry and having its form appear
-  // above the first one means losing your place and scrolling back to
-  // check which entry you are actually changing.
-  const renderRecurringForm = () => (
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-4 mb-4">
-  <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><MoneyInput value={form.amount} onChange={v => setForm({...form, amount: v})} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="31" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /><div className="text-2xs text-subtle-400 mt-1">In months with fewer days (e.g. Feb), posts on the last available day.</div></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {propertyLabel(t.property)}</option>)}</Select></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
-  <div className="col-span-2 bg-warn-50 rounded-lg p-3">
-  <div className="flex items-center gap-2 mb-2">
-  <Checkbox checked={form.late_fee_enabled} onChange={e => setForm({...form, late_fee_enabled: e.target.checked})} />
-  <span className="text-xs font-semibold text-warn-700">Enable Auto Late Fees</span>
-  </div>
-  {form.late_fee_enabled && (
-  <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-subtle-500 mb-1 block">Grace Period (days)</label><Input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} /></div>
-  <div><label className="text-xs text-subtle-500 mb-1 block">Late Fee ($)</label><MoneyInput value={form.late_fee_amount} onChange={v => setForm({...form, late_fee_amount: v})} /></div>
-  </div>
-  )}
-  </div>
-  </div>
-  <div className="flex gap-2 mt-3">
-  <Btn onClick={saveEntry}>{editingEntry ? "Update" : "Create"}</Btn>
-  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingEntry(null); }}>Cancel</Btn>
-  </div>
-  </div>
-  );
-
-  return (
-  <div>
-  <div className="flex items-center justify-between mb-4">
-  <div>
-  <div className="text-sm text-subtle-500">{active.length} active · {paused.length} paused</div>
-  </div>
-  <div className="flex gap-2">
-  <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
-  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
-  </div>
-  </div>
-
-  {/* New entries only — an edit renders beneath its own row. */}
-  {showForm && !editingEntry && renderRecurringForm()}
-
-  {entries.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-neutral-200">
-  <div className="text-4xl mb-3">🔄</div>
-  <div className="text-subtle-500 font-medium">No recurring entries</div>
-  <div className="text-xs text-subtle-400 mt-1">Recurring entries are created automatically when you add a tenant, or you can add them manually.</div>
-  </div>
-  ) : (
-  <div className="space-y-2">
-  {entries.map(e => (
-  <div key={e.id} className={"bg-white rounded-xl border shadow-card p-4 " + (e.status === "paused" ? "opacity-60 border-subtle-200" : "border-subtle-100")}>
-  {/* Mobile: stack title block, then amount+status, then actions.
-      Desktop (md+): keep the original single-row horizontal layout. */}
-  <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-  <div className="min-w-0 flex-1">
-  <div className="font-semibold text-subtle-800 text-sm break-words">{e.description}</div>
-  <div className="text-xs text-subtle-400 mt-0.5 break-words">
-  {e.tenant_name && <span>{e.tenant_name} · </span>}
-  {e.property && <span>{e.property} · </span>}
-  Day {e.day_of_month} · {e.frequency}
-  {e.late_fee_enabled && <span> · Late fee: ${safeNum(e.late_fee_amount)} after {e.grace_period_days}d</span>}
-  </div>
-  </div>
-  <div className="flex items-center gap-3 md:contents">
-  <div className="text-lg font-bold text-subtle-800 whitespace-nowrap">${safeNum(e.amount).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold shrink-0 " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
-  <div className="flex gap-1 ml-auto md:ml-0 shrink-0">
-  <Btn variant={e.status === "active" ? "notice" : "positive"} size="xs" onClick={() => toggleStatus(e)}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</Btn>
-  <TextLink tone="brand" size="xs" underline={false} onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="px-2 py-1 rounded-lg hover:bg-brand-50">Edit</TextLink>
-  <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteEntry(e)} className="px-2 py-1 rounded-lg hover:bg-danger-50">Delete</TextLink>
-  </div>
-  </div>
-  </div>
-  {e.next_post_date && <div className="text-xs text-subtle-400 mt-2">Next post: {e.next_post_date}</div>}
-  {/* The edit form, in place, directly under the entry it edits. */}
-  {showForm && editingEntry && editingEntry.id === e.id && (
-  <div className="mt-3 pt-3 border-t border-brand-100">{renderRecurringForm()}</div>
-  )}
-  </div>
-  ))}
-  </div>
-  )}
-  </div>
-  );
-}
+// The Recurring rent page lives in ./RecurringRent.js. It is re-exported
+// here because that is where it has always been imported from.
+export { RecurringJournalEntries };
 
 // ============ ACCOUNTING (QuickBooks-Style with Supabase) ============
 
@@ -6340,7 +6165,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   {activeTab === "qbimport" && <QuickBooksImport accounts={acctAccounts} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onComplete={fetchAll} />}
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
-  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} />}
+  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} />}
   {activeTab === "coa" && <AcctChartOfAccounts companyId={companyId} accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} showToast={showToast} onOpenLedger={openLedger} userRole={userRole} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={async (...args) => { const r = await addJournalEntry(...args); if (r) returnToOrigin(); return r; }} onUpdate={async (...args) => { const r = await updateJournalEntry(...args); if (r) returnToOrigin(); return r; }} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={openLedger} initialViewJEId={viewJEId} autoOpenAdd={wantsNewJE} onCloseJEDetail={returnToOrigin} userRole={userRole} />}
   {activeTab === "bankimport" && <BankTransactions onOpenRegister={openLedger} linesLoaded={linesLoaded} accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} onViewJE={(jeId) => { if (!journalEntries.some(j => j.id === jeId)) { showToast("That journal entry isn't in the loaded set — open the Journal tab and search for it.", "warning"); return; } setJeOrigin({ kind: "tab", tab: "bankimport" }); setViewJEId(jeId); setActiveTab("journal"); }} />}

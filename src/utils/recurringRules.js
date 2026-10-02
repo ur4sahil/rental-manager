@@ -97,3 +97,113 @@ export function leaseStartProration({ leaseStart, monthStr, amount, hasEarlierCh
   if (days >= daysInMonth) return null;
   return { amount: Math.round(num(amount) * days / daysInMonth * 100) / 100, days, daysInMonth };
 }
+
+// ── What needs a look on the Recurring rent page ───────────────────────
+// Rent that silently is not being charged does not announce itself: the
+// tenant simply has no entry that month. Three Sigma tenants went a month
+// unbilled that way, a fourth was charged another tenant's rent, and a
+// fifth had a schedule that would not start for two months. Each of those
+// is a rule here, so the page can say so at the top instead of leaving it
+// to be noticed on a ledger.
+//
+//   schedules   recurring_journal_entries rows (not archived)
+//   tenants     tenant rows (id, name, property, rent, lease_status,
+//               archived_at, lease_start, move_in)
+//   chargedThisMonth  Set of tenant ids (as strings) whose ledger already
+//               carries a rent charge dated in the current month
+//   today       "YYYY-MM-DD"
+//
+// Returns [{ kind, tenantId, scheduleId, name, text }], worst first.
+const ymOf = (d) => String(d || "").slice(0, 7);
+const monthAfter = (ym) => {
+  const [y, m] = String(ym).split("-").map(n => parseInt(n, 10));
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+export const monthName = (ym) => MONTH_NAMES[(parseInt(String(ym).slice(5, 7), 10) || 1) - 1];
+const money = (n) => "$" + num(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const isActiveSchedule = (s) => !!s && s.status === "active" && !s.archived_at;
+
+// The months an active schedule will pass over before its next posting:
+// from the month after its last posting (or this month, if it has never
+// posted) up to the month before `next_post_date`.
+export function skippedMonths(schedule, today) {
+  if (!isActiveSchedule(schedule) || !schedule.next_post_date) return [];
+  const nextYm = ymOf(schedule.next_post_date);
+  let ym = schedule.last_posted_date ? monthAfter(ymOf(schedule.last_posted_date)) : ymOf(today);
+  if (ym < ymOf(today)) ym = ymOf(today);   // the past is not this check's business
+  const out = [];
+  while (ym < nextYm && out.length < 24) { out.push(ym); ym = monthAfter(ym); }
+  return out;
+}
+
+export function recurringAttention({ schedules = [], tenants = [], chargedThisMonth = new Set(), today }) {
+  const out = [];
+  const thisYm = ymOf(today);
+  const day = parseInt(String(today || "").slice(8, 10), 10) || 1;
+  const byTenant = {};
+  for (const s of schedules) {
+    if (hasTenantId(s) && isActiveSchedule(s)) (byTenant[String(s.tenant_id)] = byTenant[String(s.tenant_id)] || []).push(s);
+  }
+  const tenantById = Object.fromEntries(tenants.map(t => [String(t.id), t]));
+  const charged = (id) => chargedThisMonth.has(String(id));
+  // Not living there yet: a lease that starts after this month owes nothing this month.
+  const startsLater = (t) => { const s = String(t.lease_start || t.move_in || "").slice(0, 7); return !!s && s > thisYm; };
+
+  for (const t of tenants) {
+    if (!isTenantBillable(t)) continue;
+    const mine = byTenant[String(t.id)] || [];
+    if (mine.length === 0) {
+      // A schedule that exists but is switched off is a different message
+      // (and a different fix: resume it, do not make a second one).
+      const off = schedules.find(s => hasTenantId(s) && String(s.tenant_id) === String(t.id) && !s.archived_at && s.status !== "active");
+      if (off) {
+        out.push({ kind: "paused", tenantId: t.id, scheduleId: off.id, name: t.name,
+          text: `the rent schedule is paused, so nothing is charged` + (charged(t.id) || startsLater(t) ? "" : `; ${monthName(thisYm)} has not been charged`) });
+        continue;
+      }
+      out.push({ kind: "not_billed", tenantId: t.id, scheduleId: null, name: t.name,
+        text: `lives there${num(t.rent) > 0 ? ", rent on record " + money(t.rent) : ""}, no schedule` + (charged(t.id) || startsLater(t) ? "" : `; ${monthName(thisYm)} has not been charged`) });
+      continue;
+    }
+    for (const s of mine) {
+      if (num(t.rent) > 0 && Math.abs(num(s.amount) - num(t.rent)) > 0.005) {
+        out.push({ kind: "amount_differs", tenantId: t.id, scheduleId: s.id, name: t.name, tenantRent: num(t.rent),
+          text: `schedule charges ${money(s.amount)}, the tenant record says ${money(t.rent)}` });
+      }
+      // Months the schedule will pass over. This month only counts if the
+      // ledger shows no rent for it (it may have been entered by hand) and
+      // the tenant was already living there.
+      const skipped = skippedMonths(s, today).filter(ym => ym !== thisYm || (!charged(t.id) && !startsLater(t)));
+      if (skipped.length) {
+        out.push({ kind: "skips_months", tenantId: t.id, scheduleId: s.id, name: t.name, months: skipped,
+          text: `next posting is ${s.next_post_date}, so ${skipped.map(monthName).join(" and ")} ${skipped.length === 1 ? "is" : "are"} not charged` });
+      }
+    }
+    // A schedule that exists but is not running.
+    if (!charged(t.id) && !startsLater(t) && mine.every(s => skippedMonths(s, today).indexOf(thisYm) === -1)
+        && mine.every(s => (parseInt(s.day_of_month, 10) || 1) <= day) && mine.every(s => ymOf(s.last_posted_date) < thisYm)) {
+      out.push({ kind: "not_charged", tenantId: t.id, scheduleId: mine[0].id, name: t.name,
+        text: `${monthName(thisYm)} rent has not posted yet. Press "Post what is due".` });
+    }
+  }
+  for (const s of schedules) {
+    if (!hasTenantId(s) || !isActiveSchedule(s)) continue;
+    const t = tenantById[String(s.tenant_id)];
+    if (!isTenantBillable(t)) {
+      out.push({ kind: "will_not_post", tenantId: s.tenant_id, scheduleId: s.id, name: s.tenant_name || (t && t.name) || "Unknown tenant",
+        text: !t ? "the tenant record no longer exists, so this never posts" : t.archived_at ? "the tenant is archived, so this never posts" : `the tenant is marked "${t.lease_status || "no status"}", so this never posts` });
+    }
+  }
+  const rank = { not_billed: 0, paused: 1, amount_differs: 2, skips_months: 3, not_charged: 4, will_not_post: 5 };
+  return out.sort((a, b) => (rank[a.kind] - rank[b.kind]) || String(a.name).localeCompare(String(b.name)));
+}
+
+export const ATTENTION_LABEL = {
+  not_billed: "Not being billed",
+  paused: "Paused",
+  amount_differs: "Amount looks wrong",
+  skips_months: "Months will be skipped",
+  not_charged: "Not charged yet",
+  will_not_post: "Will never post",
+};

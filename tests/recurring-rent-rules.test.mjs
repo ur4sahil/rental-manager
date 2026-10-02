@@ -118,7 +118,12 @@ const life = src("components/Lifecycle.js");
 const props = src("components/Properties.js");
 const tenants = src("components/Tenants.js");
 assert("archiveTenant stops the tenant's rent", /deactivateTenantRecurring\(companyId, tenantId\)/.test(archive));
-const term = leases.slice(leases.indexOf("async function terminateLease"), leases.indexOf("function parseChecklist"));
+// Terminating a lease now runs through ONE function, terminateLeaseCascade
+// (utils/destructive.js), shared by the Leases page and the approval queue.
+// These checks used to read the Leases page, where the code no longer is.
+const destructive = src("utils/destructive.js");
+const term = destructive.slice(destructive.indexOf("export async function terminateLeaseCascade"), destructive.indexOf("export async function archiveOwnerRow"));
+assert("the Leases page terminates through terminateLeaseCascade", /terminateLeaseCascade\(\{ companyId, lease, userProfile, userRole \}\)/.test(leases));
 assert("lease terminate stops the tenant's rent", /deactivateTenantRecurring\(companyId, lease\.tenant_id\)/.test(term));
 assert("lease terminate disables autopay with enabled:false (what the Stripe charger reads)",
   /update\(\{ enabled: false \}\)\.eq\("company_id", companyId\)\.eq\("tenant_id", lease\.tenant_id\)/.test(term) && !/active: false/.test(term));
@@ -219,6 +224,70 @@ try {
     /leaseStartProration\(\{ leaseStart: lease\.start_date, monthStr, amount: entry\.amount, hasEarlierCharges \}\)/.test(acct) && !/const startsMidMonth/.test(acct));
   assert("…and asks the tenant's own ledger whether they were charged before this month",
     /\.eq\("account_id", debitAcct\.id\)\.gt\("debit", 0\)[\s\S]{0,200}\.lt\("acct_journal_entries\.date", monthStr \+ "-01"\)/.test(acct));
+}
+
+// ── What the Recurring rent page flags ───────────────────────────────
+// Each case below is something that actually happened on Sigma's books.
+{
+  const today = "2026-10-02";
+  const T = (id, name, rent, extra = {}) => ({ id, name, rent, lease_status: "active", archived_at: null, ...extra });
+  const S = (id, tenant_id, amount, extra = {}) => ({ id, tenant_id, tenant_name: "t" + tenant_id, amount, status: "active", archived_at: null, day_of_month: 1, next_post_date: "2026-11-01", last_posted_date: "2026-10-01", ...extra });
+  const find = (list, kind, tenantId) => list.find(a => a.kind === kind && String(a.tenantId) === String(tenantId));
+  const run = (o) => rules.recurringAttention({ today, chargedThisMonth: new Set(), ...o });
+
+  let a = run({ tenants: [T(1, "Stanley", 1900)], schedules: [] });
+  assert("a live tenant with no schedule is 'not being billed', and the missed month is named", !!find(a, "not_billed", 1) && /October has not been charged/.test(find(a, "not_billed", 1).text), JSON.stringify(a));
+  a = run({ tenants: [T(1, "Tamara", 2500)], schedules: [], chargedThisMonth: new Set(["1"]) });
+  assert("…but if this month was entered by hand, it does not claim the month was missed", !!find(a, "not_billed", 1) && !/has not been charged/.test(find(a, "not_billed", 1).text));
+  a = run({ tenants: [T(1, "Paused", 1900)], schedules: [S("s1", 1, 1900, { status: "paused" })] });
+  assert("a tenant whose schedule is paused is told apart from one with no schedule", !!find(a, "paused", 1) && find(a, "paused", 1).scheduleId === "s1" && !find(a, "not_billed", 1), JSON.stringify(a));
+  a = run({ tenants: [T(1, "Gone", 1900, { lease_status: "past" }), T(2, "Archived", 1900, { archived_at: "2026-09-20" })], schedules: [] });
+  assert("past and archived tenants are not expected to be billed", a.length === 0, JSON.stringify(a));
+
+  a = run({ tenants: [T(1, "Amanda", 2084)], schedules: [S("s1", 1, 2839)], chargedThisMonth: new Set(["1"]) });
+  assert("a schedule charging a different amount than the tenant's rent is flagged with both figures", !!find(a, "amount_differs", 1) && /\$2,839\.00/.test(find(a, "amount_differs", 1).text) && /\$2,084\.00/.test(find(a, "amount_differs", 1).text), JSON.stringify(a));
+  a = run({ tenants: [T(1, "Fine", 1800)], schedules: [S("s1", 1, 1800)], chargedThisMonth: new Set(["1"]) });
+  assert("a schedule that matches, posted this month, raises nothing", a.length === 0, JSON.stringify(a));
+  a = run({ tenants: [T(1, "NoRentOnFile", 0)], schedules: [S("s1", 1, 1800)], chargedThisMonth: new Set(["1"]) });
+  assert("no rent on the tenant record is not a mismatch", !find(a, "amount_differs", 1));
+
+  a = run({ tenants: [T(1, "Toni", 2900)], schedules: [S("s1", 1, 2900, { next_post_date: "2026-12-01", last_posted_date: null })] });
+  assert("a schedule that starts in two months skips this month and the next", JSON.stringify(find(a, "skips_months", 1)?.months) === '["2026-10","2026-11"]' && /October and November are not charged/.test(find(a, "skips_months", 1).text), JSON.stringify(a));
+  a = run({ tenants: [T(1, "Tamara", 2500)], schedules: [S("s1", 1, 2500, { next_post_date: "2026-11-01", last_posted_date: null })], chargedThisMonth: new Set(["1"]) });
+  assert("starting next month is fine when this month is already on the ledger", a.length === 0, JSON.stringify(a));
+  a = run({ tenants: [T(1, "Stanley", 1900)], schedules: [S("s1", 1, 1900, { next_post_date: "2026-11-01", last_posted_date: null })] });
+  assert("starting next month with nothing charged this month is flagged", JSON.stringify(find(a, "skips_months", 1)?.months) === '["2026-10"]', JSON.stringify(a));
+  a = run({ tenants: [T(1, "NewNextMonth", 1900, { lease_start: "2026-11-01" })], schedules: [S("s1", 1, 1900, { next_post_date: "2026-11-01", last_posted_date: null })] });
+  assert("a tenant whose lease starts next month owes nothing this month", a.length === 0, JSON.stringify(a));
+  assert("skippedMonths is empty for a paused or archived schedule", rules.skippedMonths(S("s", 1, 1, { status: "paused", next_post_date: "2027-01-01" }), today).length === 0 && rules.skippedMonths(S("s", 1, 1, { archived_at: "x", next_post_date: "2027-01-01" }), today).length === 0);
+  assert("skippedMonths crosses a year end", JSON.stringify(rules.skippedMonths(S("s", 1, 1, { next_post_date: "2027-02-01", last_posted_date: "2026-11-01" }), "2026-11-15")) === '["2026-12","2027-01"]');
+
+  a = run({ tenants: [T(1, "Due", 1800)], schedules: [S("s1", 1, 1800, { next_post_date: "2026-10-01", last_posted_date: "2026-09-01" })] });
+  assert("rent that is due but has not posted is 'not charged yet'", !!find(a, "not_charged", 1), JSON.stringify(a));
+  a = run({ tenants: [T(1, "LaterInMonth", 1800)], schedules: [S("s1", 1, 1800, { day_of_month: 15, next_post_date: "2026-10-15", last_posted_date: "2026-09-15" })] });
+  assert("rent billed on the 15th is not 'late' on the 2nd", !find(a, "not_charged", 1), JSON.stringify(a));
+
+  a = run({ tenants: [T(1, "Left", 1800, { lease_status: "past" })], schedules: [S("s1", 1, 1800), S("s2", 99, 500)] });
+  assert("a schedule for a past or missing tenant is 'will never post'", !!find(a, "will_not_post", 1) && !!find(a, "will_not_post", 99), JSON.stringify(a));
+  a = run({ tenants: [], schedules: [{ id: "m", tenant_id: null, amount: 1234, status: "active", archived_at: null, next_post_date: "2027-06-01" }] });
+  assert("a non-rent schedule (mortgage) is never judged against a tenant", a.length === 0, JSON.stringify(a));
+  a = run({ tenants: [T(2, "B", 100), T(1, "A", 100), T(3, "C", 2084)], schedules: [S("s3", 3, 2839)], chargedThisMonth: new Set(["3"]) });
+  assert("unbilled tenants come first, then by name", a.map(x => x.name).join(",") === "A,B,C", a.map(x => x.kind + ":" + x.name).join(","));
+}
+
+// ── The Recurring rent page does not undo a schedule when it is edited ──
+{
+  const pageSrc = src("components/RecurringRent.js");
+  const saveEdit = pageSrc.slice(pageSrc.indexOf("async function saveEdit"), pageSrc.indexOf("function closePanelNow"));
+  assert("an edit writes only the fields that changed", /\.update\(changes\)/.test(saveEdit) && /Object\.keys\(changes\)\.length === 0/.test(saveEdit));
+  assert("an edit never writes the status (it used to un-pause a paused schedule)", !/status\s*:/.test(saveEdit));
+  assert("an edit moves the next posting only when that field was changed", /if \(\(form\.next_post_date \|\| null\) !== \(entry\.next_post_date \|\| null\)\) changes\.next_post_date/.test(saveEdit) && (saveEdit.match(/changes\.next_post_date\s*=/g) || []).length === 1);
+  const createRent = pageSrc.slice(pageSrc.indexOf("async function createRent"), pageSrc.indexOf("async function createOther"));
+  assert("a new rent schedule carries the tenant id", /tenant_id: Number\(t\.id\)/.test(createRent));
+  assert("…and bills the tenant's OWN ledger and a real income account, not the codes 1200/4000", /tenantOwnArAccountId\(companyId, t\.name, t\.id\)/.test(createRent) && /debit_account_id: arId/.test(createRent) && /credit_account_id: revenueId/.test(createRent) && !/"1200"/.test(createRent) && !/account_id: "4000"/.test(createRent));
+  assert("…and refuses to exist without that ledger", /if \(!arId \|\| !revenueId\)/.test(createRent));
+  assert("the list is not capped at 200 rows", !/\.limit\(200\)/.test(pageSrc) && /fetchAllPaged\(\(\) => supabase\.from\("recurring_journal_entries"\)/.test(pageSrc));
+  assert("Accounting uses this page and no longer carries its own copy", /import \{ RecurringJournalEntries \} from "\.\/RecurringRent"/.test(src("components/Accounting.js")) && !/function RecurringJournalEntries/.test(src("components/Accounting.js")));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
