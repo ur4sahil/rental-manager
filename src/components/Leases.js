@@ -8,6 +8,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { fileApprovalRequest, terminateLeaseCascade } from "../utils/destructive";
 import { queueNotification } from "../utils/notifications";
+import { sendSignatureRequests, resendSignatureRequest, summarizeSends } from "../utils/docService";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, depositReference, depositAlreadyPosted, tenantOwnArAccountId, depositReleaseState, depositReturnOfferable, planReleaseLegs, releasedDepositStatus, tenantOwedFromGL, fetchAllPaged, syncTenantRecurringAmount, deactivateTenantRecurring } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect, RecurringEntryModal } from "./shared";
 
@@ -693,8 +694,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
       .from("doc_generated")
       .select("*")
       .eq("company_id", companyId)
-      .eq("output_type", "lease")
-      .contains("field_values", { lease_id: lease.id })
+      .eq("lease_id", lease.id)
       .is("archived_at", null)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -765,6 +765,11 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         name: docName,
         rendered_body: rendered,
         field_values: { lease_id: lease.id },
+        // Linked by record, so the lease can tell when it has been signed.
+        lease_id: lease.id,
+        tenant_id: lease.tenant_id ?? null,
+        property_id: lease.property_id ?? null,
+        doc_kind: "lease",
         property_address: lease.property || "",
         tenant_name: lease.tenant_name || "",
         output_type: "lease",
@@ -777,31 +782,16 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         { role: "tenant", label: "Tenant", name: lease.tenant_name || "", email: te, order: 1 },
         { role: "landlord", label: "Landlord", name: userProfile?.name || "Property Manager", email: le, order: 2 },
       ];
-      const { data: envRows, error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: newDoc.id, p_signers: signers });
+      // Tenant first, then landlord. The envelope keeps the lease's
+      // signature status up to date in the database as each one signs.
+      const { error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: newDoc.id, p_signers: signers, p_signing_mode: "sequential" });
       if (envErr) { pmError("PM-3004", { raw: envErr, context: "lease create_doc_envelope" }); return; }
 
-      const origin = window.location.origin;
-      for (const row of envRows || []) {
-        if (row.status !== "sent") continue;
-        const url = origin + "/sign/" + row.access_token;
-        const matching = signers.find(s => s.email === row.signer_email);
-        const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:640px;margin:0 auto;">'
-          + '<p>Hello' + (matching?.name ? " " + matching.name : "") + ',</p>'
-          + '<p>You are requested to review and sign the <strong>' + docName + '</strong> as <em>' + (matching?.label || "signer") + '</em>.</p>'
-          + '<p><a href="' + url + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
-          + '<p style="font-size:12px;color:' + printTheme.inkMuted + ';">Or paste this link into your browser:<br/>' + url + '</p>'
-          + '<p style="font-size:11px;color:' + printTheme.inkSubtle + ';margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
-          + '</div>';
-        try {
-          const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject: "Signature requested: " + docName, html } });
-          if (emailErr) pmError("PM-1007", { raw: emailErr, context: "lease signing email to " + row.signer_email, silent: true });
-        } catch (e) { pmError("PM-1007", { raw: e, context: "lease signing email exception", silent: true }); }
-      }
-
-      await supabase.from("leases").update({ signature_status: "pending" }).eq("id", lease.id).eq("company_id", companyId);
+      const sent = await sendSignatureRequests(companyId, newDoc.id);
+      const sum = sent.ok ? summarizeSends(sent.results) : { text: "the emails could not be sent (" + sent.error + "). Use Resend.", tone: "error" };
       logAudit("update", "leases", "Lease sent for e-signature (unified engine): " + lease.tenant_name + " → " + te + " + " + le, lease.id, userProfile?.email, userRole, companyId);
       if (addNotification) addNotification("✍️", "Lease sent for signature: " + (lease.tenant_name || ""));
-      showToast("Lease sent — both parties emailed magic links", "success");
+      showToast("Lease out for signature: " + sum.text, sum.tone);
 
       setDoc(newDoc);
       const { data: ss } = await supabase.from("doc_signatures").select("*").eq("company_id", companyId).eq("doc_id", newDoc.id).order("sign_order", { ascending: true });
@@ -814,16 +804,11 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
   }
 
   async function resendSignerEmail(sig) {
-    if (!sig?.access_token) return;
-    const url = window.location.origin + "/sign/" + sig.access_token;
-    const docName = doc?.name || "Lease";
-    const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;"><p>Hello ' + escapeHtml(sig.signer_name || "") + ',</p>'
-      + '<p>Reminder — you still need to sign <strong>' + escapeHtml(docName) + '</strong>.</p>'
-      + '<p><a href="' + url + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p></div>';
-    try {
-      await supabase.functions.invoke("send-email", { body: { to: sig.signer_email, subject: "Reminder: " + docName, html } });
-      showToast("Reminder sent to " + sig.signer_email, "success");
-    } catch (e) { pmError("PM-1007", { raw: e, context: "lease reminder email", silent: true }); }
+    if (!sig?.id) return;
+    const r = await resendSignatureRequest(companyId, sig.id);
+    if (!r.ok) { showToast("Could not resend: " + r.error, "error"); return; }
+    const sum = summarizeSends([{ status: r.status, email: sig.signer_email, delivered_to: r.delivered_to, error: r.error }]);
+    showToast("Reminder to " + (sig.signer_name || sig.signer_email) + ": " + sum.text, sum.tone);
   }
 
   async function copySignerLink(sig) {

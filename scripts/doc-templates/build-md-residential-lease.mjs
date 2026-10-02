@@ -53,8 +53,16 @@ const template = {
   category: "leases",
   description: "Single family residential lease (Maryland). Dates, amounts in words, term, prorated rent, total rent and late charge fill themselves in.",
   template_type: "html",
-  signing_mode: "none",
-  signer_roles: [],
+  template_key: "md_residential_lease",
+  // Every tenant on the lease signs first (together), then the landlord.
+  // Co-tenant slots are optional: a lease with one tenant leaves them empty.
+  signing_mode: "sequential",
+  signer_roles: [
+    { role: "tenant", label: "Tenant", order: 1, required: true },
+    { role: "tenant_2", label: "Co-tenant 2", order: 1, required: false },
+    { role: "tenant_3", label: "Co-tenant 3", order: 1, required: false },
+    { role: "landlord", label: "Landlord", order: 2, required: true },
+  ],
   body,
   fields: [
     F("lease_date", "Lease date (date this lease is made)", "date", "Parties", "today"),

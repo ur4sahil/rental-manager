@@ -10,6 +10,8 @@
 //   ?action=push    → fan out a push notification to all of a user's
 //                     registered devices. JWT-authed; caller must be
 //                     an active member of the target company.
+//   ?action=doc     → document emails + e-sign envelope actions
+//                     (_doc-email-impl.js): staff JWT, or a signer's token.
 //   ?action=worker  → drain notification_queue rows, send via Resend.
 //                     Bearer CRON_SECRET (cron path) OR a regular user
 //                     JWT (in-app fire-on-insert path) accepted.
@@ -22,6 +24,7 @@
 // ════════════════════════════════════════════════════════════════════
 const sendPushImpl = require("./_send-push-impl");
 const notificationWorkerImpl = require("./_notification-worker-impl");
+const docEmailImpl = require("./_doc-email-impl");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { emailFilterValue } = require("./_member");
@@ -100,7 +103,9 @@ module.exports = async (req, res) => {
   if (action === "push") return sendPushImpl(req, res);
   if (action === "worker") return notificationWorkerImpl(req, res);
   if (action === "beacon") return pushBeacon(req, res);
+  // Document emails and envelope actions (send / resend / void / next signer).
+  if (action === "doc") return docEmailImpl(req, res);
   return res.status(404).json({
-    error: "unknown action — try ?action=push, ?action=worker, or ?action=beacon",
+    error: "unknown action — try ?action=push, ?action=worker, ?action=beacon, or ?action=doc",
   });
 };

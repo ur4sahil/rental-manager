@@ -4,6 +4,7 @@ import { supabase } from "../supabase";
 import SignaturePad, { ESIGN_CONSENT_VERSION } from "./SignaturePad";
 import { fmtDate, fmtDateTime } from "../utils/helpers";
 import { splitPageSetup } from "../utils/docKit";
+import { notifyNextSigners } from "../utils/docService";
 
 // Public page rendered at /sign/:token — no auth required.
 // Uses anon-callable SECURITY DEFINER RPCs:
@@ -164,6 +165,12 @@ export default function PublicSignPage({ token }) {
       // Last signer? Render and upload the PDF.
       if (data?.all_signed && data?.doc_id) {
         renderAndUploadSignedPdf(data.doc_id, data.integrity_hash);
+      } else {
+        // Others still to sign: have the server email whoever is next. The
+        // page used to SAY "the next signer has been notified" while nothing
+        // sent anything. Fire and forget -- this signer is done either way,
+        // and staff can resend from Document Builder.
+        notifyNextSigners(token).catch(() => {});
       }
     } finally {
       setSubmitting(false);
@@ -213,7 +220,7 @@ export default function PublicSignPage({ token }) {
             {doneInfo?.all_signed
               ? "All parties have signed. You'll receive a copy of the fully-executed document by email."
               : doneInfo?.next_signer_email
-                ? "The next signer has been notified. You'll receive a copy once everyone has signed."
+                ? "Thank you. The next signer is being asked now, and you'll receive a copy by email once everyone has signed."
                 : "You'll receive a copy once all other parties have signed."}
           </p>
           {doneInfo?.integrity_hash && (

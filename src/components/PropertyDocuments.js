@@ -130,7 +130,7 @@ export default function PropertyDocuments({
       }, "property documents"),
       fetchAllPaged(() => {
         let b = supabase.from("doc_generated")
-          .select("id, name, status, tenant_name, created_at, archived_at, file_path, pdf_output_path, signed_pdf_path, envelope_status")
+          .select("id, name, status, tenant_name, created_at, archived_at, file_path, pdf_output_path, signed_pdf_path, envelope_status, filed_document_id")
           .eq("company_id", companyId).eq("property_address", address);
         if (!showArchived) b = b.is("archived_at", null);
         return b.order("created_at", { ascending: false });
@@ -168,6 +168,11 @@ export default function PropertyDocuments({
     for (const g of (genRes.rows || [])) {
       // Prefer the SIGNED pdf: once a document is signed, the unsigned render
       // is a draft and opening it instead is the wrong answer.
+      // Once signed, the copy of record is filed as an ordinary document
+      // (the row above). Listing it again here would show it twice -- and
+      // this entry's path is in the signed-documents bucket, which this
+      // screen cannot open.
+      if (g.filed_document_id) continue;
       const path = g.signed_pdf_path || g.pdf_output_path || g.file_path;
       if (!path) continue;
       rows.push({

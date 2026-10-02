@@ -29,6 +29,10 @@ const { Resend } = require("resend");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
+// The in-app trigger path (a logged-in user's JWT) checks membership with
+// these. They were used below without ever being imported, so that path
+// threw a ReferenceError on every call.
+const { emailFilterValue, STAFF_ROLES } = require("./_member");
 const { TEMPLATES: SHARED_TEMPLATES } = require("../src/utils/notificationTemplates");
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";

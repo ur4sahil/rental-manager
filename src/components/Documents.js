@@ -12,6 +12,7 @@ import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../u
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
+import { loadDocContext, signerDefaultFor, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY } from "../utils/docService";
 import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
@@ -320,7 +321,7 @@ function getRoleColor(roleId, rolesList) {
   return ROLE_COLORS[(idx >= 0 ? idx : 0) % ROLE_COLORS.length];
 }
 
-function DocumentBuilder({ addNotification, userProfile, userRole, companyId, activeCompany, showToast, showConfirm }) {
+function DocumentBuilder({ addNotification, userProfile, userRole, companyId, activeCompany, showToast, showConfirm, setPage, initialAction }) {
   const [tab, setTab] = useState("create"); // create | templates | history
   const [templates, setTemplates] = useState([]);
   const [generatedDocs, setGeneratedDocs] = useState([]);
@@ -361,6 +362,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Phase 5 — template editor 3-col layout
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
   const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
+  // The records the document in hand is about (tenant, lease, property),
+  // loaded by id. Saved onto the generated document as real links.
+  const [docContext, setDocContext] = useState(null);
+  const [emailLogFor, setEmailLogFor] = useState(null);   // { doc, rows } for the History "Email log" modal
+  // When another screen opened the builder for a tenant, where to go back to.
+  const returnTo = useRef(null);
+  const handledAction = useRef(null);
   const [derivedDraft, setDerivedDraft] = useState({ name: "", from: "", format: "words_whole" }); // "Text made from a field" row being added
   const [importingDocx, setImportingDocx] = useState(false);  // disable the "Import .docx" button while mammoth runs
   // Landing-screen UX: a fresh template starts on a 3-choice splash
@@ -394,6 +402,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   document.addEventListener("mouseup", onMouseUp);
   return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
   }, []);
+
+  // Opened from another screen: setPage("doc_builder", { templateKey,
+  // tenantId, leaseId, returnTo }). Find the template by its stable key
+  // and start the document already filled in for that tenant.
+  useEffect(() => {
+  if (!initialAction || handledAction.current === initialAction || templates.length === 0) return;
+  const { templateKey, templateId, tenantId, leaseId } = initialAction;
+  if (!templateKey && !templateId) return;
+  handledAction.current = initialAction;
+  const t = templates.find(x => (templateId && x.id === templateId) || (templateKey && x.template_key === templateKey));
+  if (!t) { showToast("That document template is not set up for this company yet", "error"); return; }
+  returnTo.current = initialAction.returnTo || null;
+  startDocument(t, tenantId != null ? "prefill" : "blank", { tenantId, leaseId });
+  // startDocument is a plain function of this render; the action object is the trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAction, templates]);
 
   // Escape key to exit full-screen modes
   useEffect(() => {
@@ -811,107 +835,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     ]],
   ];
 
-  async function loadPrefillData(propertyAddress) {
-  const result = {};
-  // Property
-  const { data: prop } = await supabase.from("properties").select("*").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
-  if (prop) {
-  result["property.address"] = buildAddress(prop) || prop.address;
-  result["property.unit"] = prop.unit || "";
-  result["property.type"] = prop.type || "";
-  result["property.bedrooms"] = prop.bedrooms || "";
-  result["property.bathrooms"] = prop.bathrooms || "";
-  result["property.rent"] = prop.rent || "";
-  result["property.street"] = prop.address_line_1 || "";
-  result["property.city"] = prop.city || "";
-  result["property.state"] = prop.state || "";
-  result["property.zip"] = prop.zip || "";
-  result["property.county"] = prop.county || "";
-  result["property.sqft"] = prop.sqft || "";
-  // Owner comes off the property, so it is only meaningful here. By the
-  // linked owner record (owner_id); the free-text name only for a property
-  // that has not been linked to one yet.
-  if (prop.owner_id || prop.owner_name) {
-    const { data: own } = prop.owner_id
-      ? await supabase.from("owners").select("*").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle()
-      : await supabase.from("owners").select("*").eq("company_id", companyId).eq("name", prop.owner_name).is("archived_at", null).maybeSingle();
-    result["owner.name"] = own?.name || prop.owner_name || "";
-    result["owner.email"] = own?.email || "";
-    result["owner.phone"] = own?.phone || "";
-  }
-  }
-  // Tenant
-  const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", propertyAddress).is("archived_at", null).maybeSingle();
-  if (tenant) {
-  result["tenant.name"] = tenant.name || "";
-  result["tenant.email"] = tenant.email || "";
-  result["tenant.phone"] = tenant.phone || "";
-  result["tenant.balance"] = formatCurrency(tenant.balance || 0);
-  result["tenant.security_deposit"] = formatCurrency(tenant.security_deposit || 0);
-  result["tenant.status"] = tenant.lease_status || tenant.status || "";
-  result["tenant.first_name"] = tenant.first_name || "";
-  result["tenant.last_name"] = tenant.last_name || "";
-  result["tenant.move_in"] = tenant.move_in || tenant.lease_start || "";
-  result["tenant.move_out"] = tenant.move_out || tenant.lease_end_date || "";
-  result["tenant.voucher_number"] = tenant.voucher_number || "";
-  result["tenant.tenant_portion"] = tenant.tenant_portion ? formatCurrency(tenant.tenant_portion) : "";
-  result["tenant.voucher_portion"] = tenant.voucher_portion ? formatCurrency(tenant.voucher_portion) : "";
-  }
-  // Lease
-  const { data: lease } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("property", propertyAddress).eq("status", "active").maybeSingle();
-  if (lease) {
-  result["lease.start_date"] = lease.start_date || "";
-  result["lease.end_date"] = lease.end_date || "";
-  result["lease.rent_amount"] = formatCurrency(lease.rent_amount || 0);
-  result["lease.security_deposit"] = formatCurrency(lease.security_deposit || 0);
-  }
-  // Loan, insurance, property tax and HOA — the things a payoff letter,
-  // a certificate request or a court filing actually needs, and which
-  // nothing could reach before.
-  const [ln, ins, tax, hoa] = await Promise.all([
-    supabase.from("property_loans").select("*").eq("company_id", companyId)
-      .eq("property", propertyAddress).is("archived_at", null).limit(1),
-    supabase.from("property_insurance").select("*").eq("company_id", companyId)
-      .eq("property", propertyAddress).is("archived_at", null).limit(1),
-    supabase.from("property_taxes").select("*").eq("company_id", companyId)
-      .eq("property", propertyAddress).is("archived_at", null).limit(1),
-    supabase.from("hoa_payments").select("*").eq("company_id", companyId)
-      .eq("property", propertyAddress).is("archived_at", null).limit(1),
-  ]);
-  const l0 = (ln.data || [])[0];
-  if (l0) {
-    result["loan.lender"] = l0.lender_name || "";
-    result["loan.account_number"] = l0.account_number || "";
-    result["loan.balance"] = l0.current_balance ? formatCurrency(l0.current_balance) : "";
-    result["loan.monthly_payment"] = l0.monthly_payment ? formatCurrency(l0.monthly_payment) : "";
-  }
-  const i0 = (ins.data || [])[0];
-  if (i0) {
-    result["insurance.provider"] = i0.provider || "";
-    result["insurance.policy_number"] = i0.policy_number || "";
-    result["insurance.coverage"] = i0.coverage_amount ? formatCurrency(i0.coverage_amount) : "";
-    result["insurance.expires"] = i0.expiration_date || "";
-  }
-  const t0 = (tax.data || [])[0];
-  if (t0) {
-    result["tax.county"] = t0.county || "";
-    result["tax.parcel_id"] = t0.parcel_id || "";
-    result["tax.annual_amount"] = t0.annual_tax_amount ? formatCurrency(t0.annual_tax_amount) : "";
-  }
-  const h0 = (hoa.data || [])[0];
-  if (h0) {
-    result["hoa.name"] = h0.hoa_name || "";
-    result["hoa.amount"] = h0.amount ? formatCurrency(h0.amount) : "";
-    result["hoa.frequency"] = h0.frequency || "";
-  }
-
-  // Context
-  result["today"] = formatLocalDate(new Date());
-  result["user.name"] = userProfile?.name || "";
-  result["user.email"] = userProfile?.email || "";
-  result["company.name"] = activeCompany?.name || "";
-  setPrefillData(result);
-  return result;
+  // Facts for the document, loaded by RECORD (utils/docService). A tenant
+  // id when another screen supplied one; otherwise the property picked in
+  // "Prefill from Property".
+  async function loadPrefillData(propertyAddress, opts = {}) {
+  const ctx = await loadDocContext({ companyId, propertyAddress, tenantId: opts.tenantId ?? null, leaseId: opts.leaseId ?? null, userProfile, activeCompany });
+  setPrefillData(ctx.data);
+  setDocContext(ctx);
+  return ctx;
   }
 
   function applyPrefill(template, data) {
@@ -941,14 +872,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return vals;
   }
 
-  async function startDocument(template, docMode) {
+  async function startDocument(template, docMode, opts = {}) {
   setSelectedTemplate(template);
   setMode(docMode);
   const fc = template.field_config || {};
-  if (docMode === "prefill" && prefillProperty) {
-  const data = await loadPrefillData(prefillProperty);
-  setFieldValues(recalcFields(applyPrefill(template, data), fc));
+  let ctx = null;
+  if (docMode === "prefill" && (prefillProperty || opts.tenantId != null)) {
+  ctx = await loadPrefillData(opts.tenantId != null ? null : prefillProperty, opts);
+  setFieldValues(recalcFields(applyPrefill(template, ctx.data), fc));
   } else {
+  setDocContext(null);
   setFieldValues(recalcFields(applyDefaults(template), fc));
   }
   // Load PDF for overlay templates
@@ -957,12 +890,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pdf = await loadPdfForPreview(template.pdf_storage_path);
   if (pdf) await renderPdfPages(pdf, pdfScale);
   }
-  // Seed signer email/name defaults from the new template's roles
+  // Seed signer names/emails from the same records the document was filled
+  // from: each tenant on the lease in turn, then whoever is sending it.
   if (template.signing_mode && template.signing_mode !== "none") {
     const emails = {};
     const names = {};
+    const source = ctx || { signers: { tenants: [], landlord: { name: userProfile?.name || "", email: userProfile?.email || "" } } };
     for (const r of (template.signer_roles || [])) {
-      const g = guessSignerDefaultsFor(r.role, docMode === "prefill" && prefillProperty ? await loadPrefillData(prefillProperty) : {});
+      const g = signerDefaultFor(r.role, source);
       emails[r.role] = g.email;
       names[r.role] = g.name;
     }
@@ -973,22 +908,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     setSignerNames({});
   }
   setStep("fill");
-  }
-
-  // Stateless version used during startDocument (fieldValues isn't populated yet).
-  function guessSignerDefaultsFor(role, data) {
-  const r = (role || "").toLowerCase();
-  const d = data || {};
-  if (r.includes("tenant") || r === "renter" || r === "lessee") {
-    return { email: d.tenant_email || "", name: d.tenant_name || "" };
-  }
-  if (r.includes("co_sign") || r.includes("cosigner") || r === "co_signer_2") {
-    return { email: d.tenant_2_email || "", name: d.tenant_2 || "" };
-  }
-  if (r.includes("landlord") || r.includes("owner") || r.includes("manager") || r.includes("agent") || r.includes("lessor")) {
-    return { email: userProfile?.email || "", name: userProfile?.name || "" };
-  }
-  return { email: "", name: "" };
   }
 
   // ---- Merge + render ----
@@ -1047,8 +966,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   company_id: companyId, template_id: selectedTemplate.id, name: docName,
   field_values: fieldValues, rendered_body: attachPageSetup(rendered, selectedTemplate.field_config?.page_setup), status,
   output_type: selectedTemplate.template_type === "pdf_overlay" ? "pdf_overlay" : "html",
-  property_address: fieldValues.property_address || "",
-  tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || "",
+  property_address: fieldValues.property_address || fieldValues.premises_address || docContext?.data?.["property.address"] || "",
+  tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || docContext?.tenant?.name || "",
+  // The records this document is about. tenant_id used to be guessed
+  // from the name by a trigger (and left empty when two tenants shared
+  // one); lease and property were not recorded at all.
+  tenant_id: docContext?.tenant?.id ?? null,
+  lease_id: docContext?.lease?.id ?? null,
+  property_id: docContext?.property?.id ?? null,
+  doc_kind: DOC_KIND_BY_TEMPLATE_KEY[selectedTemplate.template_key] || "other",
   created_by: userProfile?.email,
   };
   const { data, error } = await supabase.from("doc_generated").insert([payload]).select().maybeSingle();
@@ -1254,16 +1180,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   }
 
-  async function downloadSignedPDF(doc) {
-  showToast("Generating signed document…", "info");
+  // The signed document as PDF bytes: the document itself as real text on
+  // its own pages, exactly as it was sent, then the signatures and the
+  // certificate of completion on pages of their own (images and a table,
+  // which the picture renderer still draws best).
+  async function buildSignedPdfBytes(doc) {
   const sigs = await loadSignaturesForDoc(doc.id);
   const html2pdf = (await import("html2pdf.js")).default;
   const signedBlock = renderSignaturesBlock(sigs);
   const certBlock = renderCertificateHtml(doc, sigs, doc._companyName);
-  // The document itself is real text on its own pages, exactly as it was
-  // sent. The signatures and the certificate of completion follow on
-  // pages of their own: they are images and a table, which the old
-  // picture renderer still draws best.
   const container = document.createElement("div");
   container.innerHTML = ''
     + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">' + signedBlock + '</div>'
@@ -1276,15 +1201,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name }),
       html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
     ]);
-    const bytes = await concatPdfs([bodyPdf, tailPdf]);
+    return await concatPdfs([bodyPdf, tailPdf]);
+  } finally {
+    document.body.removeChild(container);
+  }
+  }
+
+  async function downloadSignedPDF(doc) {
+  showToast("Generating signed document…", "info");
+  try {
+    const bytes = await buildSignedPdfBytes(doc);
     const { saveAs } = await import("file-saver");
     saveAs(new Blob([bytes], { type: "application/pdf" }), "signed-" + pdfFileName(doc.name));
     logAudit("export", "doc_builder", "Downloaded signed PDF: " + doc.name, doc.id, userProfile?.email, userRole, companyId);
     showToast("Signed document downloaded", "success");
   } catch (err) {
     pmError("PM-8006", { raw: err, context: "signed PDF export" });
-  } finally {
-    document.body.removeChild(container);
   }
   }
 
@@ -1375,43 +1307,84 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ---- Email ----
   async function sendEmail(doc) {
+  if (!doc?.id) { showToast("Save the document first", "error"); return; }
   setSending(true);
+  try {
   const recipients = [];
   if (sendTo.self && userProfile?.email) recipients.push(userProfile.email);
-  if (sendTo.tenant && fieldValues.tenant_name) {
-  // Look up tenant email
-  const { data: t } = await supabase.from("tenants").select("email").eq("company_id", companyId).ilike("name", fieldValues.tenant_name).is("archived_at", null).maybeSingle();
-  if (t?.email) recipients.push(t.email);
-  else { showToast("Could not find email for " + fieldValues.tenant_name, "warning"); }
+  if (sendTo.tenant) {
+  // By record when the document has one. (This used to look the tenant
+  // up by the name in the form being filled in -- empty when sending from
+  // History, and ambiguous for two tenants with one name.)
+  let email = "";
+  if (doc.tenant_id != null) email = (await supabase.from("tenants").select("email").eq("company_id", companyId).eq("id", doc.tenant_id).maybeSingle()).data?.email || "";
+  if (!email && docContext?.tenant?.email) email = docContext.tenant.email;
+  if (email) recipients.push(email);
+  else showToast("No email on file for " + (doc.tenant_name || "this tenant"), "warning");
   }
   if (sendTo.custom) {
   sendTo.custom.split(",").map(e => e.trim()).filter(e => e.includes("@")).forEach(e => recipients.push(e));
   }
-  if (recipients.length === 0) { showToast("No recipients specified", "error"); setSending(false); return; }
+  if (recipients.length === 0) { showToast("No recipients specified", "error"); return; }
 
-  const rendered = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
-  const docName = doc?.name || selectedTemplate?.name || "Document";
-
-  for (const email of recipients) {
-  try {
-  const { error } = await supabase.functions.invoke("send-email", {
-  body: { to: email, subject: docName, html: '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:700px;margin:0 auto;">' + rendered + '</div>' },
-  });
-  if (error) pmError("PM-1007", { raw: error, context: "email document to " + email });
-  } catch (e) { showToast("Email error: " + e.message, "error"); }
+  // The document goes as a PDF attachment -- the same pages as the preview --
+  // not pasted into the body of the email.
+  const template = doc._template || templates.find(t => t.id === doc.template_id) || selectedTemplate;
+  let pdfBytes = null;
+  if (template?.template_type !== "pdf_overlay") {
+  const paged = pagedBody(doc, template, doc.field_values || fieldValues);
+  pdfBytes = await renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
   }
-
-  // Update doc status
-  if (doc?.id) {
-  await supabase.from("doc_generated").update({ status: "sent", sent_at: new Date().toISOString(), recipients: recipients.map(r => ({ email: r, sent_at: new Date().toISOString() })) }).eq("id", doc.id).eq("company_id", companyId);
-  }
-
-  showToast("Sent to " + recipients.length + " recipient(s)", "success");
-  addNotification("📧", "Document emailed: " + docName);
-  logAudit("send", "doc_builder", "Emailed " + docName + " to " + recipients.join(", "), doc?.id, userProfile?.email, userRole, companyId);
+  const out = await emailDocument(companyId, doc.id, { to: recipients, pdfBytes, filename: pdfFileName(doc.name) });
+  if (!out.ok) { showToast("Could not send: " + out.error, "error"); return; }
+  const sum = summarizeSends(out.results);
+  showToast(sum.text, sum.tone);
+  addNotification("📧", "Document emailed: " + doc.name);
+  logAudit("send", "doc_builder", "Emailed " + doc.name + " to " + recipients.join(", "), doc.id, userProfile?.email, userRole, companyId);
   setSendModal(null);
-  setSending(false);
   fetchAll();
+  } catch (err) {
+  pmError("PM-1007", { raw: err, context: "email document" });
+  } finally {
+  setSending(false);
+  }
+  }
+
+  // ---- Envelope upkeep (History) ----
+  async function resendSigner(s) {
+  const r = await resendSignatureRequest(companyId, s.id);
+  if (!r.ok) { showToast("Could not resend: " + r.error, "error"); return; }
+  const sum = summarizeSends([{ status: r.status, email: s.signer_email, delivered_to: r.delivered_to, error: r.error }]);
+  showToast("Reminder to " + (s.signer_name || s.signer_email) + ": " + sum.text, sum.tone);
+  fetchAll();
+  }
+
+  async function cancelEnvelope(d) {
+  if (!await showConfirm({ message: 'Cancel the signature request for "' + d.name + '"? The links already sent will stop working. Signatures already given are kept on record.', variant: "danger", confirmText: "Cancel request" })) return;
+  const r = await voidEnvelope(companyId, d.id, "Cancelled by " + (userProfile?.email || "staff"));
+  if (!r.ok) { showToast("Could not cancel: " + r.error, "error"); return; }
+  logAudit("update", "doc_builder", "Cancelled signature request: " + d.name, d.id, userProfile?.email, userRole, companyId);
+  showToast("Signature request cancelled", "success");
+  fetchAll();
+  }
+
+  // The signed copy is normally stored by the last signer's browser. If
+  // they closed the tab first it never arrived; this stores it from here.
+  async function storeSignedCopy(d) {
+  showToast("Storing the signed copy…", "info");
+  try {
+  const bytes = await buildSignedPdfBytes(d);
+  const r = await storeSignedPdf(companyId, d.id, bytes);
+  if (!r.ok) { showToast("Could not store the signed copy: " + r.error, "error"); return; }
+  showToast("Signed copy stored and filed under Documents", "success");
+  fetchAll();
+  } catch (err) { pmError("PM-8006", { raw: err, context: "store signed copy" }); }
+  }
+
+  async function openEmailLog(d) {
+  const { data, error } = await supabase.from("doc_email_log").select("*").eq("company_id", companyId).eq("doc_id", d.id).order("created_at", { ascending: false }).limit(100);
+  if (error) { pmError("PM-7003", { raw: error, context: "load email log" }); return; }
+  setEmailLogFor({ doc: d, rows: data || [] });
   }
 
   // ---- Send for signature (envelope flow) ----
@@ -1458,37 +1431,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     const doc = await saveDocument("sent");
     if (!doc) { setSending(false); return; }
 
-    const { data: envRows, error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: doc.id, p_signers: signers });
+    const mode = ["parallel", "sequential"].includes(selectedTemplate.signing_mode) ? selectedTemplate.signing_mode : null;
+    const { error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: doc.id, p_signers: signers, p_signing_mode: mode });
     if (envErr) {
       pmError("PM-7003", { raw: envErr, context: "create doc envelope" });
       setSending(false);
       return;
     }
 
-    // Only signers with status='sent' actually need a magic-link email right now.
-    // (Sequential flow leaves later signers in 'pending' until the prior signer finishes.)
-    const origin = window.location.origin;
-    let emailed = 0;
-    for (const row of envRows || []) {
-      if (row.status !== "sent") continue;
-      const signUrl = origin + "/sign/" + row.access_token;
-      const roleLabel = signers.find(s => s.email === row.signer_email)?.label || row.signer_email;
-      const subject = "Signature requested: " + doc.name;
-      const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:640px;margin:0 auto;">'
-        + '<p>Hello' + (signers.find(s => s.email === row.signer_email)?.name ? " " + signers.find(s => s.email === row.signer_email).name : "") + ',</p>'
-        + '<p>You are requested to review and sign <strong>' + doc.name + '</strong> as <em>' + roleLabel + '</em>.</p>'
-        + '<p><a href="' + signUrl + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
-        + '<p style="font-size:12px;color:' + printTheme.inkMuted + ';">Or paste this link into your browser: <br/>' + signUrl + '</p>'
-        + '<p style="font-size:11px;color:' + printTheme.inkSubtle + ';margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
-        + '</div>';
-      try {
-        const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject, html } });
-        if (emailErr) pmError("PM-1007", { raw: emailErr, context: "signing link email to " + row.signer_email, silent: true });
-        else emailed++;
-      } catch (e) { pmError("PM-1007", { raw: e, context: "signing link email exception", silent: true }); }
-    }
-
-    showToast(emailed + " of " + (envRows || []).length + " signer(s) emailed", "success");
+    // The server emails whoever's turn it is and logs each send. (This used
+    // to call an edge function that was never deployed, with the failure
+    // logged silently -- so the toast said "emailed" and nobody was.)
+    const sent = await sendSignatureRequests(companyId, doc.id);
+    if (!sent.ok) showToast("Out for signature, but the emails could not be sent (" + sent.error + "). Use Resend in History.", "error");
+    else { const sum = summarizeSends(sent.results); showToast("Sent for signature: " + sum.text, sum.tone); }
     addNotification("✍️", "Sent for signature: " + doc.name);
     logAudit("send", "doc_builder", "Envelope sent: " + doc.name + " to " + signers.map(s => s.email).join(", "), doc.id, userProfile?.email, userRole, companyId);
     setSignerEmails({});
@@ -1536,6 +1492,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ---- Reset flow ----
   function resetFlow() {
+  setDocContext(null);
+  // Opened from another screen for a tenant: closing goes back there.
+  if (returnTo.current && setPage) { const r = returnTo.current; returnTo.current = null; setPage(r.page, r.action || null); }
   setSelectedTemplate(null);
   setMode(null);
   setPrefillProperty(null);
@@ -2586,16 +2545,47 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="font-semibold truncate">{s.signer_name || s.signer_email}</span>
   <span className="text-neutral-400 truncate">· {s.signer_role}</span>
   {s.signed_at && <span className="text-neutral-400 ml-auto shrink-0">{fmtDate(s.signed_at)}</span>}
-  {!s.signed_at && s.status === "sent" && <TextLink tone="brand" size="xs" className="ml-auto shrink-0" onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))}>copy link</TextLink>}
+  {!s.signed_at && ["sent", "viewed"].includes(s.status) && d.envelope_status === "out_for_signature" && <TextLink tone="brand" size="xs" className="ml-auto shrink-0" onClick={() => resendSigner(s)} title={"Email the link again" + (s.reminder_count ? " (reminded " + s.reminder_count + "×)" : "")}>resend</TextLink>}
+  {!s.signed_at && ["sent", "viewed"].includes(s.status) && d.envelope_status === "out_for_signature" && <TextLink tone="brand" size="xs" className="shrink-0" onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))}>copy link</TextLink>}
   </div>
   );
   })}
   </div>
   )}
+  <div className="mt-2 flex items-center gap-4 text-xs">
+  {d.envelope_status === "out_for_signature" && <TextLink tone="danger" size="xs" underline={false} onClick={() => cancelEnvelope(d)}>Cancel request</TextLink>}
+  {d.envelope_status === "completed" && !d.signed_pdf_path && <TextLink tone="brand" size="xs" underline={false} onClick={() => storeSignedCopy(d)} title="The last signer's browser did not finish uploading the signed copy. Store it now.">Store signed copy</TextLink>}
+  {d.envelope_status === "completed" && d.signed_pdf_path && <span className="text-success-600">Signed copy stored{d.filed_document_id ? " and filed under Documents" : ""}</span>}
+  {d.envelope_status === "voided" && <span className="text-neutral-400">Cancelled{d.voided_at ? " " + fmtDate(d.voided_at) : ""}</span>}
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => openEmailLog(d)}>Email log</TextLink>
+  </div>
   </div>
   );
   })}
   </div>
+  )}
+
+  {/* Email log: every send for this document, where it went, whether it left */}
+  {emailLogFor && (
+  <Modal title={"Emails: " + emailLogFor.doc.name} onClose={() => setEmailLogFor(null)}>
+  {emailLogFor.rows.length === 0 ? (
+  <p className="text-sm text-neutral-500">No email has been sent for this document.</p>
+  ) : (
+  <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+  {emailLogFor.rows.map(r => (
+  <div key={r.id} className="text-xs border border-neutral-100 rounded-lg px-3 py-2">
+  <div className="flex items-center gap-2">
+  <span className={"px-1.5 py-0.5 rounded font-medium " + (r.status === "sent" ? "bg-success-50 text-success-700" : r.status === "failed" ? "bg-danger-50 text-danger-700" : "bg-neutral-100 text-neutral-600")}>{r.status === "suppressed" ? "not sent" : r.status}</span>
+  <span className="font-semibold text-neutral-700">{({ sign_request: "Signature request", sign_reminder: "Reminder", signed_copy: "Signed copy", completed_staff: "Completion notice", document: "Document" })[r.kind] || r.kind}</span>
+  <span className="text-neutral-400 ml-auto">{fmtDateTime(r.created_at)}</span>
+  </div>
+  <div className="text-neutral-600 mt-1">To {r.intended_email || r.to_email}{r.intended_email && r.to_email !== r.intended_email ? " (redirected to " + r.to_email + ": test site)" : ""}</div>
+  {r.error && <div className="text-neutral-400 mt-0.5">{r.error}</div>}
+  </div>
+  ))}
+  </div>
+  )}
+  </Modal>
   )}
 
   {/* Send modal for history items */}

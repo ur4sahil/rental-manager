@@ -20,6 +20,8 @@
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { requireMember } = require("./_member");
+const { afterSignedPdfStored, SEND_ROLES } = require("./_doc-email-impl");
 
 module.exports = async (req, res) => {
   setCors(req, res);
@@ -36,8 +38,13 @@ module.exports = async (req, res) => {
   // Parse body — Vercel's default body parser handles JSON.
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch (_) { body = {}; } }
-  const { token, doc_id, pdf_base64 } = body || {};
-  if (!token || typeof token !== "string" || token.length < 20) {
+  const { token, doc_id, pdf_base64, company_id } = body || {};
+  // Two callers. The signer who completed the envelope (their signing
+  // token), and -- when that signer closed the tab before the upload
+  // finished, which used to leave the envelope "completed" with no signed
+  // copy forever -- a staff member storing it from Document Builder.
+  const staffCall = !token && !!company_id;
+  if (!staffCall && (!token || typeof token !== "string" || token.length < 20)) {
     res.status(400).json({ error: "token required" }); return;
   }
   if (!doc_id || typeof doc_id !== "string") {
@@ -55,44 +62,45 @@ module.exports = async (req, res) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
 
-  // 1. Verify the token belongs to a signer of THIS doc, the token
-  //    hasn't expired, and the envelope is in 'completed' state.
-  //    Status 'signed' on the signature row + 'completed' on the
-  //    envelope means signing already happened — this is the brief
-  //    window during which the client can upload the rendered PDF.
-  const { data: sig, error: sigErr } = await sb.from("doc_signatures")
-    .select("id, doc_id, status, token_expires_at")
-    .eq("access_token", token).maybeSingle();
-  if (sigErr || !sig) { res.status(401).json({ error: "invalid token" }); return; }
-  if (sig.doc_id !== doc_id) { res.status(403).json({ error: "token does not match doc_id" }); return; }
-  if (sig.status !== "signed") { res.status(403).json({ error: "signer has not yet signed" }); return; }
-  if (sig.token_expires_at && new Date(sig.token_expires_at) < new Date()) {
-    res.status(403).json({ error: "token expired" }); return;
-  }
-
   const { data: doc } = await sb.from("doc_generated")
-    .select("id, company_id, name, envelope_status, signed_pdf_path")
-    .eq("id", doc_id).maybeSingle();
+    .select("*").eq("id", doc_id).maybeSingle();
   if (!doc) { res.status(404).json({ error: "doc not found" }); return; }
   if (doc.envelope_status !== "completed") {
     res.status(403).json({ error: "envelope not completed" }); return;
   }
-  // Only the signature that COMPLETED the envelope may upload, and only in
-  // the minutes right after it. Any signer's token used to work for the
-  // token's whole 30-day life, so a signer could come back later and file
-  // a different PDF as the copy of record (2026-09-30 audit). The bytes are
-  // still client-rendered; the DB's integrity_hash / doc_hash_at_send remain
-  // the forensic truth for the document text.
-  const { data: sigs } = await sb.from("doc_signatures")
-    .select("id, signed_at, status").eq("doc_id", doc_id);
-  const signedRows = (sigs || []).filter(s => s.status === "signed" && s.signed_at);
-  const last = signedRows.sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at))[0];
-  if (!last || last.id !== sig.id) {
-    res.status(403).json({ error: "only the signer who completed the envelope can upload the signed copy" }); return;
-  }
-  const FINALIZE_WINDOW_MS = 30 * 60 * 1000;
-  if (Date.now() - new Date(last.signed_at).getTime() > FINALIZE_WINDOW_MS) {
-    res.status(403).json({ error: "the upload window after signing has closed" }); return;
+
+  if (staffCall) {
+    const auth = await requireMember(req, { companyId: company_id, roles: SEND_ROLES, sb });
+    if (auth.error) { res.status(auth.status).json({ error: auth.error }); return; }
+    if (doc.company_id !== String(company_id)) { res.status(404).json({ error: "doc not found" }); return; }
+  } else {
+    // 1. The token must belong to a signer of THIS doc who has signed.
+    const { data: sig, error: sigErr } = await sb.from("doc_signatures")
+      .select("id, doc_id, status, token_expires_at")
+      .eq("access_token", token).maybeSingle();
+    if (sigErr || !sig) { res.status(401).json({ error: "invalid token" }); return; }
+    if (sig.doc_id !== doc_id) { res.status(403).json({ error: "token does not match doc_id" }); return; }
+    if (sig.status !== "signed") { res.status(403).json({ error: "signer has not yet signed" }); return; }
+    if (sig.token_expires_at && new Date(sig.token_expires_at) < new Date()) {
+      res.status(403).json({ error: "token expired" }); return;
+    }
+    // Only the signature that COMPLETED the envelope may upload, and only in
+    // the minutes right after it. Any signer's token used to work for the
+    // token's whole 30-day life, so a signer could come back later and file
+    // a different PDF as the copy of record (2026-09-30 audit). The bytes are
+    // still client-rendered; the DB's integrity_hash / doc_hash_at_send remain
+    // the forensic truth for the document text.
+    const { data: sigs } = await sb.from("doc_signatures")
+      .select("id, signed_at, status").eq("doc_id", doc_id);
+    const signedRows = (sigs || []).filter(s => s.status === "signed" && s.signed_at);
+    const last = signedRows.sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at))[0];
+    if (!last || last.id !== sig.id) {
+      res.status(403).json({ error: "only the signer who completed the envelope can upload the signed copy" }); return;
+    }
+    const FINALIZE_WINDOW_MS = 30 * 60 * 1000;
+    if (Date.now() - new Date(last.signed_at).getTime() > FINALIZE_WINDOW_MS) {
+      res.status(403).json({ error: "the upload window after signing has closed" }); return;
+    }
   }
   // Idempotent — if the PDF was already uploaded, return the existing path.
   if (doc.signed_pdf_path) {
@@ -156,11 +164,21 @@ module.exports = async (req, res) => {
     const MARK = "/storage/v1/object/sign/";
     const raw = signed?.signedUrl || null;
     const base = (process.env.APP_URL || "").replace(/\/$/, "");
-    downloadUrl = raw && base && raw.includes(MARK)
+    // The /docs rewrite points at the PRODUCTION storage project, so it is
+    // only right in production; elsewhere hand back the direct link.
+    downloadUrl = raw && base && raw.includes(MARK) && (process.env.VERCEL_ENV || "") === "production"
       ? base + "/docs/" + raw.slice(raw.indexOf(MARK) + MARK.length)
       : raw;
   } catch (_e) {
     // Non-fatal — the row is in queue, worker can re-sign later.
+  }
+
+  // 6. File it under Documents, email each signer their copy, tell the
+  //    sender. Best effort: the signed copy is already safely stored.
+  let after = { copies: [] };
+  if (!setRes?.already_set) {
+    try { after = await afterSignedPdfStored(sb, req, doc, pdfBytes); }
+    catch (e) { console.error("[finalize-signed-pdf] follow-up failed:", e.message); }
   }
 
   res.status(200).json({
@@ -168,7 +186,8 @@ module.exports = async (req, res) => {
     signed_pdf_hash: pdfHash,
     bytes: pdfBytes.length,
     download_url: downloadUrl,
-    signers_queued: setRes?.signers_queued ?? 0,
+    signers_queued: (after.copies || []).filter(c => c.status === "sent").length,
+    filed_document_id: after.filed_document_id || null,
     already_set: !!setRes?.already_set,
   });
 };
