@@ -5,7 +5,7 @@ import TenantPage from "./TenantPage";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, MoneyInput, PageHeader, Select, TextLink, clickable, keyboardActivate, CardOpenButton, DataTable, EmptyState, usePersistedView, usePersistedList, MultiSelect} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, isRequiredDocMet, DOC_TYPES, recomputeTenantDocStatus, canReviewRequest , pgrestQuote, ACTIVE_LEASE, LIVE_TENANCY, propertyLabel, fmtDate, fmtDateTime, canManage} from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { printTheme, printTable} from "../utils/theme";
+import { printTheme, printTable, printFileName} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId, autoOwnerDistribution } from "../utils/accounting";
@@ -859,9 +859,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       </div>
       ${printTable({
         columns: [
-          { label: "Date", render: r => fmtDate(r.date) },
+          { label: "Date", nowrap: true, render: r => fmtDate(r.date) },
           { label: "Description", render: r => r.desc },
-          { label: "Type", render: r => r.type },
+          { label: "Type", nowrap: true, render: r => r.type },
           { label: "Charges", align: "right", render: r => r.charge },
           { label: "Payments", align: "right", render: r => r.payment },
           { label: "Balance", align: "right", render: r => r.balance },
@@ -876,7 +876,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       <div style="margin-top:24px;text-align:center;font-size:11px;color:${printTheme.inkSubtle}">Generated on ${escapeHtml(today)} by ${companyName}</div>
     </div>`;
     const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
-    w.document.write(`<!DOCTYPE html><html><head><title>Ledger - ${safeTenantName || "Tenant"}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(printFileName("Tenant Ledger", tenant.name || "Tenant", (sorted.length ? sorted[0].date : today) + " to " + (sorted.length ? sorted[sorted.length - 1].date : today)))}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
     w.document.close();
     w.onload = () => setTimeout(() => w.print(), 300);
   }

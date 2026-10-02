@@ -6,7 +6,7 @@ import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, 
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, canKeepBooks, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
-import { printTheme, chartPalette, printTable } from "../utils/theme";
+import { printTheme, chartPalette, printTable, printFileName, printHtmlDocument } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged, fetchAllPaged } from "../utils/accounting";
@@ -420,7 +420,7 @@ export {
 // activity. Sahil: "cmd click on ledger balances or totals, shows total of
 // AR =0". Same failure AcctReports already guards against; this view was
 // simply never handed the flags.
-export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId, classes = [] }) {
+export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId, companyName = "", classes = [] }) {
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [propertyFilter, setPropertyFilter] = useState("");
@@ -657,15 +657,11 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   URL.revokeObjectURL(url);
   }
 
-  // Track the print iframe + its deferred timers so we can tear them down if
-  // the modal unmounts mid-print (otherwise the deferred removeChild fires on
-  // a detached node, and the timers leak).
-  const printRef = useRef({ iframe: null, timers: [] });
-  useEffect(() => () => {
-    const p = printRef.current;
-    p.timers.forEach(clearTimeout);
-    if (p.iframe && p.iframe.parentElement) p.iframe.parentElement.removeChild(p.iframe);
-  }, []);
+  // The print job in flight, so it can be torn down if the modal unmounts
+  // mid-print (otherwise its timers fire on a detached frame, and the tab's
+  // title -- lent to the print dialog for the file name -- is never given back).
+  const printRef = useRef(null);
+  useEffect(() => () => { if (printRef.current) printRef.current.cancel(); }, []);
 
   // PDF export: build a clean printable table from allLines (the modal has
   // duplicated mobile/desktop markup, so we render fresh instead of cloning).
@@ -682,12 +678,16 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   // "<th>" : ""}` in the header AND a matching one in the body, which is
   // how the two could disagree about the column count.
   const PDF_COLUMNS = [
-    { label: "Date", render: l => esc(l.date) },
-    { label: "JE #", render: l => esc(l.number || "—") },
+    // Dates, entry numbers, references and property names stay on one line;
+    // the description takes whatever width is left and is the only column
+    // that wraps. (Unmarked, one long description squeezed every other
+    // column until "2026-01-01" and "JE-6641" broke at their hyphens.)
+    { label: "Date", nowrap: true, render: l => esc(l.date) },
+    { label: "JE #", nowrap: true, render: l => esc(l.number || "—") },
     { label: "Description", render: l => esc(cleanLedgerDesc(l.description) || "\u2014") },
-    { label: "Ref", render: l => esc(refLabel(l.reference)) },
+    { label: "Ref", nowrap: true, render: l => esc(refLabel(l.reference)) },
     ...(multi ? [{ label: "Account", render: l => esc(l.accountName || "") }] : []),
-    { label: "Property", render: l => esc(propertyLabel(l.property) || "—") },
+    { label: "Property", nowrap: true, render: l => esc(propertyLabel(l.property) || "—") },
     { label: "Debit", align: "right", style: "font-family:ui-monospace,SFMono-Regular,monospace",
       render: l => (l.debit > 0 ? esc(acctFmt(l.debit)) : "") },
     { label: "Credit", align: "right", style: "font-family:ui-monospace,SFMono-Regular,monospace",
@@ -702,30 +702,21 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
     esc(acctFmt(totalCr)),
     multiAccount ? "&mdash;" : `<span${groups[0] && groups[0].closing < 0 ? ' class="neg"' : ""}>${esc(acctFmt(groups[0] ? groups[0].closing : 0, true))}</span>`,
   ] }];
-  const periodLabel = period === "Custom" ? `${start} to ${end}` : period;
-  const css = `body{font-family:Arial,sans-serif;margin:30px 40px;color:${printTheme.inkStrong};font-size:12px}
-h1{font-size:18px;margin:0 0 2px}.sub{color:${printTheme.inkMuted};font-size:12px;margin:0 0 14px}
+  const periodLabel = period === "Custom" ? `${start} to ${end}` : `${period} (${start} to ${end})`;
+  const css = `body{font-family:Arial,sans-serif;color:${printTheme.inkStrong};font-size:11px}
+h1{font-size:17px;margin:0 0 2px}.sub{color:${printTheme.inkMuted};font-size:11px;margin:0 0 12px}
 table{width:100%;border-collapse:collapse}
-th,td{padding:5px 8px;border-bottom:1px solid ${printTheme.borderLight};text-align:left;vertical-align:top}
-th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:${printTheme.inkMuted};font-weight:600}
+th,td{text-align:left;vertical-align:top}
 .r{text-align:right}.mono{font-family:ui-monospace,SFMono-Regular,monospace}.mut{color:${printTheme.inkSubtle}}
-.neg{color:${printTheme.danger}}.tot td{border-top:2px solid ${printTheme.inkStrong};font-weight:700;font-size:12px}`;
-  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyLabel(propertyFilter) + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p>${printTable({ columns: PDF_COLUMNS, rows: allLines, footer: PDF_FOOTER, fontSize: '12px' })}</div>`;
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title> </title><style>${css}\n@media print{body{margin:10px 20px}@page{size:landscape;margin:0.25in 0.4in}}</style></head><body>${DOMPurify.sanitize(html)}</body></html>`);
-  doc.close();
-  const p = printRef.current;
-  p.iframe = iframe;
-  const t1 = setTimeout(() => {
-    try { iframe.contentWindow && iframe.contentWindow.print(); } catch { /* print blocked/headless — still clean up */ }
-    const t2 = setTimeout(() => { if (iframe.parentElement) iframe.parentElement.removeChild(iframe); if (p.iframe === iframe) p.iframe = null; }, 1000);
-    p.timers.push(t2);
-  }, 400);
-  p.timers.push(t1);
+.neg{color:${printTheme.danger}}.tot td{border-top:2px solid ${printTheme.inkStrong};font-weight:700;font-size:11px}
+tr{break-inside:avoid}thead{display:table-header-group}`;
+  const html = `<div><h1>${esc(title || acctNames)}</h1><p class="sub">${acctCodes ? `Account ${esc(acctCodes)} · ` : ""}${esc(propertyFilter ? propertyLabel(propertyFilter) + " · " : "")}${esc(periodLabel)} · ${allLines.length} entries · DR ${esc(acctFmt(totalDr))} / CR ${esc(acctFmt(totalCr))}</p>${printTable({ columns: PDF_COLUMNS, rows: allLines, footer: PDF_FOOTER, fontSize: '11px', dense: true })}</div>`;
+  if (printRef.current) printRef.current.cancel();
+  printRef.current = printHtmlDocument({
+    // What the file is, and the period: "Ledger - Kendall Orebeaux - 2026-01-01 to 2026-10-02".
+    title: printFileName("Ledger", title || acctNames, propertyFilter ? propertyLabel(propertyFilter) : "", `${start} to ${end}`, companyName),
+    css, body: DOMPurify.sanitize(html), landscape: true, delay: 400,
+  });
   }
 
   return (
@@ -1973,6 +1964,13 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
 }
 
 // --- Reports Center (QuickBooks-style) ---
+// Reports that answer "as of a date" rather than "over a period". One list
+// for the toolbar's As-of field and for the name a printed report is saved
+// under, so the two cannot disagree.
+const AS_OF_REPORTS = ["bs","tb","ar_aging_summary","ar_aging_detail","customer_balance_summary","security_deposits","recon_detail"];
+// Period reports whose printed page carries no period line of its own.
+const RANGE_REPORTS_WITHOUT_HEADER = ["gl"];
+
 export function AcctReports({ linesLoaded = true, linesFailed = false, accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger, onRefresh }) {
 
   // Accounts you have actually mapped to a bank feed. The one honest
@@ -2885,14 +2883,36 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
     if (!currentReport) return;
     const content = document.querySelector("[data-report-content]");
     if (!content) { showToast("Nothing to export.", "info"); return; }
+    // The page is copied as it is DRAWN, not as it is written: anything the
+    // screen is hiding (a phone-only duplicate, a collapsed panel) and any
+    // screen-only control (the Columns picker) is left out. The print
+    // stylesheet does not know the app's "hidden" classes, so those used to
+    // be printed.
+    const offScreen = [...content.querySelectorAll("*")].filter(el => window.getComputedStyle(el).display === "none");
+    offScreen.forEach(el => el.setAttribute("data-print-skip", ""));
     const clone = content.cloneNode(true);
+    offScreen.forEach(el => el.removeAttribute("data-print-skip"));
+    clone.querySelectorAll("[data-print-skip], [data-no-print]").forEach(el => el.remove());
     clone.querySelectorAll(".material-icons-outlined, .material-icons").forEach(el => el.remove());
     Array.from(clone.childNodes).forEach(n => { if (n.nodeType === 3 && /^\s*[\)\}\(\{]*\s*$/.test(n.textContent)) n.remove(); });
-    const baseCss = `body{font-family:Arial,sans-serif;margin:30px 40px;color:${printTheme.inkStrong};font-size:13px}
+    // What the saved file is called: the report, then the period it covers,
+    // then whose books. The period is read off the report's own header line
+    // -- "As of ..." for a point-in-time report, a date range otherwise --
+    // so the name always agrees with what is printed under the title.
+    // A report that prints no period at all (Rent Roll, Account Listing) is
+    // a picture of today, so it is dated today -- not with a date range
+    // from the toolbar that the report never used.
+    const headerLines = [...(clone.querySelector(".text-center.mb-6")?.querySelectorAll("p") || [])].map(p => (p.textContent || "").trim());
+    const pointInTime = headerLines.some(t => /^as of\b/i.test(t)) || AS_OF_REPORTS.includes(currentReport.id);
+    const ranged = headerLines.some(t => /\d\s*(through|to|–|-)\s*\d/i.test(t)) || RANGE_REPORTS_WITHOUT_HEADER.includes(currentReport.id);
+    const fileName = printFileName(currentReport.title, pointInTime ? `As of ${asOfDate}` : ranged ? `${start} to ${end}` : acctToday(), companyName);
+    // A point smaller than on screen: a printed page is read closer than a
+    // monitor, and the smaller face keeps more columns on one line.
+    const baseCss = `body{font-family:Arial,sans-serif;color:${printTheme.inkStrong};font-size:12px}
 *{box-sizing:border-box}
 .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}
 .text-center{text-align:center}.text-right{text-align:right}.text-left{text-align:left}
-.text-xs{font-size:11px}.text-sm{font-size:13px}.text-base{font-size:15px}.text-lg{font-size:17px}
+.text-xs{font-size:10.5px}.text-sm{font-size:12px}.text-base{font-size:14px}.text-lg{font-size:16px}
 .tnum{font-family:ui-monospace,SFMono-Regular,monospace}.font-bold{font-weight:700}.font-black{font-weight:900}.font-semibold{font-weight:600}.font-medium{font-weight:500}
 .tabular-nums{font-variant-numeric:tabular-nums}
 .uppercase{text-transform:uppercase}.tracking-widest{letter-spacing:0.1em}.tracking-wider{letter-spacing:0.05em}
@@ -2902,7 +2922,8 @@ export function AcctReports({ linesLoaded = true, linesFailed = false, accounts,
 .rounded{border-radius:4px}
 .text-neutral-400{color:${printTheme.inkSubtle}}.text-neutral-500{color:${printTheme.inkMuted}}.text-neutral-700{color:${printTheme.inkStrong}}.text-neutral-800{color:${printTheme.inkStrong}}.text-neutral-900{color:${printTheme.ink}}
 .text-success-700{color:${printTheme.success}}.text-danger-600{color:${printTheme.danger}}
-table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight}}th{background:${printTheme.surfaceAlt};font-size:11px;text-transform:uppercase;color:${printTheme.inkMuted};font-weight:600}
+table{width:100%;border-collapse:collapse}th,td{padding:5px 8px;border-bottom:1px solid ${printTheme.borderLight};vertical-align:top}th{background:${printTheme.surfaceAlt};font-size:10px;text-transform:uppercase;color:${printTheme.inkMuted};font-weight:600}
+tr{break-inside:avoid}thead{display:table-header-group}
 .whitespace-nowrap{white-space:nowrap}.min-w-48{min-width:12rem}
 .px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}.px-5{padding-left:20px;padding-right:20px}
 .hidden,[class*="cursor-pointer"]{cursor:default}
@@ -2958,26 +2979,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         tbl += "</tbody></table>";
         pages += `<div style="page-break-after:always">${headerHtml}<p style="text-align:center;font-size:11px;color:${printTheme.inkSubtle};margin-bottom:16px">${pageLabel}</p>${tbl}</div>`;
       }
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
-      document.body.appendChild(iframe);
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open();
-      doc.write(`<!DOCTYPE html><html><head><title> </title><style>${baseCss}\n@media print{body{margin:10px 20px}@page{size:landscape;margin:0.25in 0.4in}}</style></head><body>${pages}</body></html>`);
-      doc.close();
-      setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
+      printHtmlDocument({ title: fileName, css: baseCss, body: pages, landscape: true, delay: 500 });
       return;
     }
 
-    const safeBody = DOMPurify.sanitize(clone.innerHTML);
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title> </title><style>${baseCss}\n@media print{body{margin:10px 20px}@page{size:auto;margin:0.25in 0.4in}}</style></head><body>${safeBody}</body></html>`);
-    doc.close();
-    setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
+    // Portrait when it fits, landscape when it does not, scaled down only
+    // if even that is too narrow -- printHtmlDocument measures and decides.
+    printHtmlDocument({ title: fileName, css: baseCss, body: DOMPurify.sanitize(clone.innerHTML), delay: 500 });
   }
 
   // --- Excel Export (xlsx with formulas, sections, formatting) ---
@@ -3535,7 +3543,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
   }
 
   // --- Print ---
-  function printReport() { window.print(); }
+  // The same clean, named document as the PDF button. This used to print
+  // the whole app screen -- sidebar and toolbar included -- and offer it
+  // as "Housify — Property Management.pdf".
+  function printReport() { exportPDF(); }
 
   // ============ RENDER ============
   // CATALOG VIEW
@@ -3706,7 +3717,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
   // Toolbar filter visibility
   const SHOW_PERIOD = true;
-  const SHOW_AS_OF = ["bs","tb","ar_aging_summary","ar_aging_detail","customer_balance_summary","security_deposits","recon_detail"].includes(reportId);
+  const SHOW_AS_OF = AS_OF_REPORTS.includes(reportId);
   const SHOW_COMPARE = ["pl","pl_by_class","bs"].includes(reportId);
   const SHOW_CLASS = ["pl","pl_compare","expenses_by_category","gl","noi_by_property","rent_collection"].includes(reportId);
   const SHOW_ACCOUNT = reportId === "gl" || reportId === "recon_detail";
@@ -3928,27 +3939,32 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "gl" && glAccount && (<div>
       <div className="text-center mb-4"><p className="text-xs text-neutral-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-neutral-900 mt-1">{glAccount.name}</h4><p className="text-sm text-neutral-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-neutral-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="tnum font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
-      <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-pop p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
+      <div className="flex justify-end mb-2 relative" data-no-print><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-pop p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
+      {/* Each column renders the value its heading names, and the Columns
+          picker decides which are shown. (A table migration on 2026-09-11
+          shifted every value one column to the right -- the empty-table
+          message became the first column -- and dropped the running
+          balance and the picker's effect.) */}
       <DataTable
         columns={[
-          { key: "date", label: "Date", align: "center", className: "text-neutral-400",
-            render: l => (<>No transactions</>) },
-          { key: "entry", label: "Entry #", className: "text-xs text-neutral-400",
+          { key: "date", label: "Date", className: "text-xs text-neutral-400 whitespace-nowrap",
             render: l => (<>{acctFmtDate(l.date)}</>) },
-          { key: "description", label: "Description", className: "tnum text-xs text-brand-600",
+          { key: "entry", label: "Entry #", className: "tnum text-xs text-brand-600 whitespace-nowrap",
             render: l => (<>{l.jeNumber||"—"}</>) },
-          { key: "memo", label: "Memo", className: "text-neutral-700",
+          { key: "description", label: "Description", className: "text-neutral-700",
             render: l => (<>{l.description}</>) },
-          { key: "debit", label: "Debit", className: "text-xs text-neutral-400",
+          { key: "memo", label: "Memo", className: "text-xs text-neutral-400",
             render: l => (<>{l.memo||"—"}</>) },
-          { key: "credit", label: "Credit", align: "right", className: "tnum",
+          { key: "debit", label: "Debit", align: "right", className: "tnum",
             render: l => (<>{l.debit > 0 ? acctFmt(l.debit) : ""}</>) },
-          { key: "balance", label: "Balance", align: "right", className: "tnum",
+          { key: "credit", label: "Credit", align: "right", className: "tnum",
             render: l => (<>{l.credit > 0 ? acctFmt(l.credit) : ""}</>) },
-        ]}
-        rows={glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines}
-        rowKey={l => l.id}
-        empty="Nothing to show"
+          { key: "balance", label: "Balance", align: "right", className: "tnum font-semibold",
+            render: l => (<span className={l.balance < 0 ? "text-danger-600" : ""}>{acctFmt(l.balance, true)}</span>) },
+        ].filter(c => glColumns[c.key] !== false)}
+        rows={glLines}
+        rowKey={(l, i) => l.jeId + "-" + i}
+        empty="No transactions"
       />
     </div>)}
 
@@ -4753,22 +4769,48 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* P&L Comparison */}
     {reportId === "pl_compare" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Profit & Loss Comparison</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}{compareData ? " vs Prior" : ""}</p></div>
-      {!compareData && <p className="text-center py-4 text-warn-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
-      <DataTable
-        columns={[
-          { key: "account", label: "Account",
-            render: a => (<>Income</>) },
-          { key: "current", label: "Current", className: "text-neutral-700 pl-8",
-            render: a => (<>{a.name}</>) },
-          { key: "prior", label: "Prior", align: "right", className: "tnum",
-            render: a => (<>{acctFmt(a.amount)}</>) },
-          { key: "change", label: "Change", align: "right", className: "tnum text-neutral-400",
-            render: a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return (<>{prior ? acctFmt(prior.amount) : "—"}</>); } },
-        ]}
-        rows={plData.revenue.filter(a=>showZeros||a.amount!==0)}
-        rowKey={a => a.id}
-        empty="Nothing to show"
-      />
+      {!compareData && <p className="text-center py-4 text-warn-600 text-sm" data-no-print>Select "Compare to" in the toolbar above to see a comparison.</p>}
+      {/* Income and Expenses, each with its total, then Net Income; Prior and
+          Change only once a comparison period is chosen. (The 2026-09-11
+          table migration kept the Income rows alone, one column out of
+          place, and dropped Expenses, both totals and Net Income.) */}
+      {(() => {
+        // More income is good; more expense is not. `upIsGood` colours Change.
+        const withPrior = (list, priorList, upIsGood) => list.filter(a => showZeros || a.amount !== 0)
+          .map(a => ({ ...a, prior: (priorList || []).find(p => p.id === a.id) || null, upIsGood }));
+        const tone = (d, upIsGood) => (d === 0 ? "" : (d > 0) === upIsGood ? "text-success-600" : "text-danger-600");
+        const totalCells = (cur, prior, upIsGood) => [
+          acctFmt(cur),
+          ...(compareData ? [
+            <span className="text-neutral-400">{acctFmt(prior)}</span>,
+            <span className={upIsGood === null ? "" : tone(cur - prior, upIsGood)}>{acctFmt(cur - prior, true)}</span>,
+          ] : []),
+        ];
+        return (<DataTable
+          columns={[
+            { key: "account", label: "Account", className: "text-neutral-700 pl-8",
+              render: a => (<>{a.name}</>) },
+            { key: "current", label: "Current", align: "right", className: "tnum",
+              render: a => (<>{acctFmt(a.amount)}</>) },
+            ...(compareData ? [
+              { key: "prior", label: "Prior", align: "right", className: "tnum text-neutral-400",
+                render: a => (<>{a.prior ? acctFmt(a.prior.amount) : "—"}</>) },
+              { key: "change", label: "Change", align: "right", className: "tnum",
+                render: a => { const d = a.amount - (a.prior?.amount || 0); return (<span className={tone(d, a.upIsGood)}>{acctFmt(d, true)}</span>); } },
+            ] : []),
+          ]}
+          groups={[
+            { key: "income", label: "Income", rows: withPrior(plData.revenue, compareData?.revenue, true),
+              footer: { label: "Total Income", strong: true, cells: totalCells(plData.totalRevenue, compareData?.totalRevenue || 0, null) } },
+            { key: "expenses", label: "Expenses", rows: withPrior(plData.expenses, compareData?.expenses, false),
+              footer: { label: "Total Expenses", strong: true, cells: totalCells(plData.totalExpenses, compareData?.totalExpenses || 0, null) } },
+          ]}
+          footer={[{ label: "NET INCOME", className: "border-t-2 border-b-2 border-neutral-800 font-black",
+            cells: totalCells(plData.netIncome, compareData?.netIncome || 0, true) }]}
+          rowKey={a => a.id}
+          empty="Nothing to show"
+        />);
+      })()}
     </div>)}
 
     {/* AP Aging Summary */}
@@ -6308,7 +6350,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
 
   {/* Account Ledger Drill-Down — a page of its own */}
-  {ledgerView && <AccountLedgerView companyId={companyId} classes={acctClasses} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView companyId={companyId} companyName={companyName} classes={acctClasses} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>

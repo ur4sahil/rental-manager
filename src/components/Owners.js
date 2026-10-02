@@ -3,7 +3,8 @@ import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { fileApprovalRequest, archiveOwnerRow } from "../utils/destructive";
 import { Input, MoneyInput, Textarea, Select, Btn, PageHeader, TabBar, EmptyState} from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue, fmtDate, canManage, excelDate, EXCEL_DATE_FMT } from "../utils/helpers";
+import { printFileName } from "../utils/theme";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -16,7 +17,7 @@ import { Spinner, Modal, StatCard, Badge } from "./shared";
 // Build a formatted, printable HTML document for an owner statement.
 // Replaces the old raw-JSON dump. Shared by the admin print button and
 // the owner-portal print button so both render the same layout.
-// All dynamic text is escaped via escapeHtml/sanitizeForPrint; currency
+// All dynamic text is escaped via escapeHtml; currency
 // uses formatCurrency. Every field is read defensively (0 or "—" when
 // missing) since it does not change how statements are generated.
 function buildStatementHtml(statement, companyId) {
@@ -66,7 +67,7 @@ function buildStatementHtml(statement, companyId) {
       <tr class="net"><td>Net Distribution to Owner</td><td class="amt">${formatCurrency(safeNum(s.net_to_owner))}</td></tr>
     </tbody></table>`;
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Statement ${sanitizeForPrint(s.period)}</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(printFileName("Owner Statement", s.owner_name, s.period))}</title>
   <style>
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:24px;font-size:13px;line-height:1.4}
@@ -106,7 +107,7 @@ function openStatementPrint(statement, companyId) {
   const w = window.open("", "_blank", "noopener,noreferrer");
   if (!w) return;
   w.document.write(buildStatementHtml(statement, companyId));
-  w.document.title = "Statement " + sanitizeForPrint((statement && statement.period) || "");
+  w.document.title = printFileName("Owner Statement", statement && statement.owner_name, statement && statement.period);
   setTimeout(() => w.print(), 300);
 }
 

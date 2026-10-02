@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { Input, MoneyInput, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
-import { printTheme } from "../utils/theme";
+import { printTheme, printFileName } from "../utils/theme";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
 
 // Format all tenants on a property as "John Smith / Jane Doe"
@@ -461,7 +461,7 @@ export function generatePaymentReceipt(payment, companyName = "Housify") {
   const html = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Payment Receipt ${receiptNum}</title>
+<head><meta charset="utf-8"><title>${escapeHtml(printFileName("Payment Receipt", payment.tenant, payment.date, receiptNum))}</title>
 <style>
   @media print { @page { margin: 0.5in; } body { -webkit-print-color-adjust: exact; } }
   * { margin: 0; padding: 0; box-sizing: border-box; }
