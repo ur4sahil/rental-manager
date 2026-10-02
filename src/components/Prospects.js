@@ -8,6 +8,7 @@ import { logAudit } from "../utils/audit";
 import { resendSignatureRequest, voidEnvelope, summarizeSends } from "../utils/docService";
 import { planTenancyCharges, describeTenancyCharges } from "../utils/onboardingRules";
 import { startTenancyBooks } from "../utils/tenantOnboarding";
+import { heldForProspect, recordProspectMoney, refundProspectMoney } from "../utils/prospectMoney";
 import { Spinner, Modal, PropertySelect, DocUploadModal } from "./shared";
 
 // ============ PROSPECTS ============
@@ -57,6 +58,8 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
   const [busy, setBusy] = useState("");                // a short label while an action runs
   const [lostFor, setLostFor] = useState(null);        // { prospect, reason }
   const [uploadFor, setUploadFor] = useState(null);
+  const [held, setHeld] = useState(null);              // { prospectId, ok, balance, entries, account } for the open prospect
+  const [moneyFor, setMoneyFor] = useState(null);      // { prospect, kind: "receive"|"refund", amount, date, memo }
   const handledAction = useRef(null);
 
   const load = useCallback(async () => {
@@ -97,6 +100,18 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     handledAction.current = initialAction;
     if (prospects.some(p => p.id === id)) setSelectedId(id);
   }, [initialAction, loading, prospects]);
+
+  // What is held for the prospect on screen (or the one being converted),
+  // read off the ledger each time: money may have been categorised to them on
+  // the Banking page since this page was opened.
+  const heldProspectId = converting?.prospect?.id || selectedId || null;
+  const loadHeld = useCallback(async (id) => {
+    if (!id) { setHeld(null); return; }
+    const h = await heldForProspect(companyId, id);
+    setHeld({ prospectId: id, ...h });
+  }, [companyId]);
+  useEffect(() => { setHeld(null); loadHeld(heldProspectId); }, [heldProspectId, loadHeld]);
+  const heldOf = (id) => (held && held.prospectId === id ? held : null);
 
   const propById = useMemo(() => Object.fromEntries(properties.map(p => [p.id, p])), [properties]);
   const occupantOf = useCallback((propertyId) => {
@@ -236,6 +251,11 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
   }
   async function archive(p) {
     if (docsOf(p.id).some(d => d.envelope_status === "out_for_signature")) { showToast("A lease is still out for signature. Cancel that request first.", "error"); return; }
+    // Money still held for them must go somewhere first: back to them, or
+    // (once converted) onto their ledger.
+    const h = await heldForProspect(companyId, p.id);
+    if (!h.ok) { showToast("Could not check whether money is held for " + p.name + ". Try again.", "error"); return; }
+    if (Math.abs(h.balance) > 0.004) { showToast(formatCurrency(h.balance) + " is still held for " + p.name + ". Refund it before removing them.", "error"); return; }
     if (!await showConfirm({ message: `Remove ${p.name} from Prospects? Their record and files are kept in the archive.`, confirmText: "Remove" })) return;
     const { error } = await supabase.from("prospects").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || "" }).eq("company_id", companyId).eq("id", p.id);
     if (error) { pmError("PM-8006", { raw: error, context: "archive prospect" }); return; }
@@ -250,11 +270,28 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     load();
   }
 
+  // ── money received before move-in ───────────────────────────────────
+  async function saveMoney() {
+    if (!moneyFor || !guardSubmit("prospectMoney", moneyFor.prospect.id)) return;
+    const { prospect: p, kind } = moneyFor;
+    try {
+      setBusy("Saving…");
+      const args = { companyId, prospect: p, amount: safeNum(moneyFor.amount), date: moneyFor.date, memo: String(moneyFor.memo || "").trim() };
+      const r = kind === "refund" ? await refundProspectMoney(args) : await recordProspectMoney(args);
+      if (!r.ok) { showToast(r.error, "error"); return; }
+      logAudit("create", "prospects", (kind === "refund" ? "Refunded " : "Recorded money received ") + formatCurrency(args.amount) + (kind === "refund" ? " to " : " from ") + p.name, p.id, userProfile?.email, userRole, companyId);
+      showToast(kind === "refund" ? formatCurrency(args.amount) + " refunded to " + p.name : formatCurrency(args.amount) + " recorded for " + p.name, "success");
+      setMoneyFor(null);
+      await loadHeld(p.id);
+    } finally { setBusy(""); guardRelease("prospectMoney", p.id); }
+  }
+
   // ── convert ─────────────────────────────────────────────────────────
   async function runBooks(p, t) {
     const res = await startTenancyBooks({
       companyId, tenantId: t.tenant_id, tenantName: t.tenant_name, property: t.property,
       leaseStart: t.lease_start, rent: safeNum(t.rent), deposit: safeNum(t.security_deposit), userEmail: userProfile?.email || "",
+      prospectId: p.id,
     });
     const note = res.ok ? null : "Converted, but not everything was posted to the books: " + res.failures.join("; ") + ". Press Finish setup to try again.";
     await supabase.from("prospects").update({ attention: note, updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("id", p.id);
@@ -281,6 +318,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
       if (res.ok) showToast(p.name + " is now a tenant. Deposit, first month's rent and the monthly schedule are set up.", "success");
       else showToast(p.name + " is now a tenant, but some entries were not posted: " + res.failures.join("; ") + ". Open the prospect and press Finish setup.", "warning");
       await load();
+      loadHeld(p.id);
     } finally { setBusy(""); guardRelease("convertProspect", p.id); }
   }
   async function finishSetup(p) {
@@ -293,6 +331,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
       if (res.ok) showToast("The books are set up for " + t.name + ".", "success");
       else showToast("Still not posted: " + res.failures.join("; "), "error");
       await load();
+      loadHeld(p.id);
     } finally { setBusy(""); guardRelease("finishProspect", p.id); }
   }
 
@@ -430,6 +469,39 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
             ))}
           </DetailCard>
 
+          {(() => {
+            const h = heldOf(p.id);
+            const open = ["new", "lease_sent", "signed"].includes(p.status);
+            // Converted with nothing ever received: nothing to show.
+            if (!open && (!h || (!h.account && !h.entries.length))) return null;
+            return (
+              <DetailCard title="Money received" sub={h?.ok && h.balance ? formatCurrency(h.balance) + " held" : null}
+                action={open ? (
+                  <span className="flex gap-3">
+                    {h?.ok && h.balance > 0.004 && <TextLink tone="neutral" size="xs" onClick={() => setMoneyFor({ prospect: p, kind: "refund", amount: String(h.balance), date: formatLocalDate(new Date()), memo: "" })}>Refund</TextLink>}
+                    <TextLink tone="brand" size="xs" onClick={() => setMoneyFor({ prospect: p, kind: "receive", amount: "", date: formatLocalDate(new Date()), memo: "" })}>Record money</TextLink>
+                  </span>
+                ) : null} flush>
+                {!h ? (
+                  <p className="px-4 py-6 text-sm text-neutral-400 text-center">Checking…</p>
+                ) : !h.ok ? (
+                  <p className="px-4 py-6 text-sm text-danger-600 text-center">What is held could not be read: {h.error}</p>
+                ) : h.entries.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-neutral-400 text-center">Nothing received yet. A deposit paid before move-in is held here, off the tenant ledgers, and moves to their ledger when they are converted.</p>
+                ) : (<>
+                  {h.entries.map(e => (
+                    <div key={e.id} className="flex items-center gap-2 px-4 py-2.5 border-b border-brand-50 last:border-b-0 text-sm">
+                      <span className="text-neutral-400 tabular-nums whitespace-nowrap">{fmtDate(e.date)}</span>
+                      <span className="flex-1 min-w-0 truncate text-neutral-700" title={e.description}>{e.description}</span>
+                      <span className={"tabular-nums font-medium whitespace-nowrap " + (e.amount < 0 ? "text-neutral-500" : "text-positive-700")}>{e.amount < 0 ? "−" : ""}{formatCurrency(Math.abs(e.amount))}</span>
+                    </div>
+                  ))}
+                  {h.account && <p className="px-4 py-2 text-xs text-neutral-400 border-t border-brand-50">Account {h.account.code}. A bank deposit from {p.name} can be categorised to it on the Banking page instead of being recorded here.</p>}
+                </>)}
+              </DetailCard>
+            );
+          })()}
+
           <DetailCard title="Notes">
             {p.notes ? <p className="text-sm text-neutral-600 whitespace-pre-wrap">{p.notes}</p> : <p className="text-sm text-neutral-400">No notes.</p>}
           </DetailCard>
@@ -447,6 +519,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
     const cOccupant = cp && cp.property_id != null ? occupantOf(cp.property_id) : null;
     const cSigned = cp ? docsOf(cp.id).some(d => d.doc_kind === "lease" && d.envelope_status === "completed") : false;
     const cOut = cp ? docsOf(cp.id).some(d => d.envelope_status === "out_for_signature") : false;
+    const cHeld = cp ? heldOf(cp.id) : null;
     const blocked = cp ? (cOccupant ? `${cOccupant.name} is still the tenant at this property. Move them out first.` : !plan.ok ? plan.error : cp.property_id == null ? "Choose the property first." : !cp.lease_end ? "The lease needs an end date." : "") : "";
     return (<>
       {form && (
@@ -501,6 +574,10 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
               ))}
             </ul>
           ) : null}
+          {cHeld?.ok && cHeld.balance > 0.004 && (
+            <p className="text-sm text-neutral-700 mb-3 flex gap-2"><span className="material-icons-outlined text-base text-positive-600">check</span><span>{formatCurrency(cHeld.balance)} already received is applied to their ledger as a payment</span></p>
+          )}
+          {cHeld && !cHeld.ok && <Alert tone="warn" className="mb-3">What is held for {cp.name} could not be read, so it cannot be applied. Try again in a moment.</Alert>}
           {blocked && <Alert tone="warn" className="mb-3">{blocked}</Alert>}
           {!blocked && !cSigned && (
             <Alert tone="warn" className="mb-3" title="The lease has not been signed in the app">
@@ -509,7 +586,7 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
           )}
           <p className="text-xs text-neutral-400 mb-4">Their lease and files move to the tenant's page. Any other applicant still holding an unsigned lease for this property has it cancelled; they are not emailed.</p>
           <div className="flex gap-2">
-            <Btn variant="success-fill" onClick={convert} disabled={!!busy || !!blocked || (!cSigned && !converting.signedOutside)}>{busy || "Convert to tenant"}</Btn>
+            <Btn variant="success-fill" onClick={convert} disabled={!!busy || !!blocked || !cHeld || !cHeld.ok || (!cSigned && !converting.signedOutside)}>{busy || "Convert to tenant"}</Btn>
             <Btn variant="secondary" onClick={() => setConverting(null)} disabled={!!busy}>Cancel</Btn>
           </div>
         </Modal>
@@ -519,9 +596,30 @@ function Prospects({ addNotification, userProfile, userRole, companyId, showToas
         <Modal title={"Mark " + lostFor.prospect.name + " lost"} onClose={() => setLostFor(null)}>
           <FormField label="Reason (optional)"><Input value={lostFor.reason} onChange={e => setLostFor({ ...lostFor, reason: e.target.value })} placeholder="e.g. Chose another place" /></FormField>
           {docsOf(lostFor.prospect.id).some(d => d.envelope_status === "out_for_signature") && <p className="text-xs text-warn-700 mt-2">The lease that is out for signature will be cancelled. They are not emailed about it.</p>}
+          {heldOf(lostFor.prospect.id)?.balance > 0.004 && <p className="text-xs text-warn-700 mt-2">{formatCurrency(heldOf(lostFor.prospect.id).balance)} is held for them. Marking them lost does not refund it: use Refund on their page.</p>}
           <div className="flex gap-2 mt-4">
             <Btn variant="danger" onClick={markLost} disabled={!!busy}>{busy || "Mark lost"}</Btn>
             <Btn variant="secondary" onClick={() => setLostFor(null)}>Cancel</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {moneyFor && (
+        <Modal title={(moneyFor.kind === "refund" ? "Refund " : "Money received from ") + moneyFor.prospect.name} onClose={() => { if (!busy) setMoneyFor(null); }}>
+          <p className="text-sm text-neutral-500 mb-3">
+            {moneyFor.kind === "refund"
+              ? "Returns money that was held for them. It leaves the Checking account."
+              : "Held for them, off the tenant ledgers, until they are converted. It goes into the Checking account."}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Amount" required><MoneyInput value={moneyFor.amount} onChange={v => setMoneyFor({ ...moneyFor, amount: v })} placeholder="0.00" /></FormField>
+            <FormField label="Date" required><Input type="date" value={moneyFor.date} onChange={e => setMoneyFor({ ...moneyFor, date: e.target.value })} /></FormField>
+            <FormField label="Note" className="col-span-2"><Input value={moneyFor.memo} onChange={e => setMoneyFor({ ...moneyFor, memo: e.target.value })} placeholder={moneyFor.kind === "refund" ? "e.g. Did not move in" : "e.g. Security deposit, Zelle"} /></FormField>
+          </div>
+          {moneyFor.kind === "receive" && <p className="text-xs text-neutral-400 mt-3">If this payment will also appear on the bank feed, do not record it here: categorise the bank deposit to this prospect on the Banking page, or it is counted twice.</p>}
+          <div className="flex gap-2 mt-4">
+            <Btn onClick={saveMoney} disabled={!!busy || !(safeNum(moneyFor.amount) > 0) || !moneyFor.date}>{busy || (moneyFor.kind === "refund" ? "Refund" : "Record")}</Btn>
+            <Btn variant="secondary" onClick={() => setMoneyFor(null)} disabled={!!busy}>Cancel</Btn>
           </div>
         </Modal>
       )}

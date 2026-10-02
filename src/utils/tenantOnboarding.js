@@ -31,6 +31,7 @@ import {
   atomicPostJEAndLedger, autoPostJournalEntry, autoPostRecurringEntries, checkPeriodLock,
 } from "./accounting";
 import { planTenancyCharges, isRentCharge, runningBillFrom } from "./onboardingRules";
+import { applyHeldToTenant } from "./prospectMoney";
 
 /**
  * What the tenant's ledger and schedule look like right now. Read by the
@@ -101,12 +102,14 @@ export async function tenantHasRentSchedule(companyId, tenantId) {
  *   createSchedule  false when the caller makes the schedule itself (the property wizard's RPC does).
  *   catchUp         "first-run": only charge the months already passed in the same run that posts the
  *                   first month. The wizard is re-saved for years; it must never go back and bill.
+ *   prospectId      a converted prospect: what was held for them moves to the tenant's ledger.
  * @returns {Promise<{ ok: boolean, mode: "new"|"running", continuing: boolean,
  *   steps: Array<{key:string,label:string,status:"done"|"already"|"skipped"|"failed"|"locked",detail?:string}>, failures: string[] }>}
  */
 export async function startTenancyBooks({
   companyId, tenantId, tenantName, property, leaseStart, rent, deposit = 0, userEmail = "",
   today = formatLocalDate(new Date()), mode = "new", billFrom = "", createSchedule = true, catchUp = "always",
+  prospectId = null,
 }) {
   const steps = [];
   let effectiveMode = mode === "running" ? "running" : "new";
@@ -278,6 +281,14 @@ export async function startTenancyBooks({
         }
       }
     }
+  }
+
+  // ── 5b. a converted prospect: money they paid before move-in was held as
+  // a liability in an account of their own. It becomes a payment on the
+  // tenant's ledger now, after the charges it pays for.
+  if (prospectId) {
+    const held = await applyHeldToTenant({ companyId, prospectId, tenantId: tid, tenantName: name, property, arAccountId: arId, classId, date: today });
+    add("held", "Money received before move-in", held.status, held.detail || "");
   }
 
   // ── 6. let the schedule post anything that is already due (this month's rent)

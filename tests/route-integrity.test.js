@@ -74,6 +74,7 @@ assert("every nav id has a component", orphanNav.length === 0, orphanNav.join(",
     // Prospects (20261003010000): the lease link and the files.
     ["doc_generated", "prospect_id"],
     ["documents", "prospect_id"],
+    ["acct_accounts", "prospect_id"],
   ];
   for (const [table, col] of required) {
     const { error } = await sb.from(table).select(col).limit(1);

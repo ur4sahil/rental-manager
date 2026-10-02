@@ -505,3 +505,72 @@ to 45 days. Order: 1, 2, 3, 1B, 5, 4.
   one-month maximum for leases signed from 2024-10-01. The wording is
   Sigma's own and was not changed. **[LAW]**
 - Money held for a prospect before move-in (Phase 1) and application fees (Phase 1B). **[LAW]**
+
+---
+
+## Phase 1 finished (2026-10-02, on `staging`; database changes on TEST only)
+
+Built without stopping, at Sahil's instruction. Choices I made on his behalf
+are marked **[CHOSEN]**: they are on the test site to look at, and each is
+small to change before it goes to production.
+
+**One way to start a tenancy (G1).** `startTenancyBooks`
+(`src/utils/tenantOnboarding.js`) is now the only code that posts a deposit,
+a first month or a rent schedule. Callers: Prospects (convert), the property
+wizard, the property form, Leases "Create lease", and the Tenants page's
+add path (which turned out to be unreachable from the screen today).
+- Two modes: `new` (a move-in) and `running` (already lives there: the
+  schedule only). The shared "Start billing" dialog
+  (`StartTenancyModal.js`) and the wizard's Recurring Rent step ask which
+  and show what will be posted. **[CHOSEN]** default: a lease that started
+  before last month is offered as "already lives there".
+- A tenant whose ledger has charges from before the lease start is a
+  renewal and is never charged a deposit or a part first month (Toni).
+- A month that already carries a rent charge is never charged again,
+  however that charge got there (Stanley's hand-posted months).
+- The wizard charges the months already passed only in the run that posts
+  the first month, so a re-save years later cannot go back and bill.
+- Decision A is unchanged: deposit and first rent are dated the lease
+  start, future or not.
+- The old closable "Set Up Recurring Rent" pop-up and a dead second one
+  (which wrote bare account codes) are deleted.
+
+**One lease.** The Tenants page's six-clause pop-up and the Leases page's
+own lease text are deleted. "Create lease" on the tenant page and in the
+Leases tab opens `md_residential_lease` in the Document Builder for that
+tenant. `TenancyDocuments.js` lists what was made for a tenant or a lease,
+where it stands and who has signed, with remind / copy link / cancel; it is
+on the tenant page and in the Leases tab, and is the place later phases add
+renewals and notices.
+
+**Signature slots (G7).** `effectiveSignerRoles` adds a tenant slot for each
+adult beyond the template's own. A named signer with no email now stops the
+send instead of being left off the envelope.
+
+**Tenant portal.** "Waiting for your signature" on the overview and the
+documents tab, from `my_pending_signatures()` (migration 20261003020000):
+only requests addressed to the caller's own login email, in a company they
+are an active member of. Signed copies were already filed tenant-visible.
+
+**Money before move-in (G3, Decision B).** Migration 20261003030000 and
+`src/utils/prospectMoney.js`. **[CHOSEN]**, to confirm with Sahil:
+- held as a liability in an account of the prospect's own ("Held - name",
+  2150-001 ...) under a parent "Prospect Money Held" (2150, or the next
+  free number up to 2199);
+- received: DR Checking 1000 / CR the prospect's account. A bank deposit can
+  instead be categorised to that account on the Banking page;
+- refund: DR the prospect's account / CR Checking, never more than is held;
+- on conversion: DR the prospect's account / CR the tenant's own ledger for
+  exactly what is held (reference `HELD-T<tenant id>`), dated the day of
+  conversion, and the account is closed;
+- money kept from an applicant who does not move in is NOT built: that is a
+  manual journal entry until the attorney has confirmed what may be kept.
+- A prospect with money held cannot be removed until it is refunded.
+
+Tests: `tests/onboarding-rules.test.mjs` (71), `tenancy-docs.test.mjs` (39),
+`prospect-money.test.mjs` (29); browser runs against the TEST database for
+the wizard (move-in, late entry both ways), Leases "Create lease", the
+tenant page card, and money held through to conversion.
+
+Not on production: the code (staging 34fdae1 and later) and migrations
+20261003020000, 20261003030000.
