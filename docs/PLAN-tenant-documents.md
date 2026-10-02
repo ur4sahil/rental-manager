@@ -391,11 +391,126 @@ Where it lives:
 - `src/utils/docService.js` `loadDocContext({ prospectId })` — fills the
   lease from the prospect and never from the current occupant.
 
-Both migrations are applied to the TEST database only. Production needs
-them (and 20261002010000 / 20261002011000 before them) applied first, and
-the lease template installed, before this reaches `main`.
+All four migrations (20261002010000, 20261002011000, 20261003010000,
+20261003011000) were applied to PRODUCTION on 2026-10-02 after a rolled-back
+rehearsal there, the MD Residential Lease template was installed for Sigma
+Housing LLC (checksum-identical to the tested copy), and `main` was
+fast-forwarded to 912dcd0 the same day. Document emails are real on
+production from that point (no allowlist there).
 
 Still to do in Phase 1: retire the two throwaway lease generators (Tenants
 `openLeaseForSigning`, the Leases page's own HTML), a lease/sign entry on the
 tenant page for existing tenants, and "to sign" / "my documents" in the
 tenant portal.
+
+---
+
+## Revision after Prospects (2026-10-02)
+
+PROPOSAL. Nothing in this section is built. Items marked **[V]** were
+checked in the code on `staging` at 912dcd0.
+
+### What Prospects settled
+
+- Decision 1 (when a lease takes effect): nothing reaches the books until a
+  prospect is converted; rent starts on the lease start date.
+- Decision 2 (production email): answered by shipping. Signing emails are
+  live on production.
+- Decision 3 (who signs for the landlord): tenants first, then the landlord
+  signs each lease (the template is sequential).
+- Risk "co-tenant data is thin": for new leases, a prospect now carries each
+  co-applicant's name and email, and conversion copies them to the tenant.
+
+Phase 0 is done and live. Phase 1 is live except the three items listed
+under "Still to do in Phase 1" above.
+
+### What Prospects exposed
+
+| # | Gap | Evidence |
+|---|---|---|
+| G1 | **Five screens start a tenancy's books, each with its own code.** Only the Prospects one charges the months already passed, and only it is covered by the onboarding tests | Prospects (shared engine), Tenants add (`Tenants.js` ~488), property wizard (`Properties.js` ~1634), property quick-add (`Properties.js` ~3559), Leases "Create Lease" (`Leases.js` ~149) **[V]**. Stanley Ibe's missing schedule and Toni Tillman's wrong first charge both came from the wizard path |
+| G2 | **Converting before the lease start date posts charges dated in the future** (deposit and first month are dated the lease start, whatever today is) | `planTenancyCharges` **[V]**. Toni's entries dated 2026-11-03 were this, from the wizard |
+| G3 | **Money paid before move-in has nowhere to go.** Applicants often pay the deposit at signing; the books know nothing until conversion, and conversion is refused while the old tenant is still there | By design of Phase 1 |
+| G4 | **Nothing happens after conversion.** No welcome email, no portal invite, no move-in inspection, no check for the renter's insurance the lease requires before occupancy (Section VI) | `Prospects.js` has no such step **[V]** |
+| G5 | **No application step.** The lease (Section XXII) refers to "the application"; a prospect has file uploads and notes but no application form and no checklist of what was received | **[V]** |
+| G6 | **Losing applicants are never told** their lease was cancelled (deliberate), and there is no letter to send if you want to | By design |
+| G7 | **Signature slots.** The lease has three tenant signature slots; a prospect can carry four co-applicants | Template `signer_roles` **[V]**; behaviour with a fifth adult not yet tested |
+| G8 | **Nothing chases a prospect.** Unsigned lease, signing link expiring at 30 days, lease start date arriving with nobody converted | No clock yet (Phase 5) |
+| G9 | **Move-out does not know someone is waiting.** A signed prospect for the same property is not mentioned when the old tenant is moved out | **[V]** |
+| G10 | **Renewals and rent increases are the same shape as a prospect** (offer, sign, takes effect on a date) and should reuse it instead of a third design | Design note for Phase 2 |
+
+### Revised phases
+
+Working days. "Was" is the original estimate for what is left.
+
+**Phase 1, finish (was ~3 days, now ~6).**
+- As planned: retire the two old lease generators; a lease/sign entry on the
+  tenant page for existing tenants; tenant portal "to sign" and "my
+  documents".
+- NEW (G1): one way to start a tenancy. The Tenants page, both property
+  paths and Leases "Create Lease" call the same engine as Prospects, so all
+  five produce identical ledger entries and a rent schedule every time.
+  Existing tenants and posted entries are not touched.
+- NEW (G2): no future-dated charges. See Decision A.
+- NEW (G7): signature slots follow the number of adults on the lease.
+
+**Phase 1B, before move-in (NEW, optional, 5 to 7 days).**
+- Application form sent to the prospect by link, filled in and signed, filed
+  on the prospect (G5), plus a short checklist: ID, income proof, renter's
+  insurance, application received.
+- Money received before conversion, recorded against the prospect as held
+  and carried to the tenant's ledger on conversion (G3). See Decision B.
+- On conversion: welcome email with the portal invite, a move-in inspection
+  created, the insurance item carried over (G4). See Decision D.
+- A "this home has been leased" email for a losing applicant, sent only when
+  staff press the button (G6).
+- Application fees and holding deposits have Maryland rules **[LAW]**; they
+  join the attorney list before this phase ships.
+
+**Phase 2, renewal, rent increase, addenda (6 to 8 days, +1).**
+- Unchanged in scope. Built on the prospect pattern (G10): an offer is a
+  document; nothing changes until it is signed and its date arrives.
+- NEW: a non-renewal or a tenant's notice gives the property an "available
+  from" date, shown when choosing a property for a prospect.
+
+**Phase 3, notices and move-out (6 to 7 days, +0.5).**
+- Unchanged, plus (G9): finishing a move-out says "X has a signed lease for
+  this home" and offers the conversion.
+
+**Phase 4, failure to pay rent (8 to 10 days).** Unchanged. Still waits on
+the attorney check.
+
+**Phase 5, the clock (4 to 5 days, +1).**
+- Unchanged, plus (G8): reminder for an unsigned lease, warning before a
+  signing link expires, and "lease starts today, not converted yet".
+- If Decision A is option 1, the first month's rent of an early conversion
+  is posted by this job on the start date.
+
+**Totals.** Left before this revision: about 27 to 33 days. With the
+additions: about 33 to 39 days, or 38 to 46 with Phase 1B.
+
+**Suggested order:** finish Phase 1, then 1B if wanted, then 2, 3, 5, and 4
+last (it is the one that waits on the attorney).
+
+### New decisions
+
+- **A. Converting before the lease start date.** (1) Deposit dated the day
+  of conversion; first rent posts on the start date (recommended). (2) As
+  today: both dated the start date even when it is in the future. (3) Do not
+  allow conversion before the start date.
+- **B. Money received before move-in.** (1) Record it against the prospect
+  as held; it moves to the tenant's ledger on conversion (recommended).
+  (2) Leave as today: nothing is recorded until conversion.
+- **C. Application step (Phase 1B).** (1) Build it now, after Phase 1.
+  (2) Later, after Phase 3. (3) Not needed; file uploads are enough.
+- **D. After conversion.** (1) Welcome email with portal invite, and a
+  move-in inspection created automatically. (2) A checklist on screen only;
+  nothing is sent. (3) Nothing.
+
+### For the attorney list (added)
+
+- The lease text now installed says the security deposit "shall not exceed
+  the equivalent of two (2) months' Rent". Section 9 of this plan notes a
+  one-month maximum for leases signed from 2024-10-01. The wording is
+  Sigma's own and was not changed. **[LAW]**
+- Application fees and holding deposits (Phase 1B). **[LAW]**
