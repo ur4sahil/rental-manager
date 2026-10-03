@@ -107,7 +107,10 @@ const fnBody = (text, sig) => {
   return next < 0 ? text.slice(i) : text.slice(i, i + sig.length + next);
 };
 const p1 = fnBody(lf, "async function applyLateFee(");
-const p2 = fnBody(tn, "async function applyLateFeeForTenant(");
+// The tenant button's logic lives in utils/lateFeeApply.js since 2026-10-02,
+// shared with the Accounting ledger button; Tenants.js only calls it.
+const ap = src("utils/lateFeeApply.js");
+const p2 = fnBody(ap, "export async function applyLateFee(");
 assert("path 1 (Late Fees page) found", p1.length > 200);
 assert("path 2 (tenant Late Fee button) found", p2.length > 200);
 for (const [name, body] of [["path 1 LateFees.applyLateFee", p1], ["path 2 Tenants.applyLateFeeForTenant", p2]]) {
@@ -121,7 +124,7 @@ for (const [name, body] of [["path 1 LateFees.applyLateFee", p1], ["path 2 Tenan
 assert("path 2 checks the shared rule before its confirm dialog", /lateFeeAlreadyPosted\(/.test(p2) && p2.indexOf("lateFeeAlreadyPosted(") < p2.indexOf("showConfirm("));
 assert("path 1 finds the tenant by id, not by name alone", /String\(t\.id\) === String\(payment\.tenant_id\)/.test(p1));
 assert("imports: LateFees.js from utils/lateFees", /import \{[^}]*postTenantLateFee[^}]*\} from "\.\.\/utils\/lateFees"/.test(lf));
-assert("imports: Tenants.js from utils/lateFees", /import \{[^}]*postTenantLateFee[^}]*lateFeeAlreadyPosted[^}]*\} from "\.\.\/utils\/lateFees"/.test(tn));
+assert("imports: lateFeeApply.js from utils/lateFees; Tenants.js and Accounting.js call it", /import \{[^}]*postTenantLateFee[^}]*lateFeeAlreadyPosted[^}]*\} from "\.\/lateFees"/.test(ap) && /applyLateFee\(\{ companyId, tenant: t, companySettings/.test(tn) && /applyLateFee\(\{ companyId, tenant, companySettings/.test(src("components/Accounting.js")));
 
 console.log("\n🔗 THE ROUTINE (utils/lateFees.js)");
 const post = fnBody(lib, "export async function postTenantLateFee(");
@@ -292,7 +295,7 @@ try {
   assert("Late Fees page uses the shared terms + eligibility", /resolveLateFeeTerms\(/.test(lf) && /lateFeeEligibility\(/.test(lf) && /computeLateFeeAmount\(/.test(lf) && /lateFeeBusinessDate\(\)/.test(lf));
   assert("Late Fees page no longer tests fee_type === 'flat' by hand", !/rule\.fee_type === "flat"/.test(lf));
   assert("Late Fees page saves the canonical fee type", /fee_type: normalizeLateFeeType\(form\.fee_type\)/.test(lf));
-  assert("tenant button uses the shared terms + eligibility with the company rule, then Settings", /resolveLateFeeTerms\(\{ tenant: t, rule: lfRule, settings: companySettings \}\)/.test(tn) && /lateFeeEligibility\(/.test(tn) && /lateFeeBusinessDate\(\)/.test(tn));
+  assert("tenant button uses the shared terms + eligibility with the company rule, then Settings", /resolveLateFeeTerms\(\{ tenant: t, rule, settings: companySettings \}\)/.test(ap) && /lateFeeEligibility\(/.test(ap) && /lateFeeBusinessDate\(\)/.test(ap));
   // Sahil, 2026-10-02: no automatic late fees; the button charges 5% of rent,
   // or of the tenant's own portion on a voucher tenancy.
   assert("with no rule, Settings' 5% applies", (() => { const r = R.resolveLateFeeTerms({ tenant: { rent: 1800 }, rule: null, settings: { late_fee_amount: 5, late_fee_type: "percent", late_fee_grace_days: 5 } }); return r.type === "percent" && r.amount === 5 && r.graceDays === 5 && r.source === "settings"; })());
@@ -301,9 +304,10 @@ try {
   assert("5% of $1,800 rent is $90.00", R.computeLateFeeAmount({ type: "percent", amount: 5 }, R.lateFeeBase({ rent: 1800 })) === 90);
   assert("a voucher tenant is charged on their own portion, not the whole rent", R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 406 }) === 406 && R.computeLateFeeAmount({ type: "percent", amount: 5 }, R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 406 })) === 20.3);
   assert("a voucher tenant with no portion recorded falls back to the rent, and a non-voucher tenant's portion is ignored", R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 0 }) === 2000 && R.lateFeeBase({ rent: 2000, is_voucher: false, tenant_portion: 406 }) === 2000 && R.lateFeeBase(null) === 0);
-  assert("the button and the Late Fees page charge on that base", /computeLateFeeAmount\(lfTerms, lateFeeBase\(t\)\)/.test(tn) && /computeLateFeeAmount\(terms, lateFeeBase\(tenant\)\)/.test(lf));
+  assert("the button and the Late Fees page charge on that base", /computeLateFeeAmount\(terms, base\)/.test(ap) && /const base = lateFeeBase\(t\)/.test(ap) && /computeLateFeeAmount\(terms, lateFeeBase\(tenant\)\)/.test(lf));
   assert("a new lease no longer carries a forced $50; blank means the company default", !/late_fee_amount \|\| 50/.test(src("components/Leases.js")) && /late_fee_amount: form\.late_fee_amount === "" \? null/.test(src("components/Leases.js")) && !/auto-apply/.test(src("components/Leases.js")));
-  assert("tenant button no longer computes percent/flat by hand", !/late_fee_type === "percent"/.test(tn));
+  assert("tenant button no longer computes percent/flat by hand", !/late_fee_type === "percent"/.test(tn) && !/late_fee_type === "percent"/.test(ap));
+  assert("the Accounting ledger of a tenant's receivable offers the same button", /ledgerTenantId != null && onApplyLateFee/.test(src("components/Accounting.js")) && /tenant_id \?\? null/.test(src("components/Accounting.js")));
   assert("tenant button shows whenever the tenant owes money (rule OR own setting)", /lateFeeAction=\{safeNum\(selectedTenant\?\.balance\) > 0 && !selectedTenant\?\.archived_at/.test(tn));
 
   const sql = migBatch;  // the live batch_post_late_fees definition
@@ -378,7 +382,7 @@ try {
   assert("lateFeeOrdered applies each .order() in turn", JSON.stringify(calls) === LO);
   assert("due day takes the FIRST usable row (so order decides)", R.lateFeeDueDay({ leases: [{ payment_due_day: 27 }, { payment_due_day: 5 }] }) === 27);
   const tn2 = src("components/Tenants.js"), lf2 = src("components/LateFees.js");
-  const btn = fnBody(tn2, "async function applyLateFeeForTenant(");
+  const btn = fnBody(src("utils/lateFeeApply.js"), "export async function applyLateFee(");
   assert("tenant button: rules / leases / schedules use the job's order",
     /lateFeeOrdered\(supabase\.from\("late_fee_rules"\)[^\n]*LATE_FEE_RULE_ORDER\)/.test(btn) &&
     /lateFeeOrdered\(supabase\.from\("leases"\)[^\n]*LATE_FEE_LEASE_ORDER\)/.test(btn) &&
