@@ -40,9 +40,12 @@ export const MAX_LENGTH_TEXTAREA = 5000;
 // saves their settings, the DB values override these.
 export const COMPANY_DEFAULTS = {
   // Late Fees
+  // Maryland caps a late fee at 5% of the rent due [LAW]. Sahil, 2026-10-02:
+  // "Late fee default needs to be 5%". It was $50 flat, and every lease made
+  // through the Leases page inherited it.
   late_fee_grace_days: 5,
-  late_fee_amount: 50,
-  late_fee_type: "flat",            // "flat" or "percent"
+  late_fee_amount: 5,
+  late_fee_type: "percent",         // "flat" or "percent"
 
   // Lease Defaults
   default_lease_months: 12,

@@ -1,3 +1,4 @@
+import { COMPANY_DEFAULTS } from "../config";
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, MoneyInput, PageHeader, Select, Textarea, TextLink, TabBar, EmptyState} from "../ui";
@@ -42,7 +43,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1),
   lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60),
   clauses: "", special_terms: "", template_id: "",
-  late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
+  late_fee_amount: String(companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount), late_fee_type: companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
   });
   const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", lease }
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: "1" });
@@ -119,7 +120,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   escalation_frequency: form.escalation_frequency, payment_due_day: Math.max(1, Math.min(31, Math.floor(Number(form.payment_due_day || 1)))),
   lease_type: form.lease_type, auto_renew: form.auto_renew, renewal_notice_days: Number(form.renewal_notice_days || 60),
   clauses: form.clauses, special_terms: form.special_terms, status: "active",
-  late_fee_amount: Number(form.late_fee_amount || 50), late_fee_type: form.late_fee_type || "flat", late_fee_grace_days: Number(form.late_fee_grace_days || 5),
+  late_fee_amount: Number(form.late_fee_amount || companySettings.late_fee_amount || COMPANY_DEFAULTS.late_fee_amount), late_fee_type: form.late_fee_type || companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: Number(form.late_fee_grace_days || 5),
   move_in_checklist: JSON.stringify(defaultChecklist.map(item => ({ item, checked: false }))),
   move_out_checklist: JSON.stringify(defaultMoveOutChecklist.map(item => ({ item, checked: false }))),
   created_by: normalizeEmail(userProfile?.email),
@@ -162,7 +163,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
 
   function resetForm() {
   setShowForm(false); setEditingLease(null);
-  setForm({ tenant_id: "", tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3), escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1), lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60), clauses: "", special_terms: "", template_id: "", late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5) });
+  setForm({ tenant_id: "", tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3), escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1), lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60), clauses: "", special_terms: "", template_id: "", late_fee_amount: String(companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount), late_fee_type: companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: String(companySettings.late_fee_grace_days || 5) });
   }
 
   function startEdit(lease) {

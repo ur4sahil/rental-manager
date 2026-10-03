@@ -1,3 +1,4 @@
+import { COMPANY_DEFAULTS } from "../config";
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Select, Btn, PageHeader, TextLink} from "../ui";
@@ -23,7 +24,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // insert of a fully pre-filled row. The numeric policy defaults stay
   // seeded from company settings (same convention as Leases /
   // RecurringJournalEntries) and the form says so explicitly.
-  const blankRule = () => ({ name: "", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount || 50), fee_type: companySettings.late_fee_type || "flat" });
+  const blankRule = () => ({ name: "", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount), fee_type: companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type });
   const [form, setForm] = useState(blankRule);
   const [editingRule, setEditingRule] = useState(null);
 

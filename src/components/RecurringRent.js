@@ -1,3 +1,4 @@
+import { COMPANY_DEFAULTS } from "../config";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "../supabase";
 import { Input, MoneyInput, Select, Btn, FilterPill, DataTable, EmptyState, TextLink, Badge, AccountPicker, FormField, Switch, IconBtn } from "../ui";
@@ -141,7 +142,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
     return {
       tenant_id: t ? idOf(t.id) : "", amount: t && safeNum(t.rent) > 0 ? String(t.rent) : "", day_of_month: "1",
       first: alreadyCharged ? "next" : "this", late_fee_enabled: true, showFee: false,
-      grace_period_days: String(companySettings.late_fee_grace_days || 5), late_fee_amount: String(companySettings.late_fee_amount || 50),
+      grace_period_days: String(companySettings.late_fee_grace_days || 5), late_fee_amount: String(companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount),
     };
   }
   function openNewOther() {
