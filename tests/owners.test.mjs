@@ -229,7 +229,8 @@ assert("wizard writes owner_id via assignPropertyOwner after commit", props.incl
 assert("property page has the picker", props.includes("ownerSlot={") && read("src/components/PropertyPage.js").includes("ownerSlot ||"));
 assert("Properties list reads the linked owner (propertyOwnerName / _ownerKey)", props.includes("propertyOwnerName(p, ownersById)") && props.includes("p._ownerKey !== filterOwner") && !props.includes("p.owner_name !== filterOwner"));
 assert("import links owner records (creates when missing)", imp.includes("findOrCreateOwnerByName(companyId, name, ownerList)") && imp.includes("patch.owner_id =") && !imp.includes('owner_name: r.owner_name || ""'));
-assert("Documents merge fields look the owner up by owner_id first", docs.includes('.eq("id", prop.owner_id)'));
+// The prefill moved out of Documents.js into docService.js (phase 0, 2026-10-02).
+assert("Documents merge fields look the owner up by owner_id first", read("src/utils/docService.js").includes('.eq("id", property.owner_id)'));
 assert("assignPropertyOwner derives owner_name from the record", /update\(\{ owner_id: owner \? owner\.id : null, owner_name: owner \? owner\.name : "" \}\)/.test(ownUtil));
 assert("portal shows payouts only", owners.includes("setDistributions((d.data || []).filter(isLivePayout))"));
 assert("migration: kind check + NOT NULL + backfill from reference", /CHECK \(kind IN \('accrual','payout'\)\)/.test(MIG) && /SET kind = CASE WHEN reference LIKE 'ODIST-%'/.test(MIG) && /ALTER COLUMN kind SET NOT NULL/.test(MIG));

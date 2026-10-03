@@ -54,7 +54,9 @@ function testFileStructure() {
   // 1560 -> 1575 on 2026-09-28: +8 lines, the scroll-to-top-on-page-change
   // effect (82ab99c). It keys on `page`, which only the router owns, so it
   // belongs here rather than in a component. Small headroom, not a blank cheque.
-  assert(appLines < 1575, `src/App.js is under 1575 lines (${appLines} lines)`);
+  // 1575 -> 1600 on 2026-10-03: +5 lines for the Prospects page and the
+  // public /sign and /apply routes (tenant-documents phases 0-5).
+  assert(appLines < 1600, `src/App.js is under 1600 lines (${appLines} lines)`);
 
   // Utils directory: required files must exist; count bound is a
   // ceiling, not an exact number. new utilities (native.js for
@@ -96,7 +98,11 @@ function testFileStructure() {
   // 31 on 2026-09-29: staging's 29 merged with the owners branch's two
   // (ownerRules.js -- the pure fee / statement rules shared with api/stripe.js --
   // and owners.js -- owner links, statement reads, correction + pending RPCs).
-  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 31, `src/utils/ has 8..31 files (found ${actualUtilFiles.length})`);
+  // 31 -> 60 on 2026-10-03: tenant-documents phases 0-5 put every rule in
+  // its own pure module (arrears, docRules, courtForms, ftprData, leaseClock,
+  // lateFeeRules, initialsStamp, docxExport, ...) so the tests can import
+  // them without a browser. Small files by design, not sprawl.
+  assert(actualUtilFiles.length >= 8 && actualUtilFiles.length <= 60, `src/utils/ has 8..60 files (found ${actualUtilFiles.length})`);
 
   // Components directory. Required-file list checked; total count is
   // a window rather than exact.
@@ -114,7 +120,9 @@ function testFileStructure() {
   }
   const actualCompFiles = fs.readdirSync(compDir).filter(f => f.endsWith('.js'));
   // 40 -> 41 on 2026-09-28 (owners): OwnerPicker.js, the one owner chooser used by the wizard and the property page.
-  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 41, `src/components/ has 23..41 files (found ${actualCompFiles.length})`);
+  // 41 -> 60 on 2026-10-03: + Prospects, LeaseClock, FtprFiling, PublicSignPage,
+  // PublicApplyPage, SignaturePad, RecurringRent, LateFees, Lifecycle (tenant-documents).
+  assert(actualCompFiles.length >= 23 && actualCompFiles.length <= 60, `src/components/ has 23..60 files (found ${actualCompFiles.length})`);
 
   // Total line count. App.js grew past its own 1500 cap with the
   // SCREEN_HASHES guard that fixed deep-link routing — a deliberate,
@@ -280,7 +288,11 @@ function testFileStructure() {
   // grouping under parent accounts, Chart of Accounts parent picker: +~85).
   // 55250 on 2026-09-29: + audit theme L (property delete: chunked server-side void helpers,
   // unfinished-delete banner with Finish/Cancel, restore preview: +~115).
-  assert(totalLines <= 55250, `Total src lines <= 55250 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
+  // 55250 -> 66000 on 2026-10-03: + tenant-documents phases 0-5 (prospects,
+  // applications, lease changes, notices, move-out, the clock, FTPR court
+  // forms), the Word editor (ruler, lists, tables, find, page breaks,
+  // initials, first-page furniture) and the Word export: +~8,500.
+  assert(totalLines <= 66000, `Total src lines <= 66000 (${totalLines})`);   // +merge-tag pills, doc types, field rail, ACTIVE_LEASE,
   // then +sameAddress/normalizeAddress and docChunks.js (the retrieval
   // chunker). Both are new focused modules in src/utils/, which is the
   // direction this bound exists to encourage -- a small dedicated file

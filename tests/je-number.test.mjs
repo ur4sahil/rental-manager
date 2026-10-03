@@ -12,7 +12,9 @@ const assert = (n, ok, d = "") => { if (ok) { passed++; console.log("  ✅ " + n
 const mig = fs.readFileSync(new URL("../supabase/migrations/20260929060000_je_number_past_9999.sql", import.meta.url), "utf8");
 assert("migration pads with greatest(4, length(n)) -- never truncates", /lpad\(n::text, greatest\(4, length\(n::text\)\), '0'\)/.test(mig));
 const later = fs.readdirSync(new URL("../supabase/migrations/", import.meta.url)).filter(f => f > "20260929060000")
-  .filter(f => /FUNCTION public\.next_je_number/.test(fs.readFileSync(new URL("../supabase/migrations/" + f, import.meta.url), "utf8")));
+  // Only a migration that REDEFINES the function counts; one that merely
+  // REVOKEs/GRANTs on it (20260930120000) does not carry the body.
+  .filter(f => /CREATE (OR REPLACE )?FUNCTION public\.next_je_number/.test(fs.readFileSync(new URL("../supabase/migrations/" + f, import.meta.url), "utf8")));
 assert("no later migration redefines next_je_number without the fix", later.every(f =>
   /greatest\(4, length\(/.test(fs.readFileSync(new URL("../supabase/migrations/" + f, import.meta.url), "utf8"))), later.join(","));
 

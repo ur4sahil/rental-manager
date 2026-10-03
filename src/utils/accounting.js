@@ -910,14 +910,15 @@ export async function autoPostRecurringEntries(companyId) {
     if (lease?.start_date && lease.start_date.slice(0, 7) === monthStr) {
       let hasEarlierCharges = false;
       if (isTenantSchedule && debitAcct?.id) {
+        // A deposit taken before move-in is not rent: it does not make
+        // this a renewal. (A null memo must still count -- imported rent
+        // lines have none -- hence the explicit is.null.) One row answers
+        // the question, hence .limit(1).
         const { data: earlier, error: earlierErr } = await supabase.from("acct_journal_lines")
           .select("id, acct_journal_entries!inner(date, status)")
           .eq("company_id", cid).eq("account_id", debitAcct.id).gt("debit", 0)
           .neq("acct_journal_entries.status", "voided")
           .lt("acct_journal_entries.date", monthStr + "-01")
-          // A deposit taken before move-in is not rent: it does not make
-          // this a renewal. (A null memo must still count -- imported rent
-          // lines have none -- hence the explicit is.null.)
           .or("memo.is.null,memo.not.ilike.%deposit%")
           .limit(1);
         hasEarlierCharges = !earlierErr && (earlier || []).length > 0;

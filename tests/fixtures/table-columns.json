@@ -444,10 +444,12 @@
           "account",
           "current",
           "prior",
-          "change"
+          "change",
+          "income",
+          "expenses"
         ],
-        "footer": null,
-        "groups": false,
+        "footer": "NET INCOME",
+        "groups": true,
         "sortable": [],
         "behaviour": []
       },
@@ -724,23 +726,6 @@
     ],
     "printTables": []
   },
-  "src/components/Leases.js": {
-    "dataTables": [],
-    "printTables": [
-      {
-        "labels": [
-          "",
-          "",
-          "Property",
-          "Tenant",
-          "Lease Term",
-          "Monthly Rent",
-          "Security Deposit"
-        ],
-        "footer": null
-      }
-    ]
-  },
   "src/components/Loans.js": {
     "dataTables": [
       {
@@ -822,6 +807,27 @@
     ],
     "printTables": []
   },
+  "src/components/Prospects.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "name",
+          "property",
+          "term",
+          "rent",
+          "status",
+          "updated"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [],
+        "behaviour": [
+          "onRowClick"
+        ]
+      }
+    ],
+    "printTables": []
+  },
   "src/components/QuickBooksImport.js": {
     "dataTables": [
       {
@@ -864,6 +870,37 @@
         "groups": false,
         "sortable": [],
         "behaviour": []
+      }
+    ],
+    "printTables": []
+  },
+  "src/components/RecurringRent.js": {
+    "dataTables": [
+      {
+        "keys": [
+          "tenant",
+          "property",
+          "amount",
+          "day",
+          "next",
+          "last",
+          "late",
+          "status",
+          "actions"
+        ],
+        "footer": null,
+        "groups": false,
+        "sortable": [
+          "tenant",
+          "property",
+          "amount",
+          "next",
+          "last"
+        ],
+        "behaviour": [
+          "onRowClick",
+          "rowClassName"
+        ]
       }
     ],
     "printTables": []

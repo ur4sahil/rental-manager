@@ -142,7 +142,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Bulk selection
   const [selectedTenants, setSelectedTenants] = useState(new Set());
   const [bulkAction, setBulkAction] = useState(null);
-  const [leaseModal, setLeaseModal] = useState(null);
   const [noticeFor, setNoticeFor] = useState(null);             // the tenant a notice to vacate is being recorded for
   const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", tenant }
   const [leaseChangesKey, setLeaseChangesKey] = useState(0);     // bump to reload the tenant page's lease-changes card
@@ -163,7 +162,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null);
   const [docExceptions, setDocExceptions] = useState([]);
-  const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
   const [invitingTenant, setInvitingTenant] = useState({});

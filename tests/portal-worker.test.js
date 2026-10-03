@@ -277,8 +277,12 @@ assert("Washington Gas declares a statementClick PDF flow on its billing dashboa
   PLAYBOOKS.washington_gas.statementClick
   && /BillDashboard/i.test(PLAYBOOKS.washington_gas.statementClick.url)
   && /viewpdfdetailspopup/.test(PLAYBOOKS.washington_gas.statementClick.selector));
+// The download itself moved into capturePdf() (2026-09-29), which the
+// statementClick block calls; the helper is where the download event is waited on.
 assert("fetch-bill implements the statementClick download flow",
-  /book\.statementClick && wantAccount/.test(fetchBill) && /waitForEvent\("download"/.test(fetchBill.slice(fetchBill.indexOf("statementClick && wantAccount"))));
+  /book\.statementClick && wantAccount/.test(fetchBill)
+  && /capturePdf\(page, \(\) => trig\.click/.test(fetchBill.slice(fetchBill.indexOf("statementClick && wantAccount")))
+  && /async function capturePdf[\s\S]*waitForEvent\("download"/.test(fetchBill));
 
 console.log(`\n${failed === 0 ? "✅" : "❌"} Passed: ${passed}   ❌ Failed: ${failed}\n`);
 process.exit(failed === 0 ? 0 : 1);

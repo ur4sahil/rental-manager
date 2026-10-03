@@ -182,8 +182,10 @@ try {
   const { createClient } = require("@supabase/supabase-js");
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const { data: anyLine } = await sb.from("acct_journal_lines")
-    .select("company_id, account_id, acct_journal_entries!inner(reference, date)")
-    .like("acct_journal_entries.reference", "RECUR-%").gt("debit", 0).limit(1);
+    .select("company_id, account_id, acct_journal_entries!inner(reference, date, status)")
+    .like("acct_journal_entries.reference", "RECUR-%").neq("acct_journal_entries.status", "voided").gt("debit", 0).limit(1);
+  // (the probe must skip voided entries, as the check below does -- a voided
+  // first row made this fail on 2026-10-03 with nothing wrong)
   const probe = anyLine?.[0];
   if (!probe) { assert("found a RECUR line to probe with", false, "no RECUR lines in the test DB"); }
   else {
