@@ -42,7 +42,11 @@ logins.forEach((login, i) => {
   // The first (most-used) login keeps the plain session file the rest of the
   // agent and the payment browser know; later logins get their own.
   const suffix = i === 0 ? "" : login.slug;
-  const env = { HOUSY_PREFER_USER: login.username, HOUSY_SESSION_SUFFIX: suffix, HOUSY_LOGIN_UTILITY_IDS: login.utilityIds.join(",") };
+  // Several logins share the portal's one warmed browser profile (a fresh
+  // profile per login fails reCAPTCHA); ensure-session swaps the portal's
+  // cookies to this login's own saved session.
+  const env = { HOUSY_PREFER_USER: login.username, HOUSY_SESSION_SUFFIX: suffix, HOUSY_LOGIN_UTILITY_IDS: login.utilityIds.join(","),
+    ...(logins.length > 1 ? { HOUSY_SHARED_PROFILE: "1" } : {}) };
   console.log(`----- ${portal} login ${i + 1}/${logins.length}: ${login.username} -----`);
   const rc = run([here("ensure-session.js"), portal], env);
   if (rc !== 0) { console.log(`ensure-session ${portal} (${login.username}) exited ${rc}`); worst = Math.max(worst, rc); }

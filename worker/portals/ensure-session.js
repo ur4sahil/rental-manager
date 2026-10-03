@@ -216,7 +216,11 @@ async function credentialsFor(portal, book) {
       ? `no decryptable ${book.provider} credentials for user ${preferUser}`
       : `could not decrypt any stored ${book.provider} credentials`);
   }
-  return { username: picked.username, password: picked.password };
+  // HOUSY_USERNAME_AS: type the username with this exact capitalisation
+  // (same address, different case -- some portals compare it case-sensitively).
+  const as = String(process.env.HOUSY_USERNAME_AS || "").trim();
+  const username = as && as.toLowerCase() === String(picked.username).trim().toLowerCase() ? as : picked.username;
+  return { username, password: picked.password };
 }
 
 // Is this session signed in? Asks the page, using the playbook's own
@@ -313,11 +317,31 @@ const { readCodeFromMail } = require("./mail-code");
     ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}) };
   let browser = null, ctx;
   if (book.persistentProfile) {
-    const profileDir = path.join(SESSION_DIR, "profiles", portal + (process.env.HOUSY_SESSION_SUFFIX ? "@" + process.env.HOUSY_SESSION_SUFFIX : ""));
+    // ONE profile per portal, whichever login is signing in: a fresh profile
+    // per login scored as a bot ("Invalid Captcha" from Washington Gas for
+    // every second login, 2026-10-03). With several logins on a portal
+    // (HOUSY_SHARED_PROFILE, set by run-portal.js) the profile keeps its
+    // Google/reCAPTCHA cookies and history, but the PORTAL's cookies are
+    // cleared and this login's own saved session put back -- so one login
+    // can never pick up another's signed-in session.
+    const profileDir = path.join(SESSION_DIR, "profiles", portal);
     fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 });
     const popts = { headless: !headed, slowMo: 120, ...ctxOpts };
     try { ctx = await chromium.launchPersistentContext(profileDir, { channel: "chrome", ...popts }); }
     catch { ctx = await chromium.launchPersistentContext(profileDir, popts); }
+    if (process.env.HOUSY_SHARED_PROFILE === "1") {
+      const keep = (c) => /(^|\.)(google\.com|gstatic\.com|recaptcha\.net|google\.[a-z.]+)$/i.test(String(c.domain || "").replace(/^\./, ""));
+      const kept = (await ctx.cookies()).filter(keep);
+      await ctx.clearCookies();
+      if (kept.length) await ctx.addCookies(kept);
+      if (fs.existsSync(sessionFile)) {
+        try {
+          const saved = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+          const mine = (saved.cookies || []).filter(c => !keep(c));
+          if (mine.length) await ctx.addCookies(mine);
+        } catch (e) { console.log(`  could not restore the saved ${portal} session: ${String(e.message).slice(0, 80)}`); }
+      }
+    }
   } else {
     browser = await launchBrowser(chromium, { headless: !headed, slowMo: 120 });
   }
