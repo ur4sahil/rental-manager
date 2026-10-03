@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
   // Parse body — Vercel's default body parser handles JSON.
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch (_) { body = {}; } }
-  const { token, doc_id, pdf_base64, company_id, body_pages } = body || {};
+  const { token, doc_id, pdf_base64, company_id, body_pages, sig_anchors } = body || {};
   // Two callers. The signer who completed the envelope (their signing
   // token), and -- when that signer closed the tab before the upload
   // finished, which used to leave the envelope "completed" with no signed
@@ -123,15 +123,25 @@ module.exports = async (req, res) => {
   // here, where every signer's row can be read, on the body pages only
   // (the certificate follows them). Then hashed, so the hash covers what
   // is stored.
+  // Signatures on the document's own signature lines first (the browser
+  // that built the PDF sends where the lines are; every signer's row is
+  // read here), then the initials, then the hash.
   try {
+    const n = Number(body_pages);
+    const bodyPages = Number.isFinite(n) && n > 0 ? n : null;
+    const { validAnchors, stampSignatures } = require("./_signature-stamp");
+    const anchors = validAnchors(sig_anchors, bodyPages || Infinity);
+    if (anchors.length) {
+      const { data: rows } = await sb.from("doc_signatures").select("signer_role, signature_data, signed_at, status").eq("doc_id", doc_id).eq("status", "signed");
+      if (rows && rows.length) pdfBytes = Buffer.from(await stampSignatures(require("pdf-lib"), pdfBytes, rows, anchors));
+    }
     const { data: inis } = await sb.from("doc_signatures").select("initials_data, signer_role, signer_name, sign_order").eq("doc_id", doc_id).eq("status", "signed").not("initials_data", "is", null).order("sign_order");
     if (inis && inis.length) {
       const PDFLib = require("pdf-lib");
       const { stampInitials } = require("./_initials-stamp");
-      const n = Number(body_pages);
-      pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: Number.isFinite(n) && n > 0 ? n : null }));
+      pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: bodyPages }));
     }
-  } catch (e) { console.error("[finalize] initials stamp skipped:", e.message); }
+  } catch (e) { console.error("[finalize] signature/initials stamp skipped:", e.message); }
   const pdfHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
 
   // 3. Upload to Storage. Path includes timestamp so accidental

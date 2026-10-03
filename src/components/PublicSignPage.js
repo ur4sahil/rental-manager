@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import SignaturePad, { ESIGN_CONSENT_VERSION } from "./SignaturePad";
+import RichTextEditor from "./RichTextEditor";
+import { Modal } from "./shared";
 import { fmtDate, fmtDateTime } from "../utils/helpers";
 import { splitPageSetup } from "../utils/docKit";
 import { notifyNextSigners } from "../utils/docService";
+import { signatureText, signedDateText } from "../utils/signatureStamp";
 
 // Public page rendered at /sign/:token — no auth required.
 // Uses anon-callable SECURITY DEFINER RPCs:
@@ -38,7 +41,98 @@ export default function PublicSignPage({ token }) {
   const [pdfStatus, setPdfStatus] = useState(null); // null | "uploading" | "stored" | "error"
   const [paperCopyRequested, setPaperCopyRequested] = useState(false);
   const [consentWithdrawn, setConsentWithdrawn] = useState(false);
-
+  // DocuSign-style tabs. The document shows as real pages; the signer's
+  // own signature lines (the signature block's slots for their role) get
+  // a "Sign here" tab, and -- when the template asks for initials on every
+  // page -- every page gets an "Initial here" tab at its foot. Each tab is
+  // clicked on its own: the first click of a kind opens the dialog that
+  // takes the signature (or the initials), later clicks apply it. Finish
+  // unlocks when every tab is done, and records the signature once. A
+  // document without signature lines for this signer (an older template)
+  // keeps the pad on the page below the document, as before.
+  const docRef = useRef(null);
+  const [slots, setSlots] = useState([]);          // [{ kind: "sign"|"date"|"initial", el?, page?, top, left, width, height }]
+  const [padOpen, setPadOpen] = useState(false);
+  const [initialsOpen, setInitialsOpen] = useState(false);
+  const [adopted, setAdopted] = useState(null);     // the pad's payload, held until Finish
+  const [initials, setInitials] = useState("");     // adopted initials, "TT"
+  const [signedSlots, setSignedSlots] = useState(() => new Set());   // sign slots applied (by element)
+  const [initialedPages, setInitialedPages] = useState(() => new Set());
+  const [pendingSlot, setPendingSlot] = useState(null);  // the tab whose click opened a dialog
+  const role = payload?.signer_role || "";
+  const wantsInitials = !!payload?.initials_each_page;
+  const measureSlots = useCallback(() => {
+    const host = docRef.current;
+    if (!host || !role) { setSlots([]); return; }
+    const base = host.getBoundingClientRect();
+    const rel = (r) => ({ top: r.top - base.top, left: r.left - base.left, width: r.width, height: r.height });
+    const esc = (v) => String(v).replace(/["\\]/g, "\\$&");
+    const next = Array.from(host.querySelectorAll(`span[data-sig-role="${esc(role)}"], span[data-sig-date="${esc(role)}"]`))
+      .map(el => ({ kind: el.hasAttribute("data-sig-date") ? "date" : "sign", el, ...rel(el.getBoundingClientRect()) }))
+      .filter(sl => sl.width > 0);
+    if (wantsInitials) {
+      // One per page, where the signed copy carries the initials: the
+      // foot of the page, at the right (initialsStamp's first box).
+      const pm = host.querySelector(".ProseMirror");
+      const footers = Array.from(host.querySelectorAll(".ProseMirror .rm-page-footer"));
+      const zoom = pm ? pm.getBoundingClientRect().width / 816 : 1;
+      footers.forEach((f, page) => {
+        const r = f.getBoundingClientRect();
+        if (!r.width) return;
+        const w = 72 * zoom, h = 29 * zoom;
+        next.push({ kind: "initial", page, el: f, top: r.bottom - base.top - 24 * zoom - h, left: r.right - base.left - 53 * zoom - w, width: w, height: h });
+      });
+    }
+    setSlots(prev => (prev.length === next.length && prev.every((p, i) => p.el === next[i].el && p.kind === next[i].kind && Math.abs(p.top - next[i].top) < 0.5 && Math.abs(p.left - next[i].left) < 0.5 && Math.abs(p.width - next[i].width) < 0.5) ? prev : next));
+  }, [role, wantsInitials]);
+  // The paged view settles its pages over a few frames and re-fits on
+  // resize, so the tabs follow the lines: measured on a short interval
+  // while the document is shown (cheap: a handful of rects).
+  useEffect(() => {
+    if (!payload || done) return undefined;
+    measureSlots();
+    const id = setInterval(measureSlots, 400);
+    window.addEventListener("resize", measureSlots);
+    return () => { clearInterval(id); window.removeEventListener("resize", measureSlots); };
+  }, [payload, done, measureSlots]);
+  const signSlots = slots.filter(sl => sl.kind === "sign");
+  const initialSlots = slots.filter(sl => sl.kind === "initial");
+  const hasSlots = signSlots.length > 0;
+  const signsDone = signSlots.filter(sl => signedSlots.has(sl.el)).length;
+  const initialsDone = initialSlots.filter(sl => initialedPages.has(sl.page)).length;
+  const allDone = hasSlots && !!adopted && signsDone === signSlots.length && (!wantsInitials || initialsDone === initialSlots.length);
+  const nextTab = slots.find(sl => (sl.kind === "sign" && !signedSlots.has(sl.el)) || (sl.kind === "initial" && !initialedPages.has(sl.page)));
+  function scrollToTab(sl) {
+    const el = sl?.el;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function clickSign(sl) {
+    if (!adopted) { setPendingSlot(sl); setPadOpen(true); return; }
+    setSignedSlots(prev => new Set(prev).add(sl.el));
+  }
+  function clickInitial(sl) {
+    if (!initials) { setPendingSlot(sl); setInitialsOpen(true); return; }
+    setInitialedPages(prev => new Set(prev).add(sl.page));
+  }
+  function adopt(data) {
+    setAdopted(data);
+    setPadOpen(false);
+    if (pendingSlot?.kind === "sign") setSignedSlots(prev => new Set(prev).add(pendingSlot.el));
+    setPendingSlot(null);
+  }
+  function adoptInitials(text) {
+    setInitials(text);
+    setInitialsOpen(false);
+    if (pendingSlot?.kind === "initial") setInitialedPages(prev => new Set(prev).add(pendingSlot.page));
+    setPendingSlot(null);
+  }
+  function finish() {
+    if (!allDone || !adopted) return;
+    // The initials go with the signature; the page count is kept with
+    // them so the record says every page was initialed by hand.
+    const initialsData = wantsInitials && initials ? "typed:" + initials + "|ts:" + new Date().toISOString() + "|pages:" + initialSlots.length : adopted.initialsData || null;
+    handleSign({ ...adopted, initialsData });
+  }
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -102,8 +196,10 @@ export default function PublicSignPage({ token }) {
         `Disclosure version: ${ESIGN_CONSENT_VERSION}` +
         `</p>`;
       wrapper.innerHTML = DOMPurify.sanitize(rawCert);
+      const { renderPagedPdfWithAnchors } = await import("../utils/pagedPdf");
+      let sigAnchors = [];
       const [bodyPdf, certPdf] = await Promise.all([
-        renderPagedPdf({ html: sanitizeDoc(bodyHtml), pageSetup, title: payload.doc_name }),
+        renderPagedPdfWithAnchors({ html: sanitizeDoc(bodyHtml), pageSetup, title: payload.doc_name }).then(r => { sigAnchors = r.anchors || []; return r.bytes; }),
         html2pdf().set({
           margin: 36,
           html2canvas: { scale: 2 },
@@ -126,7 +222,9 @@ export default function PublicSignPage({ token }) {
       const res = await fetch("/api/finalize-signed-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, doc_id: docId, pdf_base64: base64, body_pages: bodyPages }),
+        // Where the signature lines are (page px); the server draws every
+        // signer's signature and date on them before it stores the copy.
+        body: JSON.stringify({ token, doc_id: docId, pdf_base64: base64, body_pages: bodyPages, sig_anchors: sigAnchors }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
@@ -278,35 +376,115 @@ export default function PublicSignPage({ token }) {
     );
   }
 
+  const { html: bodyOnly, setup: bodySetup } = splitPageSetup(payload.doc_body);
+  const signerLabel = (payload.signer_role || "").replace(/_/g, " ");
+  const typed = adopted ? signatureText(adopted.signatureData) : null;
+  const today = signedDateText(new Date().toISOString());
+  const docFont = "'Liberation Serif', 'Times New Roman', Times, serif";
+  const pad = (
+    <SignaturePad
+      signerName={payload.signer_name || ""}
+      signerLabel={signerLabel}
+      companyName={payload.company_name}
+      companyContactEmail={payload.company_contact_email}
+      submitting={submitting}
+      submitLabel={hasSlots ? "Adopt and sign" : "Sign & Submit"}
+      initialsRequired={!hasSlots && wantsInitials}
+      onSubmit={hasSlots ? adopt : handleSign}
+    />
+  );
+  const total = signSlots.length + initialSlots.length;
+  const doneCount = signsDone + initialsDone;
+  const progress = hasSlots ? `${doneCount} of ${total} done` : "";
+  const finishBtn = (cls) => (
+    <button type="button" disabled={!allDone || submitting} onClick={finish} title={allDone ? "Record your signature" : "Click every tab first"}
+      className={cls + " px-4 py-2 rounded-xl text-sm font-semibold transition-colors " + (allDone ? "bg-brand-600 text-white hover:bg-brand-700" : "bg-neutral-200 text-neutral-500 cursor-not-allowed")}>
+      {submitting ? "Submitting…" : "Finish"}
+    </button>
+  );
+
   return (
     <div className="min-h-dvh safe-y safe-x bg-surface-muted">
-      <div className="bg-white border-b border-brand-50 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+      <div className="bg-white border-b border-brand-50 sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shrink-0">
               <span className="material-icons-outlined text-white text-sm">description</span>
             </div>
-            <div>
-              <div className="font-bold text-sm text-neutral-800">{payload.doc_name}</div>
-              {payload.company_name && <div className="text-xs text-neutral-400">from {payload.company_name}</div>}
+            <div className="min-w-0">
+              <div className="font-bold text-sm text-neutral-800 truncate">{payload.doc_name}</div>
+              <div className="text-xs text-neutral-400 truncate">{payload.company_name ? "from " + payload.company_name + " · " : ""}signing as <span className="font-semibold text-neutral-600">{payload.signer_name || payload.signer_email}</span>{signerLabel ? " (" + signerLabel + ")" : ""}</div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-neutral-400">Signing as</div>
-            <div className="text-sm font-semibold text-neutral-700">{payload.signer_name || payload.signer_email}</div>
-            <div className="text-2xs text-neutral-400 capitalize">{(payload.signer_role || "").replace(/_/g, " ")}</div>
-          </div>
+          {hasSlots && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="hidden sm:inline text-xs text-neutral-500 tnum">{progress}</span>
+              {nextTab && (
+                <button type="button" onClick={() => scrollToTab(nextTab)} className="px-3 sm:px-4 py-2 rounded-xl bg-warn-400 text-neutral-900 text-sm font-semibold hover:bg-warn-500 transition-colors">
+                  {doneCount === 0 ? "Start" : "Next"}
+                </button>
+              )}
+              {finishBtn("")}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="bg-white rounded-xl border border-neutral-200 shadow-card p-8 mb-4">
-          {payload.doc_property_address && <div className="text-xs text-neutral-400 mb-2">Property: <span className="font-semibold text-neutral-600">{payload.doc_property_address}</span></div>}
-          <div
-            className="hx-flow-doc max-w-none"
-            style={{ fontFamily: "'Liberation Serif', 'Times New Roman', Times, serif", fontSize: "12pt", lineHeight: "1.4" }}
-            dangerouslySetInnerHTML={{ __html: sanitizeDoc(payload.doc_body) }}
-          />
+      <div className="max-w-5xl mx-auto px-1 sm:px-6 py-3 sm:py-6">
+        {payload.doc_property_address && <div className="text-xs text-neutral-400 mb-2 px-2">Property: <span className="font-semibold text-neutral-600">{payload.doc_property_address}</span></div>}
+        {hasSlots && !allDone && (
+          <div className="mb-3 mx-2 px-4 py-3 rounded-xl bg-warn-50 border border-warn-200 text-sm text-neutral-700 flex items-start gap-2">
+            <span className="material-icons-outlined text-warn-600 text-base mt-0.5">edit</span>
+            <div>
+              Read the document and click every tab: {wantsInitials && <><strong>Initial here</strong> at the foot of each page ({initialsDone} of {initialSlots.length} done) and </>}<strong>Sign here</strong> on your signature line{signSlots.length === 1 ? "" : "s"} ({signsDone} of {signSlots.length} done). <strong>Finish</strong> unlocks when every tab is done. <button type="button" onClick={() => scrollToTab(nextTab)} className="underline text-brand-700">Take me to the next one</button>
+            </div>
+          </div>
+        )}
+
+        {/* The document as real pages (the same layout as the signed copy),
+            with the tabs laid over the signer's own lines and page feet. */}
+        <div ref={docRef} className="relative">
+          <div className="rounded-xl border border-neutral-200 overflow-hidden">
+            <RichTextEditor key={payload.doc_body ? payload.doc_body.length : 0} readOnly paperCanvas hideToolbar grow value={sanitizeDoc(bodyOnly)} pageSetup={bodySetup} />
+          </div>
+          {slots.map((sl, i) => {
+            // Above the page furniture (the pagination add-on's footers
+            // carry a z-index of their own).
+            const style = { position: "absolute", top: sl.top, left: sl.left, width: sl.width, height: sl.height, zIndex: 15 };
+            if (sl.kind === "date") {
+              return adopted && signedSlots.size ? <div key={i} aria-label="Date signed" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{today}</div> : null;
+            }
+            if (sl.kind === "initial") {
+              const isDone = initialedPages.has(sl.page);
+              return (
+                <button key={i} type="button" onClick={() => clickInitial(sl)} aria-label={isDone ? "Initialed page " + (sl.page + 1) : "Initial here, page " + (sl.page + 1)} data-initial-page={sl.page} data-done={isDone ? "1" : "0"}
+                  style={style}
+                  className={"flex items-center justify-center rounded border text-xs font-bold transition-colors " + (isDone ? "bg-brand-50 border-brand-300 text-brand-900 italic" : "bg-warn-200/80 hover:bg-warn-300 border-warn-500 text-neutral-900")}>
+                  {isDone ? <span style={{ fontFamily: docFont }}>{initials}</span> : "Initial"}
+                </button>
+              );
+            }
+            const isSigned = adopted && signedSlots.has(sl.el);
+            const h = Math.max(sl.height, 28);
+            if (isSigned) {
+              return (
+                <button key={i} type="button" onClick={() => setPadOpen(true)} title="Change your signature" aria-label="Your signature (click to change)" data-signed="1"
+                  style={{ ...style, height: h, top: sl.top + sl.height - h }}
+                  className="flex items-end pl-1 pb-0.5 bg-brand-50/60 rounded-t text-left overflow-hidden">
+                  {typed !== null
+                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20, sl.width / 9) }}>{typed}</span>
+                    : <img src={adopted.signatureData} alt="Your signature" style={{ maxHeight: h - 4, maxWidth: sl.width - 6 }} />}
+                </button>
+              );
+            }
+            return (
+              <button key={i} type="button" onClick={() => clickSign(sl)} aria-label="Sign here" data-signed="0"
+                style={{ ...style, height: Math.max(sl.height, 26), top: sl.top + sl.height - Math.max(sl.height, 26) }}
+                className="flex items-center bg-warn-200/70 hover:bg-warn-300/80 border-l-4 border-warn-500 rounded-r text-left transition-colors">
+                <span className="ml-2 px-2 py-0.5 rounded bg-warn-500 text-neutral-900 text-xs font-bold">Sign here</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Document hash banner — gives the signer something concrete
@@ -314,7 +492,7 @@ export default function PublicSignPage({ token }) {
             "the document" abstractly; with it they're committing to
             a specific 64-character SHA-256 they can compare later. */}
         {payload.doc_hash_at_send && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-brand-50/40 border border-brand-100 text-2xs text-neutral-600 flex items-start gap-2">
+          <div className="my-4 mx-2 px-4 py-3 rounded-xl bg-brand-50/40 border border-brand-100 text-2xs text-neutral-600 flex items-start gap-2">
             <span className="material-icons-outlined text-brand-600 text-base mt-0.5">fingerprint</span>
             <div>
               <div className="font-semibold text-neutral-700 mb-0.5">You are signing the version of this document with hash:</div>
@@ -324,22 +502,55 @@ export default function PublicSignPage({ token }) {
           </div>
         )}
 
-        <SignaturePad
-          signerName={payload.signer_name || ""}
-          signerLabel={(payload.signer_role || "").replace(/_/g, " ")}
-          companyName={payload.company_name}
-          companyContactEmail={payload.company_contact_email}
-          submitting={submitting}
-          submitLabel="Sign & Submit"
-          initialsRequired={!!payload.initials_each_page}
-          onSubmit={handleSign}
-        />
+        {!hasSlots && <div className="mx-2">{pad}</div>}
+        {hasSlots && (
+          <div className={"mx-2 mb-2 px-4 py-3 rounded-xl border text-sm text-neutral-700 flex items-center justify-between gap-3 " + (allDone ? "bg-success-50 border-success-200" : "bg-white border-neutral-200")}>
+            <span>{allDone ? "Every tab is done. Press Finish to record your signature." : progress + " — " + (nextTab ? "click the next tab to continue." : "")}</span>
+            {finishBtn("shrink-0")}
+          </div>
+        )}
 
         <p className="text-2xs text-neutral-400 text-center mt-4">
           This link expires {payload.expires_at ? "on " + fmtDate(payload.expires_at) : "in 30 days"}.
           Your IP address, browser information, and a cryptographic hash of this document are recorded for audit purposes.
         </p>
       </div>
+
+      {padOpen && (
+        <Modal title="Your signature" onClose={() => { setPadOpen(false); setPendingSlot(null); }}>
+          <div className="p-4">{pad}</div>
+        </Modal>
+      )}
+      {initialsOpen && (
+        <Modal title="Your initials" onClose={() => { setInitialsOpen(false); setPendingSlot(null); }}>
+          <InitialsForm signerName={payload.signer_name || ""} pages={initialSlots.length} onAdopt={adoptInitials} />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+// Typed initials, 2 to 6 letters. Adopted once; then each page's tab is
+// clicked to place them, so the record shows every page was looked at.
+function InitialsForm({ signerName, pages, onAdopt }) {
+  const guess = String(signerName || "").split(/\s+/).filter(Boolean).map(w => w[0]).join("").toUpperCase().slice(0, 4);
+  const [value, setValue] = useState(guess);
+  const [err, setErr] = useState("");
+  function submit(e) {
+    e.preventDefault();
+    const ini = value.trim().replace(/[^A-Za-z.]/g, "").slice(0, 6).toUpperCase();
+    if (ini.length < 2) { setErr("Please type your initials (2 to 6 letters)."); return; }
+    onAdopt(ini);
+  }
+  return (
+    <form onSubmit={submit} className="p-5 space-y-3">
+      <p className="text-sm text-neutral-600">Type your initials. They go at the foot of each of the {pages} pages as you click each page's <strong>Initial</strong> tab.</p>
+      <input id="sig-initials" autoFocus value={value} onChange={e => { setValue(e.target.value.toUpperCase()); setErr(""); }} maxLength={6} placeholder="e.g. SA"
+        className="w-40 text-2xl italic tracking-widest border border-neutral-300 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400" style={{ fontFamily: "'Liberation Serif', 'Times New Roman', Times, serif" }} />
+      {err && <div className="text-xs text-danger-600">{err}</div>}
+      <div className="flex justify-end gap-2 pt-1">
+        <button type="submit" className="px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700">Adopt initials</button>
+      </div>
+    </form>
   );
 }

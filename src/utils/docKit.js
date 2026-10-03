@@ -16,7 +16,7 @@ import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table
 import { TextAlign } from "@tiptap/extension-text-align";
 import { TextStyle, FontFamily, FontSize, Color, BackgroundColor } from "@tiptap/extension-text-style";
 import { PaginationPlus } from "tiptap-pagination-plus";
-import { INDENT_STEP_IN, lengthToInches, stepIndent, tabKeyAction, isOrderedStyle, isBulletStyle, nextListStyle, CHECKBOX_OFF, isCheckboxChar, toggleCheckbox, pageBreakHeight, keepWithNextPush } from "./docRules";
+import { INDENT_STEP_IN, lengthToInches, stepIndent, tabKeyAction, isOrderedStyle, isBulletStyle, nextListStyle, CHECKBOX_OFF, isCheckboxChar, toggleCheckbox, pageBreakHeight, keepWithNextPush } from "./docRules.js";
 
 // The font a document is set in when nothing says otherwise. Liberation
 // Serif is bundled (index.css) and embedded in the PDF, so the default
@@ -243,6 +243,33 @@ export const Checkboxes = Extension.create({
         },
       },
     })];
+  },
+});
+
+// A signature slot: where a signer's signature (or the date they signed)
+// lands on the signed PDF. Generated documents carry them (the
+// {{signature_block}} expands to one per signer, signatureBlock.js); the
+// editor shows them as an underscored line, the signing page puts a
+// "Sign here" tab on the signer's own, and pagedPdf reports each one's
+// position so the stamp knows where to draw. An atom: never edited,
+// never split, and its attributes survive a round trip through the
+// schema (a plain span would lose them).
+export const SignatureSlot = Node.create({
+  name: "signatureSlot",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: false,
+  addAttributes() {
+    return {
+      role: { default: "", parseHTML: el => el.getAttribute("data-sig-role") || el.getAttribute("data-sig-date") || "" },
+      kind: { default: "sign", parseHTML: el => (el.hasAttribute("data-sig-date") ? "date" : "sign") },
+    };
+  },
+  parseHTML() { return [{ tag: "span[data-sig-role]" }, { tag: "span[data-sig-date]" }]; },
+  renderHTML({ node }) {
+    const attrs = node.attrs.kind === "date" ? { "data-sig-date": node.attrs.role } : { "data-sig-role": node.attrs.role };
+    return ["span", { ...attrs, class: "hx-sig-slot hx-sig-" + node.attrs.kind }, "_".repeat(node.attrs.kind === "date" ? 12 : (node.attrs.role || "").startsWith("witness_") ? 22 : 26)];
   },
 });
 
@@ -536,6 +563,7 @@ export function docExtensions({ paged = false, setup = {}, pageGap = 24, extra =
     TableStyles,
     PageBreak,
     Checkboxes,
+    SignatureSlot,
     FindReplace,
     ...(paged ? [LayoutFixups] : []),
     // Real pages. The add-on never touches the document: it floats page

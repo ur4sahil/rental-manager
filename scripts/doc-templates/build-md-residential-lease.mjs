@@ -36,10 +36,21 @@ swap(find("Prorated Amount"), [["Prorated Amount – 15-Oct-2026–", "{{prorati
 swap(find("The Tenant, upon execution of this Lease"), [["fifteen hundred", "{{deposit_words}}"], ["and 00/100 Dollars ($", "and {{deposit_cents}}/100 Dollars ($"], ["1500", "{{deposit_amount}}"]]);
 swap(find("Tenant covenants to pay promptly the Rent"), [["Seventy Five ", "{{late_words}} "], ["75", "{{late_amount}}"]]);
 swap(find("Landlord will pay when due all charges for"), [["Electric ", "{{landlord_utilities}} "], ["Gas, Water,", "{{tenant_utilities}},"]]);
-for (const [name, tag] of [["Sigma housing llc", "{{landlord_name}}"], ["Sahil Agarwal", "{{tenant_name}}"]]) {
-  const p = ps.find(p => p.textContent.includes("Print Name: " + name)); if (!p) throw new Error("signature line not found: " + name);
-  const span = [...p.querySelectorAll("span")].find(s => s.textContent.includes("Print Name: " + name));
-  span.textContent = span.textContent.replace("Print Name: " + name, "Print Name: " + tag);
+// The signature section. The export lays it out with runs of spaces and
+// underscores (WITNESS / LANDLORD, then WITNESS / TENANT), one tenant
+// line, which neither lines up nor grows with the tenants on the lease.
+// Everything from the "WITNESS: ... LANDLORD:" line to the tenant's
+// "Print Name" line becomes the signature block: one signature line per
+// signer (every tenant, then the landlord), with the real signature and
+// date placed on each line of the signed copy (signatureBlock.js).
+{
+  const first = ps.findIndex(p => /^WITNESS:\s+LANDLORD:/.test(p.textContent.trim()));
+  const last = ps.findIndex(p => p.textContent.includes("Print Name: Sahil Agarwal"));
+  if (first < 0 || last < first) throw new Error("signature section not found");
+  const block = doc.createElement("p");
+  block.textContent = "{{signature_block}}";
+  ps[first].before(block);
+  for (let i = first; i <= last; i++) ps[i].remove();
 }
 doc.querySelectorAll("#root span").forEach(s => { if (!s.textContent) s.remove(); });
 doc.querySelectorAll("#root u").forEach(u => { if (!u.textContent && !u.children.length) u.remove(); });
@@ -83,7 +94,13 @@ const template = {
     F("tenant_utilities", "Utilities the tenant pays (comma separated)", "text", "Utilities", "lease.tenant_utilities", false),
   ],
   field_config: {
-    page_setup: { ...(r.page || {}), headerLeft: "", headerRight: "", footerLeft: r.footer.left, footerRight: r.footer.right },
+    // The export's footer carried "_______ Landlord / _______ Tenant"
+    // initials lines: one tenant line, printed text. The signed copy
+    // carries every signer's own initials at the foot of each page instead
+    // (initials_each_page), so the printed lines go.
+    page_setup: { ...(r.page || {}), headerLeft: "", headerRight: "", footerLeft: "", footerRight: "" },
+    initials_each_page: true,
+    witnesses: true,
     calculated: {
       lease_term_months: { formula: "months_between(lease_start_date, lease_end_date)" },
       prorated_rent: { formula: "prorate(rent_per_month, lease_start_date)" },
@@ -122,7 +139,8 @@ const template = {
 // Every {{tag}} in the body must be an input or a derived field, and vice versa for derived.
 const tags = new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]));
 const known = new Set([...template.fields.map(f => f.name), ...Object.keys(template.field_config.derived)]);
-const unknown = [...tags].filter(t => !known.has(t));
+// (signature_block is not a field: it expands to the signers' lines.)
+const unknown = [...tags].filter(t => !known.has(t) && t !== "signature_block");
 if (unknown.length) throw new Error("tags with no field: " + unknown.join(", "));
 fs.writeFileSync(process.argv[3], JSON.stringify(template, null, 2) + "\n");
 console.log("template written:", process.argv[3], "| body", body.length, "chars | tags used:", tags.size, "| inputs:", template.fields.length, "| derived:", Object.keys(template.field_config.derived).length);

@@ -12,7 +12,7 @@
 // a page break, so the PDF cannot disagree with what was on screen.
 import { Editor } from "@tiptap/core";
 import { DEFAULT_PAGE_SETUP, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, PARSE_OPTIONS, docExtensions, settlePagination } from "./docKit";
-import { listMarker, isCheckboxChar, CHECKBOX_OFF } from "./docRules";
+import { listMarker, isCheckboxChar, CHECKBOX_OFF } from "./docRules.js";
 
 import serifRegular from "../fonts/LiberationSerif-Regular.ttf";
 import serifBold from "../fonts/LiberationSerif-Bold.ttf";
@@ -264,6 +264,9 @@ async function layout(html, setup) {
     pm.querySelectorAll("td, th").forEach((el) => {
       const cs = getComputedStyle(el);
       const r = el.getBoundingClientRect();
+      // A borderless table (data-borders="none") keeps its border width
+      // and makes the colour transparent; nothing to draw.
+      if (/rgba\([^)]*,\s*0\)|transparent/.test(cs.borderTopColor)) return;
       const color = parseColor(cs.borderTopColor);
       const edges = [
         [parseFloat(cs.borderTopWidth), r.left, r.top, r.width, 0], [parseFloat(cs.borderBottomWidth), r.left, r.bottom, r.width, 0],
@@ -276,7 +279,17 @@ async function layout(html, setup) {
       }
     });
 
-    return { pages, width, height, items: [...under, ...items], cleanup };
+    // --- signature slots: where each signer's signature and date go
+    // (signatureBlock.js). Reported in page px; the stamp converts.
+    const anchors = [];
+    pm.querySelectorAll("span[data-sig-role], span[data-sig-date]").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width) return;
+      const p = place(r.left, r.top);
+      anchors.push({ kind: el.hasAttribute("data-sig-date") ? "date" : "sign", role: el.getAttribute("data-sig-role") || el.getAttribute("data-sig-date") || "", page: p.page, x: p.x, y: p.y, w: r.width, h: r.height });
+    });
+
+    return { pages, width, height, items: [...under, ...items], anchors, cleanup };
   } catch (e) {
     cleanup();
     throw e;
@@ -291,10 +304,18 @@ async function layout(html, setup) {
  * @param {string} [o.title]     PDF title metadata
  * @returns {Promise<Uint8Array>}
  */
-export async function renderPagedPdf({ html, pageSetup, title }) {
+export async function renderPagedPdf(o) {
+  return (await renderPagedPdfWithAnchors(o)).bytes;
+}
+/**
+ * The same, plus where the signature slots landed: { bytes, anchors }
+ * with anchors [{ kind: "sign"|"date", role, page, x, y, w, h }] in page
+ * px (816 x 1056 for Letter). signatureStamp.js draws on them.
+ */
+export async function renderPagedPdfWithAnchors({ html, pageSetup, title }) {
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const [{ PDFDocument, rgb }, fontkitMod] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit")]);
-  const { pages, width, height, items, cleanup } = await layout(html || "", setup);
+  const { pages, width, height, items, anchors, cleanup } = await layout(html || "", setup);
   try {
     const pdf = await PDFDocument.create();
     pdf.registerFontkit(fontkitMod.default || fontkitMod);
@@ -335,7 +356,7 @@ export async function renderPagedPdf({ html, pageSetup, title }) {
         }
       }
     }
-    return await pdf.save();
+    return { bytes: await pdf.save(), anchors };
   } finally {
     cleanup();
   }

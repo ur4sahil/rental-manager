@@ -13,14 +13,10 @@ const svc = read("utils/docService.js"), docs = read("components/Documents.js"),
   leases = read("components/Leases.js"), page = read("components/TenantPage.js"), card = read("components/TenancyDocuments.js"),
   portal = read("components/TenantPortal.js");
 
-// docService imports the Supabase client, so the pure functions are lifted
-// out of the source text and evaluated on their own.
 const lift = (src, start, end) => src.slice(src.indexOf(start), end ? src.indexOf(end, src.indexOf(start)) : undefined);
-const pure = new Function(
-  lift(svc, "const isTenantRole").replace(/export /g, "") + "\n"
-  + lift(svc, "export function signerDefaultFor", "\n// ── Signature slots").replace(/export /g, "")
-  + "\nreturn { effectiveSignerRoles, signerDefaultFor };")();
-const { effectiveSignerRoles, signerDefaultFor } = pure;
+// The signer-role rules live in their own pure module now (signerRoles.js,
+// re-exported by docService), so they are imported, not lifted from text.
+const { effectiveSignerRoles, signerDefaultFor } = await import("../src/utils/signerRoles.js");
 
 // ── signature slots follow the adults on the tenancy
 const LEASE_ROLES = [
@@ -42,7 +38,7 @@ const ctx = { signers: { tenants: ["A", "B", "C", "D", "E"].map(n => ({ name: n,
 ok("each slot is prefilled with its own person, in order", effectiveSignerRoles(LEASE_ROLES, 5).map(x => signerDefaultFor(x.role, ctx).name).join("") === "ABCLDE");
 ok("a slot beyond the people on the tenancy is left blank", signerDefaultFor("tenant_3", { signers: { tenants: [{ name: "A", email: "a@x" }], landlord: {} } }).name === "");
 ok("the builder uses the widened slots to prefill, to list and to send",
-  /for \(const r of effectiveSignerRoles\(template\.signer_roles, source\.signers\?\.tenants\?\.length \|\| 0\)\)/.test(docs)
+  /for \(const r of effectiveSignerRoles\(template\.signer_roles, source\.signers\?\.tenants\?\.length \|\| 0, \{ witnesses: !!template\.field_config\?\.witnesses \}\)\)/.test(docs)
   && /const roles = signerRoles;/.test(docs) && /\{\[\.\.\.signerRoles\]\.sort\(/.test(docs));
 ok("a named signer with no email stops the send instead of being silently left off", /if \(!email && name\) \{ showToast\(name \+ " has no email address\./.test(docs));
 

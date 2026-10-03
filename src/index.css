@@ -574,3 +574,10 @@ select {
    bar or a rendering artefact. Hiding the bar keeps the scrolling. */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Signature block (signatureBlock.js): one row per signer, no borders.
+   A slot is a row of underscores the signature is drawn on; it never
+   wraps or breaks, so the signed copy's stamp lands on one line. */
+.hx-sig-block { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.hx-sig-block td { border: 0 !important; }
+.hx-sig-slot { white-space: nowrap; letter-spacing: 0; }

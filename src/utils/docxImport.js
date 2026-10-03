@@ -15,7 +15,7 @@
 // verified by comparing text, and dropped to the document default if the
 // two ever disagree, so a mismatch costs fidelity, never correctness.
 
-import { wordNumbering } from "./docRules";
+import { wordNumbering } from "./docRules.js";
 
 const LIST_INDENT_TWIPS = 720; // the editor's list indent, 0.5in
 const OPEN = "\uE000";

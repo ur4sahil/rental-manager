@@ -139,6 +139,8 @@ function cleanPastedHtml(html) {
 //  mergeFields     — [{ name, label }] array; renders chip buttons in the toolbar.
 //  placeholder     — empty-state hint text.
 //  minHeight       — min editor height, default "400px".
+//  grow            — paperCanvas only: the pane grows to its pages and the
+//                    window scrolls, instead of scrolling inside itself.
 
 function ToolbarBtn({ onClick, active, title, children }) {
   return (
@@ -479,7 +481,7 @@ export function Ruler({ editor, setup, zoom = 1 }) {
   );
 }
 
-export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false, pageSetup = null, readOnly = false, showRuler = true, showFieldChips = true }) {
+export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, grow = false, paperCanvas = false, pageSetup = null, readOnly = false, showRuler = true, showFieldChips = true }) {
   const [dragOver, setDragOver] = useState(false);
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const setupKey = JSON.stringify(setup);
@@ -604,7 +606,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     if (!pane || !paperCanvas || typeof ResizeObserver === "undefined") return undefined;
     const fit = () => {
       const room = pane.clientWidth - 48; // p-6 either side
-      const next = room > 0 && room < sheetWidth ? Math.max(0.5, Math.floor((room / sheetWidth) * 100) / 100) : 1;
+      const next = room > 0 && room < sheetWidth ? Math.max(0.4, Math.floor((room / sheetWidth) * 100) / 100) : 1;
       setZoom(z => (Math.abs(z - next) > 0.005 ? next : z));
     };
     fit();
@@ -712,7 +714,9 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         )}
         <div
           ref={paneRef}
-          className="flex-1 overflow-auto p-6 transition-colors"
+          // `grow`: the pane takes the height of its pages and the window
+          // scrolls (the signing page); otherwise it scrolls inside itself.
+          className={(grow ? "overflow-visible" : "flex-1 overflow-auto") + " p-6 transition-colors"}
           style={{ background: dragOver ? "#eef2ff" : PAGE_GUTTER }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

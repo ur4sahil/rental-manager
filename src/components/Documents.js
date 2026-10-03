@@ -12,12 +12,14 @@ import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../u
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { PARSE_OPTIONS, attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { htmlToDocx, docxFileName } from "../utils/docxExport";
+import { SIGNATURE_BLOCK_TOKEN, SIGNATURE_BLOCK_KEY, hasSignatureBlock, signatureRows, expandSignatureBlock } from "../utils/signatureBlock";
+import { stampSignatures } from "../utils/signatureStamp";
 import { stampInitials } from "../utils/initialsStamp";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
 import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
 import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
-import { renderPagedPdf, concatPdfs, pdfFileName } from "../utils/pagedPdf";
+import { renderPagedPdf, renderPagedPdfWithAnchors, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -376,7 +378,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pendingChange = useRef(null);   // { kind, leaseId, tenantId, effective_date, payload, fieldMap, noticeDate }
   // The template's signers, plus a slot for each adult on the tenancy beyond
   // the template's own tenant slots (see effectiveSignerRoles).
-  const signerRoles = useMemo(() => effectiveSignerRoles(selectedTemplate?.signer_roles, docContext?.signers?.tenants?.length || 0), [selectedTemplate, docContext]);
+  const signerRoles = useMemo(() => effectiveSignerRoles(selectedTemplate?.signer_roles, docContext?.signers?.tenants?.length || 0, { witnesses: !!selectedTemplate?.field_config?.witnesses }), [selectedTemplate, docContext]);
   const [emailLogFor, setEmailLogFor] = useState(null);   // { doc, rows } for the History "Email log" modal
   // When another screen opened the builder for a tenant, where to go back to.
   const returnTo = useRef(null);
@@ -936,7 +938,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     const emails = {};
     const names = {};
     const source = ctx || { signers: { tenants: [], landlord: { name: userProfile?.name || "", email: userProfile?.email || "" } } };
-    for (const r of effectiveSignerRoles(template.signer_roles, source.signers?.tenants?.length || 0)) {
+    for (const r of effectiveSignerRoles(template.signer_roles, source.signers?.tenants?.length || 0, { witnesses: !!template.field_config?.witnesses })) {
       const g = signerDefaultFor(r.role, source);
       emails[r.role] = g.email;
       names[r.role] = g.name;
@@ -952,14 +954,35 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ---- Merge + render ----
   // Sanitize template body: allow only safe HTML tags, strip scripts/events
+  // The data-* attributes the editor's own schema writes (docKit.js) and
+  // the signature block's slots (signatureBlock.js). Data attributes are
+  // otherwise refused; without these, a generated document lost its page
+  // breaks, keep-with-next, list styles, borderless tables and signature
+  // slots on its way from the template to the signing page.
+  const DOC_DATA_ATTRS = ["data-page-break", "data-keep-next", "data-list-style", "data-bullet", "data-borders", "data-sig-role", "data-sig-date"];
   function sanitizeTemplateHtml(html) {
   if (!html) return "";
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ["p","br","b","i","u","strong","em","h1","h2","h3","h4","h5","h6","ul","ol","li","table","thead","tbody","tr","th","td","div","span","a","img","hr","blockquote","pre","code","sub","sup","s","del","ins","mark"], ALLOWED_ATTR: ["href","src","alt","title","class","style","width","height","colspan","rowspan","align","valign"], ALLOW_DATA_ATTR: false, FORBID_TAGS: ["script","iframe","object","embed","form","input","button","select","textarea"], FORBID_ATTR: ["onerror","onload","onclick","onmouseover","onfocus","onblur"] });
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ["p","br","b","i","u","strong","em","h1","h2","h3","h4","h5","h6","ul","ol","li","table","thead","tbody","tr","th","td","div","span","a","img","hr","blockquote","pre","code","sub","sup","s","del","ins","mark"], ALLOWED_ATTR: ["href","src","alt","title","class","style","width","height","colspan","rowspan","align","valign"], ALLOW_DATA_ATTR: false, ADD_ATTR: DOC_DATA_ATTRS, FORBID_TAGS: ["script","iframe","object","embed","form","input","button","select","textarea"], FORBID_ATTR: ["onerror","onload","onclick","onmouseover","onfocus","onblur"] });
   }
   // Blocked merge field names that could leak system data
   const BLOCKED_MERGE_FIELDS = new Set(["company_id","companyId","user_email","userEmail","password","secret","token","access_token","api_key","encryption_iv"]);
   function renderMergedBody(body, values, fieldConfig) {
-  return sanitizeTemplateHtml((body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+  // The signature block: one signature line per signer (every tenant on
+  // the lease, then the landlord), from the same signer list the envelope
+  // uses. Expanded first, so its slots are plain HTML to everything after.
+  // The printed name under a line is the signer's name (editable on the
+  // preview step); a tenant or landlord line with none yet takes the
+  // document's own name field, so a blank-mode lease still prints who
+  // signs where.
+  const printedNames = { ...signerNames };
+  for (const r of signerRoles) {
+    if (printedNames[r.role]) continue;
+    const role = String(r.role).toLowerCase();
+    if (/^(tenant|tenant_1)$/.test(role)) printedNames[r.role] = String(values?.tenant_name || "").split(/\s+and\s+|,\s*/)[0] || "";
+    else if (/landlord/.test(role) && !/witness/.test(role)) printedNames[r.role] = String(values?.landlord_name || "") || "";
+  }
+  const withBlock = hasSignatureBlock(body) ? expandSignatureBlock(body, signatureRows(signerRoles, printedNames)) : (body || "");
+  return sanitizeTemplateHtml(withBlock.replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
   if (BLOCKED_MERGE_FIELDS.has(fieldName)) return "";
   // Hide merge tags for conditionally hidden fields
   if (fieldConfig && !isFieldVisible(fieldName, values, fieldConfig)) return "";
@@ -1286,8 +1309,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   try {
     const paged = pagedBody(doc, doc._template || templates.find(t => t.id === doc.template_id), doc.field_values || {});
     const [bodyPdf, tailPdf] = await Promise.all([
-      renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name })
-        .then(async (bytes) => (sigs.some(s => s.initials_data) ? stampInitials(await import("pdf-lib"), bytes, sigs.filter(s => s.status === "signed")) : bytes)),
+      renderPagedPdfWithAnchors({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name })
+        .then(async ({ bytes, anchors }) => {
+          const signed = sigs.filter(s => s.status === "signed");
+          const PDFLib = await import("pdf-lib");
+          let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors) : bytes;
+          if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: anchors.length ? undefined : null });
+          return out;
+        }),
       html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
     ]);
     return await concatPdfs([bodyPdf, tailPdf]);
@@ -1629,7 +1658,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Insert merge field into body
   function insertMergeField(fieldName) {
-  setTemplateForm(prev => ({ ...prev, body: prev.body + "{{" + fieldName + "}}" }));
+  const tag = "{{" + fieldName + "}}";
+  // At the cursor when the editor is up (its onChange carries the body
+  // back into templateForm); at the end otherwise. The signature block is
+  // a block of its own, so it goes in a paragraph of its own.
+  if (htmlEditor && !htmlEditor.isDestroyed) {
+    if (fieldName === SIGNATURE_BLOCK_KEY) htmlEditor.chain().focus().insertContent([{ type: "paragraph", content: [{ type: "text", text: tag }] }]).run();
+    else htmlEditor.chain().focus().insertContent(tag).run();
+    return;
+  }
+  setTemplateForm(prev => ({ ...prev, body: prev.body + (fieldName === SIGNATURE_BLOCK_KEY ? "<p>" + tag + "</p>" : tag) }));
   }
 
   if (loading) return <Spinner />;
@@ -1812,8 +1850,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="space-y-2">
   <label className="flex items-start gap-2 text-xs text-neutral-700 cursor-pointer mb-2">
   <Checkbox checked={!!templateForm.field_config?.initials_each_page} onChange={e => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), initials_each_page: e.target.checked } }))} className="accent-brand-600 mt-0.5" />
-  <span><strong>Each signer initials every page.</strong> They type their initials when they sign; the signed copy carries them at the foot of every page.</span>
+  <span><strong>Each signer initials every page.</strong> They click an "Initial here" tab on every page when they sign; the signed copy carries their initials at the foot of each page.</span>
   </label>
+  <label className="flex items-start gap-2 text-xs text-neutral-700 cursor-pointer mb-2">
+  <Checkbox checked={!!templateForm.field_config?.witnesses} onChange={e => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), witnesses: e.target.checked } }))} className="accent-brand-600 mt-0.5" />
+  <span><strong>Each signature is witnessed.</strong> When the document is sent, every signer gets a witness line (name and email, optional). A witness signs by their own link or on the same device, on the witness line beside the signature they witnessed.</span>
+  </label>
+  <div className={"border rounded-xl p-2.5 mb-3 " + (hasSignatureBlock(templateForm.body) ? "border-success-200 bg-success-50/40" : "border-neutral-100 bg-white")}>
+  <div className="flex items-start justify-between gap-2">
+  <div className="text-xs text-neutral-700">
+  <strong>Signature block.</strong> One signature line per signer: every tenant on the lease (however many), then the landlord. Each line takes the real signature and the date on the signed copy.
+  <div className="text-2xs text-neutral-400 mt-0.5">{hasSignatureBlock(templateForm.body) ? "In the document." : "Not in the document yet. Place the cursor where the signatures go and insert it."}</div>
+  </div>
+  {templateForm.template_type !== "pdf_overlay" && !hasSignatureBlock(templateForm.body) && <Btn size="xs" variant="secondary" onClick={() => insertMergeField(SIGNATURE_BLOCK_KEY)} title="Place the signature block at the cursor">Insert</Btn>}
+  </div>
+  </div>
   <div className="flex items-center justify-between mb-1">
   <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
   <TextLink tone="brand" size="xs" type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))}>+ Add signer</TextLink>
@@ -2162,7 +2213,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   key={editingTemplate?.id || "new-template"}
   value={templateForm.body}
   onChange={html => setTemplateForm(prev => ({ ...prev, body: html }))}
-  mergeFields={[...templateForm.fields, ...Object.keys(templateForm.field_config?.derived || {}).filter(n => !templateForm.fields.some(f => f.name === n)).map(n => ({ name: n, label: n.replace(/_/g, " ") }))]}
+  mergeFields={[...templateForm.fields, ...Object.keys(templateForm.field_config?.derived || {}).filter(n => !templateForm.fields.some(f => f.name === n)).map(n => ({ name: n, label: n.replace(/_/g, " ") })), ...(templateForm.signing_mode !== "none" ? [{ name: SIGNATURE_BLOCK_KEY, label: "Signature block (every signer)" }] : [])]}
   placeholder="Start typing… drag a field from the left rail or click a merge-chip to insert."
   hideToolbar
   paperCanvas
