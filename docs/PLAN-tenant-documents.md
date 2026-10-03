@@ -804,3 +804,78 @@ Migration: `20261003080000_ftpr_cases.sql` (new columns on
 `eviction_cases`; additive). Tests: `tests/ftpr.test.mjs` (102, including
 filling the court's real PDF) and a browser run of notice → worksheet →
 filing → paid.
+
+## Editor and court forms (2026-10-03, on `staging`; one database change on TEST only)
+
+Everything above is on production (main 912dcd0 and after). This section is
+on `staging` only: commits 07bc8b3, 68fab68, 301aa7f, 5afb41b.
+
+### The Word editor, brought up to Word
+
+Sahil's report: "no tab works on the word editor", then "the signing page is
+completely different from what I uploaded". Root cause of the second: the
+editor collapsed runs of spaces and tabs when it loaded a body
+(`preserveWhitespace` was off), so a lease laid out with spaces and tabs lost
+its shape between the upload and the signing page. Fixed at the root
+(`PARSE_OPTIONS` everywhere a body is loaded: editor, preview, signing page,
+PDF).
+
+Built (src/utils/docRules.js holds the rules, pure; docKit.js the editor
+extensions; RichTextEditor.js the screen; docxImport.js the Word import;
+pagedPdf.js the PDF):
+
+1. Tab key as Word: nests a list item / un-nests on Shift+Tab; at the start
+   of a paragraph sets a first-line indent (half-inch steps); elsewhere a
+   real tab character (stops every half inch); inside a table, next cell.
+2. Indent / Outdent buttons and a Paragraph popover (alignment, left/right
+   /first-line/hanging indent, spacing before/after, line height,
+   keep-with-next).
+3. A Word-style ruler above the page: margins, first-line and hanging indent
+   markers that drag.
+4. Numbering styles: 1. / a. / A. / i. / I. / (1) / (a) / (i) / 1.1, bullets
+   round/hollow/dash/square; restart at 1; continue previous list. Tab
+   inside a list steps 1. -> (a) -> (i). The Word import keeps the file's
+   own numbering.
+5. Text colour, highlight, superscript/subscript, strikethrough.
+6. Tables: insert, rows/columns, merge/split, borders all/outer/none, header
+   row; resizable.
+7. Forced page break (Ctrl/Cmd+Enter) and keep-with-next (a heading never
+   sits alone at the foot of a page). Both done by measuring the real page
+   gaps (LayoutFixups).
+8. Checkboxes as characters (survive every sanitizer; a checkbox FIELD
+   fills in as one).
+9. Find & replace.
+10a. Different first page (its own header and footer, Page tab).
+10b. Export to Word: a real .docx (src/utils/docxExport.js), see commit
+   301aa7f for what it keeps.
+
+Plus: initials on every page (Signers tab option; typed on the pad; stamped
+on every body page by the finalize API before hashing; migration
+20261003090000 on TEST only). The template editor is one side panel with
+tabs (Fields / Signers / Page / Rules / Details) and `{{` in the page offers
+the fields.
+
+A renderer bug found by the first-page work: the PDF's sheet pitch was
+measured between the tops of the first two page gaps, which move with the
+first page's footer height; the text drifted a line per page. Now measured
+between the gaps' bottoms.
+
+### Court forms (Maryland failure to pay rent)
+
+- DC-CV-115 (Notice of Intent to File): filled from the ledger, flattened.
+- DC-CV-082 (Complaint): the court's e-filing version
+  (dccv082bulkfiling.pdf) filled and left fillable; a worksheet for the
+  paper form.
+- DC-CV-081 (Petition for Warrant of Restitution): filled from the case.
+All three on the tenant page's menu and under "Court forms (Maryland)" in
+the Document Builder. `src/utils/courtForms.js` holds the field maps; the
+bundled PDFs in `public/` are sha256-pinned.
+
+### Test state (2026-10-03)
+
+`cd tests && npm run test:unit` runs clean except two items that predate
+this work: `payments-autopay-stripe` (3 handler checks, since 0ec422a on
+09-29) and `recurring-balance-sync`'s live check (5 recurring rows whose
+tenant_name differs from the tenant record — data, in the database
+tests/.env points at). Browser checks in the session scratchpad:
+editor-e2e, tpl-ui-e2e, initials-e2e, export-e2e, sign-e2e, all passing.
