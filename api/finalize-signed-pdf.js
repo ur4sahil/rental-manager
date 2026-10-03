@@ -24,6 +24,9 @@ const { requireMember } = require("./_member");
 const { afterSignedPdfStored, SEND_ROLES } = require("./_doc-email-impl");
 
 module.exports = async (req, res) => {
+  // ?action=sign: the signing itself (api/_sign-document-impl.js), on this
+  // route because api/ is at Vercel's 12-function cap.
+  if (req.query && req.query.action === "sign") return require("./_sign-document-impl")(req, res);
   setCors(req, res);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }

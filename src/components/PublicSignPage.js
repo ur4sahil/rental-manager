@@ -263,25 +263,23 @@ export default function PublicSignPage({ token }) {
   async function handleSign({ signatureData, initialsData, signingMethod, consentText, signerName, eRecordsConsented, hwSwAcknowledged, consentVersion }) {
     setSubmitting(true);
     try {
-      // Initials go on the signer's row first, by the same link; the
-      // signing itself is unchanged.
-      if (initialsData) {
-        const { data: ini, error: iniErr } = await supabase.rpc("set_signature_initials", { p_token: token, p_initials_data: initialsData });
-        if (iniErr || ini?.error) { setError("Signing failed: " + (iniErr?.message || ini.error)); return; }
-      }
-      const { data, error: rpcErr } = await supabase.rpc("sign_document", {
-        p_token: token,
-        p_signer_name: signerName || payload?.signer_name || "",
-        p_signature_data: signatureData,
-        p_signing_method: signingMethod,
-        p_consent_text: consentText,
-        p_user_agent: navigator.userAgent || "",
-        p_e_records_consented: !!eRecordsConsented,
-        p_hw_sw_acknowledged: !!hwSwAcknowledged,
-        p_consent_version: consentVersion || ESIGN_CONSENT_VERSION,
+      // Through the web server (api/_sign-document-impl, on the e-sign
+      // route), which records the
+      // signer's real IP address with the signature; the initials go on
+      // the same call. The page used to call the database directly, and
+      // every signature's address came out as the gateway's.
+      const res = await fetch("/api/finalize-signed-pdf?action=sign", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token, initials_data: initialsData || null,
+          signer_name: signerName || payload?.signer_name || "",
+          signature_data: signatureData, signing_method: signingMethod, consent_text: consentText,
+          user_agent: navigator.userAgent || "", e_records_consented: !!eRecordsConsented, hw_sw_acknowledged: !!hwSwAcknowledged,
+          consent_version: consentVersion || ESIGN_CONSENT_VERSION,
+        }),
       });
-      if (rpcErr) { setError("Signing failed: " + rpcErr.message); return; }
-      if (data?.error) { setError("Signing failed: " + data.error); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) { setError("Signing failed: " + (data?.error || `HTTP ${res.status}`)); return; }
       setDoneInfo(data);
       setDone(true);
       // Last signer? Render and upload the PDF.
