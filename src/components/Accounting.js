@@ -9,6 +9,7 @@ import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } fr
 import { printTheme, chartPalette, printTable, printFileName, printHtmlDocument } from "../utils/theme";
 import { RecurringJournalEntries } from "./RecurringRent";
 import { guardSubmit, guardRelease } from "../utils/guards";
+import { applyLateFee } from "../utils/lateFeeApply";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache, rpcAllPaged, fetchAllPaged } from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
@@ -245,7 +246,7 @@ export {
 // activity. Sahil: "cmd click on ledger balances or totals, shows total of
 // AR =0". Same failure AcctReports already guards against; this view was
 // simply never handed the flags.
-export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId, companyName = "", classes = [] }) {
+export function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE, linesLoaded = true, linesFailed = false, companyId, companyName = "", classes = [], onApplyLateFee = null }) {
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [propertyFilter, setPropertyFilter] = useState("");
@@ -267,6 +268,9 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   const [rpcFailed, setRpcFailed] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [applyingFee, setApplyingFee] = useState(false);
+  // One account, and it is a tenant's own receivable: that tenant.
+  const ledgerTenantId = ids.length === 1 ? ((accounts || []).find(a => String(a.id) === String(ids[0]))?.tenant_id ?? null) : null;
   useEffect(() => {
     let cancelled = false;
     if (!companyId || !ids.length) return undefined;
@@ -570,6 +574,15 @@ tr{break-inside:avoid}thead{display:table-header-group}`;
        disabled={refreshing} onClick={() => setRefreshNonce(n => n + 1)}>
     {refreshing ? "Refreshing\u2026" : "Refresh"}
   </Btn>
+  {/* A tenant's own receivable ledger: charge this month's late fee from
+      here, the same way the tenant's page does (Sahil, 2026-10-02: "a button
+      on each AR ledger"). The ledger reloads itself once it is posted. */}
+  {ledgerTenantId != null && onApplyLateFee && (
+  <Btn variant="danger" size="sm" icon="gavel" title="Charge this month's late fee to this tenant"
+       disabled={applyingFee} onClick={async () => { setApplyingFee(true); try { const r = await onApplyLateFee(ledgerTenantId); if (r && r.posted) setRefreshNonce(n => n + 1); } finally { setApplyingFee(false); } }}>
+    {applyingFee ? "Applying…" : "Apply Late Fee"}
+  </Btn>
+  )}
   {allLines.length > 0 && <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>}
   {allLines.length > 0 && <Btn variant="slate" size="sm" icon="picture_as_pdf" className="hidden sm:block" onClick={exportPDF}>PDF</Btn>}
   </div>
@@ -6175,7 +6188,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
 
   {/* Account Ledger Drill-Down — a page of its own */}
-  {ledgerView && <AccountLedgerView companyId={companyId} companyName={companyName} classes={acctClasses} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }} onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView companyId={companyId} companyName={companyName} classes={acctClasses} linesLoaded={linesLoaded} linesFailed={linesFailed} accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setJeOrigin(null); closeLedger(); }}
+    onApplyLateFee={async (tenantId) => {
+      const { data: tenant, error } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
+      if (error || !tenant) { showToast("The tenant for this ledger could not be loaded.", "error"); return { posted: false }; }
+      const r = await applyLateFee({ companyId, tenant, companySettings, showToast, showConfirm, addNotification, userProfile, userRole });
+      if (r.posted) await fetchAll();
+      return r;
+    }}
+    onViewJE={(jeId) => { setJeOrigin({ kind: "ledger", accountIds: ledgerView.accountIds, title: ledgerView.title }); /* keep the pushed history entry: Back from the entry returns to the ledger */ setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>

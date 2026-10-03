@@ -9,8 +9,9 @@ import { printTheme, printTable, printFileName} from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId, autoOwnerDistribution } from "../utils/accounting";
-import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
-import { lateFeeBase, lateFeeBaseLabel, lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
+import { resolveTenantLateFeeAR, lateFeeMonth, lateFeeAlreadyPosted } from "../utils/lateFees";
+import { applyLateFee } from "../utils/lateFeeApply";
+import { normalizeLateFeeType } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { StartTenancyModal } from "./StartTenancyModal";
 import { TenancyDocuments } from "./TenancyDocuments";
@@ -717,70 +718,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function applyLateFeeForTenant(t) {
-    if (!guardSubmit("lateFee", t.id)) return;
-    try {
-      // Same four answers as the Late Fees page and the nightly job
-      // (utils/lateFeeRules.js): the tenant's own late-fee setting if set,
-      // else the company's active rule; only a live tenant who owes money and
-      // is past the rent due day + the rule's grace days.
-      const [ruleRes, leaseRes, schedRes] = await Promise.all([
-        // Every list in the nightly job's order (utils/lateFeeRules.js):
-        // oldest rule first, newest lease first, oldest schedule first, id
-        // breaking ties -- so two active leases give the same due day here
-        // as in the job.
-        lateFeeOrdered(supabase.from("late_fee_rules").select("fee_type, fee_amount, grace_days, is_active").eq("company_id", companyId).is("archived_at", null), LATE_FEE_RULE_ORDER).limit(20),
-        lateFeeOrdered(supabase.from("leases").select("payment_due_day").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").gt("payment_due_day", 0), LATE_FEE_LEASE_ORDER).limit(5),
-        lateFeeOrdered(supabase.from("recurring_journal_entries").select("day_of_month").eq("company_id", companyId).eq("tenant_id", t.id).eq("status", "active").is("archived_at", null).gt("day_of_month", 0), LATE_FEE_SCHEDULE_ORDER).limit(5),
-      ]);
-      const lfErr = ruleRes.error || leaseRes.error || schedRes.error;
-      if (lfErr) { showToast("Could not load the late fee settings (" + lfErr.message + "). Nothing was posted.", "error"); return; }
-      const lfRule = (ruleRes.data || []).find(r => r.is_active !== false) || null;
-      const lfTerms = resolveLateFeeTerms({ tenant: t, rule: lfRule, settings: companySettings });
-      if (lfTerms.error) { showToast("Late fee not applied: " + lfTerms.error + ".", "error"); return; }
-      const lfToday = lateFeeBusinessDate();
-      const lfDueDay = lateFeeDueDay({ leases: leaseRes.data, schedules: schedRes.data });
-      const lfElig = lateFeeEligibility({ tenant: t, today: lfToday, dueDay: lfDueDay, graceDays: lfTerms.graceDays });
-      if (!lfElig.ok) { showToast("Late fee not applied to " + t.name + ": " + lfElig.reason + ".", "warning"); return; }
-      const feeAmount = computeLateFeeAmount(lfTerms, lateFeeBase(t));
-      if (!feeAmount || feeAmount <= 0) { showToast("Late fee not applied: a percent fee needs the tenant's " + lateFeeBaseLabel(t) + " to be set.", "error"); return; }
-      // Dedup: the shared one-per-month rule (utils/lateFeeRules.js), which
-      // also sees the Late Fees page, the nightly job and hand-entered fees.
-      // Checked here so the user is told before the confirm dialog;
-      // postTenantLateFee checks again right before posting.
-      const today = lfToday;
-      const lfMonth = lateFeeMonth(today);
-      const lfDup = await lateFeeAlreadyPosted(companyId, t.id, lfMonth);
-      if (lfDup.error) { showToast("Could not check for an existing late fee (" + lfDup.error + "). Nothing was posted.", "error"); return; }
-      if (lfDup.already) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
-      const monthName = new Date(lfToday + "T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
-      const feeLabel = lfTerms.type === "percent" ? `${lfTerms.amount}% of ${lateFeeBaseLabel(t)} $${lateFeeBase(t).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
-      if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
-      const classId = await getPropertyClassId(t.property, companyId);
-      // Reference LATEFEE-<tenant_id>-YYYYMM, DR the tenant's own AR (never
-      // the shared 1100), no balanceUpdate — the balance trigger owns
-      // tenants.balance.
-      const res = await postTenantLateFee({ companyId, tenant: t, amount: feeAmount, date: today, classId,
-        description: "Late fee — " + t.name + " — " + t.property,
-        arMemo: "Late fee: " + t.name,
-        incomeMemo: monthName + " late fee",
-        ledgerDescription: `Late fee — ${monthName}`,
-      });
-      if (res.status === "duplicate") { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
-      if (res.status !== "posted") { showToast("Late fee not applied: " + lateFeeFailureReason(res) + ". Nothing was posted.", "error"); return; }
-      showToast(`Late fee ${formatCurrency(feeAmount)} applied to ${t.name}.`, "success");
-      addNotification("\u26A0\uFE0F", `Late fee ${formatCurrency(feeAmount)} \u2014 ${t.name}`);
-      logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} for ${t.name}`, t.id, userProfile?.email, userRole, companyId);
-      fetchTenants();
-      // Refetch before reopening the drawer. openLedger() does
-      // setSelectedTenant(tenant), so handing it the stale list-row `t`
-      // pushed the PRE-fee balance straight back into the drawer's Balance
-      // tile — the DB was already right, the tile just kept the old number
-      // until the page was re-entered. Same refetch addLedgerEntry does.
-      if (selectedTenant?.id === t.id) {
-        const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", t.id).eq("company_id", companyId).maybeSingle();
-        openLedger(freshTenant || t);
-      }
-    } finally { guardRelease("lateFee", t.id); }
+    const r = await applyLateFee({ companyId, tenant: t, companySettings, showToast, showConfirm, addNotification, userProfile, userRole });
+    if (!r.posted) return;
+    fetchTenants();
+    // Refetch before reopening the drawer. openLedger() does
+    // setSelectedTenant(tenant), so handing it the stale list-row `t`
+    // pushed the PRE-fee balance straight back into the drawer's Balance
+    // tile — the DB was already right, the tile just kept the old number
+    // until the page was re-entered. Same refetch addLedgerEntry does.
+    if (selectedTenant?.id === t.id) {
+      const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", t.id).eq("company_id", companyId).maybeSingle();
+      openLedger(freshTenant || t);
+    }
   }
 
   function startEdit(t) {
