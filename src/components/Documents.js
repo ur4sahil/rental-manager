@@ -22,6 +22,19 @@ import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSig
 import { renderPagedPdf, renderPagedPdfWithAnchors, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
+// Phones get one pane at a time in the builder (the two-pane layouts do
+// not fit). Tracks the viewport; 767px is Tailwind's md breakpoint.
+function useIsPhone() {
+  const [phone, setPhone] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false));
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
+  }, []);
+  return phone;
+}
+
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -402,6 +415,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // a side column. At 50/50 the inputs stretched across half the screen
   // and a 17-page lease was squeezed into a card.
   const [sidePercent, setSidePercent] = useState(30);
+  // On a phone the two panes (form | preview; document | send) do not fit
+  // side by side: one shows at a time, chosen with a two-button switch.
+  const isPhone = useIsPhone();
+  const [phonePane, setPhonePane] = useState("form");   // fill: form | preview; preview step: doc | send
   const isDragging = useRef(false);
   // The side pane is on the LEFT while filling in and on the RIGHT in preview.
   const sideOnLeft = useRef(true);
@@ -2404,26 +2421,35 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
   {/* Top ribbon — breadcrumb + mode hint + Preview CTA */}
-  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
+  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-3 md:px-5 gap-2 md:gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={resetFlow} />
   <div className="flex-1 min-w-0 flex items-center gap-1.5 text-sm">
-  <span className="text-neutral-400 shrink-0">Document Builder</span>
-  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="text-neutral-400 shrink-0 hidden md:inline">Document Builder</span>
+  <span className="text-neutral-300 shrink-0 hidden md:inline">›</span>
   <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
-  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">{mode === "prefill" ? "Prefilled" : "Blank"}</span>
+  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0 hidden sm:inline">{mode === "prefill" ? "Prefilled" : "Blank"}</span>
   </div>
   <Btn onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return; }
+  setPhonePane("doc");
   setStep("preview");
-  }}>Preview →</Btn>
-  <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
+  }}>{isPhone ? "Next →" : "Preview →"}</Btn>
+  <span className="text-xs text-neutral-300 ml-2 hidden md:inline">Esc to close</span>
   </div>
+  {isPhone && (
+  <div className="grid grid-cols-2 border-b border-neutral-100 bg-white shrink-0" role="tablist" aria-label="Fill or preview">
+  {[["form", "Fill in"], ["preview", "Preview"]].map(([k, l]) => (
+  <button key={k} type="button" role="tab" aria-selected={phonePane === k} onClick={() => setPhonePane(k)}
+    className={"py-2.5 text-sm font-semibold border-b-2 " + (phonePane === k ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500")}>{l}</button>
+  ))}
+  </div>
+  )}
 
-  {/* Split pane */}
+  {/* Split pane (one pane at a time on a phone) */}
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Form fields */}
-  <div style={{ width: sidePercent + "%", minWidth: 320 }} className="shrink-0 overflow-y-auto p-4 space-y-3">
+  <div style={isPhone ? { width: "100%" } : { width: sidePercent + "%", minWidth: 320 }} className={"shrink-0 overflow-y-auto p-4 space-y-3 " + (isPhone && phonePane !== "form" ? "hidden" : "")}>
   {sections.map(section => {
   const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
   if (sectionFields.length === 0) return null;
@@ -2445,12 +2471,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
+  {!isPhone && <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />}
 
   {/* Right: Live preview. An HTML document fills the pane edge to edge on
       its pages (the paged view brings its own gutter and scrolling); a
       PDF-overlay template keeps the padded, scrolling column. */}
-  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6" : "flex flex-col")}>
+  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6" : "flex flex-col") + (isPhone && phonePane !== "preview" ? " hidden" : "")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2494,15 +2520,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
   {/* Top ribbon — breadcrumb + inline export shortcuts */}
-  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
-  <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />
+  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-3 md:px-5 gap-2 md:gap-3 shrink-0">
+  <IconBtn icon="arrow_back" onClick={() => { setPhonePane("form"); setStep("fill"); }} />
   <div className="flex-1 min-w-0 flex items-center gap-1.5 text-sm">
-  <span className="text-neutral-400 shrink-0">Document Builder</span>
-  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="text-neutral-400 shrink-0 hidden md:inline">Document Builder</span>
+  <span className="text-neutral-300 shrink-0 hidden md:inline">›</span>
   <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
-  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">Preview</span>
+  <span className="ml-2 text-2xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0 hidden sm:inline">Preview</span>
   </div>
-  <div className="flex items-center gap-1">
+  <div className={"flex items-center gap-1" + (isPhone ? " hidden" : "")}>
   <Btn variant="secondary" size="xs" onClick={() => exportPDF()} title="Download PDF">
   <span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF
   </Btn>
@@ -2513,13 +2539,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="material-icons-outlined text-sm">text_snippet</span>TXT
   </Btn>
   </div>
-  <span className="text-xs text-neutral-300 ml-2">Esc to go back</span>
+  <span className="text-xs text-neutral-300 ml-2 hidden md:inline">Esc to go back</span>
+  {isPhone && <Btn variant="secondary" size="xs" onClick={() => exportPDF()} title="Download PDF"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</Btn>}
   </div>
+  {isPhone && (
+  <div className="grid grid-cols-2 border-b border-neutral-100 bg-white shrink-0" role="tablist" aria-label="Document or send">
+  {[["doc", "Document"], ["send", selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? "Send for signature" : "Send"]].map(([k, l]) => (
+  <button key={k} type="button" role="tab" aria-selected={phonePane === k} onClick={() => setPhonePane(k)}
+    className={"py-2.5 text-sm font-semibold border-b-2 " + (phonePane === k ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500")}>{l}</button>
+  ))}
+  </div>
+  )}
 
-  {/* Split pane */}
+  {/* Split pane (one pane at a time on a phone) */}
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Document preview */}
-  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6 flex justify-center" : "flex flex-col")}>
+  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6 flex justify-center" : "flex flex-col") + (isPhone && phonePane !== "doc" ? " hidden" : "")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2552,11 +2587,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
+  {!isPhone && <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />}
 
   {/* Right: Actions sidebar (Send). Export lives in the top ribbon. Save/Finalize
       moved to a sticky bottom action bar below, Zoho-style. */}
-  <div style={{ width: sidePercent + "%", minWidth: 320 }} className="shrink-0 overflow-y-auto p-4 space-y-4">
+  <div style={isPhone ? { width: "100%" } : { width: sidePercent + "%", minWidth: 320 }} className={"shrink-0 overflow-y-auto p-4 space-y-4 " + (isPhone && phonePane !== "send" ? "hidden" : "")}>
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
   <div className="bg-white rounded-xl border border-neutral-200 shadow-card border border-brand-200 p-4">
@@ -2619,7 +2654,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   {/* Bottom action bar — sticky primary actions */}
-  <div className="border-t border-neutral-100 bg-white px-5 py-3 flex items-center gap-2 shrink-0">
+  <div className="border-t border-neutral-100 bg-white px-3 md:px-5 py-3 flex items-center gap-2 shrink-0 safe-bottom">
   <span className="text-xs text-neutral-400 hidden md:inline">Document is ready. Save as a draft to edit later, or finalize to lock it.</span>
   <div className="flex-1" />
   <Btn variant="secondary" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>

@@ -103,6 +103,20 @@ export default function PublicSignPage({ token }) {
         });
       });
     }
+    // On a phone the page is scaled well down: the signer's own tabs keep a
+    // finger-sized hit area, anchored where the box or line is.
+    const pm0 = host.querySelector(".ProseMirror");
+    const z = pm0 ? pm0.getBoundingClientRect().width / 816 : 1;
+    for (const sl of next) { sl.z = z; sl.n = { top: sl.top, left: sl.left, width: sl.width, height: sl.height }; }   // the natural (page-scaled) box
+    if (z < 0.75) {
+      // The other signers' empty outlines are unreadable at this scale and
+      // collide with the enlarged tab: only boxes with initials in them stay.
+      for (let i = next.length - 1; i >= 0; i--) if (next[i].kind === "initialOther" && !next[i].other?.initials_data) next.splice(i, 1);
+      for (const sl of next) {
+        if (sl.kind === "initial") { const w = Math.max(sl.width, 84), h = Math.max(sl.height, 36); sl.left = sl.left + sl.width - w; sl.top = sl.top + sl.height - h; sl.width = w; sl.height = h; }
+        if (sl.kind === "sign") { const h = Math.max(sl.height, 36); sl.top = sl.top + sl.height - h; sl.height = h; sl.width = Math.max(sl.width, 120); }
+      }
+    }
     setSlots(prev => (prev.length === next.length && prev.every((p, i) => p.el === next[i].el && p.kind === next[i].kind && Math.abs(p.top - next[i].top) < 0.5 && Math.abs(p.left - next[i].left) < 0.5 && Math.abs(p.width - next[i].width) < 0.5) ? prev : next));
   }, [role, wantsInitials, signedOthers]);
   // The paged view settles its pages over a few frames and re-fits on
@@ -473,7 +487,7 @@ export default function PublicSignPage({ token }) {
             // carry a z-index of their own).
             const style = { position: "absolute", top: sl.top, left: sl.left, width: sl.width, height: sl.height, zIndex: 15 };
             if (sl.kind === "date") {
-              return adopted && signedSlots.size ? <div key={i} aria-label="Date signed" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{today}</div> : null;
+              return adopted && signedSlots.size ? <div key={i} aria-label="Date signed" style={{ ...style, pointerEvents: "none", fontSize: Math.max(6, 11 * (sl.z || 1)) }} className="flex items-end pb-0.5 pl-1 text-brand-900">{today}</div> : null;
             }
             if (sl.kind === "initialOther") {
               const ini = sl.other?.initials_data ? signatureText(sl.other.initials_data) : null;
@@ -487,18 +501,18 @@ export default function PublicSignPage({ token }) {
             }
             if (sl.kind === "signOther") {
               const t = signatureText(sl.other.signature_data);
-              const h = Math.max(sl.height, 28);
+              const h = Math.max(sl.height, 28 * (sl.z || 1));
               return (
                 <div key={i} aria-label={"Signed by " + (sl.other.name || sl.other.role)} title={"Signed by " + (sl.other.name || sl.other.role) + (sl.other.signed_at ? " on " + signedDateText(sl.other.signed_at) : "")} data-other-signed="1"
                   style={{ ...style, height: h, top: sl.top + sl.height - h, pointerEvents: "none" }} className="flex items-end pl-1 pb-0.5 overflow-hidden">
                   {t !== null
-                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20, sl.width / 9) }}>{t}</span>
+                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20 * (sl.z || 1), sl.width / 9) }}>{t}</span>
                     : sl.other.signature_data ? <img src={sl.other.signature_data} alt="" style={{ maxHeight: h - 4, maxWidth: sl.width - 6 }} /> : null}
                 </div>
               );
             }
             if (sl.kind === "dateOther") {
-              return <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{signedDateText(sl.other.signed_at)}</div>;
+              return <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none", fontSize: Math.max(6, 11 * (sl.z || 1)) }} className="flex items-end pb-0.5 pl-1 text-brand-900">{signedDateText(sl.other.signed_at)}</div>;
             }
             if (sl.kind === "initial") {
               const isDone = initialedPages.has(sl.page);
@@ -512,15 +526,16 @@ export default function PublicSignPage({ token }) {
               );
             }
             const isSigned = adopted && signedSlots.has(sl.el);
-            const h = Math.max(sl.height, 28);
+            const nat = sl.n || sl, z = sl.z || 1;   // what is drawn on paper scales with the page; only tabs are finger-sized
+            const h = Math.max(nat.height, 28 * z);
             if (isSigned) {
               return (
                 <button key={i} type="button" onClick={() => setPadOpen(true)} title="Change your signature" aria-label="Your signature (click to change)" data-signed="1"
-                  style={{ ...style, height: h, top: sl.top + sl.height - h }}
+                  style={{ position: "absolute", left: nat.left, width: nat.width, height: h, minHeight: 0, top: nat.top + nat.height - h, zIndex: 15 }}
                   className="flex items-end pl-1 pb-0.5 bg-brand-50/60 rounded-t text-left overflow-hidden">
                   {typed !== null
-                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20, sl.width / 9) }}>{typed}</span>
-                    : <img src={adopted.signatureData} alt="Your signature" style={{ maxHeight: h - 4, maxWidth: sl.width - 6 }} />}
+                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20 * z, nat.width / 9) }}>{typed}</span>
+                    : <img src={adopted.signatureData} alt="Your signature" style={{ maxHeight: h - 4, maxWidth: nat.width - 6 }} />}
                 </button>
               );
             }

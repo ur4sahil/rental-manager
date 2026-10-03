@@ -696,7 +696,8 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     const pane = paneRef.current;
     if (!pane || !paperCanvas || typeof ResizeObserver === "undefined") return undefined;
     const fit = () => {
-      const room = pane.clientWidth - 48; // p-6 either side
+      const cs = getComputedStyle(pane);
+      const room = pane.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
       const next = room > 0 && room < sheetWidth ? Math.max(0.4, Math.floor((room / sheetWidth) * 100) / 100) : 1;
       setZoom(z => (Math.abs(z - next) > 0.005 ? next : z));
     };
@@ -807,7 +808,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
           ref={paneRef}
           // `grow`: the pane takes the height of its pages and the window
           // scrolls (the signing page); otherwise it scrolls inside itself.
-          className={(grow ? "overflow-visible" : "flex-1 overflow-auto") + " p-6 transition-colors"}
+          className={(grow ? "overflow-visible" : "flex-1 overflow-auto") + " p-2 md:p-6 transition-colors"}
           style={{ background: dragOver ? "#eef2ff" : PAGE_GUTTER }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -816,7 +817,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         >
           {/* Sticky: the page area scrolls, the ruler stays at the top of
               it on every page (it used to scroll away with page 1). */}
-          {!readOnly && showRuler && <div className="sticky -top-6 z-10 -mx-6 -mt-6 px-6 pt-6 pb-2 mb-2" style={{ background: PAGE_GUTTER }} onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} onSetupChange={onPageSetupChange} /></div>}
+          {!readOnly && showRuler && <div className="sticky -top-2 md:-top-6 z-10 -mx-2 md:-mx-6 -mt-2 md:-mt-6 px-2 md:px-6 pt-2 md:pt-6 pb-2 mb-2" style={{ background: PAGE_GUTTER }} onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} onSetupChange={onPageSetupChange} /></div>}
           <div className="relative mx-auto w-max">
           {!readOnly && showRuler && onPageSetupChange && <div onClick={e => e.stopPropagation()}><VRuler setup={setup} zoom={zoom} onSetupChange={onPageSetupChange} /></div>}
           <div className="mx-auto w-max" style={{ fontFamily: DOC_FONT_FAMILY, fontSize: DOC_FONT_SIZE, lineHeight: DOC_LINE_HEIGHT, zoom }} onClick={e => e.stopPropagation()}>
