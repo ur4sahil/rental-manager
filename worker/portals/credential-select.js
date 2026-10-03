@@ -94,4 +94,38 @@ function pickCredential(rows, master, { aliases = [], preferUser = "" } = {}) {
   return { username: best.username, password: best.password, votes: best.count };
 }
 
-module.exports = { readMasterKey, keyFingerprint, acceptedFingerprints, decryptValue, isLiveLoginRow, pickCredential };
+/**
+ * Every DISTINCT login stored for a provider, with the utility rows that use
+ * it: [{ username, utilityIds, count }], most-used first. A company can hold
+ * two or three Pepco logins (one per landlord entity); the sweep used to sign
+ * in with the majority one and skip every account under the others as "not
+ * in this portal login". Usernames only -- passwords never leave here.
+ * A row whose password differs from the group's majority password still
+ * belongs to that username's login (a mis-typed copy); ensure-session picks
+ * the majority password for the username it is pinned to.
+ */
+function listLogins(rows, master, { aliases = [] } = {}) {
+  const al = aliases.map(a => String(a).toLowerCase());
+  const okFps = acceptedFingerprints(master);
+  const groups = new Map();
+  for (const r of rows || []) {
+    if (!isLiveLoginRow(r)) continue;
+    const p = String(r.provider || "").trim().toLowerCase();
+    if (!al.some(a => p === a || p.includes(a))) continue;
+    if (r.credential_key_fp && !okFps.has(r.credential_key_fp)) continue;
+    let u;
+    try { u = decryptValue(master, r.username_encrypted, r.encryption_iv_username || r.encryption_iv, r.encryption_salt); } catch { continue; }
+    u = String(u || "").trim().toLowerCase();
+    if (!u) continue;
+    const g = groups.get(u) || { username: u, utilityIds: [], count: 0 };
+    g.utilityIds.push(r.id); g.count++; groups.set(u, g);
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
+/** A short, safe file-name tag for a login (for per-login session files). */
+function loginSlug(username) {
+  return crypto.createHash("sha1").update(String(username || "").trim().toLowerCase()).digest("hex").slice(0, 8);
+}
+
+module.exports = { readMasterKey, keyFingerprint, acceptedFingerprints, decryptValue, isLiveLoginRow, pickCredential, listLogins, loginSlug };

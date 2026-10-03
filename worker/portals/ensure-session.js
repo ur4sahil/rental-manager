@@ -111,7 +111,7 @@ async function launchBrowser(chromium, opts) {
 // file is a Vercel handler and this is a CLI. If one changes the other must:
 // PBKDF2-SHA256, 100k iterations, 32-byte key, AES-256-GCM with the 16-byte
 // tag appended to the ciphertext; and the key-fingerprint rule.
-const { readMasterKey, keyFingerprint, pickCredential } = require("./credential-select");
+const { readMasterKey, keyFingerprint, pickCredential, listLogins, loginSlug } = require("./credential-select");
 
 // ---------------------------------------------------------------------------
 async function credentialsFor(portal, book) {
@@ -190,6 +190,13 @@ async function credentialsFor(portal, book) {
   // when majority is ambiguous (e.g. a just-rotated password not yet saved on
   // most accounts).
   const fpNow = keyFingerprint(master);
+  // --logins: list every distinct login for this provider (usernames and the
+  // utility rows under each) and stop. run-portal.js signs in to each in turn.
+  if (process.argv.includes("--logins")) {
+    const logins = listLogins(rows, master, { aliases: book.aliases || [] }).map(l => ({ ...l, slug: loginSlug(l.username) }));
+    process.stdout.write(JSON.stringify(logins) + "\n");
+    process.exit(0);
+  }
   const picked = pickCredential(rows, master, {
     aliases: book.aliases || [],
     preferUser: process.env.HOUSY_PREFER_USER || "",
@@ -245,7 +252,9 @@ const { readCodeFromMail } = require("./mail-code");
 
   const chromium = loadPlaywright();
   fs.mkdirSync(SESSION_DIR, { recursive: true, mode: 0o700 });
-  const sessionFile = path.join(SESSION_DIR, `${portal}.json`);
+  // One session per login: a second Pepco login gets its own file and
+  // browser profile (pepco@<slug>.json) so two logins never share cookies.
+  const sessionFile = path.join(SESSION_DIR, `${portal}${process.env.HOUSY_SESSION_SUFFIX ? "@" + process.env.HOUSY_SESSION_SUFFIX : ""}.json`);
 
   // ---- 1. is the session we have still good? -------------------------
   // Some portals expire so fast that a "still valid" check passes and the very
@@ -304,7 +313,7 @@ const { readCodeFromMail } = require("./mail-code");
     ...(process.env.HOUSY_PROXY ? { proxy: { server: process.env.HOUSY_PROXY } } : {}) };
   let browser = null, ctx;
   if (book.persistentProfile) {
-    const profileDir = path.join(SESSION_DIR, "profiles", portal);
+    const profileDir = path.join(SESSION_DIR, "profiles", portal + (process.env.HOUSY_SESSION_SUFFIX ? "@" + process.env.HOUSY_SESSION_SUFFIX : ""));
     fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 });
     const popts = { headless: !headed, slowMo: 120, ...ctxOpts };
     try { ctx = await chromium.launchPersistentContext(profileDir, { channel: "chrome", ...popts }); }

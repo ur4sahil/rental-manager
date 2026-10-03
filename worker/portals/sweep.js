@@ -75,7 +75,15 @@ function runFetch(portal, account, opts = {}) {
     const args = [path.join(__dirname, "fetch-bill.js"), portal];
     if (opts.list) args.push("--list-accounts");
     else if (account) args.push("--account", account);
-    const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"], env: process.env, detached: true });
+    // What is on file for this account, so fetch-bill can skip re-downloading
+    // an unchanged statement.
+    const env = { ...process.env };
+    if (opts.expect) {
+      env.HOUSY_EXPECT_AMOUNT = opts.expect.amount == null ? "" : String(opts.expect.amount);
+      env.HOUSY_EXPECT_DUE = opts.expect.due || "";
+      env.HOUSY_HAS_STATEMENT = opts.expect.hasStatement ? "1" : "0";
+    }
+    const child = spawn(process.execPath, args, { stdio: ["ignore", "pipe", "pipe"], env, detached: true });
     let out = "", done = false;
     const finish = (val) => { if (done) return; done = true; clearTimeout(t); resolve(val); };
     const t = setTimeout(() => {
@@ -101,7 +109,10 @@ function runFetch(portal, account, opts = {}) {
   // First non-flag arg is the portal filter; flags (--force) may follow it.
   const only = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : null;
   const force = process.argv.includes("--force");
-  const SKIP_DAYS = Number(process.env.HOUSY_SWEEP_SKIP_DAYS || 25);
+  // On a second login of the same provider (run-portal.js): only the utility
+  // rows stored under that login are read; the rest belong to another login.
+  const onlyIds = (process.env.HOUSY_LOGIN_UTILITY_IDS || "").split(",").map(x => x.trim()).filter(Boolean);
+  const loginNote = process.env.HOUSY_PREFER_USER ? ` (login ${process.env.HOUSY_PREFER_USER})` : "";
   // Accounts the utility OWES money to. Collected across every portal and
   // printed together at the end, because a credit sitting quietly on one
   // account among forty is exactly the thing nobody notices -- and it is
@@ -137,6 +148,7 @@ function runFetch(portal, account, opts = {}) {
     // side, guarded again here.
     const mine = (targets || []).filter(t => {
       if (playbookFor(t.provider)?.key !== portal) return false;
+      if (onlyIds.length && !onlyIds.includes(String(t.id))) return false;
       const resp = t.responsibility || "owner";
       if (resp === "condo_fee") return false;
       if (resp === "tenant" && !book.sweepTenant) return false;
@@ -181,7 +193,7 @@ function runFetch(portal, account, opts = {}) {
           continue;
         }
         const ca = chooser.find(c => acctKey(c.number) === acctKey(u.account_number));
-        if (ca) passes.push({ account: ca.number, recordAccount: u.account_number, last_bill_at: u.last_bill_at, property: u.property });
+        if (ca) passes.push({ account: ca.number, recordAccount: u.account_number, last_bill_at: u.last_bill_at, last_amount: u.last_amount, last_due: u.last_due, has_statement: !!u.has_statement, property: u.property });
         else console.log(`  ${provider.padEnd(15)} ${String(u.property).slice(0, 30).padEnd(32)} account ${u.account_number} is not in this portal login`);
       }
     } else {
@@ -190,27 +202,20 @@ function runFetch(portal, account, opts = {}) {
       for (const t of mine.filter(t => !t.account_number))
         console.log(`  ${provider.padEnd(15)} ${String(t.property).slice(0, 30).padEnd(32)} no account number entered — skipped`);
       passes = mine.filter(t => t.account_number)
-        .map(t => ({ account: t.account_number, recordAccount: t.account_number, last_bill_at: t.last_bill_at, property: t.property }));
+        .map(t => ({ account: t.account_number, recordAccount: t.account_number, last_bill_at: t.last_bill_at, last_amount: t.last_amount, last_due: t.last_due, has_statement: !!t.has_statement, property: t.property }));
     }
 
     let read = 0, failed = 0, unmatched = 0, needsSignin = 0, skipped = 0;
     for (const pass of passes) {
       const account = pass.account;
 
-      // Utility bills are monthly. If this account's most recent bill is newer
-      // than SKIP_DAYS, the current statement is already stored -- reading and
-      // re-downloading it daily is wasted portal load. `--force` overrides, for
-      // a deliberate backfill.
-      if (!force && pass.last_bill_at) {
-        const ageDays = (Date.now() - new Date(pass.last_bill_at).getTime()) / 86400000;
-        if (ageDays < SKIP_DAYS) {
-          skipped++;
-          console.log(`  ${provider.padEnd(15)} ${String(pass.property || account).slice(0, 30).padEnd(32)}   current bill on file (${String(pass.last_bill_at).slice(0, 10)}) — skipped`);
-          continue;
-        }
-      }
+      // Every account, every day (Sahil, 2026-10-03). The old "current bill on
+      // file for 25 days" skip meant a $0 reading taken hours before the real
+      // bill posted hid that bill until after its due date. The figures are
+      // compared with what is stored below; only a CHANGED bill (or one with
+      // no official statement yet) has its PDF downloaded again.
 
-      const r = await runFetch(portal, account);
+      const r = await runFetch(portal, account, { expect: { amount: pass.last_amount, due: pass.last_due, hasStatement: pass.has_statement } });
 
       // An expired session ends this PORTAL immediately. Carrying on would
       // mean one failed fetch per account, each another automated hit on a
@@ -238,10 +243,19 @@ function runFetch(portal, account, opts = {}) {
         amount: r.amount_due ?? null, due: r.due_date ?? null, error: r.error ?? null,
       }).catch(e => ({ reason: e.message }));
 
+      // Did the portal show something new? Same amount and due date as the
+      // bill on file (to the cent) means nothing changed today.
+      const sameAmount = r.outcome === "ok" && pass.last_amount != null && Math.abs(Number(pass.last_amount) - Number(r.amount_due ?? NaN)) < 0.005;
+      const sameDue = r.outcome === "ok" && String(pass.last_due || "").slice(0, 10) === String(r.due_date || "").slice(0, 10);
+      const unchanged = sameAmount && sameDue;
+      if (unchanged) console.log(`     ↳ unchanged since last read${loginNote}`);
+
       // File the statement against the bill the reading landed on. Best
       // effort: the reading is already recorded and a bill without its PDF
       // is still a bill, so nothing here can turn a good read into a failure.
-      if (r.outcome === "ok" && rec?.billId) {
+      // Not re-downloaded for an unchanged bill that already has its official
+      // statement: that is the daily portal load the old skip rule avoided.
+      if (r.outcome === "ok" && rec?.billId && (!unchanged || !pass.has_statement || force)) {
         const fsx = require("fs");
         if (r.statement_pdf && fsx.existsSync(r.statement_pdf)) {
           try {
@@ -264,6 +278,8 @@ function runFetch(portal, account, opts = {}) {
         } else {
           console.log(`     ↳ no statement PDF downloaded for this account`);
         }
+      } else if (r.statement_pdf) {
+        try { require("fs").unlinkSync(r.statement_pdf); } catch {}
       }
 
       const who = r.property || account || "?";

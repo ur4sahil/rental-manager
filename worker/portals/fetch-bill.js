@@ -29,7 +29,8 @@ const book = PLAYBOOKS[key];
 if (!book) { console.error(`usage: fetch-bill.js <${Object.keys(PLAYBOOKS).join("|")}>`); process.exit(1); }
 
 const SESSION_DIR = process.env.HOUSY_SESSION_DIR || path.join(require("os").homedir(), ".housy-sessions");
-const SESSION = path.join(SESSION_DIR, `${key}.json`);
+// Per-login session (pepco@<slug>.json) when the sweep is on a second login.
+const SESSION = path.join(SESSION_DIR, `${key}${process.env.HOUSY_SESSION_SUFFIX ? "@" + process.env.HOUSY_SESSION_SUFFIX : ""}.json`);
 const SHOTS = process.env.HOUSY_SHOT_DIR || "/tmp/housy-shots";
 
 const money = /\$\s?([\d,]+\.\d{2})/;
@@ -519,12 +520,20 @@ async function capturePdf(page, clickFn, dest) {
     // reported as a failure because the page would not render to PDF. The
     // figure is the job; the document is evidence for later.
     let pdfPath = null;
+    // The sweep passes the figures already on file; when the portal shows
+    // the same amount and due date and the official statement is stored,
+    // the PDF is not fetched again (the only daily portal load worth
+    // avoiding now that every account is read every day).
+    const expAmt = process.env.HOUSY_EXPECT_AMOUNT, expDue = process.env.HOUSY_EXPECT_DUE || "";
+    const unchanged = expAmt != null && expAmt !== "" && Math.abs(Number(expAmt) - Number(amount)) < 0.005
+      && String(expDue).slice(0, 10) === String(due || "").slice(0, 10) && process.env.HOUSY_HAS_STATEMENT === "1";
+    if (unchanged) record("statement", "unchanged since last read — statement already on file");
     // THE REAL STATEMENT, when the portal has one. WSSC's "View Bill" link
     // inside the account's own row opens that account's bill page, whose
     // "Download Bill" link downloads the official PDF. Scoped to the row on
     // purpose: the page-level "View Bill" downloads the DEFAULT account's bill,
     // which would file 8168 Inverness's statement under everyone else.
-    if (book.statementDownload && wantAccount) {
+    if (book.statementDownload && wantAccount && !unchanged) {
       try {
         const row = require("./accounts").accountRow(page, wantAccount);
         const vb = row.getByRole("link", { name: book.statementDownload.viewBillLink }).first();
@@ -688,7 +697,7 @@ async function capturePdf(page, clickFn, dest) {
     }
     // Fallback: a page snapshot. Best effort -- a bill read correctly must not
     // be reported as a failure because the document could not be captured.
-    if (!pdfPath) {
+    if (!pdfPath && !unchanged) {
       try {
         pdfPath = shot.replace(/\.png$/, "") + ".pdf";
         await page.pdf({ path: pdfPath, format: "Letter", printBackground: true });
@@ -704,6 +713,7 @@ async function capturePdf(page, clickFn, dest) {
       amount_due: amount, due_date: due,
       credit_balance: credit,
       nothing_due: amount === 0 || credit != null,
+      unchanged,
       read_by: readByVision ? "vision" : "selectors",
       screenshot: shot, statement_pdf: pdfPath, url: page.url(),
     });

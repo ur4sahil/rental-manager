@@ -562,5 +562,30 @@ if (sb) {
   }
 }
 
+
+// ── every login, not just the majority one (2026-10-03) ──────────────
+{
+  const rows = [
+    loginRow(DUMMY_KEY, "sigma@example.test", "pw1", { provider: "Pepco" }),
+    loginRow(DUMMY_KEY, "sigma@example.test", "pw1", { provider: "Pepco" }),
+    loginRow(DUMMY_KEY, "SGS@example.test", "pw2", { provider: "pepco" }),
+    loginRow(DUMMY_KEY, "sigma@example.test", "old-typo", { provider: "Pepco" }),
+    loginRow(DUMMY_KEY, "gas@example.test", "pw3", { provider: "Washington Gas" }),
+  ];
+  rows.forEach((r, i) => { r.id = 100 + i; });
+  const logins = sel.listLogins(rows, DUMMY_KEY, { aliases: ["pepco"] });
+  assert("listLogins finds every distinct Pepco login, most-used first",
+    logins.length === 2 && logins[0].username === "sigma@example.test" && logins[0].count === 3 && logins[1].username === "sgs@example.test" && logins[1].count === 1, JSON.stringify(logins));
+  assert("each login carries the utility rows stored under it (a mistyped password still belongs to its username)",
+    logins[0].utilityIds.join() === "100,101,103" && logins[1].utilityIds.join() === "102");
+  assert("another provider's login is not listed", !logins.some(l => l.username === "gas@example.test"));
+  assert("the slug is short, stable and case-insensitive", sel.loginSlug("SGS@example.test") === sel.loginSlug("sgs@example.test ") && /^[0-9a-f]{8}$/.test(sel.loginSlug("sgs@example.test")));
+  const sweep = fs.readFileSync(path.join(root, "worker", "portals", "sweep.js"), "utf8");
+  assert("the sweep reads every account every day (no 25-day skip)", !/SKIP_DAYS/.test(sweep) && /HOUSY_LOGIN_UTILITY_IDS/.test(sweep));
+  assert("the sweep re-downloads a statement only when the figures changed or none is on file", /\(!unchanged \|\| !pass\.has_statement \|\| force\)/.test(sweep));
+  const runner = fs.readFileSync(path.join(root, "worker", "portals", "run-portal.js"), "utf8");
+  assert("run-portal signs in to each login with its own session and sweeps only its rows", /HOUSY_SESSION_SUFFIX: suffix/.test(runner) && /HOUSY_LOGIN_UTILITY_IDS: login\.utilityIds\.join/.test(runner));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

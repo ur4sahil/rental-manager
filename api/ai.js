@@ -1105,12 +1105,18 @@ module.exports = async function handler(req, res) {
           .select("id, legacy_utility_id").in("legacy_utility_id", legacyIds);
         const acctByLegacy = new Map((accts || []).map(a => [a.legacy_utility_id, a.id]));
         const acctIds = (accts || []).map(a => a.id);
-        const lastByAcct = new Map();
+        const lastByAcct = new Map(), latestByAcct = new Map();
         if (acctIds.length) {
           const { data: bills } = await sb.from("utility_bills")
-            .select("utility_account_id, created_at, pdf_storage_path").in("utility_account_id", acctIds)
+            .select("utility_account_id, created_at, pdf_storage_path, amount, due_date").in("utility_account_id", acctIds)
             .is("archived_at", null).order("created_at", { ascending: false });
           for (const b of (bills || [])) {
+            // The newest bill on file, whatever its state: the sweep reads
+            // every account every day and compares what the portal shows
+            // against these figures (2026-10-03: a $0 "no balance" reading
+            // taken hours before Pepco posted the real bill used to count as
+            // "current" for 25 days).
+            if (!latestByAcct.has(b.utility_account_id)) latestByAcct.set(b.utility_account_id, b);
             // Only a bill with its OFFICIAL statement counts as done. A bill
             // with no PDF, or a page snapshot ("-snapshot" in the file name,
             // saved when the portal could not produce the statement), is
@@ -1123,6 +1129,11 @@ module.exports = async function handler(req, res) {
         for (const t of targets) {
           const aid = acctByLegacy.get(t.id);
           t.last_bill_at = aid ? (lastByAcct.get(aid) || null) : null;
+          const latest = aid ? latestByAcct.get(aid) : null;
+          t.last_amount = latest ? latest.amount : null;
+          t.last_due = latest ? latest.due_date : null;
+          const pdf = latest ? String(latest.pdf_storage_path || "") : "";
+          t.has_statement = !!pdf && !/-snapshot\.pdf$/i.test(pdf);
         }
       }
       return res.status(200).json({ ok: true, targets });
