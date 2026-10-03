@@ -43,7 +43,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1),
   lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60),
   clauses: "", special_terms: "", template_id: "",
-  late_fee_amount: String(companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount), late_fee_type: companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
+  late_fee_amount: "", late_fee_type: companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
   });
   const [leaseChangeFor, setLeaseChangeFor] = useState(null);   // { kind: "renewal"|"rent"|"addendum", lease }
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: "1" });
@@ -120,7 +120,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   escalation_frequency: form.escalation_frequency, payment_due_day: Math.max(1, Math.min(31, Math.floor(Number(form.payment_due_day || 1)))),
   lease_type: form.lease_type, auto_renew: form.auto_renew, renewal_notice_days: Number(form.renewal_notice_days || 60),
   clauses: form.clauses, special_terms: form.special_terms, status: "active",
-  late_fee_amount: Number(form.late_fee_amount || companySettings.late_fee_amount || COMPANY_DEFAULTS.late_fee_amount), late_fee_type: form.late_fee_type || companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type, late_fee_grace_days: Number(form.late_fee_grace_days || 5),
+  late_fee_amount: form.late_fee_amount === "" ? null : Number(form.late_fee_amount), late_fee_type: form.late_fee_amount === "" ? null : (form.late_fee_type || companySettings.late_fee_type || COMPANY_DEFAULTS.late_fee_type), late_fee_grace_days: Number(form.late_fee_grace_days || 5),
   move_in_checklist: JSON.stringify(defaultChecklist.map(item => ({ item, checked: false }))),
   move_out_checklist: JSON.stringify(defaultMoveOutChecklist.map(item => ({ item, checked: false }))),
   created_by: normalizeEmail(userProfile?.email),
@@ -172,7 +172,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // name AND property identify exactly one.
   const byNameProp = tenants.filter(t => t.name === lease.tenant_name && t.property === lease.property);
   const editTenantId = lease.tenant_id ? String(lease.tenant_id) : (byNameProp.length === 1 ? String(byNameProp[0].id) : "");
-  setForm({ tenant_id: editTenantId, tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "", late_fee_amount: String(lease.late_fee_amount || 50), late_fee_type: lease.late_fee_type || "flat", late_fee_grace_days: String(lease.late_fee_grace_days || 5) });
+  setForm({ tenant_id: editTenantId, tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "", late_fee_amount: lease.late_fee_amount == null ? "" : String(lease.late_fee_amount), late_fee_type: lease.late_fee_type || "flat", late_fee_grace_days: String(lease.late_fee_grace_days || 5) });
   setShowForm(true);
   }
 
@@ -518,7 +518,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-warn-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><MoneyInput min="0" placeholder="50.00" value={form.late_fee_amount} onChange={v => setForm({...form, late_fee_amount: v})} className="border-warn-200 bg-white" /></div>
   </div>
-  <p className="text-xs text-warn-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
+  <p className="text-xs text-warn-600 mt-2">Leave blank to use the company default from Settings ({companySettings.late_fee_type === "flat" ? formatCurrency(companySettings.late_fee_amount) : (companySettings.late_fee_amount ?? COMPANY_DEFAULTS.late_fee_amount) + "% of rent"}). Late fees are charged from the tenant's ledger with the "Apply Late Fee" button, never automatically.</p>
   </div>
   <div className="flex items-center gap-2 mb-4"><Checkbox checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
   <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} placeholder="Standard clauses..." /></div>

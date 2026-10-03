@@ -199,9 +199,14 @@ export function normalizeLateFeeType(t) {
 }
 
 // { type, amount, graceDays, source } or { error }.
-// tenant: { late_fee_amount, late_fee_type }; rule: { fee_type, fee_amount, grace_days } | null
-export function resolveLateFeeTerms({ tenant, rule }) {
-  const graceDays = Math.max(0, Math.floor(num(rule?.grace_days)));
+// tenant: { late_fee_amount, late_fee_type }; rule: { fee_type, fee_amount, grace_days } | null;
+// settings: company_settings { late_fee_amount, late_fee_type, late_fee_grace_days } | null.
+// The tenant's own setting first, then an active rule, then the company's
+// Settings. A rule is what the AUTOMATIC job charges from; Sahil
+// (2026-10-02) wants no automatic late fees, only the button on a tenant's
+// ledger -- so with no rule the button falls back to Settings (5% of rent).
+export function resolveLateFeeTerms({ tenant, rule, settings = null }) {
+  const graceDays = Math.max(0, Math.floor(num(rule?.grace_days ?? settings?.late_fee_grace_days ?? 5)));
   if (num(tenant?.late_fee_amount) > 0) {
     const type = normalizeLateFeeType(tenant.late_fee_type || "flat");
     if (!type) return { error: `unknown late fee type "${tenant.late_fee_type}" on the tenant` };
@@ -212,8 +217,22 @@ export function resolveLateFeeTerms({ tenant, rule }) {
     if (!type) return { error: `unknown late fee type "${rule.fee_type}" on the late fee rule` };
     return { type, amount: num(rule.fee_amount), graceDays, source: "rule" };
   }
-  return { error: "no late fee is set for this tenant and no late fee rule is active" };
+  if (settings && num(settings.late_fee_amount) > 0) {
+    const type = normalizeLateFeeType(settings.late_fee_type || "percent");
+    if (!type) return { error: `unknown late fee type "${settings.late_fee_type}" in Settings` };
+    return { type, amount: num(settings.late_fee_amount), graceDays, source: "settings" };
+  }
+  return { error: "no late fee is set for this tenant, no late fee rule is active, and Settings has no late fee" };
 }
+
+// The rent a percent fee is taken on. A voucher tenant pays only their own
+// portion; the housing authority's share is not theirs to be late with.
+export function lateFeeBase(tenant) {
+  if (!tenant) return 0;
+  if (tenant.is_voucher && num(tenant.tenant_portion) > 0) return num(tenant.tenant_portion);
+  return num(tenant.rent);
+}
+export const lateFeeBaseLabel = (tenant) => (tenant?.is_voucher && num(tenant?.tenant_portion) > 0 ? "the tenant's portion" : "rent");
 
 // Exact decimal arithmetic for the fee, so the app charges the same cent as
 // the nightly job. SQL numeric is exact; a float product is not (rent 685 at

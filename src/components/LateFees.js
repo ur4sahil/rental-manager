@@ -9,7 +9,7 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { getPropertyClassId } from "../utils/accounting";
 import { postTenantLateFee, lateFeeFailureReason } from "../utils/lateFees";
-import { lateFeeBusinessDate, normalizeLateFeeType, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, lateFeeDueDate, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
+import { lateFeeBase, lateFeeBusinessDate, normalizeLateFeeType, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, lateFeeDueDate, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Spinner } from "./shared";
 
 function LateFees({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -132,12 +132,12 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   // (utils/lateFeeRules.js): the tenant's own late-fee setting if set, else
   // this rule; 'fixed' is a dollar amount; only a live tenant who owes money
   // and is past the due day + grace.
-  const terms = resolveLateFeeTerms({ tenant, rule });
+  const terms = resolveLateFeeTerms({ tenant, rule, settings: companySettings });
   if (terms.error) { showToast(`Late fee not applied to ${payment.tenant}: ${terms.error}.`, "error"); return; }
   const today = lateFeeBusinessDate();
   const elig = lateFeeEligibility({ tenant, today, dueDay: payment.dueDay, graceDays: terms.graceDays });
   if (!elig.ok) { showToast(`Late fee not applied to ${payment.tenant}: ${elig.reason}.`, "warning"); return; }
-  const feeAmount = computeLateFeeAmount(terms, tenant?.rent);
+  const feeAmount = computeLateFeeAmount(terms, lateFeeBase(tenant));
   if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
     showToast(`Late fee not applied to ${payment.tenant}: a percent fee needs the tenant's rent to be set.`, "error");
     pmError("PM-6003", { raw: { message: "Computed late fee is invalid: " + feeAmount }, context: "applyLateFee", silent: true });
@@ -187,9 +187,9 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   function previewFee(row, rule) {
   const tenant = tenants.find(t => row.tenant_id != null && String(t.id) === String(row.tenant_id))
     || tenants.find(t => t.name === row.tenant && t.property === row.property);
-  const terms = resolveLateFeeTerms({ tenant, rule });
+  const terms = resolveLateFeeTerms({ tenant, rule, settings: companySettings });
   if (terms.error) return "—";
-  const fee = computeLateFeeAmount(terms, tenant?.rent);
+  const fee = computeLateFeeAmount(terms, lateFeeBase(tenant));
   return fee == null ? "—" : fee.toFixed(2);
   }
 

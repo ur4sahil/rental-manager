@@ -292,7 +292,17 @@ try {
   assert("Late Fees page uses the shared terms + eligibility", /resolveLateFeeTerms\(/.test(lf) && /lateFeeEligibility\(/.test(lf) && /computeLateFeeAmount\(/.test(lf) && /lateFeeBusinessDate\(\)/.test(lf));
   assert("Late Fees page no longer tests fee_type === 'flat' by hand", !/rule\.fee_type === "flat"/.test(lf));
   assert("Late Fees page saves the canonical fee type", /fee_type: normalizeLateFeeType\(form\.fee_type\)/.test(lf));
-  assert("tenant button uses the shared terms + eligibility with the company rule", /resolveLateFeeTerms\(\{ tenant: t, rule: lfRule \}\)/.test(tn) && /lateFeeEligibility\(/.test(tn) && /lateFeeBusinessDate\(\)/.test(tn));
+  assert("tenant button uses the shared terms + eligibility with the company rule, then Settings", /resolveLateFeeTerms\(\{ tenant: t, rule: lfRule, settings: companySettings \}\)/.test(tn) && /lateFeeEligibility\(/.test(tn) && /lateFeeBusinessDate\(\)/.test(tn));
+  // Sahil, 2026-10-02: no automatic late fees; the button charges 5% of rent,
+  // or of the tenant's own portion on a voucher tenancy.
+  assert("with no rule, Settings' 5% applies", (() => { const r = R.resolveLateFeeTerms({ tenant: { rent: 1800 }, rule: null, settings: { late_fee_amount: 5, late_fee_type: "percent", late_fee_grace_days: 5 } }); return r.type === "percent" && r.amount === 5 && r.graceDays === 5 && r.source === "settings"; })());
+  assert("a rule still beats Settings; the tenant's own setting beats both", R.resolveLateFeeTerms({ tenant: {}, rule: { fee_type: "flat", fee_amount: 30, grace_days: 3 }, settings: { late_fee_amount: 5, late_fee_type: "percent" } }).source === "rule" && R.resolveLateFeeTerms({ tenant: { late_fee_amount: 25 }, rule: null, settings: { late_fee_amount: 5, late_fee_type: "percent" } }).source === "tenant");
+  assert("nothing anywhere: refused, and says so", /Settings has no late fee/.test(R.resolveLateFeeTerms({ tenant: {}, rule: null, settings: { late_fee_amount: 0 } }).error || "") && /Settings has no late fee/.test(R.resolveLateFeeTerms({ tenant: {}, rule: null }).error || ""));
+  assert("5% of $1,800 rent is $90.00", R.computeLateFeeAmount({ type: "percent", amount: 5 }, R.lateFeeBase({ rent: 1800 })) === 90);
+  assert("a voucher tenant is charged on their own portion, not the whole rent", R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 406 }) === 406 && R.computeLateFeeAmount({ type: "percent", amount: 5 }, R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 406 })) === 20.3);
+  assert("a voucher tenant with no portion recorded falls back to the rent, and a non-voucher tenant's portion is ignored", R.lateFeeBase({ rent: 2000, is_voucher: true, tenant_portion: 0 }) === 2000 && R.lateFeeBase({ rent: 2000, is_voucher: false, tenant_portion: 406 }) === 2000 && R.lateFeeBase(null) === 0);
+  assert("the button and the Late Fees page charge on that base", /computeLateFeeAmount\(lfTerms, lateFeeBase\(t\)\)/.test(tn) && /computeLateFeeAmount\(terms, lateFeeBase\(tenant\)\)/.test(lf));
+  assert("a new lease no longer carries a forced $50; blank means the company default", !/late_fee_amount \|\| 50/.test(src("components/Leases.js")) && /late_fee_amount: form\.late_fee_amount === "" \? null/.test(src("components/Leases.js")) && !/auto-apply/.test(src("components/Leases.js")));
   assert("tenant button no longer computes percent/flat by hand", !/late_fee_type === "percent"/.test(tn));
   assert("tenant button shows whenever the tenant owes money (rule OR own setting)", /lateFeeAction=\{safeNum\(selectedTenant\?\.balance\) > 0 && !selectedTenant\?\.archived_at/.test(tn));
 

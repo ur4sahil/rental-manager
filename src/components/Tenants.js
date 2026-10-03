@@ -10,7 +10,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges, resolveAccountId, depositReference, depositAlreadyPosted, syncTenantRecurringAmount, deactivateTenantRecurring, tenantOwnArAccountId, autoOwnerDistribution } from "../utils/accounting";
 import { postTenantLateFee, lateFeeAlreadyPosted, lateFeeMonth, lateFeeFailureReason, resolveTenantLateFeeAR } from "../utils/lateFees";
-import { lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
+import { lateFeeBase, lateFeeBaseLabel, lateFeeBusinessDate, resolveLateFeeTerms, computeLateFeeAmount, lateFeeEligibility, lateFeeDueDay, normalizeLateFeeType, lateFeeOrdered, LATE_FEE_RULE_ORDER, LATE_FEE_LEASE_ORDER, LATE_FEE_SCHEDULE_ORDER } from "../utils/lateFeeRules";
 import { Badge, Spinner, Modal, PropertySelect, DocUploadModal, generatePaymentReceipt } from "./shared";
 import { StartTenancyModal } from "./StartTenancyModal";
 import { TenancyDocuments } from "./TenancyDocuments";
@@ -735,14 +735,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       const lfErr = ruleRes.error || leaseRes.error || schedRes.error;
       if (lfErr) { showToast("Could not load the late fee settings (" + lfErr.message + "). Nothing was posted.", "error"); return; }
       const lfRule = (ruleRes.data || []).find(r => r.is_active !== false) || null;
-      const lfTerms = resolveLateFeeTerms({ tenant: t, rule: lfRule });
+      const lfTerms = resolveLateFeeTerms({ tenant: t, rule: lfRule, settings: companySettings });
       if (lfTerms.error) { showToast("Late fee not applied: " + lfTerms.error + ".", "error"); return; }
       const lfToday = lateFeeBusinessDate();
       const lfDueDay = lateFeeDueDay({ leases: leaseRes.data, schedules: schedRes.data });
       const lfElig = lateFeeEligibility({ tenant: t, today: lfToday, dueDay: lfDueDay, graceDays: lfTerms.graceDays });
       if (!lfElig.ok) { showToast("Late fee not applied to " + t.name + ": " + lfElig.reason + ".", "warning"); return; }
-      const feeAmount = computeLateFeeAmount(lfTerms, t.rent);
-      if (!feeAmount || feeAmount <= 0) { showToast("Late fee not applied: a percent fee needs the tenant's rent to be set.", "error"); return; }
+      const feeAmount = computeLateFeeAmount(lfTerms, lateFeeBase(t));
+      if (!feeAmount || feeAmount <= 0) { showToast("Late fee not applied: a percent fee needs the tenant's " + lateFeeBaseLabel(t) + " to be set.", "error"); return; }
       // Dedup: the shared one-per-month rule (utils/lateFeeRules.js), which
       // also sees the Late Fees page, the nightly job and hand-entered fees.
       // Checked here so the user is told before the confirm dialog;
@@ -753,7 +753,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       if (lfDup.error) { showToast("Could not check for an existing late fee (" + lfDup.error + "). Nothing was posted.", "error"); return; }
       if (lfDup.already) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
       const monthName = new Date(lfToday + "T12:00:00").toLocaleString("default", { month: "long", year: "numeric" });
-      const feeLabel = lfTerms.type === "percent" ? `${lfTerms.amount}% of $${safeNum(t.rent).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
+      const feeLabel = lfTerms.type === "percent" ? `${lfTerms.amount}% of ${lateFeeBaseLabel(t)} $${lateFeeBase(t).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
       if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
       const classId = await getPropertyClassId(t.property, companyId);
       // Reference LATEFEE-<tenant_id>-YYYYMM, DR the tenant's own AR (never
