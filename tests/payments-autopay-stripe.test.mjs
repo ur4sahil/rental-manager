@@ -586,7 +586,10 @@ function FakeStripe() {
       retrieve: async (id) => ({ id, metadata: stripeState.piMeta[id] || {} }),
     },
     paymentMethods: { retrieve: async (id) => { stripeCalls.pmRetrieve.push(id); return { id, type: stripeState.pmType[id] || "card", card: { brand: "visa", last4: "4242" }, us_bank_account: { last4: "6789" } }; }, detach: async () => ({}) },
-    setupIntents: { retrieve: async (id) => ({ id, status: "succeeded", payment_method: stripeState.setupPm, customer: "cus_1" }) },
+    // Since e252bc1 (2026-09-30) save-payment-method refuses a SetupIntent
+    // whose metadata names another tenant; the real create-setup-intent
+    // stamps tenant_id + company_id, so the fake does too.
+    setupIntents: { retrieve: async (id) => ({ id, status: "succeeded", payment_method: stripeState.setupPm, customer: "cus_1", metadata: { tenant_id: "42", company_id: "co-1" } }) },
     customers: { create: async () => ({ id: "cus_new" }) },
     charges: { retrieve: async (id) => ({ id, payment_intent: stripeState.chargePi?.[id] || null }) },
     webhooks: { constructEvent: (_raw, sig) => { if (sig !== "valid") throw new Error("bad sig"); return stripeState.events.shift(); } },
@@ -609,6 +612,18 @@ process.env.SUPABASE_URL = "http://fake";
 delete process.env.CRON_SECRET; delete process.env.VAPID_PUBLIC_KEY; delete process.env.VAPID_PRIVATE_KEY; delete process.env.REACT_APP_VAPID_PUBLIC_KEY;
 const handler = require(path.join(root, "api/stripe.js"));
 Module._load = origLoad;
+// The handlers read the calendar (new Date()). The seeds below are dated
+// September 2026; once the real date passed 2026-10-01 the "nothing more
+// charges the same day" check failed because October's rent WAS due. So
+// the clock is frozen at 2026-09-20 for this part -- the engine's own
+// catch-up behaviour is right, the test must not depend on today.
+const RealDate = Date;
+const FROZEN = RealDate.UTC(2026, 8, 20, 16, 0, 0);
+class FrozenDate extends RealDate {
+  constructor(...a) { super(...(a.length ? a : [FROZEN])); }
+  static now() { return FROZEN; }
+}
+global.Date = FrozenDate;
 
 function call(action, { body = {}, headers = {}, method = "POST" } = {}) {
   const req = Readable.from([Buffer.from(typeof body === "string" ? body : JSON.stringify(body))]);
