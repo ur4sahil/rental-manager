@@ -48,6 +48,15 @@ export const emailDocument = (companyId, docId, { to, message, pdfBytes, filenam
 /** Staff fallback: store the signed PDF when the last signer's browser never uploaded it. */
 export const storeSignedPdf = (companyId, docId, pdfBytes) =>
   post("/api/finalize-signed-pdf", { company_id: companyId, doc_id: docId, pdf_base64: bytesToBase64(pdfBytes) });
+/** At send: the document's pages (unsigned) and where its signature lines
+ *  are, so the server can finish the envelope the moment the last person
+ *  signs -- whatever they do with their browser afterwards. */
+export const storeEnvelopeBody = (companyId, docId, { pdfBytes, bodyPages, anchors }) =>
+  post("/api/finalize-signed-pdf?action=body", { company_id: companyId, doc_id: docId, pdf_base64: bytesToBase64(pdfBytes), body_pages: bodyPages, sig_anchors: anchors });
+/** Staff: finish a completed envelope on the server from the pages stored at
+ *  send. { ok:false, status:404 } when the envelope predates stored pages. */
+export const finalizeOnServer = (companyId, docId) =>
+  post("/api/finalize-signed-pdf?action=server", { company_id: companyId, doc_id: docId });
 
 // Chunked: String.fromCharCode(...wholeFile) overflows the call stack.
 export function bytesToBase64(bytes) {

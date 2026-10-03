@@ -18,7 +18,7 @@ import { stampInitials } from "../utils/initialsStamp";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
 import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
-import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
+import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSignerRoles, sendSignatureRequests, resendSignatureRequest, voidEnvelope, emailDocument, storeSignedPdf, storeEnvelopeBody, finalizeOnServer, summarizeSends, DOC_KIND_BY_TEMPLATE_KEY, prospectTermsFromFields } from "../utils/docService";
 import { renderPagedPdf, renderPagedPdfWithAnchors, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
@@ -1568,15 +1568,32 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   fetchAll();
   }
 
-  // The signed copy is normally stored by the last signer's browser. If
-  // they closed the tab first it never arrived; this stores it from here.
+  // The document's pages, unsigned, with where the signature lines are:
+  // rendered here when the envelope is sent and kept on the server, which
+  // finishes the envelope from them the moment the last person signs. The
+  // signed copy used to be made by the last signer's browser after Finish,
+  // and a closed tab left the envelope with no copy and no emails.
+  async function storeBodyForEnvelope(doc) {
+  const paged = pagedBody(doc, doc._template || selectedTemplate || templates.find(t => t.id === doc.template_id), doc.field_values || fieldValues || {});
+  const { bytes, anchors } = await renderPagedPdfWithAnchors({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
+  const { PDFDocument } = await import("pdf-lib");
+  const bodyPages = (await PDFDocument.load(bytes)).getPageCount();
+  return storeEnvelopeBody(companyId, doc.id, { pdfBytes: bytes, bodyPages, anchors: anchors || [] });
+  }
+
+  // A completed envelope with no signed copy: the server finishes it from
+  // the pages stored at send. An envelope sent before pages were stored is
+  // rendered here instead (the old way).
   async function storeSignedCopy(d) {
   showToast("Storing the signed copy…", "info");
   try {
-  const bytes = await buildSignedPdfBytes(d);
-  const r = await storeSignedPdf(companyId, d.id, bytes);
+  let r = await finalizeOnServer(companyId, d.id);
+  if (!r.ok && r.status === 404) {
+    const bytes = await buildSignedPdfBytes(d);
+    r = await storeSignedPdf(companyId, d.id, bytes);
+  }
   if (!r.ok) { showToast("Could not store the signed copy: " + r.error, "error"); return; }
-  showToast("Signed copy stored and filed under Documents", "success");
+  showToast("Signed copy stored and filed under Documents" + (r.signers_queued ? "; " + r.signers_queued + " emailed" : ""), "success");
   fetchAll();
   } catch (err) { pmError("PM-8006", { raw: err, context: "store signed copy" }); }
   }
@@ -1687,6 +1704,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
         .eq("company_id", companyId).eq("doc_id", doc.id).eq("status", "awaiting_signature");
       setSending(false);
       return;
+    }
+
+    // The pages go to the server now, so it can finish the envelope itself
+    // when the last person signs. If this fails the envelope still works:
+    // the last signer's browser makes the copy, as before.
+    try {
+      const stored = await storeBodyForEnvelope(doc);
+      if (!stored.ok) throw new Error(stored.error);
+    } catch (e) {
+      pmError("PM-8006", { raw: e, context: "store envelope pages", silent: true });
+      showToast("Sent, but the pages could not be stored for the server: the last signer's browser will make the signed copy.", "warning");
     }
 
     // The server emails whoever's turn it is and logs each send. (This used
@@ -2693,10 +2721,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Bottom action bar — sticky primary actions */}
   <div className="border-t border-neutral-100 bg-white px-3 md:px-5 py-3 flex items-center gap-2 shrink-0 safe-bottom">
-  <span className="text-xs text-neutral-400 hidden md:inline">Document is ready. Save as a draft to edit later, or finalize to lock it.</span>
+  {/* A document that goes out for signature is finished by its signers:
+      Send for Signature (in the side panel) is its only action. Finalize
+      ("save as final, locked") is for documents that are printed or handed
+      over instead. */}
+  {(() => { const esign = selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none"; return <>
+  <span className="text-xs text-neutral-400 hidden md:inline">{esign ? "Fill in the signers on the right and send for signature. Save as a draft to come back to it." : "Document is ready. Save as a draft to edit later, or finalize to lock it."}</span>
   <div className="flex-1" />
   <Btn variant="secondary" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
-  <Btn onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
+  {!esign && <Btn onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>}
+  </>; })()}
   </div>
   </div>
   );

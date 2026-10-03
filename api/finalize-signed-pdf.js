@@ -17,11 +17,11 @@
 //   Body: { token, doc_id, pdf_base64 }
 //   Response: 200 { signed_pdf_path, signed_pdf_hash } | 4xx { error }
 
-const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 const { requireMember } = require("./_member");
-const { afterSignedPdfStored, SEND_ROLES } = require("./_doc-email-impl");
+const { SEND_ROLES } = require("./_doc-email-impl");
+const { finalizeFromBytes, finalizeFromStoredBody, storeEnvelopeBody, looksLikePdf } = require("./_finalize-impl");
 
 module.exports = async (req, res) => {
   // ?action=sign: the signing itself (api/_sign-document-impl.js), on this
@@ -30,6 +30,10 @@ module.exports = async (req, res) => {
   setCors(req, res);
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "method not allowed" }); return; }
+  // ?action=body: the office browser stores the document's pages when the
+  // envelope is sent (api/_finalize-impl.js). ?action=server: staff ask
+  // the server to finish a completed envelope from that stored body.
+  if (req.query && (req.query.action === "body" || req.query.action === "server")) return staffAction(req, res, req.query.action);
 
   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
   const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -105,135 +109,54 @@ module.exports = async (req, res) => {
       res.status(403).json({ error: "the upload window after signing has closed" }); return;
     }
   }
-  // Idempotent — if the PDF was already uploaded, return the existing path.
-  if (doc.signed_pdf_path) {
-    res.status(200).json({
-      signed_pdf_path: doc.signed_pdf_path,
-      already_set: true,
-    });
-    return;
-  }
-
-  // 2. Decode + hash the PDF bytes.
+  // Decode the browser-made PDF and finish the envelope from it.
   let pdfBytes;
   try { pdfBytes = Buffer.from(pdf_base64, "base64"); }
   catch (_e) { res.status(400).json({ error: "invalid base64" }); return; }
-  if (pdfBytes.length < 200 || pdfBytes.slice(0, 4).toString() !== "%PDF") {
-    // Sanity check: PDFs always start with "%PDF-1.x".
-    res.status(400).json({ error: "not a PDF" }); return;
-  }
-  // Initials on every page, when the template asked for them: stamped
-  // here, where every signer's row can be read, on the body pages only
-  // (the certificate follows them). Then hashed, so the hash covers what
-  // is stored.
-  // Signatures on the document's own signature lines first (the browser
-  // that built the PDF sends where the lines are; every signer's row is
-  // read here), then the initials, then the hash.
+  if (!looksLikePdf(pdfBytes)) { res.status(400).json({ error: "not a PDF" }); return; }
   try {
-    const n = Number(body_pages);
-    const bodyPages = Number.isFinite(n) && n > 0 ? n : null;
-    const { validAnchors, stampSignatures, stampEnvelopeId } = require("./_signature-stamp");
-    const anchors = validAnchors(sig_anchors, bodyPages || Infinity);
-    if (anchors.length) {
-      const { data: rows } = await sb.from("doc_signatures").select("signer_role, signature_data, signed_at, status, integrity_hash").eq("doc_id", doc_id).eq("status", "signed");
-      if (rows && rows.length) pdfBytes = Buffer.from(await stampSignatures(require("pdf-lib"), pdfBytes, rows, anchors, { envelopeId: doc.id }));
-    }
-    // The envelope ID in the top margin of every body page.
-    pdfBytes = Buffer.from(await stampEnvelopeId(require("pdf-lib"), pdfBytes, doc.id, { pages: bodyPages }));
-    // Initials boxes: one per signer in the document's own order (the
-    // roster), filled where the signer gave initials; older documents
-    // (no signature block) get a box per signer with initials, by order.
-    const { initialsRoster } = require("./_signature-stamp");
-    const roster = initialsRoster(doc.rendered_body);
-    const { data: inis } = await sb.from("doc_signatures").select("initials_data, signer_role, signer_name, sign_order").eq("doc_id", doc_id).eq("status", "signed").order("sign_order");
-    if ((inis || []).some(r => r.initials_data)) {
-      const PDFLib = require("pdf-lib");
-      const { stampInitials } = require("./_initials-stamp");
-      pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: bodyPages, roster: roster.length ? roster : null }));
-    }
-    // The certificate of completion: drawn here from every signer's row
-    // and put in place of the one the browser made (which could see only
-    // its own signer and came out clipped). The body pages are kept as
-    // the browser laid them out; everything after them is replaced.
-    if (bodyPages) {
-      const { certificatePdf, withCertificate } = require("./_certificate");
-      const { data: all } = await sb.from("doc_signatures")
-        .select("signer_role, signer_name, signer_email, sign_order, status, signed_at, signing_method, signer_ip, user_agent, integrity_hash, e_records_consented, e_records_consent_at, e_records_consent_version, hardware_software_acknowledged, viewed_at, paper_copy_requested_at, consent_withdrawn_at, initials_data, created_at")
-        .eq("doc_id", doc_id);
-      const { data: co } = await sb.from("companies").select("name").eq("id", doc.company_id).maybeSingle();
-      const cert = await certificatePdf({ doc, signers: all || [], companyName: co?.name || "" });
-      pdfBytes = Buffer.from(await withCertificate(pdfBytes, bodyPages, cert));
-    }
-  } catch (e) { console.error("[finalize] signature/initials stamp skipped:", e.message); }
-  const pdfHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
-
-  // 3. Upload to Storage. Path includes timestamp so accidental
-  //    re-uploads create a new versioned object instead of
-  //    overwriting (Storage upsert=false enforces this anyway).
-  const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = `${doc.company_id}/${doc_id}/signed-${ts}.pdf`;
-  const { error: upErr } = await sb.storage.from("signed-documents")
-    .upload(path, pdfBytes, { contentType: "application/pdf", upsert: false });
-  if (upErr) {
-    console.error("[finalize-signed-pdf] upload failed:", upErr.message);
-    res.status(500).json({ error: "upload failed" }); return;
+    const out = await finalizeFromBytes(sb, req, doc, { pdfBytes, bodyPages: body_pages, anchors: sig_anchors });
+    res.status(200).json(out);
+  } catch (e) {
+    console.error("[finalize-signed-pdf] failed:", e.message);
+    res.status(e.status || 500).json({ error: e.status === 400 ? e.message : (String(e.message).startsWith("upload failed") ? "upload failed" : "recording the signed copy failed") });
   }
-
-  // 4. Persist path + hash via service-role-only RPC (idempotent).
-  //    The RPC also fans out a notification_queue row per signer
-  //    (type='signed_doc_copy') so the email-delivery worker can
-  //    pick them up later. See migration 20260424000012.
-  const { data: setRes, error: setErr } = await sb.rpc("set_signed_pdf", {
-    p_doc_id: doc_id,
-    p_pdf_path: path,
-    p_pdf_hash: pdfHash,
-  });
-  if (setErr) {
-    sb.storage.from("signed-documents").remove([path]).catch(() => {});
-    console.error("[finalize-signed-pdf] set_signed_pdf failed:", setErr.message);
-    res.status(500).json({ error: "recording the signed copy failed" }); return;
-  }
-
-  // 5. Mint a 24h signed URL so the just-signed signer can
-  //    download their copy immediately without waiting for the
-  //    email-delivery worker. The bucket is private — only this
-  //    service-role-signed URL can read the object.
-  let downloadUrl = null;
-  try {
-    const { data: signed } = await sb.storage.from("signed-documents")
-      .createSignedUrl(path, 24 * 60 * 60); // 24 hours
-    // This link is EMAILED to whoever signed, so the hostname is the one
-    // place it is read by someone who has never seen our app. Route it
-    // through our own domain via the /docs rewrite in vercel.json rather
-    // than sending a tenant a link to <project-ref>.supabase.co. Same
-    // signature, same expiry -- only the host changes.
-    const MARK = "/storage/v1/object/sign/";
-    const raw = signed?.signedUrl || null;
-    const base = (process.env.APP_URL || "").replace(/\/$/, "");
-    // The /docs rewrite points at the PRODUCTION storage project, so it is
-    // only right in production; elsewhere hand back the direct link.
-    downloadUrl = raw && base && raw.includes(MARK) && (process.env.VERCEL_ENV || "") === "production"
-      ? base + "/docs/" + raw.slice(raw.indexOf(MARK) + MARK.length)
-      : raw;
-  } catch (_e) {
-    // Non-fatal — the row is in queue, worker can re-sign later.
-  }
-
-  // 6. File it under Documents, email each signer their copy, tell the
-  //    sender. Best effort: the signed copy is already safely stored.
-  let after = { copies: [] };
-  if (!setRes?.already_set) {
-    try { after = await afterSignedPdfStored(sb, req, doc, pdfBytes); }
-    catch (e) { console.error("[finalize-signed-pdf] follow-up failed:", e.message); }
-  }
-
-  res.status(200).json({
-    signed_pdf_path: path,
-    signed_pdf_hash: pdfHash,
-    bytes: pdfBytes.length,
-    download_url: downloadUrl,
-    signers_queued: (after.copies || []).filter(c => c.status === "sent").length,
-    filed_document_id: after.filed_document_id || null,
-    already_set: !!setRes?.already_set,
-  });
 };
+
+// Staff calls (a member with a send role, by their session):
+//   ?action=body   { company_id, doc_id, pdf_base64, body_pages, sig_anchors }
+//                  → 200 { stored: true, pages, hash }
+//   ?action=server { company_id, doc_id }
+//                  → 200 finalize result | 404 { error: "no stored body" }
+async function staffAction(req, res, action) {
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
+  const SUPABASE_SVC = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!SUPABASE_URL || !SUPABASE_SVC) { res.status(500).json({ error: "Supabase env not configured" }); return; }
+  let body = req.body;
+  if (typeof body === "string") { try { body = JSON.parse(body); } catch (_) { body = {}; } }
+  const { company_id, doc_id, pdf_base64, body_pages, sig_anchors } = body || {};
+  if (!company_id || !doc_id || typeof doc_id !== "string") { res.status(400).json({ error: "company_id and doc_id required" }); return; }
+  const sb = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
+  const auth = await requireMember(req, { companyId: company_id, roles: SEND_ROLES, sb });
+  if (auth.error) { res.status(auth.status).json({ error: auth.error }); return; }
+  const { data: doc } = await sb.from("doc_generated").select("*").eq("id", doc_id).maybeSingle();
+  if (!doc || doc.company_id !== String(company_id)) { res.status(404).json({ error: "doc not found" }); return; }
+  try {
+    if (action === "body") {
+      if (!pdf_base64 || typeof pdf_base64 !== "string" || pdf_base64.length < 100) { res.status(400).json({ error: "pdf_base64 required" }); return; }
+      if (pdf_base64.length > 33 * 1024 * 1024) { res.status(413).json({ error: "PDF too large" }); return; }
+      // A finished or cancelled envelope keeps the pages it was signed on.
+      if (doc.envelope_status === "completed" || doc.envelope_status === "voided") { res.status(409).json({ error: "envelope already " + doc.envelope_status }); return; }
+      const meta = await storeEnvelopeBody(sb, doc, { pdfBytes: Buffer.from(pdf_base64, "base64"), bodyPages: body_pages, anchors: sig_anchors });
+      res.status(200).json({ stored: true, pages: meta.pages, hash: meta.hash, anchors: meta.anchors.length });
+      return;
+    }
+    if (doc.envelope_status !== "completed") { res.status(403).json({ error: "envelope not completed" }); return; }
+    const out = await finalizeFromStoredBody(sb, req, doc);
+    if (!out) { res.status(404).json({ error: "no stored body" }); return; }
+    res.status(200).json(out);
+  } catch (e) {
+    console.error("[finalize-signed-pdf] staff " + action + " failed:", e.message);
+    res.status(e.status || 500).json({ error: String(e.message).slice(0, 200) });
+  }
+}

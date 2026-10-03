@@ -40,6 +40,9 @@
     "api/daily-reminders.js": {
       "maxDuration": 60
     },
+    "api/finalize-signed-pdf.js": {
+      "maxDuration": 60
+    },
     "api/ai.js": {
       "includeFiles": "node_modules/pdfjs-dist/legacy/build/{pdf.mjs,pdf.worker.mjs}"
     }

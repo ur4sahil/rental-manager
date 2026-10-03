@@ -77,10 +77,22 @@ const roles = [
   const pdf = read("src/utils/pagedPdf.js");
   ok("the renderer reports anchors for both slot kinds", /span\[data-sig-role\], span\[data-sig-date\]/.test(pdf) && /export async function renderPagedPdfWithAnchors/.test(pdf));
   ok("transparent cell borders are not drawn", /transparent\/\.test\(cs\.borderTopColor\)\) return;/.test(pdf));
-  const api = read("api/finalize-signed-pdf.js");
-  ok("the finalize API stamps signatures (every signed row) before initials and the hash", api.indexOf("stampSignatures(") < api.indexOf("stampInitials(") && api.indexOf("stampInitials(") < api.indexOf('createHash("sha256").update(pdfBytes)') && /sig_anchors/.test(api));
+  const api = read("api/_finalize-impl.js");
+  ok("the finalize module stamps signatures (every signed row) before initials and the hash", api.indexOf("stampSignatures(") < api.indexOf("stampInitials(") && api.indexOf("stampInitials(") < api.indexOf('createHash("sha256").update(pdfBytes)') && /anchors/.test(api));
+  const route = read("api/finalize-signed-pdf.js");
+  ok("the finalize route takes the browser's anchors and hands them to the module", /sig_anchors/.test(route) && /finalizeFromBytes\(sb, req, doc, \{ pdfBytes, bodyPages: body_pages, anchors: sig_anchors \}\)/.test(route));
+  // 2026-10-03: the last signature finishes the envelope on the server, from
+  // the pages stored at send (a closed tab used to leave no signed copy).
+  const signApi = read("api/_sign-document-impl.js");
+  ok("the sign call finishes the envelope on the server when the last signature lands", /data\.all_signed && data\.doc_id/.test(signApi) && /finalizeFromStoredBody\(sb, req, doc\)/.test(signApi) && /server_finalized: true/.test(signApi));
+  ok("the stored body carries its signature-line positions inside the PDF (the bucket is PDF-only)", /setSubject\(SUBJECT_MARK \+ JSON\.stringify\(meta\)\)/.test(api) && /getSubject\(\)/.test(api));
+  ok("the builder stores the pages when the envelope is sent, before the emails go", docs.indexOf("await storeBodyForEnvelope(doc)") > docs.indexOf('supabase.rpc("create_doc_envelope"') && docs.indexOf("await storeBodyForEnvelope(doc)") < docs.indexOf("sendSignatureRequests(companyId, doc.id)"));
+  ok("the staff repair path asks the server first and renders in the browser only for older envelopes", /finalizeOnServer\(companyId, d\.id\)/.test(docs) && /r\.status === 404/.test(docs));
+  ok("Finalize (save as final) is not offered in the e-sign flow", /\{!esign && <Btn onClick=\{async \(\) => \{ await saveDocument\("final"\)/.test(docs));
   const sign = read("src/components/PublicSignPage.js");
   ok("the signing page sends the anchors", /sig_anchors: sigAnchors/.test(sign) && /renderPagedPdfWithAnchors/.test(sign));
+  ok("the signing page takes the server's copy and renders one itself only for older envelopes", /if \(data\.signed_pdf_path\) setPdfStatus\("stored"\);\s*else renderAndUploadSignedPdf/.test(sign));
+  ok("the done screen does not say 'safely close' while a copy is still being made", /\{pdfStatus !== "uploading" && <p[^>]*>You can safely close this window\.<\/p>\}/.test(sign) && /keep this window open/.test(sign));
   ok("Finish is locked until every tab is done", /disabled=\{!allDone \|\| submitting\}/.test(sign) && /initialsDone === initialSlots\.length/.test(sign));
   ok("initials record the page count", /\|pages:" \+ initialSlots\.length/.test(sign));
   const server = read("api/_signature-stamp.js"), client = read("src/utils/signatureStamp.js");

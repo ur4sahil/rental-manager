@@ -66,6 +66,21 @@ module.exports = async (req, res) => {
       try { await sb.from("doc_signatures").update({ signer_ip: ip }).eq("access_token", token).eq("status", "signed"); }
       catch (e) { console.error("[sign-document] ip not recorded:", e.message); }
     }
+    // The last signature finishes the envelope HERE, from the pages stored
+    // when it was sent (api/_finalize-impl.js): stamped, filed and emailed
+    // before this call returns, whatever the signer does with the tab. An
+    // envelope sent before the body was stored gets no signed_pdf_path
+    // back, and the page renders and uploads the PDF as before.
+    if (data && data.all_signed && data.doc_id) {
+      try {
+        const { data: doc } = await sb.from("doc_generated").select("*").eq("id", data.doc_id).maybeSingle();
+        if (doc && doc.envelope_status === "completed") {
+          const { finalizeFromStoredBody } = require("./_finalize-impl");
+          const out = await finalizeFromStoredBody(sb, req, doc);
+          if (out) Object.assign(data, out, { server_finalized: true });
+        }
+      } catch (e) { console.error("[sign-document] server finalize failed:", e.message); }
+    }
     res.status(200).json(data);
   } catch (e) {
     res.status(500).json({ error: "signing failed: " + String(e.message || e).slice(0, 200) });

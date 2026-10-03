@@ -305,9 +305,12 @@ export default function PublicSignPage({ token }) {
       if (!res.ok || data?.error) { setError("Signing failed: " + (data?.error || `HTTP ${res.status}`)); return; }
       setDoneInfo(data);
       setDone(true);
-      // Last signer? Render and upload the PDF.
+      // Last signer? The server finished the envelope inside that call when
+      // the pages were stored at send time (signed_pdf_path comes back).
+      // Otherwise (an envelope sent before that), render and upload here.
       if (data?.all_signed && data?.doc_id) {
-        renderAndUploadSignedPdf(data.doc_id, data.integrity_hash);
+        if (data.signed_pdf_path) setPdfStatus("stored");
+        else renderAndUploadSignedPdf(data.doc_id, data.integrity_hash);
       } else {
         // Others still to sign: have the server email whoever is next. The
         // page used to SAY "the next signer has been notified" while nothing
@@ -370,9 +373,9 @@ export default function PublicSignPage({ token }) {
             <div className="text-2xs tnum text-neutral-400 bg-neutral-50 rounded-lg px-3 py-2 break-all space-y-1 text-left">
               <div><span className="text-neutral-500">Document hash at send:</span> <span className="text-neutral-700">{(doneInfo.doc_hash_at_send || "").slice(0, 32)}…</span></div>
               <div><span className="text-neutral-500">Signature hash:</span> <span className="text-neutral-700">{doneInfo.integrity_hash.slice(0, 32)}…</span></div>
-              {pdfStatus === "uploading" && <div className="text-warn-700">⏳ Generating signed PDF…</div>}
+              {pdfStatus === "uploading" && <div className="text-warn-700">⏳ Preparing the signed copy — please keep this window open…</div>}
               {pdfStatus === "stored" && <div className="text-success-700">✓ Signed PDF stored ({(doneInfo.signed_pdf_hash || "").slice(0, 12)}…)</div>}
-              {pdfStatus === "error" && <div className="text-warn-700">PDF generation deferred — your signature is still recorded.</div>}
+              {pdfStatus === "error" && <div className="text-warn-700">The signed copy could not be prepared from here — your signature is recorded, and the office can store the copy. <button type="button" onClick={() => renderAndUploadSignedPdf(doneInfo.doc_id, doneInfo.integrity_hash)} className="underline">Try again</button></div>}
             </div>
           )}
           {doneInfo?.download_url && (
@@ -405,7 +408,7 @@ export default function PublicSignPage({ token }) {
             )}
             {consentWithdrawn && <div className="text-xs text-neutral-500">Consent withdrawn — future communications will be paper.</div>}
           </div>
-          <p className="text-xs text-neutral-400 mt-4">You can safely close this window.</p>
+          {pdfStatus !== "uploading" && <p className="text-xs text-neutral-400 mt-4">You can safely close this window.</p>}
         </div>
       </div>
     );
