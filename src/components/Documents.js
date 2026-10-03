@@ -365,6 +365,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Phase 5 — template editor 3-col layout
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
   const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
+  // The template editor's side panel: one panel with tabs, in place of a
+  // rail on each side of the page (fields | signers | page | rules | details).
+  const [panelTab, setPanelTab] = useState("fields");
+  const [openField, setOpenField] = useState(null);           // index of the field row whose details are open
   // The records the document in hand is about (tenant, lease, property),
   // loaded by id. Saved onto the generated document as real links.
   const [docContext, setDocContext] = useState(null);
@@ -854,6 +858,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       ["company.name", "Company name"],
     ]],
   ];
+  // Label for a prefill source, for the field row ("fills from Today's date").
+  const PREFILL_LABELS = Object.fromEntries(PREFILL_SOURCES.flatMap(([, opts]) => opts));
 
   // Facts for the document, loaded by RECORD (utils/docService). A tenant
   // id when another screen supplied one; otherwise the property picked in
@@ -1746,20 +1752,36 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* 3-column layout: left fields rail | center canvas | right inspector rail */}
   {!(!editingTemplate && !templateForm.body && !templateForm.pdf_storage_path && !templateLandingSkipped) && (
   <div className="flex-1 flex overflow-hidden">
-  {/* LEFT RAIL — Form Fields palette */}
-  {/* 260px held two grid-cols-3 rows, giving each control ~75px: every
-      label truncated to "Recipi", every dropdown to "T...", the default
-      value to "Defaul". Wider rail, and the controls stack instead of
-      fighting for the same row. */}
-  <div className="w-[320px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white">
-  <div className="p-3">
-  <div className="flex items-center justify-between mb-2 sticky top-0 bg-white pb-2">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Form Fields ({templateForm.fields.length})</h3>
-  <Btn size="xs" onClick={addField}>+ Add</Btn>
+  {/* SIDE PANEL — one panel with tabs: fields | signers | page | rules | details */}
+  <div className="w-[400px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white flex flex-col">
+  <div className="flex gap-0.5 px-2 pt-2 border-b border-neutral-100 sticky top-0 bg-white z-10" role="tablist" aria-label="Template panels">
+  {[["fields", "Fields", templateForm.fields.length], ["signers", "Signers", (templateForm.signer_roles || []).length], ["page", "Page", null], ["rules", "Rules", Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.derived || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length], ["details", "Details", null]].map(([id, label, n]) => (
+  <button key={id} type="button" role="tab" aria-selected={panelTab === id} onClick={() => setPanelTab(id)}
+    className={"px-3 py-2 text-sm font-semibold border-b-2 -mb-px " + (panelTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500 hover:text-neutral-800")}>
+  {label}{n ? <span className="ml-1 text-xs font-normal text-neutral-400">{n}</span> : null}
+  </button>
+  ))}
   </div>
-  <div className="space-y-3">
+  {panelTab === "fields" && (
+  <div className="p-3">
+  <div className="flex items-center justify-between mb-2">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Fields ({templateForm.fields.length})</h3>
+  <Btn size="xs" onClick={() => { addField(); setOpenField(templateForm.fields.length); }}>+ Add field</Btn>
+  </div>
+  <p className="text-2xs text-neutral-400 mb-2">Click a field to edit it. <strong className="text-neutral-500">Insert</strong> places it at the cursor; or type <code className="bg-neutral-100 px-1 rounded">{"{{"}</code> in the page.</p>
+  <div className="space-y-1.5">
   {templateForm.fields.map((f, i) => (
-  <div key={i} className="border border-neutral-100 rounded-xl p-3 bg-brand-50/20">
+  <div key={i} className={"border rounded-xl bg-white " + (openField === i ? "border-brand-200 bg-brand-50/20" : "border-neutral-100")}>
+  {/* The row: name, what it is, where it fills from. Click to open the details. */}
+  <div className="flex items-center gap-2 px-3 py-2">
+  <button type="button" onClick={() => setOpenField(openField === i ? null : i)} className="flex-1 min-w-0 text-left" aria-expanded={openField === i}>
+  <div className="text-sm font-semibold text-neutral-800 truncate">{f.label || f.name || "Untitled field"}</div>
+  <div className="text-2xs text-neutral-400 truncate">{f.type || "text"}{f.prefill_from ? " · fills from " + (PREFILL_LABELS[f.prefill_from] || f.prefill_from) : " · filled manually"}{f.required ? " · required" : ""}{f.type === "signature" && f.signer_role ? " · " + ((templateForm.signer_roles || []).find(r => r.role === f.signer_role)?.label || f.signer_role) : ""}</div>
+  </button>
+  {templateForm.template_type !== "pdf_overlay" && <Btn size="xs" variant="secondary" onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} title="Place this field at the cursor in the page">Insert</Btn>}
+  </div>
+  {openField === i && (
+  <div className="px-3 pb-3 border-t border-neutral-100 pt-2">
   <div className="space-y-1.5 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Field label, e.g. Recipient Name" className="text-xs w-full" />
   <div className="grid grid-cols-2 gap-1.5">
@@ -1786,8 +1808,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1.5 text-xs whitespace-nowrap"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
   </div>
-  <TextLink tone="brand" size="xs" onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))}  title="Insert into body">{"{{}}"}</TextLink>
-  <TextLink tone="danger" size="xs" underline={false} onClick={() => removeField(i)} className="ml-auto">✕</TextLink>
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => removeField(i)} className="ml-auto">Remove field</TextLink>
   </div>
   </div>
   {f.type === "select" && (
@@ -1806,50 +1827,86 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {(templateForm.signer_roles || []).length === 0 && <span className="text-2xs text-warn-600">Define signer roles in the Signature Workflow section ↓</span>}
   </div>
   )}
-  <div className="text-xs text-neutral-400 mt-1">Merge tag: <code className="bg-neutral-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
+  <div className="text-xs text-neutral-400 mt-1">Tag <code className="bg-neutral-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code> · type <code className="bg-neutral-100 px-1 rounded">{"{{"}</code> in the page to insert any field</div>
+  </div>
+  )}
   </div>
   ))}
   </div>
   </div>
-  </div>
-  {/* END LEFT RAIL */}
-
-  {/* RIGHT RAIL — Template Details / Signature Workflow / Advanced Config.
-      DOM-ordered before the center pane but positioned last in the flex
-      container via `order-last` so the center (old right pane) stays
-      flex-1 between them visually. */}
-  <div className="w-[340px] shrink-0 order-last border-l border-neutral-100 overflow-y-auto bg-white">
+  )}
+  {panelTab === "signers" && (
   <div className="p-3 space-y-3">
-
-  {/* Template Details */}
+  {/* Signature Workflow */}
   <div className="bg-white border border-neutral-100 rounded-xl p-3">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Template Details</h3>
-  <div className="space-y-2">
-  <div>
-  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Name *</label>
-  <Input size="sm" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
-  </div>
-  <div>
-  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
-  {/* A free-text field with the existing types as suggestions, so a new
-      type -- "court filing", "addendum" -- can simply be typed. It was a
-      closed dropdown of four, which is why anything else became
-      unreachable. */}
-  <Input size="sm" list="doc-category-list" value={templateForm.category}
-    onChange={e => setTemplateForm({...templateForm, category: e.target.value})}
-    placeholder="e.g. leases, court filing" />
-  <datalist id="doc-category-list">
-    {CATEGORIES.map(c => <option key={c} value={c} />)}
-  </datalist>
-  <div className="text-2xs text-neutral-400 mt-0.5">Pick one or type a new type.</div>
-  </div>
-  <div>
-  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
-  <Input size="sm" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
-  </div>
-  </div>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Signature Workflow</h3>
+  <p className="text-xs text-neutral-400 mb-3">Each signer gets a private link by email; no account needed. In order: use the arrows to set who signs first.</p>
+
+  <div className="grid grid-cols-3 gap-2 mb-4">
+  {[
+    { value: "none", label: "No signing", desc: "Make the document only" },
+    { value: "parallel", label: "All at once", desc: "Everyone is emailed together" },
+    { value: "sequential", label: "In order", desc: "One after another" },
+  ].map(opt => (
+    <button key={opt.value} type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signing_mode: opt.value }))}
+      className={"text-left px-3 py-2 rounded-xl border transition-colors " + (templateForm.signing_mode === opt.value ? "border-brand-500 bg-brand-50 text-brand-700" : "border-brand-100 bg-white text-neutral-500 hover:border-brand-300")}>
+      <div className="text-xs font-semibold">{opt.label}</div>
+      <div className="text-2xs text-neutral-400 mt-0.5">{opt.desc}</div>
+    </button>
+  ))}
   </div>
 
+  {templateForm.signing_mode !== "none" && (
+  <div className="space-y-2">
+  <div className="flex items-center justify-between mb-1">
+  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
+  <TextLink tone="brand" size="xs" type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))}>+ Add signer</TextLink>
+  </div>
+  {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
+  {(templateForm.signer_roles || []).slice().sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => {
+  const color = getRoleColor(r.role, templateForm.signer_roles);
+  const setRole = (patch) => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).map(x => (x.role === r.role ? { ...x, ...patch } : x)) }));
+  const move = (dir) => {
+    const list = (templateForm.signer_roles || []).slice().sort((a,b) => (a.order||0) - (b.order||0));
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    setTemplateForm(prev => ({ ...prev, signer_roles: list.map((x, n) => ({ ...x, order: n + 1 })) }));
+  };
+  const used = templateForm.fields.filter(f => f.type === "signature" && f.signer_role === r.role).length;
+  return (
+  <div key={r.role} className="bg-white border border-neutral-100 rounded-xl p-2.5 space-y-2">
+  <div className="flex items-center gap-2">
+  {templateForm.signing_mode === "sequential"
+    ? <span className={`w-6 h-6 rounded-full ${color.dot} text-white text-2xs font-bold flex items-center justify-center shrink-0`} title="Signs in this order">{i + 1}</span>
+    : <span className={`w-2.5 h-2.5 rounded-full ${color.dot} shrink-0`} title={`Colour: ${r.label || r.role}`} />}
+  <Input size="sm" value={r.label || ""} onChange={e => setRole({ label: e.target.value })} placeholder="Who signs, e.g. Tenant" className="flex-1 min-w-0 font-semibold" aria-label="Signer" />
+  {templateForm.signing_mode === "sequential" && <div className="flex flex-col shrink-0">
+    <button type="button" onClick={() => move(-1)} disabled={i === 0} className="text-neutral-400 hover:text-neutral-700 disabled:opacity-30 leading-none" aria-label="Signs earlier" title="Signs earlier"><span className="material-icons-outlined text-base">expand_less</span></button>
+    <button type="button" onClick={() => move(1)} disabled={i === (templateForm.signer_roles || []).length - 1} className="text-neutral-400 hover:text-neutral-700 disabled:opacity-30 leading-none" aria-label="Signs later" title="Signs later"><span className="material-icons-outlined text-base">expand_more</span></button>
+  </div>}
+  <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="w-8 h-8 rounded-lg text-neutral-400 hover:text-danger-600 hover:bg-danger-50 shrink-0" aria-label="Remove signer" title="Remove signer">✕</button>
+  </div>
+  <div className="flex items-center justify-between gap-2 pl-8 flex-wrap">
+  <span className="text-2xs text-neutral-400">id <code className="bg-neutral-100 px-1 rounded">{r.role}</code> · {used ? used + " signature field" + (used === 1 ? "" : "s") : "no signature field yet"}</span>
+  <label className="flex items-center gap-1.5 text-xs text-neutral-600 cursor-pointer"><Checkbox checked={r.required !== false} onChange={e => setRole({ required: e.target.checked })} className="accent-brand-600" />Must sign</label>
+  </div>
+  </div>
+  );
+  })}
+  {(templateForm.signer_roles || []).length > 0 && (
+  <div className="text-2xs text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
+  Where they sign: add a field of type <code className="bg-neutral-100 px-1 rounded">signature</code> on the Fields tab, pick the signer, and place it in the page where the signature goes. Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
+  </div>
+  )}
+  </div>
+  )}
+  </div>
+
+  </div>
+  )}
+  {panelTab === "page" && (
+  <div className="p-3 space-y-3">
   {/* Page setup — header/footer printed on every page (HTML templates) */}
   {templateForm.template_type === "html" && (() => {
   const ps = { headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", pageWidth: 816, pageHeight: 1056, marginTop: 96, marginBottom: 96, ...(templateForm.field_config?.page_setup || {}) };
@@ -1875,14 +1932,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   );
   })()}
 
+  </div>
+  )}
+  {panelTab === "rules" && (
+  <div className="p-3 space-y-3">
   {/* Advanced Field Config — collapsible */}
-  {templateForm.fields.length > 0 && (
+  {(
   <div className="bg-white border border-neutral-100 rounded-xl">
-  <button type="button" onClick={() => setAdvancedOpen(o => !o)} className="w-full flex items-center justify-between p-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:bg-neutral-50 rounded-xl">
-  <span className="flex items-center gap-1.5"><span className="material-icons-outlined text-sm text-neutral-400">{advancedOpen ? "expand_more" : "chevron_right"}</span>Advanced Field Config</span>
+  <div className="w-full flex items-center justify-between p-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+  <span className="flex items-center gap-1.5">Rules</span>
   <span className="text-2xs text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.derived || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
-  </button>
-  {advancedOpen && (
+  </div>
   <div className="px-3 pb-3">
 
   {/* Calculated Fields */}
@@ -1981,83 +2041,48 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <strong>Address blocks:</strong> Set field type to "address_block" above — it renders as a 5-field structured address (street, apt, city, state, zip).
   </div>
   </div>
-  )}
   </div>
   )}
 
-  {/* Signature Workflow */}
+
+  </div>
+  )}
+  {panelTab === "details" && (
+  <div className="p-3 space-y-3">
+  {/* Template Details */}
   <div className="bg-white border border-neutral-100 rounded-xl p-3">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Signature Workflow</h3>
-  <p className="text-xs text-neutral-400 mb-3">Choose how this document gets signed. Each signer gets a unique magic-link email; no account required on their end.</p>
-
-  <div className="flex gap-2 mb-4">
-  {[
-    { value: "none", label: "No signing", desc: "Generate doc only" },
-    { value: "parallel", label: "Parallel", desc: "All signers at once" },
-    { value: "sequential", label: "Sequential", desc: "One after another, in order" },
-  ].map(opt => (
-    <button key={opt.value} type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signing_mode: opt.value }))}
-      className={"flex-1 text-left px-3 py-2 rounded-xl border transition-colors " + (templateForm.signing_mode === opt.value ? "border-brand-500 bg-brand-50 text-brand-700" : "border-brand-100 bg-white text-neutral-500 hover:border-brand-300")}>
-      <div className="text-xs font-semibold">{opt.label}</div>
-      <div className="text-2xs text-neutral-400 mt-0.5">{opt.desc}</div>
-    </button>
-  ))}
-  </div>
-
-  {templateForm.signing_mode !== "none" && (
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Template Details</h3>
   <div className="space-y-2">
-  <div className="flex items-center justify-between mb-1">
-  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
-  <TextLink tone="brand" size="xs" type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))}>+ Add signer</TextLink>
+  <div>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Name *</label>
+  <Input size="sm" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
   </div>
-  {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
-  {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => {
-  const color = getRoleColor(r.role, templateForm.signer_roles);
-  return (
-  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-white border border-neutral-100 rounded-xl p-2">
-  <span className={`col-span-1 w-2.5 h-2.5 rounded-full ${color.dot} shrink-0`} title={`Color coding: ${r.label || r.role}`} />
-  {templateForm.signing_mode === "sequential" && (
-  <Input size="sm" type="number" value={r.order || i + 1} onChange={e => {
-    const next = [...(templateForm.signer_roles || [])];
-    const idx = next.findIndex(x => x.role === r.role);
-    if (idx >= 0) next[idx] = { ...next[idx], order: parseInt(e.target.value, 10) || 1 };
-    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} className="col-span-1 text-center" title="Sign order" />
-  )}
-  <Input size="sm" value={r.role} onChange={e => {
-    const next = [...(templateForm.signer_roles || [])];
-    const idx = next.findIndex(x => x.role === r.role);
-    if (idx >= 0) next[idx] = { ...next[idx], role: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") };
-    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} placeholder="role_id" className={templateForm.signing_mode === "sequential" ? "col-span-3" : "col-span-4"} title="Stable identifier" />
-  <Input size="sm" value={r.label || ""} onChange={e => {
-    const next = [...(templateForm.signer_roles || [])];
-    const idx = next.findIndex(x => x.role === r.role);
-    if (idx >= 0) next[idx] = { ...next[idx], label: e.target.value };
-    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-5"} />
-  <label className="col-span-1 flex items-center justify-center text-2xs text-neutral-500"><Checkbox checked={r.required !== false} onChange={e => {
-    const next = [...(templateForm.signer_roles || [])];
-    const idx = next.findIndex(x => x.role === r.role);
-    if (idx >= 0) next[idx] = { ...next[idx], required: e.target.checked };
-    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} className="accent-brand-600 mr-1" />req</label>
-  <TextLink type="button" tone="danger" size="sm" underline={false} onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="col-span-1" title="Remove signer">✕</TextLink>
+  <div>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
+  {/* A free-text field with the existing types as suggestions, so a new
+      type -- "court filing", "addendum" -- can simply be typed. It was a
+      closed dropdown of four, which is why anything else became
+      unreachable. */}
+  <Input size="sm" list="doc-category-list" value={templateForm.category}
+    onChange={e => setTemplateForm({...templateForm, category: e.target.value})}
+    placeholder="e.g. leases, court filing" />
+  <datalist id="doc-category-list">
+    {CATEGORIES.map(c => <option key={c} value={c} />)}
+  </datalist>
+  <div className="text-2xs text-neutral-400 mt-0.5">Pick one or type a new type.</div>
   </div>
-  );
-  })}
-  {(templateForm.signer_roles || []).length > 0 && (
-  <div className="text-2xs text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
-  Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
+  <div>
+  <label className="text-2xs font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
+  <Input size="sm" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
   </div>
-  )}
   </div>
-  )}
   </div>
 
   </div>
+  )}
   </div>
-  {/* END RIGHT RAIL */}
+  {/* END SIDE PANEL */}
+
 
   {/* CENTER — canvas (was the old right pane). flex-1 fills the middle. */}
   <div className="flex-1 overflow-y-auto bg-neutral-100/30 flex flex-col">
@@ -2173,6 +2198,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   placeholder="Start typing… drag a field from the left rail or click a merge-chip to insert."
   hideToolbar
   paperCanvas
+  showFieldChips={false}
   pageSetup={templateForm.field_config?.page_setup || null}
   onEditorReady={setHtmlEditor}
   />

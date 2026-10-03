@@ -46,6 +46,26 @@ const MergeTagHighlight = Extension.create({
   },
 });
 
+// Typing "{{" in the page offers the fields; arrows and Enter pick one,
+// the letters typed so far filter. The chip cloud above the page went
+// away for this. The popover is React; this extension only owns the keys
+// while it is open, through a ref the component keeps current.
+const FieldSuggestKeys = Extension.create({
+  name: "fieldSuggestKeys",
+  priority: 1100,
+  // A function, not a ref object: configure() deep-copies plain objects,
+  // which would freeze the ref at the moment of configuration.
+  addOptions() { return { handler: () => null }; },
+  addKeyboardShortcuts() {
+    const when = (fn) => () => { const h = this.options.handler(); return h ? fn(h) : false; };
+    return {
+      ArrowDown: when(h => h.move(1)), ArrowUp: when(h => h.move(-1)),
+      Enter: when(h => h.pick()), Tab: when(h => h.pick()), Escape: when(h => h.close()),
+    };
+  },
+});
+const SUGGEST_RE = /\{\{([\w ]{0,40})$/;
+
 // Only faces the app bundles and embeds in the PDF (the Liberation
 // family, metric-identical to these three). Offering Georgia or Calibri
 // here would look right on screen and then print in a different font.
@@ -463,6 +483,8 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   const [dragOver, setDragOver] = useState(false);
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const setupKey = JSON.stringify(setup);
+  const suggestRef = useRef(null);
+  const [suggest, setSuggest] = useState(null);   // { from, to, query, index, x, y } while "{{" is being typed
   const editor = useEditor({
     extensions: docExtensions({
       // Real pages only on the paper canvas (template editor, previews).
@@ -470,7 +492,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
       setup,
       // A read-only view shows the finished document: no "start typing"
       // hint, and any {{tag}} left unfilled should read as itself.
-      extra: readOnly ? [] : [Placeholder.configure({ placeholder }), MergeTagHighlight],
+      extra: readOnly ? [] : [Placeholder.configure({ placeholder }), MergeTagHighlight, FieldSuggestKeys.configure({ handler: () => suggestRef.current })],
     }),
     editable: !readOnly,
     content: value,
@@ -487,6 +509,36 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   });
 
   useEffect(() => () => { if (editor) editor.destroy(); }, [editor]);
+
+  // "{{" typed in the page: watch the text before the cursor.
+  const fieldsRef = useRef(mergeFields); fieldsRef.current = mergeFields;
+  useEffect(() => {
+    if (!editor || readOnly) return undefined;
+    const onTr = () => {
+      const { $from, empty } = editor.state.selection;
+      if (!empty || !$from.parent.isTextblock) { setSuggest(null); return; }
+      const before = $from.parent.textBetween(0, $from.parentOffset, "\n", "\n");
+      const m = before.match(SUGGEST_RE);
+      if (!m || !(fieldsRef.current || []).length) { setSuggest(null); return; }
+      let x = 0, y = 0;
+      try { const c = editor.view.coordsAtPos($from.pos); x = c.left; y = c.bottom; } catch { /* no coords yet */ }
+      setSuggest(prev => ({ from: $from.pos - m[0].length, to: $from.pos, query: m[1].trim().toLowerCase(), index: prev && prev.query === m[1].trim().toLowerCase() ? prev.index : 0, x, y }));
+    };
+    editor.on("transaction", onTr);
+    editor.on("blur", () => setSuggest(null));
+    return () => { editor.off("transaction", onTr); };
+  }, [editor, readOnly]);
+  const suggestions = suggest ? (mergeFields || []).filter(f => f.name && (!suggest.query || (f.label || "").toLowerCase().includes(suggest.query) || f.name.toLowerCase().includes(suggest.query))).slice(0, 8) : [];
+  const pickSuggestion = (f) => {
+    if (!editor || !suggest || !f) return;
+    editor.chain().focus().insertContentAt({ from: suggest.from, to: suggest.to }, "{{" + f.name + "}}").run();
+    setSuggest(null);
+  };
+  suggestRef.current = suggest && suggestions.length ? {
+    move: (d) => { setSuggest(p => (p ? { ...p, index: (p.index + d + suggestions.length) % suggestions.length } : p)); return true; },
+    pick: () => { pickSuggestion(suggestions[suggest.index] || suggestions[0]); return true; },
+    close: () => { setSuggest(null); return true; },
+  } : null;
   // For the browser tests: the editor instance, in development only.
   useEffect(() => { if (editor && process.env.NODE_ENV !== "production" && !readOnly) window.__hxEditor = editor; }, [editor, readOnly]);
 
@@ -641,6 +693,19 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
             the gaps between pages. So no padded wrapper here, and no
             max-width clamp on its children -- that would squash the page
             furniture, which is deliberately wider than the text column. */}
+        {suggest && suggestions.length > 0 && (
+          <div role="listbox" aria-label="Fields" className="fixed z-50 w-72 bg-white border border-neutral-200 rounded-xl shadow-pop p-1 text-xs" style={{ left: suggest.x, top: suggest.y + 4 }} onMouseDown={e => e.preventDefault()}>
+            <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-neutral-400">{suggest.query ? `Fields matching "${suggest.query}"` : "Fields"}</div>
+            {suggestions.map((f, i) => (
+              <button key={f.name} type="button" role="option" aria-selected={i === suggest.index} onClick={() => pickSuggestion(f)}
+                className={"w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-left " + (i === suggest.index ? "bg-brand-50 text-brand-800" : "hover:bg-neutral-50")}>
+                <span className="font-semibold truncate">{f.label || f.name}</span>
+                <code className="text-2xs text-neutral-400 shrink-0">{"{{" + f.name + "}}"}</code>
+              </button>
+            ))}
+            <div className="px-2 py-1 text-2xs text-neutral-400 border-t border-neutral-100 mt-1">↑↓ choose · Enter insert · Esc close</div>
+          </div>
+        )}
         <div
           ref={paneRef}
           className="flex-1 overflow-auto p-6 transition-colors"
@@ -692,6 +757,19 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         </div>
       )}
 
+        {suggest && suggestions.length > 0 && (
+          <div role="listbox" aria-label="Fields" className="fixed z-50 w-72 bg-white border border-neutral-200 rounded-xl shadow-pop p-1 text-xs" style={{ left: suggest.x, top: suggest.y + 4 }} onMouseDown={e => e.preventDefault()}>
+            <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-neutral-400">{suggest.query ? `Fields matching "${suggest.query}"` : "Fields"}</div>
+            {suggestions.map((f, i) => (
+              <button key={f.name} type="button" role="option" aria-selected={i === suggest.index} onClick={() => pickSuggestion(f)}
+                className={"w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-left " + (i === suggest.index ? "bg-brand-50 text-brand-800" : "hover:bg-neutral-50")}>
+                <span className="font-semibold truncate">{f.label || f.name}</span>
+                <code className="text-2xs text-neutral-400 shrink-0">{"{{" + f.name + "}}"}</code>
+              </button>
+            ))}
+            <div className="px-2 py-1 text-2xs text-neutral-400 border-t border-neutral-100 mt-1">↑↓ choose · Enter insert · Esc close</div>
+          </div>
+        )}
       {/* Editor canvas — accepts drag-drop of merge fields */}
       <div
         className={"border border-t-0 rounded-b-xl bg-white overflow-y-auto flex-1 transition-colors " + (dragOver ? "border-brand-400 bg-brand-50/30" : "border-neutral-100")}
