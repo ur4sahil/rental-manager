@@ -22,6 +22,21 @@ import { mailtoUrl, canShareFile, loadDocContext, signerDefaultFor, effectiveSig
 import { renderPagedPdf, renderPagedPdfWithAnchors, concatPdfs, pdfFileName } from "../utils/pagedPdf";
 
 // ============ DOCUMENTS ============
+// The paged live preview: the body is merged once per change of its inputs.
+function LivePaged({ pagedBody, template, values, names }) {
+  // pagedBody is a fresh closure every render; the inputs are what matter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paged = useMemo(() => pagedBody(null, template, values, names), [template, values, names]);
+  return <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />;
+}
+
+// A value that follows `value` after `ms` of quiet.
+function useDebounced(value, ms) {
+  const [v, setV] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return v;
+}
+
 // Phones get one pane at a time in the builder (the two-pane layouts do
 // not fit). Tracks the viewport; 767px is Tailwind's md breakpoint.
 function useIsPhone() {
@@ -419,6 +434,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // side by side: one shows at a time, chosen with a two-button switch.
   const isPhone = useIsPhone();
   const [phonePane, setPhonePane] = useState("form");   // fill: form | preview; preview step: doc | send
+  // The live preview re-merges and re-paginates the whole document (17
+  // pages for a lease) whenever its inputs change. Typing drove that on
+  // EVERY keystroke -- the field values, and the signer names, which the
+  // signature block prints -- which on a phone made each key take a
+  // second and every button feel dead (Sahil, 2026-10-03). The preview
+  // follows the inputs with a short delay instead, and is built once per
+  // change, not once per render.
+  const previewValues = useDebounced(fieldValues, 400);
+  const previewNames = useDebounced(signerNames, 400);
   const isDragging = useRef(false);
   // The side pane is on the LEFT while filling in and on the RIGHT in preview.
   const sideOnLeft = useRef(true);
@@ -984,7 +1008,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   // Blocked merge field names that could leak system data
   const BLOCKED_MERGE_FIELDS = new Set(["company_id","companyId","user_email","userEmail","password","secret","token","access_token","api_key","encryption_iv"]);
-  function renderMergedBody(body, values, fieldConfig) {
+  function renderMergedBody(body, values, fieldConfig, names = signerNames) {
   // The signature block: one signature line per signer (every tenant on
   // the lease, then the landlord), from the same signer list the envelope
   // uses. Expanded first, so its slots are plain HTML to everything after.
@@ -992,7 +1016,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // preview step); a tenant or landlord line with none yet takes the
   // document's own name field, so a blank-mode lease still prints who
   // signs where.
-  const printedNames = { ...signerNames };
+  const printedNames = { ...names };
   for (const r of signerRoles) {
     if (printedNames[r.role]) continue;
     const role = String(r.role).toLowerCase();
@@ -1079,7 +1103,25 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // leases when this one is signed, and carries the document over to the
   // tenant on conversion. (Only sent when there is one.)
   if (docContext?.prospect?.id) payload.prospect_id = docContext.prospect.id;
-  const { data, error } = await supabase.from("doc_generated").insert([payload]).select().maybeSingle();
+  // The row carries an id made here, so a save whose RESPONSE is lost (a
+  // phone on a weak connection: the insert landed at 11:15:09 on 2026-10-03
+  // and Finalize spun forever) can be verified instead of hung on: after
+  // 25s the row is looked up by that id, and if it is there the save is
+  // treated as done. A plain insert (not an upsert), so the id is safe.
+  payload.id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : undefined;
+  if (!payload.id) delete payload.id;
+  const insertP = supabase.from("doc_generated").insert([payload]).select().maybeSingle();
+  let result = await Promise.race([insertP, new Promise(r => setTimeout(() => r({ timedOut: true }), 25000))]);
+  if (result.timedOut && payload.id) {
+    showToast("Still saving — checking…", "info");
+    for (let i = 0; i < 3 && result.timedOut; i++) {
+      await new Promise(r => setTimeout(r, 4000));
+      const { data: found } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).eq("id", payload.id).maybeSingle();
+      if (found) result = { data: found, error: null };
+    }
+    if (result.timedOut) { showToast("Could not confirm the save — check your connection and try again.", "error"); return null; }
+  }
+  const { data, error } = result;
   if (error) { pmError("PM-7003", { raw: error, context: "save generated document" }); return null; }
   // The prospect's record must agree with the lease that was actually
   // written: conversion charges what the record says, not what the PDF says.
@@ -1121,8 +1163,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // The body to lay out on pages, and the page setup to lay it out with.
   // A stored document carries its own setup (attachPageSetup); one still
   // being filled in takes the template's.
-  function pagedBody(doc, template, values) {
-  const merged = doc?.rendered_body || renderMergedBody(template?.body, values, template?.field_config);
+  function pagedBody(doc, template, values, names = undefined) {
+  const merged = doc?.rendered_body || renderMergedBody(template?.body, values, template?.field_config, names);
   const { html, setup } = splitPageSetup(merged);
   return { html: sanitizeTemplateHtml(html), pageSetup: setup || template?.field_config?.page_setup || null };
   }
@@ -2476,7 +2518,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Right: Live preview. An HTML document fills the pane edge to edge on
       its pages (the paged view brings its own gutter and scrolling); a
       PDF-overlay template keeps the padded, scrolling column. */}
-  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6" : "flex flex-col") + (isPhone && phonePane !== "preview" ? " hidden" : "")}>
+  {(!isPhone || phonePane === "preview") && <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6" : "flex flex-col")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2502,12 +2544,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   <div className="px-4 py-1.5 border-b border-neutral-100 bg-white text-2xs font-semibold uppercase tracking-wide text-neutral-400 shrink-0">Live preview · updates as you type</div>
-  {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
-  <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
-  ); })()}
+  <LivePaged pagedBody={pagedBody} template={selectedTemplate} values={previewValues} names={previewNames} />
   </>
   )}
-  </div>
+  </div>}
   </div>
   </div>
   );
@@ -2554,7 +2594,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Split pane (one pane at a time on a phone) */}
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Document preview */}
-  <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6 flex justify-center" : "flex flex-col") + (isPhone && phonePane !== "doc" ? " hidden" : "")}>
+  {(!isPhone || phonePane === "doc") && <div className={"flex-1 min-w-0 " + (selectedTemplate.template_type === "pdf_overlay" ? "overflow-y-auto p-6 flex justify-center" : "flex flex-col")}>
   {selectedTemplate.template_type === "pdf_overlay" ? (
   <div ref={pdfContainerRef} className="space-y-4">
   {pdfPages.map(pg => {
@@ -2579,12 +2619,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ) : (
   <div ref={previewRef} className="flex flex-col flex-1 min-h-0">
-  {(() => { const paged = pagedBody(null, selectedTemplate, fieldValues); return (
-  <RichTextEditor readOnly paperCanvas hideToolbar value={paged.html} pageSetup={paged.pageSetup} />
-  ); })()}
+  <LivePaged pagedBody={pagedBody} template={selectedTemplate} values={previewValues} names={previewNames} />
   </div>
   )}
-  </div>
+  </div>}
 
   {/* Drag handle */}
   {!isPhone && <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />}
