@@ -146,6 +146,19 @@ module.exports = async (req, res) => {
       const { stampInitials } = require("./_initials-stamp");
       pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: bodyPages, roster: roster.length ? roster : null }));
     }
+    // The certificate of completion: drawn here from every signer's row
+    // and put in place of the one the browser made (which could see only
+    // its own signer and came out clipped). The body pages are kept as
+    // the browser laid them out; everything after them is replaced.
+    if (bodyPages) {
+      const { certificatePdf, withCertificate } = require("./_certificate");
+      const { data: all } = await sb.from("doc_signatures")
+        .select("signer_role, signer_name, signer_email, sign_order, status, signed_at, signing_method, signer_ip, user_agent, integrity_hash, e_records_consented, e_records_consent_at, e_records_consent_version, hardware_software_acknowledged, viewed_at, paper_copy_requested_at, consent_withdrawn_at, initials_data, created_at")
+        .eq("doc_id", doc_id);
+      const { data: co } = await sb.from("companies").select("name").eq("id", doc.company_id).maybeSingle();
+      const cert = await certificatePdf({ doc, signers: all || [], companyName: co?.name || "" });
+      pdfBytes = Buffer.from(await withCertificate(pdfBytes, bodyPages, cert));
+    }
   } catch (e) { console.error("[finalize] signature/initials stamp skipped:", e.message); }
   const pdfHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
 
