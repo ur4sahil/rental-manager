@@ -13,7 +13,7 @@ import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { PARSE_OPTIONS, DEFAULT_PAGE_SETUP, attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { htmlToDocx, docxFileName } from "../utils/docxExport";
 import { SIGNATURE_BLOCK_TOKEN, SIGNATURE_BLOCK_KEY, hasSignatureBlock, signatureRows, expandSignatureBlock } from "../utils/signatureBlock";
-import { stampSignatures, initialsRoster } from "../utils/signatureStamp";
+import { stampSignatures, stampEnvelopeId, initialsRoster } from "../utils/signatureStamp";
 import { stampInitials } from "../utils/initialsStamp";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
@@ -1319,9 +1319,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
         .then(async ({ bytes, anchors }) => {
           const signed = sigs.filter(s => s.status === "signed");
           const PDFLib = await import("pdf-lib");
-          let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors) : bytes;
+          let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors, { envelopeId: doc.id }) : bytes;
           const roster = initialsRoster(paged.html);
           if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: null, roster: roster.length ? roster : null });
+          out = await stampEnvelopeId(PDFLib, out, doc.id);
           return out;
         }),
       html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),

@@ -132,12 +132,14 @@ module.exports = async (req, res) => {
   try {
     const n = Number(body_pages);
     const bodyPages = Number.isFinite(n) && n > 0 ? n : null;
-    const { validAnchors, stampSignatures } = require("./_signature-stamp");
+    const { validAnchors, stampSignatures, stampEnvelopeId } = require("./_signature-stamp");
     const anchors = validAnchors(sig_anchors, bodyPages || Infinity);
     if (anchors.length) {
-      const { data: rows } = await sb.from("doc_signatures").select("signer_role, signature_data, signed_at, status").eq("doc_id", doc_id).eq("status", "signed");
-      if (rows && rows.length) pdfBytes = Buffer.from(await stampSignatures(require("pdf-lib"), pdfBytes, rows, anchors));
+      const { data: rows } = await sb.from("doc_signatures").select("signer_role, signature_data, signed_at, status, integrity_hash").eq("doc_id", doc_id).eq("status", "signed");
+      if (rows && rows.length) pdfBytes = Buffer.from(await stampSignatures(require("pdf-lib"), pdfBytes, rows, anchors, { envelopeId: doc.id }));
     }
+    // The envelope ID in the top margin of every body page.
+    pdfBytes = Buffer.from(await stampEnvelopeId(require("pdf-lib"), pdfBytes, doc.id, { pages: bodyPages }));
     // Initials boxes: one per signer in the document's own order (the
     // roster), filled where the signer gave initials; older documents
     // (no signature block) get a box per signer with initials, by order.

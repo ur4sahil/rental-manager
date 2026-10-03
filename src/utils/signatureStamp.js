@@ -73,7 +73,39 @@ export function validAnchors(anchors, pageCount = Infinity) {
  * @param {Array} anchors  from renderPagedPdfWithAnchors (page px)
  * @returns {Promise<Uint8Array>}  the same bytes when there is nothing to draw
  */
-export async function stampSignatures(PDFLib, pdfBytes, signers, anchors) {
+/**
+ * The envelope ID in the top margin of every body page, as DocuSign and
+ * DigiSign print theirs: any single page can be matched to its record,
+ * and a page from another document cannot be slipped into the stack.
+ * @param {{ pages?: number }} o  only the first `pages` pages (the body)
+ */
+export async function stampEnvelopeId(PDFLib, pdfBytes, envelopeId, { pages = null } = {}) {
+  const id = String(envelopeId || "").trim();
+  if (!id) return pdfBytes;
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdf = await PDFDocument.load(pdfBytes);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const all = pdf.getPages();
+  const count = pages === null ? all.length : Math.min(all.length, Math.max(0, pages));
+  const text = "Housify Envelope ID: " + id;
+  for (let p = 0; p < count; p++) {
+    const page = all[p];
+    const { height } = page.getSize();
+    page.drawText(text, { x: 36, y: height - 22, size: 7, font, color: rgb(0.35, 0.35, 0.4) });
+  }
+  return pdf.save();
+}
+
+/** The tag under a signature line: "Signed via Housify · ID 1A2B3C4D" (the signature's own hash, else the envelope's). */
+export function signatureTag(signer, envelopeId) {
+  const key = String(signer?.integrity_hash || envelopeId || "").replace(/-/g, "").slice(0, 8).toUpperCase();
+  return "Signed via Housify" + (key ? " \u00b7 ID " + key : "");
+}
+
+/**
+ * @param {{ envelopeId?: string }} o  with an envelopeId, each signature gets its tag underneath
+ */
+export async function stampSignatures(PDFLib, pdfBytes, signers, anchors, { envelopeId = null } = {}) {
   const byRole = new Map();
   for (const s of signers || []) {
     if (s && s.signer_role && s.signature_data && (s.status === "signed" || s.status === undefined)) byRole.set(String(s.signer_role), s);
@@ -107,17 +139,24 @@ export async function stampSignatures(PDFLib, pdfBytes, signers, anchors) {
       if (text) page.drawText(text, { x: x + 2, y: base + 1, size: DATE_SIZE_PT, font: plain, color: ink });
       continue;
     }
+    // The tag sits on the right end of the line, above the rule (there is
+    // no room under it: "Print Name" follows at once); the signature keeps
+    // to the room left of it.
+    const tag = envelopeId ? signatureTag(s, envelopeId) : "";
+    const tagW = tag ? plain.widthOfTextAtSize(tag, 5) + 4 : 0;
+    const room = w - 4 - tagW;
     const typed = signatureText(s.signature_data);
     if (typed !== null) {
       let size = TYPED_SIZE_PT;
-      while (size > 9 && italic.widthOfTextAtSize(typed, size) > w - 4) size -= 1;
+      while (size > 9 && italic.widthOfTextAtSize(typed, size) > room) size -= 1;
       page.drawText(typed, { x: x + 2, y: base + 2, size, font: italic, color: ink });
     } else if (images.get(s)) {
       const img = images.get(s);
       let h = MAX_SIG_HEIGHT_PT, iw = img.width * (h / img.height);
-      if (iw > w - 4) { iw = w - 4; h = img.height * (iw / img.width); }
+      if (iw > room) { iw = room; h = img.height * (iw / img.width); }
       page.drawImage(img, { x: x + 2, y: base, width: iw, height: h });
     }
+    if (tag) page.drawText(tag, { x: x + w - tagW, y: base + 1.5, size: 5, font: plain, color: rgb(0.35, 0.35, 0.4) });
   }
   return pdf.save();
 }
