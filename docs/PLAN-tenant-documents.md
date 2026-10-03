@@ -879,3 +879,46 @@ this work: `payments-autopay-stripe` (3 handler checks, since 0ec422a on
 tenant_name differs from the tenant record — data, in the database
 tests/.env points at). Browser checks in the session scratchpad:
 editor-e2e, tpl-ui-e2e, initials-e2e, export-e2e, sign-e2e, all passing.
+
+### Signing, as rebuilt on 2026-10-03 (staging c803a1e, 9b74f30)
+
+Sahil's reports on the test site: the lease's signature section was a
+hand-laid tangle of spaces and underscores that split across a page and
+lined up with nothing; the signing page was one flowing column with the
+pad at the bottom and nothing to click; he wants everyone to click an
+initial on every page and sign where they sign, a signature line per
+tenant however many there are, and witness signatures.
+
+Built:
+- `{{signature_block}}` in a template (Signers tab → Insert, or `{{`) →
+  one signature row per signer when the document is generated: every
+  tenant on the lease (effectiveSignerRoles adds the extra adults), then
+  the landlord; each row: heading, signature slot + (SEAL), Print Name,
+  date slot; witness column on the left. Rules: `src/utils/signatureBlock.js`.
+  Slots are a schema node (docKit `SignatureSlot`), so they survive the
+  editor, the preview, the signing page and the PDF.
+- Witnesses: template option "Each signature is witnessed" → every signer
+  gets a witness slot at send time (name + email, optional, same signing
+  step, never prefilled). `src/utils/signerRoles.js` (pure; docService
+  re-exports).
+- Signing page: real pages; "Initial" tab at the foot of every page and
+  "Sign here" on the signer's own lines, each clicked individually (first
+  click opens the dialog); Finish locked until all are done; initials
+  recorded as `typed:XX|ts:…|pages:N`.
+- Signed copy: pagedPdf reports slot anchors; the last signer's browser
+  sends them; the finalize API draws every signer's signature (image or
+  typed italic) + date on the lines, then the initials, then hashes.
+  `signatureStamp.js` = `api/_signature-stamp.js`. The office "Signed PDF"
+  download does the same in the browser.
+- Bugs found: `sanitizeTemplateHtml` refused every `data-*` attribute
+  (generated documents lost page breaks, keep-with-next, list styles,
+  borderless tables); pagedPdf drew transparent cell borders black.
+- MD Residential Lease rebuilt with the block; initials-per-page and
+  witnesses on; printed footer initials lines removed. Installed on both
+  TEST companies (sandbox-llc, Sigma test clone). Production's copy of the
+  template still has the old section until released.
+- Vertical ruler + Page tab fields: margins, header/footer distance, paper.
+
+Open: the three autopay/Stripe handler checks (since 0ec422a) are not
+diagnosed; 5 recurring rows with a stale tenant_name are a data fix
+awaiting his OK.
