@@ -174,6 +174,12 @@ async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
       }).select("id").maybeSingle();
       if (error) throw new Error(error.message);
       if (row) { await sb.from("doc_generated").update({ filed_document_id: row.id }).eq("id", doc.id); out.filed_document_id = row.id; }
+      // The lease record itself points at its signed copy (its
+      // signature_status is kept by _sync_lease_signature_status).
+      if (doc.lease_id) {
+        const { error: lErr } = await sb.from("leases").update({ document_url: path }).eq("id", doc.lease_id).eq("company_id", doc.company_id);
+        if (lErr) console.error("[doc] lease document_url not set:", lErr.message);
+      }
     }
   } catch (e) {
     console.error("[doc] filing the signed copy failed:", e.message);

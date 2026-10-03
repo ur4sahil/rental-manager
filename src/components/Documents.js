@@ -374,7 +374,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const [openField, setOpenField] = useState(null);           // index of the field row whose details are open
   // The records the document in hand is about (tenant, lease, property),
   // loaded by id. Saved onto the generated document as real links.
-  const [docContext, setDocContext] = useState(null);
+  const [docContextState, setDocContext] = useState(null);
+  const docContext = docContextState;
   const pendingChange = useRef(null);   // { kind, leaseId, tenantId, effective_date, payload, fieldMap, noticeDate }
   // The template's signers, plus a slot for each adult on the tenancy beyond
   // the template's own tenant slots (see effectiveSignerRoles).
@@ -1020,7 +1021,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Save generated document ----
-  async function saveDocument(status = "draft", { signing = false } = {}) {
+  async function saveDocument(status = "draft", { signing = false, context = undefined } = {}) {
+  // `context`: the records this document is about, when the caller just
+  // attached them (state would not have caught up yet); else the loaded one.
+  const docContext = context === undefined ? docContextState : context;
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return null; }
   // A document that carries a lease change: what will be scheduled is what
@@ -1540,6 +1544,24 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return { email: "", name: "" };
   }
 
+  // The current tenant a blank lease seems to be for: the tenant signer's
+  // email first (exact), else the name on the lease (one match only).
+  async function findTenantForBlankLease({ name, email }) {
+    try {
+      const base = () => supabase.from("tenants").select("id, name, property, email").eq("company_id", companyId).is("archived_at", null);
+      if (email) {
+        const { data } = await base().ilike("email", escapeFilterValue(email)).limit(2);
+        if (data && data.length === 1) return data[0];
+      }
+      const n = String(name || "").trim();
+      if (n.length >= 3) {
+        const { data } = await base().ilike("name", escapeFilterValue(n)).limit(2);
+        if (data && data.length === 1) return data[0];
+      }
+    } catch (_e) { /* a lookup that fails attaches nothing */ }
+    return null;
+  }
+
   async function sendForSignature() {
   if (!selectedTemplate) return;
   const roles = signerRoles;
@@ -1566,9 +1588,34 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   if (signers.length === 0) { showToast("At least one signer email is required", "error"); return; }
 
+  // A lease started from "Blank" is attached to nobody: it would be filed
+  // under the company only, not on the tenant's page, their property or
+  // their portal, and the lease record would never show as signed. If the
+  // name on it (or the tenant signer's email) is a current tenant's, offer
+  // to attach it to them before it goes out.
+  let context;
+  const kind = DOC_KIND_BY_TEMPLATE_KEY[selectedTemplate.template_key] || "other";
+  if (["lease", "renewal", "addendum"].includes(kind) && !docContext?.tenant && !docContext?.prospect) {
+    const tenantSigner = signers.find(sg => /tenant/.test(String(sg.role).toLowerCase()) && !/witness|landlord/.test(String(sg.role).toLowerCase()));
+    const match = await findTenantForBlankLease({ name: fieldValues.tenant_name || tenantSigner?.name || "", email: tenantSigner?.email || "" });
+    if (match) {
+      const attach = await showConfirm({
+        title: "Attach this lease to " + match.name + "?",
+        message: `"${match.name}" is a current tenant${match.property ? " at " + match.property : ""}. This lease was started from "Blank", so it is not attached to them yet. Attach it, and the signed copy is filed on their page, their property and their portal, and their lease record shows as signed. Send without attaching only if this is a different ${match.name}.`,
+        confirmText: "Attach and send", cancelText: "Send without attaching",
+      });
+      if (attach) {
+        try {
+          context = await loadDocContext({ companyId, tenantId: match.id, userProfile, activeCompany });
+          setDocContext(context);
+        } catch (e) { pmError("PM-8006", { raw: e, context: "attach lease to tenant" }); return; }
+      }
+    }
+  }
+
   setSending(true);
   try {
-    const doc = await saveDocument("sent", { signing: true });
+    const doc = await saveDocument("sent", { signing: true, context });
     if (!doc) { setSending(false); return; }
 
     const mode = ["parallel", "sequential"].includes(selectedTemplate.signing_mode) ? selectedTemplate.signing_mode : null;

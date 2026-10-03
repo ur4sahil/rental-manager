@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import SignaturePad, { ESIGN_CONSENT_VERSION } from "./SignaturePad";
@@ -62,6 +62,7 @@ export default function PublicSignPage({ token }) {
   const [pendingSlot, setPendingSlot] = useState(null);  // the tab whose click opened a dialog
   const role = payload?.signer_role || "";
   const wantsInitials = !!payload?.initials_each_page;
+  const signedOthers = useMemo(() => (Array.isArray(payload?.others) ? payload.others : []).filter(o => o && o.status === "signed" && o.role), [payload]);
   const measureSlots = useCallback(() => {
     const host = docRef.current;
     if (!host || !role) { setSlots([]); return; }
@@ -71,6 +72,14 @@ export default function PublicSignPage({ token }) {
     const next = Array.from(host.querySelectorAll(`span[data-sig-role="${esc(role)}"], span[data-sig-date="${esc(role)}"]`))
       .map(el => ({ kind: el.hasAttribute("data-sig-date") ? "date" : "sign", el, ...rel(el.getBoundingClientRect()) }))
       .filter(sl => sl.width > 0);
+    // The other signers who have already signed: their signature and date
+    // on their own lines (as the signed copy will show them).
+    for (const o of signedOthers) {
+      for (const el of host.querySelectorAll(`span[data-sig-role="${esc(o.role)}"], span[data-sig-date="${esc(o.role)}"]`)) {
+        const r = rel(el.getBoundingClientRect());
+        if (r.width > 0) next.push({ kind: el.hasAttribute("data-sig-date") ? "dateOther" : "signOther", el, other: o, ...r });
+      }
+    }
     // The initials boxes at the foot of every page: one per signer in the
     // document's order (the roster), exactly where the signed copy draws
     // them. The signer's own box is the "Initial" tab; the others are
@@ -90,12 +99,12 @@ export default function PublicSignPage({ token }) {
         roster.forEach((who, i) => {
           const b = initialsBoxRect(i, 612);
           const w = b.width * PT * zoom, h = b.height * PT * zoom;
-          next.push({ kind: i === mine ? "initial" : "initialOther", page, el: f, label: who.label, top: r.bottom - base.top - (b.y * PT * zoom) - h, left: pmRect.right - base.left - ((612 - b.x) * PT * zoom), width: w, height: h });
+          next.push({ kind: i === mine ? "initial" : "initialOther", page, el: f, label: who.label, other: signedOthers.find(o => o.role === who.role) || null, top: r.bottom - base.top - (b.y * PT * zoom) - h, left: pmRect.right - base.left - ((612 - b.x) * PT * zoom), width: w, height: h });
         });
       });
     }
     setSlots(prev => (prev.length === next.length && prev.every((p, i) => p.el === next[i].el && p.kind === next[i].kind && Math.abs(p.top - next[i].top) < 0.5 && Math.abs(p.left - next[i].left) < 0.5 && Math.abs(p.width - next[i].width) < 0.5) ? prev : next));
-  }, [role, wantsInitials]);
+  }, [role, wantsInitials, signedOthers]);
   // The paged view settles its pages over a few frames and re-fits on
   // resize, so the tabs follow the lines: measured on a short interval
   // while the document is shown (cheap: a handful of rects).
@@ -467,11 +476,29 @@ export default function PublicSignPage({ token }) {
               return adopted && signedSlots.size ? <div key={i} aria-label="Date signed" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{today}</div> : null;
             }
             if (sl.kind === "initialOther") {
+              const ini = sl.other?.initials_data ? signatureText(sl.other.initials_data) : null;
               return (
-                <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none" }} className="rounded border border-neutral-400 bg-white/70">
+                <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none" }} className={"rounded border bg-white/70 flex items-center justify-center " + (sl.other ? "border-brand-200" : "border-neutral-400")}>
+                  {ini ? <span className="italic text-brand-900 text-xs font-bold" style={{ fontFamily: docFont }}>{ini}</span>
+                    : sl.other?.initials_data ? <img src={sl.other.initials_data} alt="" style={{ maxHeight: sl.height - 4, maxWidth: sl.width - 4 }} /> : null}
                   <div className="absolute left-0 right-0 text-neutral-500 text-center" style={{ top: "100%", fontSize: 7 }}>{sl.label}</div>
                 </div>
               );
+            }
+            if (sl.kind === "signOther") {
+              const t = signatureText(sl.other.signature_data);
+              const h = Math.max(sl.height, 28);
+              return (
+                <div key={i} aria-label={"Signed by " + (sl.other.name || sl.other.role)} title={"Signed by " + (sl.other.name || sl.other.role) + (sl.other.signed_at ? " on " + signedDateText(sl.other.signed_at) : "")} data-other-signed="1"
+                  style={{ ...style, height: h, top: sl.top + sl.height - h, pointerEvents: "none" }} className="flex items-end pl-1 pb-0.5 overflow-hidden">
+                  {t !== null
+                    ? <span className="italic text-brand-900 whitespace-nowrap" style={{ fontFamily: docFont, fontSize: Math.min(20, sl.width / 9) }}>{t}</span>
+                    : sl.other.signature_data ? <img src={sl.other.signature_data} alt="" style={{ maxHeight: h - 4, maxWidth: sl.width - 6 }} /> : null}
+                </div>
+              );
+            }
+            if (sl.kind === "dateOther") {
+              return <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{signedDateText(sl.other.signed_at)}</div>;
             }
             if (sl.kind === "initial") {
               const isDone = initialedPages.has(sl.page);
