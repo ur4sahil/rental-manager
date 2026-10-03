@@ -425,6 +425,27 @@ select {
 .paged-editor .rm-with-pagination .rm-page-break .breaker {
   margin-right: 0 !important;
 }
+/* The add-on drops a marker after every line break (<br>) inside a
+   paragraph and styles it display:table; width:100%. A table must keep
+   clear of floats, and Safari puts it below EVERY page-break float
+   instead of in the next page: the paragraph grows to the end of the
+   document, the add-on adds pages for it, the floats reach further
+   down, and so on without end (a 16-page lease hit 900+ pages in
+   Safari on iPhone, iPad and Mac; the Initial tabs could not be
+   tapped). Chrome lays the marker out in the next page. Making the
+   marker inline leaves the text flow around the page breaks exactly
+   as Chrome had it (checked line by line) and ends the loop. */
+.paged-editor .rm-with-pagination .rm-br-decoration {
+  display: inline !important;
+  width: auto !important;
+}
+/* iOS Safari enlarges text in blocks wider than the screen (the page is
+   laid out at letter width and scaled down); the pages must break where
+   the PDF breaks. */
+.paged-editor .ProseMirror {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 .paged-editor .rm-with-pagination .rm-page-header,
 .paged-editor .rm-with-pagination .rm-page-footer {
   /* Fixed metrics: the editor works out how deep the page body is from
