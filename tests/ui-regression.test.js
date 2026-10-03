@@ -94,6 +94,26 @@ console.log("==============================================");
     offenders.length === 0, offenders.join("  |  ") || "none");
 }
 
+
+// 2026-10-03: the browser's own prompt()/alert()/confirm() boxes are gone.
+// They are tiny, unstyled, unvalidated, and the iPhone home-screen app can
+// return nothing from them, so a button that used one did nothing at all
+// (Maintenance "Bill Tenant" in the mobile audit). Questions go through
+// showConfirm({ fields }) or a small inline step on the page.
+{
+  const srcDir = path.join(__dirname, "..", "src");
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : (e.name.endsWith(".js") ? [path.join(d, e.name)] : []));
+  const offenders = [];
+  for (const f of walk(srcDir)) {
+    const lines = fs.readFileSync(f, "utf8").split("\n");
+    lines.forEach((l, i) => {
+      const code = l.replace(/\/\/.*$/, "").replace(/\{\/\*.*?\*\/\}/g, "");
+      if (/(^|[^a-zA-Z_.$])(window\.)?(prompt|alert|confirm)\(/.test(code)) offenders.push(path.relative(srcDir, f) + ":" + (i + 1));
+    });
+  }
+  assert("no native prompt()/alert()/confirm() in src/ (use showConfirm with fields, or an inline step)", offenders.length === 0, offenders.join("  |  ") || "none");
+}
+
 console.log("\n----------------------------------------------");
 console.log(`✅ Passed: ${passed}`);
 console.log(`❌ Failed: ${failed}`);

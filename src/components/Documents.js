@@ -2110,12 +2110,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
   <h4 className="text-xs font-semibold text-warn-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">calculate</span>Calculated Fields</h4>
-  <TextLink tone="warn" size="xs" underline={false} onClick={() => {
-  const name = prompt("Field name to make calculated (must match an existing field):");
-  if (!name?.trim()) return;
-  const formula = prompt("Formula (use field names, e.g. rent + late_fee):");
-  if (!formula?.trim()) return;
-  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: { ...(prev.field_config?.calculated || {}), [name.trim()]: { formula: formula.trim() } } } }));
+  <TextLink tone="warn" size="xs" underline={false} onClick={async () => {
+  const ans = await showConfirm({ title: "Calculated field", fields: [
+    { key: "name", label: "Field name (an existing field)", type: "text", placeholder: "e.g. total_rent", required: true },
+    { key: "formula", label: "Formula, using field names", type: "text", placeholder: "e.g. rent + late_fee", required: true }], confirmText: "Add" });
+  if (!ans) return;
+  const name = String(ans.name || "").trim(), formula = String(ans.formula || "").trim();
+  if (!name || !formula) return;
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: { ...(prev.field_config?.calculated || {}), [name]: { formula } } } }));
   }}>+ Add</TextLink>
   </div>
   {Object.entries(templateForm.field_config?.calculated || {}).map(([name, cfg]) => (
@@ -2173,14 +2175,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
   <h4 className="text-xs font-semibold text-accent-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">visibility</span>Conditional Visibility</h4>
-  <TextLink tone="accent" size="xs" underline={false} onClick={() => {
-  const name = prompt("Field to show/hide conditionally:");
-  if (!name?.trim()) return;
-  const depField = prompt("Show when which field...");
-  if (!depField?.trim()) return;
-  const eqVal = prompt("...equals what value?");
-  if (eqVal === null) return;
-  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: { ...(prev.field_config?.conditional || {}), [name.trim()]: { visible_when: { field: depField.trim(), eq: eqVal } } } } }));
+  <TextLink tone="accent" size="xs" underline={false} onClick={async () => {
+  const ans = await showConfirm({ title: "Show a field only when…", fields: [
+    { key: "name", label: "Field to show or hide", type: "text", required: true },
+    { key: "depField", label: "Show it when this field", type: "text", required: true },
+    { key: "eqVal", label: "equals this value", type: "text" }], confirmText: "Add" });
+  if (!ans) return;
+  const name = String(ans.name || "").trim(), depField = String(ans.depField || "").trim();
+  if (!name || !depField) return;
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: { ...(prev.field_config?.conditional || {}), [name]: { visible_when: { field: depField, eq: String(ans.eqVal ?? "") } } } } }));
   }}>+ Add</TextLink>
   </div>
   {Object.entries(templateForm.field_config?.conditional || {}).map(([name, cfg]) => (

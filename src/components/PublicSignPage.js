@@ -328,10 +328,13 @@ export default function PublicSignPage({ token }) {
     const { error: rpcErr } = await supabase.rpc("request_paper_copy", { p_token: token, p_reason: null });
     if (!rpcErr) setPaperCopyRequested(true);
   }
+  // Asked in a small step on the page (the browser's prompt box cannot be
+  // shown by the iPhone home-screen app).
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
   async function handleWithdrawConsent() {
-    const reason = window.prompt("Optional — tell us why you're withdrawing consent (this helps us follow up):", "");
-    const { error: rpcErr } = await supabase.rpc("withdraw_e_records_consent", { p_token: token, p_reason: reason || null });
-    if (!rpcErr) setConsentWithdrawn(true);
+    const { error: rpcErr } = await supabase.rpc("withdraw_e_records_consent", { p_token: token, p_reason: withdrawReason.trim() || null });
+    if (!rpcErr) { setConsentWithdrawn(true); setWithdrawOpen(false); }
   }
 
   if (loading) {
@@ -410,10 +413,20 @@ export default function PublicSignPage({ token }) {
               </button>
             )}
             {paperCopyRequested && <div className="text-xs text-success-700">✓ Paper copy requested — the sender has been notified.</div>}
-            {!consentWithdrawn && (
-              <button onClick={handleWithdrawConsent} className="text-xs text-neutral-500 hover:text-neutral-700 underline">
+            {!consentWithdrawn && !withdrawOpen && (
+              <button onClick={() => setWithdrawOpen(true)} className="text-xs text-neutral-500 hover:text-neutral-700 underline">
                 Withdraw electronic records consent (future communications)
               </button>
+            )}
+            {!consentWithdrawn && withdrawOpen && (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-left space-y-2">
+                <label htmlFor="withdraw-reason" className="text-xs font-medium text-neutral-600 block">Withdraw consent to electronic records for future communications. Optional: tell us why, so we can follow up.</label>
+                <textarea id="withdraw-reason" rows={2} value={withdrawReason} onChange={e => setWithdrawReason(e.target.value)} className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm" />
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setWithdrawOpen(false)} className="px-3 py-1.5 text-xs rounded-lg border border-neutral-200 text-neutral-600">Cancel</button>
+                  <button type="button" onClick={handleWithdrawConsent} className="px-3 py-1.5 text-xs rounded-lg bg-neutral-700 text-white">Withdraw consent</button>
+                </div>
+              </div>
             )}
             {consentWithdrawn && <div className="text-xs text-neutral-500">Consent withdrawn — future communications will be paper.</div>}
           </div>

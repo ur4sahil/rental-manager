@@ -154,8 +154,9 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
   }
 
   async function handleSkip(bill) {
-    const reason = prompt("Reason for skipping this bill? (e.g. \"lender escrow\")");
-    if (reason === null) return;
+    const ans = await showConfirm({ title: "Skip this bill", message: "It is marked as not paid by you here (for example the lender pays it from escrow).", fields: [{ key: "reason", label: "Reason", type: "text", placeholder: "e.g. lender escrow" }], confirmText: "Skip bill" });
+    if (!ans) return;
+    const reason = String(ans.reason || "").trim();
     if (!guardSubmit("skipBill", bill.id)) return;
     try {
       const res = await skipBill({ billId: bill.id, companyId, reason });

@@ -983,9 +983,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       deliberate choice rather than something typed into the provider's form
       and hoped for. */}
   <TextLink tone="neutral" size="xs" onClick={async () => {
-    const raw = window.prompt(`How much of the ${formatCurrency(safeNum(bill.amount))} do you want to pay?`, "");
-    if (raw == null) return;
-    const v = Number(String(raw).replace(/[^0-9.]/g, ""));
+    const ans = await showConfirm({ title: "Pay part of this bill", message: `The bill is ${formatCurrency(safeNum(bill.amount))}. How much do you want to pay now?`, fields: [{ key: "amount", label: "Amount", type: "money", required: true }], confirmText: "Continue to pay" });
+    if (!ans) return;
+    const v = Number(String(ans.amount).replace(/[^0-9.]/g, ""));
     if (!Number.isFinite(v) || v <= 0) { showToast("That is not an amount.", "error"); return; }
     await payBillViaPortal(bill, v);
   }}>Pay part</TextLink>
@@ -1132,7 +1132,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider</label>
   <Select value={providers.some(p => p.display_name === form.provider) ? form.provider : (form.provider ? "__keep__" : "")} onChange={async e => {
     const v = e.target.value;
-    if (v === "__add__") { const name = window.prompt("New utility provider name:"); if (name && name.trim()) { const dn = await addUtilityProvider(name); if (dn) setForm(f => ({ ...f, provider: dn })); } }
+    if (v === "__add__") { const ans = await showConfirm({ title: "New utility provider", fields: [{ key: "name", label: "Provider name", type: "text", placeholder: "e.g. Comcast, City of Laurel", required: true }], confirmText: "Add provider" }); const name = ans ? String(ans.name || "").trim() : ""; if (name) { const dn = await addUtilityProvider(name); if (dn) setForm(f => ({ ...f, provider: dn })); } }
     else if (v !== "__keep__") { setForm(f => ({ ...f, provider: v })); }
   }}>
     <option value="">Select provider…</option>

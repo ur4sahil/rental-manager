@@ -144,6 +144,27 @@ function cleanPastedHtml(html) {
 //  onPageSetupChange(patch) — paperCanvas only: the rulers can then drag the
 //                    page margins and the header/footer distances (px).
 
+// A small "Link address" dialog: Enter applies, an empty address removes
+// the link, Escape cancels.
+function LinkDialog({ initial, onDone }) {
+  const [url, setUrl] = useState(initial || "");
+  return (
+    <div className="fixed inset-0 z-[1100] bg-black/30 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onDone(null); }}>
+      <div className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-sm p-4 space-y-3" role="dialog" aria-modal="true">
+        <label htmlFor="rte-link-url" className="text-sm font-semibold text-neutral-700 block">Link address</label>
+        <input id="rte-link-url" type="url" value={url} onChange={e => setUrl(e.target.value)} autoFocus placeholder="https://…"
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); onDone(url.trim()); } if (e.key === "Escape") onDone(null); }}
+          className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:border-brand-400 focus:outline-none" />
+        <div className="flex justify-end gap-2">
+          {initial && <button type="button" onClick={() => onDone("")} className="px-3 py-1.5 text-xs rounded-lg border border-danger-200 text-danger-600 hover:bg-danger-50">Remove link</button>}
+          <button type="button" onClick={() => onDone(null)} className="px-3 py-1.5 text-xs rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100">Cancel</button>
+          <button type="button" onClick={() => onDone(url.trim())} className="px-3 py-1.5 text-xs rounded-lg bg-brand-600 text-white hover:bg-brand-700">Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ToolbarBtn({ onClick, active, title, children }) {
   return (
     <button
@@ -323,10 +344,12 @@ function ToolbarInner({ editor, compact }) {
   const [open, setOpen] = useState("");   // which popover: color | highlight | paragraph | table | find | bullets | numbers
   const toggle = (name) => setOpen(o => (o === name ? "" : name));
   const close = () => setOpen("");
-  const setLink = () => {
-    const prev = editor.getAttributes("link").href || "";
-    // eslint-disable-next-line no-alert
-    const url = window.prompt("Link URL", prev);
+  // The link address, asked in a small dialog of the editor's own (the
+  // browser's prompt box cannot be shown by the iPhone home-screen app).
+  const [linkAsk, setLinkAsk] = useState(null);   // { href } while open
+  const setLink = () => setLinkAsk({ href: editor.getAttributes("link").href || "" });
+  const applyLink = (url) => {
+    setLinkAsk(null);
     if (url === null) return;
     if (url === "") { editor.chain().focus().extendMarkRange("link").unsetLink().run(); return; }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
@@ -416,6 +439,7 @@ function ToolbarInner({ editor, compact }) {
       </span></>)}
       {sep}
       <ToolbarBtn onClick={setLink} active={st.link} title="Link">{ICON("link", 15)}</ToolbarBtn>
+      {linkAsk && <LinkDialog initial={linkAsk.href} onDone={applyLink} />}
       {drop("table", <ToolbarBtn onClick={() => { if (st.inTable) toggle("table"); else editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run(); }} active={st.inTable} title={st.inTable ? "Table: rows, columns, merge, borders" : "Insert table"}>{ICON("table_chart", 15)}</ToolbarBtn>)}
       <ToolbarBtn onClick={() => editor.chain().focus().insertCheckbox().run()} title="Insert a checkbox (click it to tick)">{ICON("check_box_outline_blank", 15)}</ToolbarBtn>
       <ToolbarBtn onClick={() => editor.chain().focus().insertPageBreak().run()} title="Page break">{ICON("insert_page_break", 15)}</ToolbarBtn>
@@ -713,14 +737,6 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     editor.chain().focus().insertContent("{{" + name + "}}").run();
   };
 
-  const setLink = () => {
-    const prev = editor.getAttributes("link").href || "";
-    // eslint-disable-next-line no-alert
-    const url = window.prompt("Link URL", prev);
-    if (url === null) return;
-    if (url === "") { editor.chain().focus().extendMarkRange("link").unsetLink().run(); return; }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-  };
 
   const insertTable = () => {
     editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();

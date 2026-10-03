@@ -553,7 +553,9 @@ function AppInner() {
   setConfirmConfig(typeof config === "string" ? { message: config } : config);
   });
   }
-  function handleConfirm() { confirmResolveRef.current?.(true); setConfirmConfig(null); }
+  // With fields on the question, the answers come back ({ key: value });
+  // otherwise true.
+  function handleConfirm(values) { confirmResolveRef.current?.(values && typeof values === "object" ? values : true); setConfirmConfig(null); }
   function handleCancel() { confirmResolveRef.current?.(false); setConfirmConfig(null); }
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);

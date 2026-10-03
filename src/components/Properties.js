@@ -2131,8 +2131,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                       <Select value={utilProviders.some(p => p.display_name === u.provider) ? u.provider : (u.provider ? "__keep__" : "")} onChange={async e => {
                         const v = e.target.value;
                         if (v === "__add__") {
-                          const name = window.prompt("New utility provider name (e.g. Comcast, City of Laurel):");
-                          if (name && name.trim()) { const dn = await addUtilityProvider(name); if (dn) updateUtility(idx, "provider", dn); }
+                          const ans = await showConfirm({ title: "New utility provider", fields: [{ key: "name", label: "Provider name", type: "text", placeholder: "e.g. Comcast, City of Laurel", required: true }], confirmText: "Add provider" });
+                          const name = ans ? String(ans.name || "").trim() : "";
+                          if (name) { const dn = await addUtilityProvider(name); if (dn) updateUtility(idx, "provider", dn); }
                         } else if (v !== "__keep__") {
                           updateUtility(idx, "provider", v);
                         }
@@ -3703,17 +3704,11 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   }
   // Step 1: Ask for deletion reason
   if (!await showConfirm({ message: `Delete property "${address}"?\n\nThis is for mistaken entries. ALL data will be removed from active views:\n• Tenants (balances cleared), leases terminated\n• Work orders, utilities, documents, inspections\n• Journal entries voided, ledger entries archived\n• Accounting class hidden from tracking\n\nAll data can be restored within 180 days.\nUse "Deactivate" instead if this property is real but going offline.`, variant: "danger", confirmText: "Delete" })) return;
-  // Prompt for reason (required for audit trail). Using native prompt()
-  // instead of a hand-rolled innerHTML dialog — that older code was a
-  // 20-line DOM blob with hardcoded hex, style strings, and button ids
-  // that survived three refactors with zero test coverage. Native dialogs
-  // are theme-neutral, block cleanly, and survive browser evolution.
-  const deleteReason = window.prompt(
-    "Reason for deletion (recorded in audit trail):\n\nExamples: mistaken entry, duplicate, test data.",
-    ""
-  );
-  if (deleteReason === null) return; // User hit Cancel
-  const reasonText = deleteReason.trim() || "No reason provided";
+  // The reason, for the audit trail, in the app's own dialog (the
+  // browser's prompt box cannot be shown by the iPhone home-screen app).
+  const ans = await showConfirm({ title: "Why is it being deleted?", message: "Recorded in the audit trail. Examples: mistaken entry, duplicate, test data.", fields: [{ key: "reason", label: "Reason", type: "text" }], confirmText: "Delete property", variant: "danger" });
+  if (!ans) return; // User hit Cancel
+  const reasonText = String(ans.reason || "").trim() || "No reason provided";
   // Step 2: tenant names, for the audit line and the client caches below.
   const { data: propertyTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", address).is("archived_at", null);
   const tenantNames = (propertyTenants || []).map(t => t.name);

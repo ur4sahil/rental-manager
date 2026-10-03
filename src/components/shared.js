@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, MoneyInput, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
+import { Input, MoneyInput, Btn, Select, Checkbox, FileInput, IconBtn, TextLink, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus, propertyLabel, fmtDate} from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme, printFileName } from "../utils/theme";
@@ -185,21 +185,53 @@ export function ToastContainer({ toasts, removeToast }) {
   );
 }
 
+// The app's one question dialog. With `fields` it also takes answers
+// (an amount, a reason, a choice) and resolves to { key: value }; this
+// replaced window.prompt() everywhere on 2026-10-03 -- the browser's own
+// box is tiny, unstyled, has no validation, and in the iPhone home-screen
+// app it can return nothing, so the button did nothing at all.
+//   fields: [{ key, label, type: "text"|"money"|"number"|"textarea"|"select"|"email",
+//              placeholder, default, required, options: [{value,label}], help }]
 export function ConfirmModal({ config, onConfirm, onCancel }) {
+  const fields = Array.isArray(config?.fields) ? config.fields : [];
+  const [values, setValues] = useState({});
+  useEffect(() => {
+    if (!config) return;
+    const v = {}; for (const f of fields) v[f.key] = f.default != null ? String(f.default) : "";
+    setValues(v);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [config]);
   if (!config) return null;
   const isDanger = config.variant === "danger";
+  const missing = fields.some(f => f.required && !String(values[f.key] ?? "").trim());
+  const submit = () => { if (missing) return; onConfirm(fields.length ? { ...values } : true); };
+  const onKey = (e) => { if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") { e.preventDefault(); submit(); } };
   return (
   <div className="fixed inset-0 bg-black/40 z-[90] flex items-center justify-center p-4">
-  <div className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-md">
+  <div className="bg-white rounded-xl border border-neutral-200 shadow-card w-full max-w-md" role="dialog" aria-modal="true">
   <div className="px-6 py-4 border-b border-brand-50">
-  <h3 className="font-display font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
+  <h3 className="font-display font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : fields.length ? "" : "Are you sure?")}</h3>
   </div>
-  <div className="px-6 py-5">
-  <p className="text-sm text-neutral-600 whitespace-pre-line">{config.message}</p>
+  <div className="px-6 py-5 space-y-3">
+  {config.message && <p className="text-sm text-neutral-600 whitespace-pre-line">{config.message}</p>}
+  {fields.map((f, i) => {
+    const common = { id: "confirm-field-" + f.key, value: values[f.key] ?? "", onKeyDown: onKey, placeholder: f.placeholder || "", autoFocus: i === 0, className: "w-full" };
+    const set = (v) => setValues(prev => ({ ...prev, [f.key]: v }));
+    return (
+      <div key={f.key}>
+        {f.label && <label htmlFor={common.id} className="text-xs font-medium text-neutral-500 block mb-1">{f.label}{f.required ? " *" : ""}</label>}
+        {f.type === "money" ? <MoneyInput {...common} onChange={v => set(v)} />
+          : f.type === "textarea" ? <Textarea {...common} rows={3} onChange={e => set(e.target.value)} />
+          : f.type === "select" ? <Select {...common} onChange={e => set(e.target.value)}>{!f.required && <option value="">—</option>}{(f.options || []).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</Select>
+          : <Input {...common} type={f.type === "number" ? "number" : f.type === "email" ? "email" : "text"} inputMode={f.type === "number" ? "decimal" : undefined} onChange={e => set(e.target.value)} />}
+        {f.help && <div className="text-2xs text-neutral-400 mt-1">{f.help}</div>}
+      </div>
+    );
+  })}
   </div>
   <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
   <Btn variant="slate" onClick={onCancel}>{config.cancelText || "Cancel"}</Btn>
-  <Btn variant={isDanger ? "danger-fill" : "primary"} onClick={onConfirm}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</Btn>
+  <Btn variant={isDanger ? "danger-fill" : "primary"} onClick={submit} disabled={missing}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</Btn>
   </div>
   </div>
   </div>

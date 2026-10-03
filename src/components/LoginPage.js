@@ -83,15 +83,18 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   // saw the message mutate letter-by-letter if they kept typing after
   // requesting the reset. Capture once, display a stable value.
   const [resetSentEmail, setResetSentEmail] = useState("");
+  // "Forgot password?" opens a small step under the link: the address to
+  // send the reset to, confirmed in its own field (the one being typed into
+  // may be partial, or someone else's on a shared device). It used to be
+  // the browser's prompt box, which the iPhone home-screen app cannot show.
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
 
   const handleForgotPassword = async () => {
+  if (!resetOpen) { setResetEmail(email || ""); setResetOpen(true); setError(""); return; }
   if (!requireCaptcha()) return;
-  // Explicitly confirm the email address before sending. Using the same
-  // input the user has been typing into is error-prone — they may have
-  // only entered a partial address, or be on a shared device.
-  const suggested = email || "";
-  const target = (window.prompt("Enter the email address for password reset:", suggested) || "").trim();
-  if (!target) return;
+  const target = String(resetEmail || "").trim();
+  if (!target) { setError("Enter the email address for the reset link."); return; }
   if (!/^\S+@\S+\.\S+$/.test(target)) { setError("Please enter a valid email address."); return; }
   setLoading(true);
   setError("");
@@ -101,7 +104,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   if (captchaToken) opts.captchaToken = captchaToken;
   const { error } = await supabase.auth.resetPasswordForEmail(target, opts);
   if (error) { setError(error.message); resetCaptcha(); }
-  else { setResetSentEmail(target); resetCaptcha(); }
+  else { setResetSentEmail(target); setResetOpen(false); resetCaptcha(); }
   } catch (e) {
   setError(describeThrow(e));
   resetCaptcha();
@@ -317,7 +320,17 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <TextLink tone="brand" size="xs" onClick={() => { setMode("login"); setError(""); setResetSentEmail(""); resetCaptcha(); }}>Already have an account? Sign in</TextLink>
   ) : (
   <>
-  <TextLink tone="neutral" size="xs" onClick={handleForgotPassword} disabled={loading}>Forgot password?</TextLink>
+  {!resetOpen && <TextLink tone="neutral" size="xs" onClick={handleForgotPassword} disabled={loading}>Forgot password?</TextLink>}
+  {resetOpen && (
+  <div className="w-full mt-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3 space-y-2">
+    <label htmlFor="reset-email" className="text-xs font-medium text-neutral-600 block">Send a password reset link to</label>
+    <Input id="reset-email" type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="you@example.com" autoFocus onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleForgotPassword(); } }} />
+    <div className="flex gap-2 justify-end">
+      <Btn variant="slate" size="sm" onClick={() => setResetOpen(false)} disabled={loading}>Cancel</Btn>
+      <Btn size="sm" onClick={handleForgotPassword} disabled={loading}>Send link</Btn>
+    </div>
+  </div>
+  )}
   <TextLink className="block mx-auto" onClick={onBack}>Back to role selection</TextLink>
   </>
   )}

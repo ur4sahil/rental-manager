@@ -154,11 +154,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   async function billTenantForWO(wo) {
     if (!wo.tenant) { showToast("No tenant assigned to this work order.", "error"); return; }
-    const amountStr = prompt(`Bill tenant "${wo.tenant}" for this work order.\n\nEnter amount ($):`, wo.cost || "0");
-    if (!amountStr) return;
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) { showToast("Invalid amount.", "error"); return; }
-    const description = prompt("Description:", `Service charge — ${wo.issue?.slice(0, 50)}`);
+    const ans = await showConfirm({
+      title: "Bill " + wo.tenant,
+      message: "The amount goes on the tenant's ledger as a charge (Accounts Receivable / Other Income).",
+      fields: [
+        { key: "amount", label: "Amount", type: "money", default: safeNum(wo.cost) > 0 ? String(wo.cost) : "", required: true },
+        { key: "description", label: "Description", type: "text", default: `Service charge — ${wo.issue?.slice(0, 50) || ""}`, required: true },
+      ],
+      confirmText: "Bill tenant",
+    });
+    if (!ans) return;
+    const amount = parseFloat(String(ans.amount).replace(/[,$]/g, ""));
+    if (isNaN(amount) || amount <= 0) { showToast("Enter an amount above zero.", "error"); return; }
+    const description = String(ans.description || "").trim();
     if (!description) return;
     if (!guardSubmit("billTenant", wo.id)) return;
     try {

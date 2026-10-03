@@ -1179,6 +1179,19 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // the txn is still For Review, records the decision AND its id on the
   // txn (so Restore can mark it undone), or changes nothing.
   // Returns true on success.
+  // Why a transaction is excluded, asked in the app's own dialog (was the
+  // browser's prompt box, which the iPhone app cannot show).
+  async function askExcludeReason() {
+    const ans = await showConfirm({
+      title: "Exclude this transaction",
+      message: "It is left out of the books and the review queue. Say why, for the audit trail.",
+      fields: [{ key: "reason", label: "Reason", type: "select", required: true, options: [
+        { value: "duplicate", label: "Duplicate of another transaction" }, { value: "personal", label: "Personal, not the business" },
+        { value: "noise", label: "Noise (transfer, test, zero)" }, { value: "error", label: "Bank error" }] }],
+      confirmText: "Exclude", variant: "danger",
+    });
+    return ans ? ans.reason : null;
+  }
   async function excludeTransaction(txn, reason) {
     if (!guardSubmit("bankExclude", txn.id)) return false;
     try {
@@ -2246,8 +2259,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
       if (REVIEW_KEYS.exclude.includes(key)) {
         e.preventDefault();
-        const reason = window.prompt("Exclude reason: duplicate / personal / noise / error");
-        if (reason) excludeTransaction(current, reason);
+        askExcludeReason().then(reason => { if (reason) excludeTransaction(current, reason); });
         return;
       }
       const mode = REVIEW_KEYS.add.includes(key) ? "add"
@@ -3141,7 +3153,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
                 className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
             ))}
-            <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
+            <button onClick={async () => { const reason = await askExcludeReason(); if (reason) excludeTransaction(txn, reason); }}
               className="px-3 py-1 text-xs text-danger-500 hover:bg-danger-50 rounded-lg ml-auto border border-danger-200">Exclude</button>
           </div>
           {/* Rule Suggestion Indicator */}
