@@ -104,7 +104,10 @@ export default function PublicSignPage({ token }) {
   const signsDone = signSlots.filter(sl => signedSlots.has(sl.el)).length;
   const initialsDone = initialSlots.filter(sl => initialedPages.has(sl.page)).length;
   const allDone = hasSlots && !!adopted && signsDone === signSlots.length && (!wantsInitials || initialsDone === initialSlots.length);
-  const nextTab = slots.find(sl => (sl.kind === "sign" && !signedSlots.has(sl.el)) || (sl.kind === "initial" && !initialedPages.has(sl.page)));
+  // The next tab is the first UNDONE one down the page (Start used to jump
+  // to the signature line on the last page, because the signature slots
+  // were measured first).
+  const nextTab = slots.filter(sl => (sl.kind === "sign" && !signedSlots.has(sl.el)) || (sl.kind === "initial" && !initialedPages.has(sl.page))).sort((a, b) => a.top - b.top)[0];
   function scrollToTab(sl) {
     const el = sl?.el;
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
