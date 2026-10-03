@@ -70,7 +70,10 @@ export default function PublicSignPage({ token }) {
     const next = Array.from(host.querySelectorAll(`span[data-sig-role="${esc(role)}"], span[data-sig-date="${esc(role)}"]`))
       .map(el => ({ kind: el.hasAttribute("data-sig-date") ? "date" : "sign", el, ...rel(el.getBoundingClientRect()) }))
       .filter(sl => sl.width > 0);
-    if (wantsInitials) {
+    // Per-page initial tabs only on a document that has signature lines;
+    // an older document (no block) takes initials on the pad instead, so
+    // the signer is not asked twice.
+    if (wantsInitials && next.some(sl => sl.kind === "sign")) {
       // One per page, where the signed copy carries the initials: the
       // foot of the page, at the right (initialsStamp's first box).
       const pm = host.querySelector(".ProseMirror");
