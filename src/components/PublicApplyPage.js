@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
+import { SURFACE } from "../ui";
 import { fmtDate, fmtDateTime, formatCurrency } from "../utils/helpers";
 import { APPLICATION_SECTIONS, APPLICATION_CERTIFICATION, validateApplication, cleanAnswers, isFieldShown } from "../utils/applicationForm";
 
@@ -65,7 +66,7 @@ export default function PublicApplyPage({ token }) {
 
   const shell = (children) => (
     <div className="min-h-screen bg-neutral-50 py-8 px-4" style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
-      <div className="max-w-2xl mx-auto bg-white rounded-2xl border border-neutral-200 shadow-card p-6 md:p-8">{children}</div>
+      <div className={`max-w-2xl mx-auto ${SURFACE.raised} p-6 md:p-8`}>{children}</div>
     </div>
   );
   if (state.loading) return shell(<p className="text-neutral-500 text-center py-10">Loading…</p>);

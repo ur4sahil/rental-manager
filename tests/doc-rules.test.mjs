@@ -64,5 +64,19 @@ ok("checkboxes, highlights and bullet shapes are drawn in the PDF, not sent as g
 ok("the toolbar offers indent, outdent, colours, highlight, super/subscript, strike, paragraph, lists, table, checkbox, page break and find", ["outdent()", "indent()", "setColor(c)", "setBackgroundColor(c)", "toggleSuperscript()", "toggleSubscript()", "toggleStrike()", "setParagraphFormat(", "setListStyle(o.key)", "setBullet(b.key)", "restartListAt(1)", "continueList()", "mergeCells()", "setTableBorders(", "insertCheckbox()", "insertPageBreak()", "setSearch(", "replaceAll("].every(s => rte.includes(s)));
 ok("the ruler draws from the page setup and drags the paragraph's indents", /export function Ruler\(/.test(rte) && /setParagraphFormat\(attrs\)/.test(rte) && /<Ruler editor=\{editor\} setup=\{setup\} zoom=\{zoom\} \/>/.test(rte));
 
+// ── the PDF renderer's sheet pitch ──────────────────────────────────
+// A different first-page footer moves the first page gap's TOP (the gap
+// starts where the footer starts) but not its BOTTOM (the next page's
+// content start). Measured from the tops, a one-line footer difference
+// became the pitch for every page and the text drifted a line further
+// down on each successive page (found 2026-10-03, initials-e2e).
+{
+  const pdf = read("src/utils/pagedPdf.js");
+  const i = pdf.indexOf("const pitch = breakers.length > 1");
+  const chain = pdf.slice(i, i + 200);
+  ok("pagedPdf measures the sheet pitch between gap BOTTOMS, not tops", i > 0 && /gapBottom\(breakers\[1\]\) - gapBottom\(breakers\[0\]\)/.test(chain));
+  ok("gapBottom reads the gap's bottom edge", /getBoundingClientRect\(\)\.bottom/.test(pdf.slice(i - 400, i)));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

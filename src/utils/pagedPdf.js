@@ -94,9 +94,15 @@ async function layout(html, setup) {
     const pages = Math.max(1, breakers.length);
     const height = setup.pageHeight, width = setup.pageWidth;
     // Sheet pitch, measured rather than assumed: the add-on's gap element
-    // keeps its two 1px rules even at pageGap 0.
+    // keeps its two 1px rules even at pageGap 0. Measured between the gaps'
+    // BOTTOMS, not their tops: a gap's top is where that page's footer
+    // starts, and a different first-page footer (one line instead of two)
+    // moves the first gap's top by a line. Measured from the tops, that
+    // one-line difference became the pitch for every page, and the text
+    // drifted a line further down on each successive page.
+    const gapBottom = (b) => b.getBoundingClientRect().bottom;
     const pitch = breakers.length > 1
-      ? breakers[1].getBoundingClientRect().top - breakers[0].getBoundingClientRect().top
+      ? gapBottom(breakers[1]) - gapBottom(breakers[0])
       : height;
     const place = (left, top) => {
       const y = top - oy;

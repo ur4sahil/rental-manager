@@ -462,7 +462,7 @@ export function Ruler({ editor, setup, zoom = 1 }) {
     </button>
   );
   return (
-    <div ref={ref} className="mx-auto relative select-none bg-white border border-neutral-200 rounded-md text-[10px] text-neutral-500 overflow-hidden" style={{ width, height: 28 }} aria-label="Ruler">
+    <div ref={ref} className="mx-auto relative select-none bg-white border border-neutral-200 rounded-md text-2xs text-neutral-500 overflow-hidden" style={{ width, height: 28 }} aria-label="Ruler">
       <div className="absolute inset-y-0 left-0 bg-neutral-100" style={{ width: mL }} />
       <div className="absolute inset-y-0 right-0 bg-neutral-100" style={{ width: mR }} />
       {Array.from({ length: Math.floor(textWidth / (pxPerIn / 2)) + 1 }, (_, i) => i / 2).map(inch => (
@@ -562,23 +562,27 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   // Header/footer text and page setup are edited in the side panel (or
   // replaced by a Word import) while the editor is open; push each change
   // into the page furniture.
-  const { headerLeft, headerRight, footerLeft, footerRight } = setup;
+  const { headerLeft, headerRight, footerLeft, footerRight, firstPageDifferent, firstHeaderLeft, firstHeaderRight, firstFooterLeft, firstFooterRight } = setup;
   const geometryKey = JSON.stringify(pageGeometry(setup, 0, 0));
   useEffect(() => {
     if (!editor || !paperCanvas || editor.isDestroyed) return;
     try { if (!editor.view.dom) return; } catch { return; }
     const s = JSON.parse(setupKey);
     const g = pageGeometry(s, furnitureHeight(s.headerLeft, s.headerRight), furnitureHeight(s.footerLeft, s.footerRight));
+    // Page 1 keeps its own header and footer when asked; otherwise it
+    // gets the common ones (there is no "clear" for a page, so set them).
     editor.chain()
       .updateHeaderContent(pageSlot(headerLeft), pageSlot(headerRight))
       .updateFooterContent(pageSlot(footerLeft), pageSlot(footerRight))
+      .updateHeaderContent(pageSlot(firstPageDifferent ? firstHeaderLeft : headerLeft), pageSlot(firstPageDifferent ? firstHeaderRight : headerRight), 1)
+      .updateFooterContent(pageSlot(firstPageDifferent ? firstFooterLeft : footerLeft), pageSlot(firstPageDifferent ? firstFooterRight : footerRight), 1)
       .updatePageWidth(g.pageWidth).updatePageHeight(g.pageHeight)
       .updateMargins({ top: g.marginTop, bottom: g.marginBottom, left: g.marginLeft, right: g.marginRight })
       .updateContentMargins({ top: g.contentMarginTop, bottom: g.contentMarginBottom })
       .run();
   // setupKey carries every field of the setup; geometryKey is the part of it that moves the layout.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, paperCanvas, headerLeft, headerRight, footerLeft, footerRight, geometryKey]);
+  }, [editor, paperCanvas, headerLeft, headerRight, footerLeft, footerRight, firstPageDifferent, firstHeaderLeft, firstHeaderRight, firstFooterLeft, firstFooterRight, geometryKey]);
 
   // Settle the page count once layout (and the fonts) are in, and again
   // whenever the sheet is re-scaled. See settlePagination.

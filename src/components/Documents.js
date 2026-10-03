@@ -11,6 +11,8 @@ import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
 import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../utils/housy";
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { PARSE_OPTIONS, attachPageSetup, splitPageSetup } from "../utils/docKit";
+import { htmlToDocx, docxFileName } from "../utils/docxExport";
+import { stampInitials } from "../utils/initialsStamp";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
 import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
@@ -364,7 +366,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const [signaturesByDoc, setSignaturesByDoc] = useState({}); // { [docId]: [signerRow, ...] }
   // Phase 5 — template editor 3-col layout
   const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
-  const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
   // The template editor's side panel: one panel with tabs, in place of a
   // rail on each side of the page (fields | signers | page | rules | details).
   const [panelTab, setPanelTab] = useState("fields");
@@ -1015,7 +1016,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const docName = selectedTemplate.name + " — " + (fieldValues.tenant_name || fieldValues.recipient_name || "Document") + " " + formatLocalDate(new Date());
   const payload = {
   company_id: companyId, template_id: selectedTemplate.id, name: docName,
-  field_values: fieldValues, rendered_body: attachPageSetup(rendered, selectedTemplate.field_config?.page_setup), status,
+  field_values: selectedTemplate.field_config?.initials_each_page ? { ...fieldValues, _initials_each_page: true } : fieldValues,
+  rendered_body: attachPageSetup(rendered, selectedTemplate.field_config?.page_setup), status,
   output_type: selectedTemplate.template_type === "pdf_overlay" ? "pdf_overlay" : "html",
   property_address: fieldValues.property_address || fieldValues.premises_address || docContext?.data?.["property.address"] || "",
   tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || docContext?.tenant?.name || docContext?.prospect?.name || "",
@@ -1284,7 +1286,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   try {
     const paged = pagedBody(doc, doc._template || templates.find(t => t.id === doc.template_id), doc.field_values || {});
     const [bodyPdf, tailPdf] = await Promise.all([
-      renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name }),
+      renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name })
+        .then(async (bytes) => (sigs.some(s => s.initials_data) ? stampInitials(await import("pdf-lib"), bytes, sigs.filter(s => s.status === "signed")) : bytes)),
       html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
     ]);
     return await concatPdfs([bodyPdf, tailPdf]);
@@ -1307,72 +1310,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Export: DOCX ----
+  // A real Word file: paragraphs keep their indents, spacing and alignment,
+  // runs keep their formatting, lists keep their numbering style, tables
+  // stay tables, forced page breaks hold, and the page setup (margins,
+  // header, footer, different first page) comes across (src/utils/docxExport.js).
   async function exportDOCX(doc) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+  try {
+  const docx = await import("docx");
   const { saveAs } = await import("file-saver");
-  const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
-  // Parse HTML into docx paragraphs
-  const temp = document.createElement("div");
-  temp.innerHTML = DOMPurify.sanitize(body);
-  const paragraphs = [];
-  function processNode(node) {
-  if (node.nodeType === 3) {
-  const text = node.textContent.trim();
-  if (text) paragraphs.push(new Paragraph({ children: [new TextRun(text)] }));
-  return;
+  const paged = pagedBody(doc, selectedTemplate, fieldValues);
+  const blob = await htmlToDocx(docx, paged.html, { pageSetup: paged.pageSetup, title: doc?.name || selectedTemplate?.name || "Document" });
+  saveAs(blob, docxFileName(doc?.name || selectedTemplate?.name));
+  showToast("Word document downloaded", "success");
+  } catch (err) {
+  pmError("PM-8006", { raw: err, context: "DOCX export" });
   }
-  if (node.nodeType !== 1) return;
-  const tag = node.tagName?.toLowerCase();
-  if (tag === "h1") {
-  paragraphs.push(new Paragraph({ children: [new TextRun({ text: node.textContent, bold: true, size: 32 })], heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, spacing: { after: 200 } }));
-  } else if (tag === "h2") {
-  paragraphs.push(new Paragraph({ children: [new TextRun({ text: node.textContent, bold: true, size: 26 })], heading: HeadingLevel.HEADING_2, spacing: { after: 150 } }));
-  } else if (tag === "hr") {
-  paragraphs.push(new Paragraph({ children: [new TextRun({ text: "─".repeat(60), color: "999999", size: 16 })], spacing: { before: 100, after: 100 } }));
-  } else if (tag === "br") {
-  paragraphs.push(new Paragraph({ children: [] }));
-  } else if (tag === "li") {
-  paragraphs.push(new Paragraph({ children: [new TextRun("• " + node.textContent)], indent: { left: 400 } }));
-  } else if (tag === "ul" || tag === "ol") {
-  Array.from(node.children).forEach(processNode);
-  } else if (tag === "table") {
-  // Render table rows as text pairs
-  node.querySelectorAll("tr").forEach(row => {
-  const cells = Array.from(row.querySelectorAll("td,th")).map(c => c.textContent.trim());
-  if (cells.length >= 2) {
-  paragraphs.push(new Paragraph({ children: [new TextRun({ text: cells[0] + ": ", bold: true }), new TextRun(cells.slice(1).join(" "))] }));
-  } else if (cells.length === 1) {
-  paragraphs.push(new Paragraph({ children: [new TextRun(cells[0])] }));
-  }
-  });
-  } else if (tag === "p" || tag === "div") {
-  const runs = [];
-  node.childNodes.forEach(child => {
-  if (child.nodeType === 3) {
-  runs.push(new TextRun(child.textContent));
-  } else if (child.tagName?.toLowerCase() === "strong" || child.tagName?.toLowerCase() === "b") {
-  runs.push(new TextRun({ text: child.textContent, bold: true }));
-  } else if (child.tagName?.toLowerCase() === "em" || child.tagName?.toLowerCase() === "i") {
-  runs.push(new TextRun({ text: child.textContent, italics: true }));
-  } else if (child.tagName?.toLowerCase() === "br") {
-  runs.push(new TextRun({ text: "", break: 1 }));
-  } else {
-  runs.push(new TextRun(child.textContent));
-  }
-  });
-  if (runs.length > 0) paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
-  } else {
-  // Recurse for unknown tags
-  Array.from(node.childNodes).forEach(processNode);
-  }
-  }
-  Array.from(temp.childNodes).forEach(processNode);
-  if (paragraphs.length === 0) paragraphs.push(new Paragraph({ children: [new TextRun(temp.textContent)] }));
-  const docx = new Document({ sections: [{ children: paragraphs }] });
-  const blob = await Packer.toBlob(docx);
-  const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".docx";
-  saveAs(blob, filename);
-  showToast("DOCX downloaded", "success");
   }
 
   // ---- Export: TXT ----
@@ -1858,6 +1810,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {templateForm.signing_mode !== "none" && (
   <div className="space-y-2">
+  <label className="flex items-start gap-2 text-xs text-neutral-700 cursor-pointer mb-2">
+  <Checkbox checked={!!templateForm.field_config?.initials_each_page} onChange={e => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), initials_each_page: e.target.checked } }))} className="accent-brand-600 mt-0.5" />
+  <span><strong>Each signer initials every page.</strong> They type their initials when they sign; the signed copy carries them at the foot of every page.</span>
+  </label>
   <div className="flex items-center justify-between mb-1">
   <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
   <TextLink tone="brand" size="xs" type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))}>+ Add signer</TextLink>
@@ -1909,7 +1865,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="p-3 space-y-3">
   {/* Page setup — header/footer printed on every page (HTML templates) */}
   {templateForm.template_type === "html" && (() => {
-  const ps = { headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", pageWidth: 816, pageHeight: 1056, marginTop: 96, marginBottom: 96, ...(templateForm.field_config?.page_setup || {}) };
+  const ps = { headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", firstPageDifferent: false, firstHeaderLeft: "", firstHeaderRight: "", firstFooterLeft: "", firstFooterRight: "", pageWidth: 816, pageHeight: 1056, marginTop: 96, marginBottom: 96, ...(templateForm.field_config?.page_setup || {}) };
   const setPs = (key, value) => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), page_setup: { ...ps, [key]: value } } }));
   const slot = (key, label) => (
   <div>
@@ -1928,6 +1884,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {slot("footerLeft", "Footer left")}
   {slot("footerRight", "Footer right")}
   </div>
+  <label className="flex items-center gap-2 text-xs text-neutral-700 cursor-pointer mt-3">
+  <Checkbox checked={!!ps.firstPageDifferent} onChange={e => setPs("firstPageDifferent", e.target.checked)} className="accent-brand-600" />
+  Different first page (its own header and footer)
+  </label>
+  {ps.firstPageDifferent && (
+  <div className="grid grid-cols-2 gap-2 mt-2">
+  {slot("firstHeaderLeft", "First page header left")}
+  {slot("firstHeaderRight", "First page header right")}
+  {slot("firstFooterLeft", "First page footer left")}
+  {slot("firstFooterRight", "First page footer right")}
+  </div>
+  )}
   </div>
   );
   })()}

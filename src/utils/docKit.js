@@ -428,6 +428,8 @@ export const PARSE_OPTIONS = { preserveWhitespace: true };
 // imported document brings its own (docxImport reads them from the file).
 export const DEFAULT_PAGE_SETUP = {
   headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}",
+  // Word's "different first page": its own header and footer on page 1.
+  firstPageDifferent: false, firstHeaderLeft: "", firstHeaderRight: "", firstFooterLeft: "", firstFooterRight: "",
   pageWidth: 816, pageHeight: 1056,
   marginTop: 96, marginBottom: 96, marginLeft: 96, marginRight: 96,
   headerDistance: 48, footerDistance: 48,
@@ -492,6 +494,15 @@ export const pageSlot = (text) => {
   return '<span style="white-space:pre-line">' + esc + "</span>";
 };
 
+/** The add-on's per-page header/footer for page 1, when the setup wants one. */
+export function firstPageFurniture(s) {
+  if (!s || !s.firstPageDifferent) return { customHeader: {}, customFooter: {} };
+  return {
+    customHeader: { 1: { headerLeft: pageSlot(s.firstHeaderLeft), headerRight: pageSlot(s.firstHeaderRight) } },
+    customFooter: { 1: { footerLeft: pageSlot(s.firstFooterLeft), footerRight: pageSlot(s.firstFooterRight) } },
+  };
+}
+
 /**
  * The extension list for a document view.
  * @param {object} o
@@ -537,6 +548,7 @@ export function docExtensions({ paged = false, setup = {}, pageGap = 24, extra =
       pageGapBorderColor: "#d4d4d8",
       headerLeft: pageSlot(s.headerLeft), headerRight: pageSlot(s.headerRight),
       footerLeft: pageSlot(s.footerLeft), footerRight: pageSlot(s.footerRight),
+      ...firstPageFurniture(s),
     })] : []),
   ];
 }

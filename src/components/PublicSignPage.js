@@ -111,6 +111,10 @@ export default function PublicSignPage({ token }) {
         }).from(wrapper).outputPdf("arraybuffer"),
       ]);
       const pdfBytes = await concatPdfs([bodyPdf, certPdf]);
+      // The server stamps every signer's initials on the body pages (it
+      // can read all the signers; this page can only see its own).
+      let bodyPages = 0;
+      try { const { PDFDocument } = await import("pdf-lib"); bodyPages = (await PDFDocument.load(bodyPdf)).getPageCount(); } catch { bodyPages = 0; }
 
       // Upload via /api/finalize-signed-pdf so the server-side
       // service-role client owns the Storage write + DB update.
@@ -122,7 +126,7 @@ export default function PublicSignPage({ token }) {
       const res = await fetch("/api/finalize-signed-pdf", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, doc_id: docId, pdf_base64: base64 }),
+        body: JSON.stringify({ token, doc_id: docId, pdf_base64: base64, body_pages: bodyPages }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
@@ -144,9 +148,15 @@ export default function PublicSignPage({ token }) {
     }
   }
 
-  async function handleSign({ signatureData, signingMethod, consentText, signerName, eRecordsConsented, hwSwAcknowledged, consentVersion }) {
+  async function handleSign({ signatureData, initialsData, signingMethod, consentText, signerName, eRecordsConsented, hwSwAcknowledged, consentVersion }) {
     setSubmitting(true);
     try {
+      // Initials go on the signer's row first, by the same link; the
+      // signing itself is unchanged.
+      if (initialsData) {
+        const { data: ini, error: iniErr } = await supabase.rpc("set_signature_initials", { p_token: token, p_initials_data: initialsData });
+        if (iniErr || ini?.error) { setError("Signing failed: " + (iniErr?.message || ini.error)); return; }
+      }
       const { data, error: rpcErr } = await supabase.rpc("sign_document", {
         p_token: token,
         p_signer_name: signerName || payload?.signer_name || "",
@@ -321,6 +331,7 @@ export default function PublicSignPage({ token }) {
           companyContactEmail={payload.company_contact_email}
           submitting={submitting}
           submitLabel="Sign & Submit"
+          initialsRequired={!!payload.initials_each_page}
           onSubmit={handleSign}
         />
 

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { TextLink, Checkbox, FilterPill, Btn } from "../ui";
+import { TextLink, Checkbox, FilterPill, Btn, SURFACE } from "../ui";
 import { printTheme } from "../utils/theme";
 
 // Disclosure version. Bumped when the disclosure text below changes
@@ -31,8 +31,12 @@ export default function SignaturePad({
   // paper-copy / withdrawal request line.
   companyName = "",
   companyContactEmail = "",
+  // The document asks each signer to initial every page: typed initials,
+  // stamped in the foot of each page of the signed copy.
+  initialsRequired = false,
   onSubmit,
 }) {
+  const [initials, setInitials] = useState("");
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [signMethod, setSignMethod] = useState("draw");
@@ -91,6 +95,12 @@ export default function SignaturePad({
       setLocalError("Please complete all three consents above before signing.");
       return;
     }
+    let initialsData = null;
+    if (initialsRequired) {
+      const ini = initials.trim().replace(/[^A-Za-z.]/g, "").slice(0, 6);
+      if (ini.length < 2) { setLocalError("Please type your initials (2 to 6 letters); they go on every page."); return; }
+      initialsData = "typed:" + ini.toUpperCase() + "|ts:" + new Date().toISOString();
+    }
     let signatureData = "";
     if (signMethod === "draw") {
       const canvas = canvasRef.current;
@@ -106,6 +116,7 @@ export default function SignaturePad({
     }
     onSubmit({
       signatureData,
+      initialsData,
       signingMethod: signMethod,
       consentText,
       signerName: typedName.trim() || signerName,
@@ -122,6 +133,14 @@ export default function SignaturePad({
     <div className="border border-brand-100 rounded-xl p-4 bg-white">
       {signerLabel && <div className="text-sm font-semibold text-neutral-700 mb-2">Signing as: {signerLabel}{signerName ? " — " + signerName : ""}</div>}
 
+      {initialsRequired && (
+        <div className={`mb-3 p-3 ${SURFACE.inset}`}>
+          <label htmlFor="sig-initials" className="block text-sm font-semibold text-neutral-700">Your initials</label>
+          <div className="text-xs text-neutral-500 mb-1.5">They are placed at the foot of every page of the signed copy.</div>
+          <input id="sig-initials" value={initials} onChange={e => setInitials(e.target.value.toUpperCase())} maxLength={6} placeholder="e.g. SA"
+            className="w-28 h-10 border border-neutral-300 rounded-lg px-3 text-lg italic font-serif tracking-widest" autoComplete="off" />
+        </div>
+      )}
       <div className="flex gap-2 mb-3">
         <FilterPill active={signMethod === "draw"} onClick={() => { setSignMethod("draw"); setLocalError(""); }}>Draw Signature</FilterPill>
         <FilterPill active={signMethod === "type"} onClick={() => { setSignMethod("type"); setLocalError(""); }}>Type Name</FilterPill>
