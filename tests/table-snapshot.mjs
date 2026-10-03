@@ -22,7 +22,18 @@ export function dataTables(src) {
       else if (brace === 0 && src.startsWith("/>", j)) { j += 2; break; }
       j++;
     }
-    const b = src.slice(i, j);
+    let b = src.slice(i, j);
+    // columns={name}: the list lives in a const above (shared with a phone
+    // layout, as the journal-entry lines are). Read the keys from there.
+    const ref = b.match(/columns=\{([A-Za-z_$][\w$]*)\}/);
+    if (ref) {
+      const decl = src.lastIndexOf("const " + ref[1] + " = [", i);
+      if (decl >= 0) {
+        let k = src.indexOf("[", decl), depth = 0;
+        for (; k < src.length; k++) { if (src[k] === "[") depth++; else if (src[k] === "]" && --depth === 0) { k++; break; } }
+        b = src.slice(decl, k) + b;
+      }
+    }
     const keys = [...b.matchAll(/\{\s*key:\s*"([^"]*)"/g)].map(x => x[1]);
     const foot = /\n\s*footer=/.test(b);
     out.push({

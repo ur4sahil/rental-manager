@@ -1550,9 +1550,20 @@ export function DataTable({
   scroll = true,
   className = "",
   ariaLabel,
+  // On a phone a plain list renders as stacked cards (the first column
+  // as the card's title, the rest as label: value lines, an unlabelled
+  // column -- actions, a checkbox -- as a row of its own at the foot).
+  // The mobile audit found every table page laid out at desktop width
+  // inside its card: Loans 1,072px and Journal Entries 1,049px on a
+  // 390px screen, with amounts, status and ACTIONS off-screen and only
+  // a thin scrollbar to say so. phone="table" keeps the table (a report
+  // crosstab that fits by scaling, a line editor with its own phone
+  // layout). Grouped, expandable and scaled tables keep the table too.
+  phone = "cards",
 }) {
   const td = TD[density] || TD.normal;
   const th = TH[density] || TH.normal;
+  const isPhone = useIsPhone();
 
   const [colWidths, setColWidths] = useState(() => {
     if (!resizable || !storageKey) return {};
@@ -1788,6 +1799,47 @@ export function DataTable({
       )}
     </table>
   );
+
+  if (isPhone && phone === "cards" && !groups && !expandedRow && !fitToWidth && !stickyFirstColumn && !stickyLastColumn) {
+    const titleCol = columns[0];
+    const labelOf = (c) => (typeof c.label === "string" ? c.label.trim() : "");
+    const card = (row, i) => {
+      const title = titleCol ? (titleCol.render ? titleCol.render(row, i) : row[titleCol.key]) : null;
+      const lines = [], foot = [];
+      columns.slice(1).forEach(c => {
+        const v = c.render ? c.render(row, i) : (row ? row[c.key] : null);
+        if (v == null || v === "" || v === false) return;
+        if (!labelOf(c)) foot.push(<div key={c.key} className="flex flex-wrap gap-2 items-center justify-end">{v}</div>);
+        else lines.push(
+          <div key={c.key} className="flex justify-between gap-3 text-sm min-w-0">
+            <span className="text-2xs uppercase tracking-wide text-neutral-400 shrink-0 pt-0.5">{labelOf(c)}</span>
+            <span className={"min-w-0 text-right break-words " + (c.align === "right" ? "tnum " : "") + ((typeof c.className === "function" ? c.className(row, i) : c.className) || "")}>{v}</span>
+          </div>);
+      });
+      return (
+        <div key={keyOf(row, i)} {...(rowAttrs ? rowAttrs(row, i) : null)}
+          onClick={onRowClick ? () => onRowClick(row, i) : undefined}
+          className={["px-3 py-3 space-y-1.5", onRowClick ? "cursor-pointer active:bg-brand-50/40" : "", (rowClassName ? rowClassName(row, i) : "") || ""].filter(Boolean).join(" ")}>
+          {title != null && title !== "" && <div className={"text-sm font-semibold text-neutral-800 break-words " + ((typeof titleCol.className === "function" ? titleCol.className(row, i) : titleCol.className) || "")}>{title}</div>}
+          {lines}
+          {foot}
+        </div>
+      );
+    };
+    return (
+      <div className={"divide-y divide-neutral-100 " + className} aria-label={ariaLabel} data-table-cards="1">
+        {loading ? [0, 1, 2].map(r => <div key={r} className="px-3 py-3 space-y-2"><Skeleton className="h-3 w-40" /><Skeleton className="h-3 w-24" /></div>)
+          : rows.length ? rows.map(card)
+          : <div className="px-3 py-8 text-center text-sm text-neutral-400">{empty}</div>}
+        {footer && rows.length > 0 && footer.map((f, i) => (
+          <div key={i} className={"px-3 py-2 flex justify-between gap-3 text-sm bg-neutral-50 " + (f.strong ? "font-bold" : "font-semibold")}>
+            <span>{f.label}</span>
+            <span className="tnum text-right flex gap-3">{(f.cells || []).map((c, ci) => <span key={ci}>{c}</span>)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   // Wide content scrolls inside its own container so the page body never
   // scrolls sideways.
