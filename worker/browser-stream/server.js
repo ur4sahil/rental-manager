@@ -936,12 +936,24 @@ wss.on("connection", async (ws, req) => {
       tryCapture("nav").catch(() => {});
     });
 
-    const landing = startUrl || ENTRY[provider] || "about:blank";
+    // With a saved session, land where a signed-in browser belongs (the
+    // playbook's signedInEntry: BGE's "Select an Account" page) rather than
+    // the front door. BGE's front door REDIRECTS a signed-in browser to its
+    // public homepage -- which shows "Sign Out", not "Sign In" -- so the
+    // login finder below spent 20s hunting a Sign In link and 45s more waiting
+    // for a login form before driving on, all behind a grey "Opening your
+    // bill" (Sahil, 2026-10-03). An EXPIRED session lands on the login page
+    // from here just the same, and the fill below handles it.
+    const bookEntry = getBook(provider) || {};
+    const landing = startUrl || (storageState && bookEntry.signedInEntry) || ENTRY[provider] || "about:blank";
     await page.goto(landing, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-    // Drive to the amount/card page BEFORE the live view starts, so the person
-    // sees the final page appear instead of watching the browser scroll a long
-    // account list. Best-effort: wherever it lands is where streaming begins.
     send({ type: "status", message: "Opening your bill…" });
+    // The live view starts NOW, before the sign-in fill and the drive: the
+    // person watches the browser get there instead of a blank canvas for a
+    // minute (the drive used to run first, and on a slow portal that looked
+    // frozen).
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
+    send({ type: "ready", sessionId });
     // Enroll, OR a PAY on a captcha/code portal that has no session yet: sign
     // in FIRST. Driving a pay flow on a page that isn't signed in is what left
     // the person staring at a blank canvas -- there's nothing to pay until they
@@ -976,9 +988,6 @@ wss.on("connection", async (ws, req) => {
     } else {
       send({ type: "status", message: `Sign in to ${(provider || "the portal").toUpperCase()} — once you're in, close this window and it's connected.` });
     }
-    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 55, maxWidth: 1280, maxHeight: 900, everyNthFrame: 1 });
-    send({ type: "ready", sessionId });
-
     // Input in. Coordinates arrive already in page space (the client scales
     // the canvas). Text uses insertText so IME/paste behave; single keys use
     // dispatchKeyEvent so Tab/Enter/Backspace work in card fields.
