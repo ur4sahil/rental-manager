@@ -497,7 +497,63 @@ select {
   text-align: left;
 }
 .paged-editor .ProseMirror ul > li > p:first-child::before { content: "\25CF"; font-size: 0.7em; vertical-align: 0.12em; }
+.paged-editor .ProseMirror ul[data-bullet="circle"] > li > p:first-child::before { content: "\25E6"; font-size: 0.9em; vertical-align: 0; }
+.paged-editor .ProseMirror ul[data-bullet="dash"] > li > p:first-child::before { content: "\2013"; font-size: 1em; vertical-align: 0; }
+.paged-editor .ProseMirror ul[data-bullet="square"] > li > p:first-child::before { content: "\25AA"; font-size: 0.7em; vertical-align: 0.12em; }
 .paged-editor .ProseMirror ol > li > p:first-child::before { content: counter(hx-ol) "."; }
+/* Numbering styles (docRules.ORDERED_STYLES). Wider markers hang 0.5in. */
+.paged-editor .ProseMirror ol[data-list-style="lower-alpha"] > li > p:first-child::before { content: counter(hx-ol, lower-alpha) "."; }
+.paged-editor .ProseMirror ol[data-list-style="upper-alpha"] > li > p:first-child::before { content: counter(hx-ol, upper-alpha) "."; }
+.paged-editor .ProseMirror ol[data-list-style="lower-roman"] > li > p:first-child::before { content: counter(hx-ol, lower-roman) "."; }
+.paged-editor .ProseMirror ol[data-list-style="upper-roman"] > li > p:first-child::before { content: counter(hx-ol, upper-roman) "."; }
+.paged-editor .ProseMirror ol[data-list-style="paren-decimal"] > li > p:first-child::before { content: "(" counter(hx-ol) ")"; }
+.paged-editor .ProseMirror ol[data-list-style="paren-alpha"] > li > p:first-child::before { content: "(" counter(hx-ol, lower-alpha) ")"; }
+.paged-editor .ProseMirror ol[data-list-style="paren-roman"] > li > p:first-child::before { content: "(" counter(hx-ol, lower-roman) ")"; }
+.paged-editor .ProseMirror ol[data-list-style="clause"] > li > p:first-child::before { content: counters(hx-ol, "."); }
+.paged-editor .ProseMirror ol[data-list-style^="paren-"],
+.paged-editor .ProseMirror ol[data-list-style$="roman"],
+.paged-editor .ProseMirror ol[data-list-style="clause"] { padding-left: 0.75in; }
+.paged-editor .ProseMirror ol[data-list-style^="paren-"] > li > p:first-child::before,
+.paged-editor .ProseMirror ol[data-list-style$="roman"] > li > p:first-child::before,
+.paged-editor .ProseMirror ol[data-list-style="clause"] > li > p:first-child::before { width: 0.5in; margin-left: -0.5in; }
+
+/* Find & replace matches. */
+.ProseMirror .hx-find { background: #fde68a; }
+.ProseMirror .hx-find-current { background: #f59e0b; color: #111; }
+
+/* Tab characters advance to the next half-inch stop, as Word's default
+   tab stops do. pre-wrap keeps them (and the editor's own spacing). */
+.ProseMirror { tab-size: 48px; -moz-tab-size: 48px; white-space: pre-wrap; }
+/* A forced page break: a thin dashed rule in the flow views; on the
+   paper canvas the layout pass stretches it to the foot of the page. */
+.hx-page-break { height: 0; margin: 0; border-top: 1px dashed #c7cbd6; }
+.ProseMirror .hx-page-break { position: relative; }
+.ProseMirror .hx-page-break::after { content: "Page break"; position: absolute; left: 50%; top: -8px; transform: translateX(-50%); background: #fff; color: #9aa0b4; font: 10px/16px system-ui, sans-serif; padding: 0 6px; letter-spacing: .04em; }
+.ProseMirror .hx-page-break.ProseMirror-selectednode { outline: 2px solid #6366f1; }
+@media print { .hx-page-break { break-after: page; border: 0; } .ProseMirror .hx-page-break::after { content: none; } }
+/* Tables: resizable columns, and the borders choice (TableStyles). */
+.ProseMirror table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0.5em 0; }
+.ProseMirror td, .ProseMirror th { border: 1px solid #333; padding: 2px 6px; vertical-align: top; position: relative; min-width: 1em; }
+.ProseMirror th { font-weight: 700; background: #f3f4f6; }
+.ProseMirror table[data-borders="none"] td, .ProseMirror table[data-borders="none"] th { border-color: transparent; }
+.ProseMirror-focused table[data-borders="none"] td, .ProseMirror-focused table[data-borders="none"] th { border-color: #e5e7eb; border-style: dashed; }
+.ProseMirror table[data-borders="outer"] td, .ProseMirror table[data-borders="outer"] th { border-color: transparent; }
+.ProseMirror table[data-borders="outer"] { outline: 1px solid #333; outline-offset: -1px; }
+.ProseMirror .selectedCell::after { content: ""; position: absolute; inset: 0; background: rgba(99, 102, 241, 0.12); pointer-events: none; }
+.ProseMirror .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #6366f1; pointer-events: none; }
+.ProseMirror.resize-cursor { cursor: col-resize; }
+/* Superscript / subscript as Word sets them. */
+.ProseMirror sup, .hx-flow-doc sup { font-size: 0.65em; vertical-align: super; line-height: 0; }
+.ProseMirror sub, .hx-flow-doc sub { font-size: 0.65em; vertical-align: sub; line-height: 0; }
+/* The flow view (signing page) keeps the numbering styles it can. */
+.hx-flow-doc ol[data-list-style="lower-alpha"], .hx-flow-doc ol[data-list-style="paren-alpha"] { list-style: lower-alpha; }
+.hx-flow-doc ol[data-list-style="upper-alpha"] { list-style: upper-alpha; }
+.hx-flow-doc ol[data-list-style="lower-roman"], .hx-flow-doc ol[data-list-style="paren-roman"] { list-style: lower-roman; }
+.hx-flow-doc ol[data-list-style="upper-roman"] { list-style: upper-roman; }
+.hx-flow-doc ul[data-bullet="circle"] { list-style: circle; }
+.hx-flow-doc ul[data-bullet="square"] { list-style: square; }
+.hx-flow-doc ul[data-bullet="dash"] { list-style: "\2013  "; }
+.hx-flow-doc p, .hx-flow-doc li { white-space: pre-wrap; tab-size: 48px; }
 
 /* A document shown as flowing text rather than on pages (the public
    signing page, read on a phone as often as not). Indents that reach

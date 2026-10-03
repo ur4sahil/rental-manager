@@ -15,6 +15,8 @@
 // verified by comparing text, and dropped to the document default if the
 // two ever disagree, so a mismatch costs fidelity, never correctness.
 
+import { wordNumbering } from "./docRules";
+
 const LIST_INDENT_TWIPS = 720; // the editor's list indent, 0.5in
 const OPEN = "\uE000";
 const CLOSE = "\uE001";
@@ -75,6 +77,39 @@ function readPPr(pPr) {
   }
   const jc = child(pPr, "w:jc");
   if (jc) out.jc = attr(jc, "w:val");
+  if (child(pPr, "w:keepNext")) out.keepNext = attr(child(pPr, "w:keepNext"), "w:val") !== "0";
+  if (child(pPr, "w:pageBreakBefore")) out.pageBreakBefore = attr(child(pPr, "w:pageBreakBefore"), "w:val") !== "0";
+  const numPr = child(pPr, "w:numPr");
+  if (numPr) {
+    const numId = attr(child(numPr, "w:numId"), "w:val"), ilvl = attr(child(numPr, "w:ilvl"), "w:val");
+    if (numId != null) { out.numId = String(numId); out.ilvl = Number(ilvl || 0); }
+  }
+  return out;
+}
+
+// numbering.xml -> numId + level -> the numbering style (docRules). Word
+// keeps the definitions apart from the paragraphs: a paragraph names a
+// numId and a level, the numId names an abstract definition, and that
+// holds the format ("lowerLetter") and the pattern ("(%1)") per level.
+function readNumbering(numDoc) {
+  const out = {};
+  if (!numDoc) return out;
+  const abstract = {};
+  for (const a of numDoc.getElementsByTagName("w:abstractNum")) {
+    const id = attr(a, "w:abstractNumId");
+    abstract[id] = {};
+    for (const lvl of a.getElementsByTagName("w:lvl")) {
+      abstract[id][Number(attr(lvl, "w:ilvl") || 0)] = wordNumbering(attr(child(lvl, "w:numFmt"), "w:val"), attr(child(lvl, "w:lvlText"), "w:val"));
+    }
+  }
+  for (const n of numDoc.getElementsByTagName("w:num")) {
+    const id = attr(n, "w:numId"), abs = attr(child(n, "w:abstractNumId"), "w:val");
+    out[id] = { ...(abstract[abs] || {}) };
+    for (const o of n.getElementsByTagName("w:lvlOverride")) {
+      const lvl = child(o, "w:lvl");
+      if (lvl) out[id][Number(attr(o, "w:ilvl") || 0)] = wordNumbering(attr(child(lvl, "w:numFmt"), "w:val"), attr(child(lvl, "w:lvlText"), "w:val"));
+    }
+  }
   return out;
 }
 
@@ -167,6 +202,7 @@ export async function convertDocxToHtml(arrayBuffer) {
   // -- Read what mammoth won't: spacing, inherited styles, footer text.
   let styles = readStyles(null, null);
   let xmlParagraphs = [];
+  let numbering = {};
   let footer = { left: "", right: "" };
   let page = null;
   let mammothInput = arrayBuffer;
@@ -185,12 +221,22 @@ export async function convertDocxToHtml(arrayBuffer) {
     }
     const themeDoc = parseXml(await read("word/theme/theme1.xml"));
     styles = readStyles(parseXml(await read("word/styles.xml")), themeDoc);
+    numbering = readNumbering(parseXml(await read("word/numbering.xml")));
     const docXml = parseXml(rawDoc);
     if (docXml) {
-      xmlParagraphs = Array.from(docXml.getElementsByTagName("w:p")).map((p) => ({
-        props: resolveParagraph(p, styles),
-        text: fingerprint(Array.from(p.getElementsByTagName("w:t")).map((t) => t.textContent).join("")),
-      }));
+      xmlParagraphs = Array.from(docXml.getElementsByTagName("w:p")).map((p) => {
+        // A page break is a run-level <w:br w:type="page"/>: before the
+        // paragraph's text it breaks before, after it breaks after.
+        let breakBefore = false, breakAfter = false, seenText = false;
+        for (const n of p.getElementsByTagName("*")) {
+          if (n.tagName === "w:t" && n.textContent) seenText = true;
+          else if (n.tagName === "w:br" && attr(n, "w:type") === "page") { if (seenText) breakAfter = true; else breakBefore = true; }
+        }
+        return {
+          props: resolveParagraph(p, styles), breakBefore, breakAfter,
+          text: fingerprint(Array.from(p.getElementsByTagName("w:t")).map((t) => t.textContent).join("")),
+        };
+      });
     }
     // Page size and margins, in CSS px (twips / 15). The bottom margin and
     // the footer's distance from the edge decide how many lines fit on a
@@ -235,6 +281,7 @@ export async function convertDocxToHtml(arrayBuffer) {
   // -- Tag paragraphs and runs while mammoth walks the document.
   const paraCss = [];   // index -> css, filled in after the walk
   const listLeft = [];  // index -> Word's left indent (twips), for list items
+  const paraExtra = []; // index -> { keepNext, breakBefore, breakAfter, list }
   const seen = [];      // mammoth paragraphs, in the order it visits them
   const runCss = [];
   const tagRuns = (node, isHeading) => {
@@ -244,7 +291,9 @@ export async function convertDocxToHtml(arrayBuffer) {
       // A heading keeps the heading's own size unless the run sets one.
       const size = node.fontSize || (isHeading ? null : styles.fontSize);
       const font = fontStack(node.font || (isHeading ? "" : styles.font));
-      const css = [font && "font-family:" + font, size && "font-size:" + size + "pt"].filter(Boolean).join(";");
+      // Word's highlight is a named colour ("yellow"); CSS knows the names.
+      const highlight = node.highlight && /^[a-z]+$/i.test(node.highlight) && node.highlight !== "none" ? node.highlight.toLowerCase() : "";
+      const css = [font && "font-family:" + font, size && "font-size:" + size + "pt", highlight && "background-color:" + highlight].filter(Boolean).join(";");
       if (!hasText || !css) return node;
       const i = runCss.push(css) - 1;
       return { ...node, children: [{ type: "text", value: `${OPEN}R${i}${CLOSE}` }, ...node.children, { type: "text", value: `${OPEN}/R${CLOSE}` }] };
@@ -277,6 +326,12 @@ export async function convertDocxToHtml(arrayBuffer) {
     };
     paraCss[i] = paragraphCss(props);
     listLeft[i] = props.left || 0;
+    const x = aligned ? xmlParagraphs[i] : null;
+    paraExtra[i] = {
+      keepNext: !!props.keepNext,
+      breakBefore: !!(x && (x.breakBefore || props.pageBreakBefore)), breakAfter: !!(x && x.breakAfter),
+      list: props.numId != null && numbering[props.numId] ? numbering[props.numId][props.ilvl || 0] || null : null,
+    };
   });
 
   // Word lets the spacing under the LAST line of a page hang into the
@@ -310,9 +365,17 @@ export async function convertDocxToHtml(arrayBuffer) {
     const m = node.nodeValue.match(paraRe);
     node.nodeValue = node.nodeValue.replace(paraRe, "");
     let css = paraCss[Number(m[1])];
+    const extra = paraExtra[Number(m[1])] || {};
     let block = node.parentElement?.closest("p,h1,h2,h3,h4,h5,h6,li");
     if (!block || !css) continue;
     if (block.tagName === "LI") {
+      // The numbering style Word used for this level, on the list itself
+      // (the first item of a list decides; later ones agree).
+      const list = block.parentElement;
+      if (extra.list && list && /^(OL|UL)$/.test(list.tagName)) {
+        if (list.tagName === "OL" && extra.list.kind === "ordered" && !list.hasAttribute("data-list-style")) list.setAttribute("data-list-style", extra.list.style);
+        if (list.tagName === "UL" && extra.list.kind === "bullet" && !list.hasAttribute("data-bullet")) list.setAttribute("data-bullet", extra.list.style);
+      }
       // In Word a bullet is a hanging indent: the paragraph's left edge
       // and a negative first line make room for the marker. In HTML the
       // list does that itself (index.css: 0.5in indent, marker hanging
@@ -331,12 +394,15 @@ export async function convertDocxToHtml(arrayBuffer) {
       block = p;
     }
     block.setAttribute("style", css);
+    if (extra.keepNext) block.setAttribute("data-keep-next", "1");
+    // Forced page breaks become the editor's own page-break block, placed
+    // beside the top-level block this paragraph belongs to.
+    const top = block.closest("li") ? block.closest("ul,ol") : block;
+    if (extra.breakBefore && top && top.parentElement) { const br = dom.createElement("div"); br.setAttribute("data-page-break", ""); top.parentElement.insertBefore(br, top); }
+    if (extra.breakAfter && top && top.parentElement) { const br = dom.createElement("div"); br.setAttribute("data-page-break", ""); top.parentElement.insertBefore(br, top.nextSibling); }
   }
-  // Word tabs survive as raw \t, which HTML then collapses to one space.
-  const tabs = dom.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = tabs.nextNode(); n; n = tabs.nextNode()) {
-    if (n.nodeValue.includes("\t")) n.nodeValue = n.nodeValue.replace(/\t/g, "\u2003\u2003");
-  }
+  // Word tabs come through as raw \t and stay so: the editor sets tab stops
+  // every half inch (index.css tab-size), as Word does by default.
   // Runs that held only a marker leave an empty span behind.
   root.querySelectorAll("span").forEach((s) => { if (!s.textContent && !s.children.length) s.remove(); });
 

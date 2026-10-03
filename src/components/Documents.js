@@ -10,7 +10,7 @@ import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
 import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../utils/housy";
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
-import { attachPageSetup, splitPageSetup } from "../utils/docKit";
+import { PARSE_OPTIONS, attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
 import { createLeaseChange, openChangeOfKind, changeRowFromDocument } from "../utils/leaseChanges";
@@ -516,7 +516,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
         field_config: pageSetup ? { ...(prev.field_config || {}), page_setup: pageSetup } : prev.field_config,
       }));
       setTemplateLandingSkipped(true);
-      if (htmlEditor) htmlEditor.commands.setContent(html);
+      if (htmlEditor) htmlEditor.commands.setContent(html, { parseOptions: PARSE_OPTIONS });
       const warnCount = result.warnings || 0;
       showToast("Imported" + (warnCount ? ` (${warnCount} formatting warning${warnCount > 1 ? "s" : ""})` : ""), "success");
     } catch (e) {
@@ -2552,6 +2552,26 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Btn size="sm" onClick={() => setTab("templates")}>Go to Templates</Btn>
   </div>
   )}
+  {/* Maryland court forms. These are the court's own fillable PDFs, filled
+      from a tenant's ledger and case rather than from a template, so they
+      start from the tenant (Tenants › the tenant › Lease and notices). */}
+  <div className="mb-4">
+  <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-2">Court forms (Maryland)</h4>
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+  {[
+    ["Notice of Intent to File (DC-CV-115)", "Failure to pay rent, step 1. Past-due rent and late fees from the tenant's ledger, on the court's own form."],
+    ["Complaint for Repossession (DC-CV-082)", "Failure to pay rent, step 2, after the ten days. The court's e-filing version, filled in; a worksheet for the paper form too."],
+    ["Petition for Warrant of Restitution (DC-CV-081)", "After judgment for possession: the petition for the warrant, filled in from the case."],
+  ].map(([name, blurb]) => (
+  <button key={name} type="button" onClick={() => setPage && setPage("tenants")} title="Open the tenant, then Lease and notices"
+  className="bg-white rounded-lg border border-neutral-100 p-4 text-left hover:border-brand-300 hover:shadow-card transition-all">
+  <div className="font-semibold text-neutral-800 text-sm">{name}</div>
+  <div className="text-xs text-neutral-400 mt-1">{blurb}</div>
+  <div className="text-xs text-brand-600 mt-2">Starts from a tenant's page</div>
+  </button>
+  ))}
+  </div>
+  </div>
   {[...CATEGORIES, "__uncategorised__"].map(cat => {
   const catTemplates = cat === "__uncategorised__"
     ? templates.filter(t => !(t.category || "").trim())

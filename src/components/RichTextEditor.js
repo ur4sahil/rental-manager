@@ -5,7 +5,8 @@ import { Extension } from "@tiptap/react";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { WORD_SINGLE_LINE } from "../utils/docxImport";
-import { DEFAULT_PAGE_SETUP, PAGE_GUTTER, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, pageGeometry, furnitureHeight, pageSlot, docExtensions, settlePagination } from "../utils/docKit";
+import { DEFAULT_PAGE_SETUP, PAGE_GUTTER, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, PARSE_OPTIONS, pageGeometry, furnitureHeight, pageSlot, docExtensions, settlePagination } from "../utils/docKit";
+import { lengthToInches, inchesToCss, ORDERED_STYLES, BULLET_STYLES, DEFAULT_ORDERED_STYLE, DEFAULT_BULLET } from "../utils/docRules";
 
 // Merge tags used to sit in the page as raw text -- a letter reading
 // "Dear {{recipient_name}}, {{letter_body}}" looks like source code, not
@@ -156,6 +157,123 @@ export function RichTextToolbar({ editor, compact = false }) {
   return <ToolbarInner editor={editor} compact={compact} />;
 }
 
+const ICON = (name, size = 16) => <span className="material-icons-outlined align-middle" style={{ fontSize: size }}>{name}</span>;
+const TEXT_COLORS = ["#111111", "#b91c1c", "#1d4ed8", "#047857", "#b45309", "#6d28d9", "#6b7280", "#ffffff"];
+const HIGHLIGHTS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fbcfe8", "#fed7aa", "#e9d5ff", "#e5e7eb"];
+const STYLE_OPTIONS = [["p", "Body text"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"]];
+
+// A small popover anchored under its button; closes on a click elsewhere.
+function Popover({ open, onClose, children, width = 220 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open, onClose]);
+  if (!open) return null;
+  return <div ref={ref} className="absolute left-0 top-full mt-1 z-40 bg-white border border-neutral-200 rounded-xl shadow-pop p-2 text-xs" style={{ width }} onMouseDown={e => e.stopPropagation()}>{children}</div>;
+}
+
+function Swatches({ colors, current, onPick, onClear, clearLabel }) {
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5">
+        {colors.map(c => (
+          <button key={c} type="button" aria-label={c} onClick={() => onPick(c)}
+            className={"w-6 h-6 rounded-md border " + (current && current.toLowerCase() === c ? "ring-2 ring-brand-500 border-white" : "border-neutral-300")} style={{ background: c }} />
+        ))}
+      </div>
+      <button type="button" className="mt-2 text-brand-600 hover:underline" onClick={onClear}>{clearLabel}</button>
+    </div>
+  );
+}
+
+// Paragraph dialog: Word's Paragraph box, the parts a lease needs.
+function ParagraphPopover({ editor, onClose }) {
+  const type = editor.isActive("heading") ? "heading" : "paragraph";
+  const a = editor.getAttributes(type);
+  const toIn = (v) => (v ? String(+lengthToInches(v).toFixed(2)) : "");
+  const toPt = (v) => (v ? String(+(lengthToInches(v) * 72).toFixed(1)) : "");
+  const [f, setF] = useState({ left: toIn(a.marginLeft), right: toIn(a.marginRight), first: toIn(a.textIndent), before: toPt(a.marginTop), after: toPt(a.marginBottom), keep: !!a.keepNext });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
+  const inch = (v) => (v === "" || !Number.isFinite(Number(v)) ? null : inchesToCss(Number(v)));
+  const pt = (v) => (v === "" || !Number.isFinite(Number(v)) || Number(v) === 0 ? null : `${Number(v)}pt`);
+  const apply = () => {
+    editor.chain().focus().setParagraphFormat({ marginLeft: inch(f.left), marginRight: inch(f.right), textIndent: inch(f.first), marginTop: pt(f.before), marginBottom: pt(f.after), keepNext: !!f.keep }).run();
+    onClose();
+  };
+  const num = (label, k, unit, step) => (
+    <label key={k} className="flex flex-col gap-0.5"><span className="text-neutral-500">{label}</span>
+      <span className="flex items-center gap-1"><input type="number" step={step} value={f[k]} onChange={set(k)} className="w-16 h-7 border border-neutral-200 rounded px-1.5" /><span className="text-neutral-400">{unit}</span></span></label>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="font-semibold text-neutral-700">Paragraph</div>
+      <div className="grid grid-cols-3 gap-2">
+        {num("Left indent", "left", "in", "0.25")}{num("Right indent", "right", "in", "0.25")}{num("First line", "first", "in", "0.25")}
+        {num("Space before", "before", "pt", "1")}{num("Space after", "after", "pt", "1")}
+      </div>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={f.keep} onChange={set("keep")} className="accent-brand-600" />Keep with next paragraph (never left alone at the foot of a page)</label>
+      <div className="flex gap-2 pt-1"><button type="button" onClick={apply} className="px-3 py-1 rounded bg-brand-600 text-white font-semibold">Apply</button><button type="button" onClick={onClose} className="px-3 py-1 rounded border border-neutral-200">Cancel</button></div>
+    </div>
+  );
+}
+
+function FindPopover({ editor, onClose }) {
+  const [q, setQ] = useState(editor.storage.findReplace?.query || "");
+  const [r, setR] = useState("");
+  const [cs, setCs] = useState(false);
+  const st = editor.storage.findReplace || { matches: [], index: -1 };
+  const search = (value, caseSensitive) => { setQ(value); editor.commands.setSearch(value, { caseSensitive }); };
+  const close = () => { editor.commands.clearSearch(); onClose(); };
+  return (
+    <div className="space-y-2">
+      <div className="font-semibold text-neutral-700">Find and replace</div>
+      <input autoFocus value={q} onChange={e => search(e.target.value, cs)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (e.shiftKey) editor.commands.findPrevious(); else editor.commands.findNext(); } }} placeholder="Find" className="w-full h-7 border border-neutral-200 rounded px-2" />
+      <input value={r} onChange={e => setR(e.target.value)} placeholder="Replace with" className="w-full h-7 border border-neutral-200 rounded px-2" />
+      <div className="flex items-center justify-between gap-2">
+        <label className="flex items-center gap-1"><input type="checkbox" checked={cs} onChange={e => { setCs(e.target.checked); search(q, e.target.checked); }} className="accent-brand-600" />Match case</label>
+        <span className="text-neutral-500">{q ? (st.matches.length ? `${st.index + 1} of ${st.matches.length}` : "No matches") : ""}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" onClick={() => editor.commands.findPrevious()} className="px-2 py-1 rounded border border-neutral-200">Previous</button>
+        <button type="button" onClick={() => editor.commands.findNext()} className="px-2 py-1 rounded border border-neutral-200">Next</button>
+        <button type="button" onClick={() => editor.commands.replaceCurrent(r)} disabled={st.index < 0} className="px-2 py-1 rounded border border-neutral-200 disabled:opacity-40">Replace</button>
+        <button type="button" onClick={() => editor.commands.replaceAll(r)} disabled={!st.matches.length} className="px-2 py-1 rounded bg-brand-600 text-white font-semibold disabled:opacity-40">Replace all</button>
+        <button type="button" onClick={close} className="ml-auto px-2 py-1 rounded border border-neutral-200">Done</button>
+      </div>
+    </div>
+  );
+}
+
+function TablePopover({ editor, onClose }) {
+  const run = (fn) => { fn(editor.chain().focus()).run(); };
+  const borders = editor.getAttributes("table").borders || "all";
+  const B = ({ label, cmd }) => <button type="button" onClick={() => run(cmd)} className="px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 text-left">{label}</button>;
+  return (
+    <div className="space-y-2">
+      <div className="font-semibold text-neutral-700">Table</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <B label="Row above" cmd={c => c.addRowBefore()} /><B label="Row below" cmd={c => c.addRowAfter()} />
+        <B label="Column left" cmd={c => c.addColumnBefore()} /><B label="Column right" cmd={c => c.addColumnAfter()} />
+        <B label="Delete row" cmd={c => c.deleteRow()} /><B label="Delete column" cmd={c => c.deleteColumn()} />
+        <B label="Merge cells" cmd={c => c.mergeCells()} /><B label="Split cell" cmd={c => c.splitCell()} />
+        <B label="Header row on/off" cmd={c => c.toggleHeaderRow()} /><B label="Delete table" cmd={c => c.deleteTable()} />
+      </div>
+      <div className="text-neutral-500">Borders</div>
+      <div className="flex gap-1.5">
+        {[["all", "All"], ["outer", "Outside only"], ["none", "None"]].map(([v, l]) => (
+          <button key={v} type="button" onClick={() => run(c => c.setTableBorders(v === "all" ? null : v))} className={"px-2 py-1 rounded border " + (borders === v ? "bg-brand-600 border-brand-600 text-white" : "border-neutral-200")}>{l}</button>
+        ))}
+      </div>
+      <div className="text-neutral-400">Drag a column's right edge to resize it.</div>
+      <button type="button" onClick={onClose} className="px-2 py-1 rounded border border-neutral-200">Done</button>
+    </div>
+  );
+}
+
 function ToolbarInner({ editor, compact }) {
   // The ribbon lives outside the editor, so nothing re-renders it when the
   // cursor moves. Subscribe to the bits it shows, or the font/size boxes
@@ -163,16 +281,24 @@ function ToolbarInner({ editor, compact }) {
   const st = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
-      bold: e.isActive("bold"), italic: e.isActive("italic"), underline: e.isActive("underline"),
-      h1: e.isActive("heading", { level: 1 }), h2: e.isActive("heading", { level: 2 }), h3: e.isActive("heading", { level: 3 }),
-      paragraph: e.isActive("paragraph"), bullet: e.isActive("bulletList"), ordered: e.isActive("orderedList"),
-      quote: e.isActive("blockquote"), link: e.isActive("link"),
+      bold: e.isActive("bold"), italic: e.isActive("italic"), underline: e.isActive("underline"), strike: e.isActive("strike"),
+      sup: e.isActive("superscript"), sub: e.isActive("subscript"),
+      style: e.isActive("heading", { level: 1 }) ? "h1" : e.isActive("heading", { level: 2 }) ? "h2" : e.isActive("heading", { level: 3 }) ? "h3" : "p",
+      bullet: e.isActive("bulletList"), ordered: e.isActive("orderedList"), inTable: e.isActive("table"), link: e.isActive("link"),
+      bulletStyle: e.getAttributes("bulletList").bullet || DEFAULT_BULLET,
+      listStyle: e.getAttributes("orderedList").listStyle || DEFAULT_ORDERED_STYLE,
       fontFamily: e.getAttributes("textStyle").fontFamily || "",
       fontSize: e.getAttributes("textStyle").fontSize || "",
+      color: e.getAttributes("textStyle").color || "",
+      highlight: e.getAttributes("textStyle").backgroundColor || "",
       align: ["center", "right", "justify"].find(a => e.isActive({ textAlign: a })) || "left",
       lineHeight: e.getAttributes("paragraph").lineHeight || e.getAttributes("heading").lineHeight || "",
+      canUndo: e.can().undo(), canRedo: e.can().redo(),
     }),
   });
+  const [open, setOpen] = useState("");   // which popover: color | highlight | paragraph | table | find | bullets | numbers
+  const toggle = (name) => setOpen(o => (o === name ? "" : name));
+  const close = () => setOpen("");
   const setLink = () => {
     const prev = editor.getAttributes("link").href || "";
     // eslint-disable-next-line no-alert
@@ -180,9 +306,6 @@ function ToolbarInner({ editor, compact }) {
     if (url === null) return;
     if (url === "") { editor.chain().focus().extendMarkRange("link").unsetLink().run(); return; }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-  };
-  const insertTable = () => {
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   };
   const gap = compact ? "gap-0.5" : "gap-1";
   const sep = <span className="w-px h-5 bg-neutral-200 mx-1" />;
@@ -194,13 +317,36 @@ function ToolbarInner({ editor, compact }) {
   const sizeValue = String(st.fontSize).replace(/pt$/, "");
   const spacing = SPACING_OPTIONS.find(([v]) => Math.abs(Number(v) - Number(st.lineHeight)) < 0.02);
   const alignBtn = (value, icon, title) => (
-    <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign(value).run()} active={st.align === value} title={title}>
-      <span className="material-icons-outlined align-middle" style={{ fontSize: 15 }}>{icon}</span>
-    </ToolbarBtn>
+    <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign(value).run()} active={st.align === value} title={title}>{ICON(icon, 15)}</ToolbarBtn>
   );
+  // Not a component: a component defined inside the render would be a new
+  // type each time and remount its popover (and lose the Find box's focus)
+  // on every keystroke.
+  const drop = (name, children) => <div className="relative inline-flex">{children}<Popover open={open === name} onClose={close} width={name === "find" ? 300 : name === "paragraph" ? 320 : name === "table" ? 260 : 200}>
+    {open === "color" && <Swatches colors={TEXT_COLORS} current={st.color} onPick={c => { editor.chain().focus().setColor(c).run(); close(); }} onClear={() => { editor.chain().focus().unsetColor().run(); close(); }} clearLabel="Automatic" />}
+    {open === "highlight" && <Swatches colors={HIGHLIGHTS} current={st.highlight} onPick={c => { editor.chain().focus().setBackgroundColor(c).run(); close(); }} onClear={() => { editor.chain().focus().unsetBackgroundColor().run(); close(); }} clearLabel="No highlight" />}
+    {open === "paragraph" && <ParagraphPopover editor={editor} onClose={close} />}
+    {open === "find" && <FindPopover editor={editor} onClose={close} />}
+    {open === "table" && <TablePopover editor={editor} onClose={close} />}
+    {open === "bullets" && <div className="space-y-1">{BULLET_STYLES.map(b => <button key={b.key} type="button" onClick={() => { editor.chain().focus().setBullet(b.key).run(); close(); }} className={"block w-full text-left px-2 py-1 rounded " + (st.bullet && st.bulletStyle === b.key ? "bg-brand-50 text-brand-700" : "hover:bg-neutral-50")}>{b.label}</button>)}</div>}
+    {open === "numbers" && <div className="space-y-1">
+      {ORDERED_STYLES.map(o => <button key={o.key} type="button" onClick={() => { editor.chain().focus().setListStyle(o.key).run(); close(); }} className={"block w-full text-left px-2 py-1 rounded " + (st.ordered && st.listStyle === o.key ? "bg-brand-50 text-brand-700" : "hover:bg-neutral-50")}>{o.label}</button>)}
+      {st.ordered && <div className="border-t border-neutral-100 pt-1 mt-1 flex gap-1.5">
+        <button type="button" onClick={() => { editor.chain().focus().restartListAt(1).run(); close(); }} className="px-2 py-1 rounded border border-neutral-200">Restart at 1</button>
+        <button type="button" onClick={() => { editor.chain().focus().continueList().run(); close(); }} className="px-2 py-1 rounded border border-neutral-200">Continue previous</button>
+      </div>}
+    </div>}
+  </Popover></div>;
 
   return (
     <div className={"flex items-center flex-wrap " + gap}>
+      <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Undo (Ctrl+Z)">{ICON("undo", 15)}</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo (Ctrl+Y)">{ICON("redo", 15)}</ToolbarBtn>
+      {sep}
+      <ToolbarSelect title="Paragraph style" width="w-[104px]" value={st.style}
+        onChange={e => (e.target.value === "p" ? editor.chain().focus().setParagraph().run() : editor.chain().focus().setHeading({ level: Number(e.target.value.slice(1)) }).run())}>
+        {STYLE_OPTIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </ToolbarSelect>
       <ToolbarSelect title="Font" width="w-[132px]" value={fontValue}
         onChange={e => (e.target.value ? editor.chain().focus().setFontFamily(e.target.value).run() : editor.chain().focus().unsetFontFamily().run())}>
         <option value="">Default font</option>
@@ -214,40 +360,106 @@ function ToolbarInner({ editor, compact }) {
         {SIZE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
       </ToolbarSelect>
       {sep}
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={st.bold} title="Bold"><b>B</b></ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={st.italic} title="Italic"><i>I</i></ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={st.underline} title="Underline"><span className="underline">U</span></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={st.bold} title="Bold (Ctrl+B)"><b>B</b></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={st.italic} title="Italic (Ctrl+I)"><i>I</i></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={st.underline} title="Underline (Ctrl+U)"><span className="underline">U</span></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={st.strike} title="Strikethrough"><span className="line-through">S</span></ToolbarBtn>
+      {drop("color", <><ToolbarBtn onClick={() => toggle("color")} active={!!st.color} title="Text colour"><span className="inline-flex flex-col items-center leading-none">{ICON("format_color_text", 14)}<span className="block h-[3px] w-4 mt-px rounded-sm" style={{ background: st.color || "#111" }} /></span></ToolbarBtn></>)}
+      {drop("highlight", <><ToolbarBtn onClick={() => toggle("highlight")} active={!!st.highlight} title="Highlight"><span className="inline-flex flex-col items-center leading-none">{ICON("border_color", 14)}<span className="block h-[3px] w-4 mt-px rounded-sm" style={{ background: st.highlight || "#fef08a" }} /></span></ToolbarBtn></>)}
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleSuperscript().run()} active={st.sup} title="Superscript">{ICON("superscript", 15)}</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleSubscript().run()} active={st.sub} title="Subscript">{ICON("subscript", 15)}</ToolbarBtn>
       {sep}
       {alignBtn("left", "format_align_left", "Align left")}
       {alignBtn("center", "format_align_center", "Center")}
       {alignBtn("right", "format_align_right", "Align right")}
       {alignBtn("justify", "format_align_justify", "Justify")}
+      <ToolbarBtn onClick={() => editor.chain().focus().outdent().run()} title="Decrease indent (Shift+Tab)">{ICON("format_indent_decrease", 15)}</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().indent().run()} title="Increase indent (Tab)">{ICON("format_indent_increase", 15)}</ToolbarBtn>
       <ToolbarSelect title="Line spacing" width="w-[78px]" value={spacing ? spacing[0] : ""}
         onChange={e => editor.chain().focus().setLineHeight(e.target.value || null).run()}>
         <option value="">Spacing</option>
         {SPACING_OPTIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
       </ToolbarSelect>
+      {drop("paragraph", <ToolbarBtn onClick={() => toggle("paragraph")} title="Paragraph: indents, space before and after, keep with next">{ICON("format_line_spacing", 15)}</ToolbarBtn>)}
       {sep}
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={st.h1} title="Heading 1">H1</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={st.h2} title="Heading 2">H2</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={st.h3} title="Heading 3">H3</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().setParagraph().run()} active={st.paragraph} title="Paragraph">¶</ToolbarBtn>
+      {drop("bullets", <><span className="inline-flex">
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={st.bullet} title="Bulleted list">{ICON("format_list_bulleted", 15)}</ToolbarBtn>
+        <ToolbarBtn onClick={() => toggle("bullets")} title="Bullet style">{ICON("arrow_drop_down", 14)}</ToolbarBtn>
+      </span></>)}
+      {drop("numbers", <><span className="inline-flex">
+        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={st.ordered} title="Numbered list">{ICON("format_list_numbered", 15)}</ToolbarBtn>
+        <ToolbarBtn onClick={() => toggle("numbers")} title="Numbering style, restart, continue">{ICON("arrow_drop_down", 14)}</ToolbarBtn>
+      </span></>)}
       {sep}
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={st.bullet} title="Bulleted list">•</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={st.ordered} title="Numbered list">1.</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={st.quote} title="Blockquote">&ldquo;</ToolbarBtn>
+      <ToolbarBtn onClick={setLink} active={st.link} title="Link">{ICON("link", 15)}</ToolbarBtn>
+      {drop("table", <ToolbarBtn onClick={() => { if (st.inTable) toggle("table"); else editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run(); }} active={st.inTable} title={st.inTable ? "Table: rows, columns, merge, borders" : "Insert table"}>{ICON("table_chart", 15)}</ToolbarBtn>)}
+      <ToolbarBtn onClick={() => editor.chain().focus().insertCheckbox().run()} title="Insert a checkbox (click it to tick)">{ICON("check_box_outline_blank", 15)}</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().insertPageBreak().run()} title="Page break">{ICON("insert_page_break", 15)}</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">{ICON("horizontal_rule", 15)}</ToolbarBtn>
       {sep}
-      <ToolbarBtn onClick={setLink} active={st.link} title="Link">🔗</ToolbarBtn>
-      <ToolbarBtn onClick={insertTable} title="Insert table">⊞</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">―</ToolbarBtn>
-      {sep}
-      <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Undo">↶</ToolbarBtn>
-      <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo">↷</ToolbarBtn>
+      {drop("find", <ToolbarBtn onClick={() => toggle("find")} title="Find and replace (Ctrl+F)">{ICON("search", 15)}</ToolbarBtn>)}
     </div>
   );
 }
 
-export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false, pageSetup = null, readOnly = false }) {
+// Word's ruler: inches across the page, the margins greyed, and the
+// current paragraph's indents as markers you can drag. Default tab stops
+// every half inch (index.css tab-size), shown as ticks. Sized to the sheet
+// at the current zoom so the inch marks line up with the text.
+export function Ruler({ editor, setup, zoom = 1 }) {
+  const st = useEditorState({ editor, selector: ({ editor: e }) => {
+    const a = e.isActive("heading") ? e.getAttributes("heading") : e.getAttributes("paragraph");
+    return { left: lengthToInches(a.marginLeft), right: lengthToInches(a.marginRight), first: lengthToInches(a.textIndent), has: e.isActive("paragraph") || e.isActive("heading") };
+  } });
+  const [drag, setDrag] = useState(null);   // { kind, startX, startVal }
+  const ref = useRef(null);
+  const g = pageGeometry(setup, 0, 0);
+  const pxPerIn = 96 * zoom;
+  const width = g.pageWidth * zoom, mL = g.marginLeft * zoom, mR = g.marginRight * zoom;
+  const textWidth = width - mL - mR;
+  const inches = Math.floor(textWidth / pxPerIn);
+  const x = (inch) => mL + inch * pxPerIn;
+  const apply = (kind, inchesVal) => {
+    const v = Math.max(kind === "first" ? -3 : 0, Math.min(6, Math.round(inchesVal * 16) / 16));
+    const attrs = kind === "left" ? { marginLeft: inchesToCss(v) } : kind === "right" ? { marginRight: inchesToCss(v) } : { textIndent: inchesToCss(v) };
+    editor.chain().setParagraphFormat(attrs).run();
+  };
+  const onDown = (kind, startVal) => (e) => { e.preventDefault(); setDrag({ kind, startX: e.clientX, startVal }); };
+  useEffect(() => {
+    if (!drag) return undefined;
+    const move = (e) => apply(drag.kind, drag.startVal + (e.clientX - drag.startX) / pxPerIn * (drag.kind === "right" ? -1 : 1));
+    const up = () => { setDrag(null); editor.commands.focus(); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag]);
+  const marker = (kind, left, title, shape, color) => (
+    <button type="button" aria-label={title} title={title} onMouseDown={onDown(kind, kind === "left" ? st.left : kind === "right" ? st.right : st.first)}
+      className="absolute p-0 border-0 bg-transparent cursor-ew-resize" style={{ left: left - 6, top: shape === "down" ? 1 : 13, width: 12, height: 12, lineHeight: 0 }}>
+      {shape === "down"
+        ? <svg width="12" height="9" viewBox="0 0 12 9"><path d="M1 0h10L6 8z" fill={color} /></svg>
+        : <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 0l5 5v7H1V5z" fill={color} /></svg>}
+    </button>
+  );
+  return (
+    <div ref={ref} className="mx-auto relative select-none bg-white border border-neutral-200 rounded-md text-[10px] text-neutral-500 overflow-hidden" style={{ width, height: 28 }} aria-label="Ruler">
+      <div className="absolute inset-y-0 left-0 bg-neutral-100" style={{ width: mL }} />
+      <div className="absolute inset-y-0 right-0 bg-neutral-100" style={{ width: mR }} />
+      {Array.from({ length: Math.floor(textWidth / (pxPerIn / 2)) + 1 }, (_, i) => i / 2).map(inch => (
+        <div key={inch} className="absolute bg-neutral-400" style={{ left: x(inch), top: inch % 1 === 0 ? 8 : 11, width: 1, height: inch % 1 === 0 ? 8 : 4 }} />
+      ))}
+      {Array.from({ length: Math.floor(textWidth / (pxPerIn / 8)) + 1 }, (_, i) => i / 8).filter(v => v % 0.5 !== 0).map(inch => (
+        <div key={inch} className="absolute bg-neutral-300" style={{ left: x(inch), top: 12, width: 1, height: 2 }} />
+      ))}
+      {Array.from({ length: inches }, (_, i) => i + 1).map(n => <span key={n} className="absolute" style={{ left: x(n) + 3, top: 15 }}>{n}</span>)}
+      {st.has && marker("first", x(st.left + st.first), `First-line indent ${st.first.toFixed(2)}"`, "down", "#4f46e5")}
+      {st.has && marker("left", x(st.left), `Left indent ${st.left.toFixed(2)}"`, "up", "#4f46e5")}
+      {st.has && marker("right", x(textWidth / pxPerIn - st.right), `Right indent ${st.right.toFixed(2)}"`, "up", "#4f46e5")}
+    </div>
+  );
+}
+
+export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false, pageSetup = null, readOnly = false, showRuler = true, showFieldChips = true }) {
   const [dragOver, setDragOver] = useState(false);
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const setupKey = JSON.stringify(setup);
@@ -262,6 +474,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     }),
     editable: !readOnly,
     content: value,
+    parseOptions: PARSE_OPTIONS,
     onUpdate: ({ editor: ed }) => { if (onChange) onChange(ed.getHTML()); },
     editorProps: {
       // Pasting from Word/Google Docs/Outlook drops a giant HTML payload
@@ -274,6 +487,8 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   });
 
   useEffect(() => () => { if (editor) editor.destroy(); }, [editor]);
+  // For the browser tests: the editor instance, in development only.
+  useEffect(() => { if (editor && process.env.NODE_ENV !== "production" && !readOnly) window.__hxEditor = editor; }, [editor, readOnly]);
 
   // A read-only view is driven by its `value`: the live preview re-merges
   // the document on every keystroke in the form beside it.
@@ -285,7 +500,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     if (!editor || !readOnly || editor.isDestroyed) return;
     if (appliedValue.current === value) return;
     appliedValue.current = value;
-    editor.commands.setContent(value || "", { emitUpdate: false });
+    editor.commands.setContent(value || "", { emitUpdate: false, parseOptions: PARSE_OPTIONS });
   }, [editor, readOnly, value]);
 
   // Hand the editor instance up to the parent so it can mount the
@@ -399,7 +614,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
             <RichTextToolbar editor={editor} compact />
           </div>
         )}
-        {!readOnly && mergeFields.length > 0 && (
+        {!readOnly && showFieldChips && mergeFields.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap px-3 py-1.5 border-b border-neutral-100 bg-white">
             <span className="text-2xs font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
             {mergeFields.filter(f => f.name).map(f => (
@@ -435,6 +650,7 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
           onDrop={handleDrop}
           onClick={() => { if (!readOnly) editor.chain().focus().run(); }}
         >
+          {!readOnly && showRuler && <div className="mb-2" onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} /></div>}
           <div className="mx-auto w-max" style={{ fontFamily: DOC_FONT_FAMILY, fontSize: DOC_FONT_SIZE, lineHeight: DOC_LINE_HEIGHT, zoom }} onClick={e => e.stopPropagation()}>
             <EditorContent editor={editor} className="paged-editor prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:bg-white [&_.ProseMirror]:text-neutral-900 [&_.ProseMirror]:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto" />
           </div>

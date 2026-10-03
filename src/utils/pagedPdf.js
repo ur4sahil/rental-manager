@@ -11,7 +11,8 @@
 // browser does all the typesetting; nothing here decides a line break or
 // a page break, so the PDF cannot disagree with what was on screen.
 import { Editor } from "@tiptap/core";
-import { DEFAULT_PAGE_SETUP, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, docExtensions, settlePagination } from "./docKit";
+import { DEFAULT_PAGE_SETUP, DOC_FONT_FAMILY, DOC_FONT_SIZE, DOC_LINE_HEIGHT, PARSE_OPTIONS, docExtensions, settlePagination } from "./docKit";
+import { listMarker, isCheckboxChar, CHECKBOX_OFF } from "./docRules";
 
 import serifRegular from "../fonts/LiberationSerif-Regular.ttf";
 import serifBold from "../fonts/LiberationSerif-Bold.ttf";
@@ -72,6 +73,7 @@ async function layout(html, setup) {
     // straight to (page, offset). The gap is decoration in the editor.
     extensions: docExtensions({ paged: true, setup, pageGap: 0 }),
     content: html,
+    parseOptions: PARSE_OPTIONS,
     editable: false,
   });
   const cleanup = () => { try { editor.destroy(); } catch { /* already gone */ } host.remove(); };
@@ -103,6 +105,7 @@ async function layout(html, setup) {
     };
 
     const items = [];
+    const under = [];   // highlight fills: drawn before any text
     const styleCache = new Map();
     const styleOf = (el) => {
       let s = styleCache.get(el);
@@ -140,6 +143,20 @@ async function layout(html, setup) {
       const text = node.nodeValue;
       const re = /\S+/g;
       for (let m = re.exec(text); m; m = re.exec(text)) {
+        // A checkbox character (docRules) is not in the embedded fonts: it
+        // is drawn as a box, ticked or not, one character at a time.
+        if ([...m[0]].some(isCheckboxChar)) {
+          for (let i = 0; i < m[0].length; i++) {
+            range.setStart(node, m.index + i); range.setEnd(node, m.index + i + 1);
+            const r = range.getClientRects()[0];
+            if (!r || !r.width) continue;
+            if (!isCheckboxChar(m[0][i])) { items.push({ type: "text", ...place(r.left, baselineOf(r, s)), text: m[0][i], s }); continue; }
+            const side = s.size * 0.72, base = baselineOf(r, s);
+            const p = place(r.left + (r.width - side) / 2, base - side * 0.92);
+            items.push({ type: "box", ...p, w: side, h: side, checked: m[0][i] !== CHECKBOX_OFF, color: s.color, thickness: Math.max(0.6, s.size * 0.06) });
+          }
+          continue;
+        }
         range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length);
         const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
         if (!rects.length) continue;
@@ -187,7 +204,23 @@ async function layout(html, setup) {
       }
     });
 
+    // --- highlights: a background colour on a run is a filled box under it.
+    pm.querySelectorAll("[style*='background-color']").forEach((el) => {
+      const cs = getComputedStyle(el);
+      if (!cs.backgroundColor || /rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor)) return;
+      const s = styleOf(el);
+      if (s.hidden) return;
+      const color = parseColor(cs.backgroundColor);
+      for (const r of el.getClientRects()) {
+        if (r.width < 0.5 || r.height < 0.5) continue;
+        under.push({ type: "fill", ...place(r.left, r.top), w: r.width, h: r.height, color });
+      }
+    });
+
     // --- list markers: drawn by CSS (::before), so not in the DOM either.
+    // The text of each marker comes from the same table as the CSS
+    // (docRules.listMarker); the hang is read off the ::before box.
+    const itemNumber = (li) => Array.from(li.parentElement.children).indexOf(li) + (parseInt(li.parentElement.getAttribute("start"), 10) || 1);
     pm.querySelectorAll("li").forEach((li) => {
       const p = li.querySelector(":scope > p");
       const first = p && document.createTreeWalker(p, NodeFilter.SHOW_TEXT).nextNode();
@@ -197,14 +230,23 @@ async function layout(html, setup) {
       if (!r) return;
       const s = styleOf(first.parentElement);
       const base = baselineOf(r, s);
-      const hang = 24; // 0.25in, as in index.css
+      const before = getComputedStyle(p, "::before");
+      const hang = Math.abs(parseFloat(before.marginLeft)) || 24; // 0.25in in index.css
       const list = li.parentElement;
       if (list && list.tagName === "OL") {
-        const n = Array.from(list.children).indexOf(li) + (parseInt(list.getAttribute("start"), 10) || 1);
-        items.push({ type: "text", ...place(r.left - hang, base), text: n + ".", s: styleOf(p) });
+        const style = list.getAttribute("data-list-style") || "decimal";
+        const parents = [];
+        for (let anc = list.parentElement?.closest("li"); anc; anc = anc.parentElement?.closest("li")) {
+          if (anc.parentElement && anc.parentElement.tagName === "OL") parents.unshift(itemNumber(anc));
+        }
+        items.push({ type: "text", ...place(r.left - hang, base), text: listMarker(style, itemNumber(li), parents), s: styleOf(p) });
       } else {
-        const radius = s.size * 0.15;
-        items.push({ type: "dot", ...place(r.left - hang + radius, base - s.size * 0.28), radius, color: s.color });
+        const bullet = list ? list.getAttribute("data-bullet") || "disc" : "disc";
+        const radius = s.size * 0.15, cy = base - s.size * 0.28;
+        if (bullet === "dash") items.push({ type: "line", ...place(r.left - hang, cy), w: s.size * 0.45, thickness: Math.max(0.6, s.size * 0.06), color: s.color });
+        else if (bullet === "square") items.push({ type: "fill", ...place(r.left - hang, cy - radius), w: radius * 2, h: radius * 2, color: s.color });
+        else if (bullet === "circle") items.push({ type: "ring", ...place(r.left - hang + radius, cy), radius: radius * 1.1, color: s.color, thickness: Math.max(0.5, s.size * 0.05) });
+        else items.push({ type: "dot", ...place(r.left - hang + radius, cy), radius, color: s.color });
       }
     });
 
@@ -228,7 +270,7 @@ async function layout(html, setup) {
       }
     });
 
-    return { pages, width, height, items, cleanup };
+    return { pages, width, height, items: [...under, ...items], cleanup };
   } catch (e) {
     cleanup();
     throw e;
@@ -274,6 +316,17 @@ export async function renderPagedPdf({ html, pageSetup, title }) {
         sheet.drawLine({ start: { x, y }, end: { x: x + (it.w || 0) * PX_TO_PT, y: y - (it.h || 0) * PX_TO_PT }, thickness: it.thickness * PX_TO_PT, color: rgb(...it.color) });
       } else if (it.type === "dot") {
         sheet.drawCircle({ x, y, size: it.radius * PX_TO_PT, color: rgb(...it.color) });
+      } else if (it.type === "ring") {
+        sheet.drawCircle({ x, y, size: it.radius * PX_TO_PT, borderColor: rgb(...it.color), borderWidth: it.thickness * PX_TO_PT, color: undefined, opacity: 0 });
+      } else if (it.type === "fill") {
+        sheet.drawRectangle({ x, y: y - it.h * PX_TO_PT, width: it.w * PX_TO_PT, height: it.h * PX_TO_PT, color: rgb(...it.color) });
+      } else if (it.type === "box") {
+        const w = it.w * PX_TO_PT, h = it.h * PX_TO_PT, t = it.thickness * PX_TO_PT;
+        sheet.drawRectangle({ x, y: y - h, width: w, height: h, borderColor: rgb(...it.color), borderWidth: t });
+        if (it.checked) {
+          sheet.drawLine({ start: { x: x + w * 0.2, y: y - h * 0.2 }, end: { x: x + w * 0.8, y: y - h * 0.8 }, thickness: t, color: rgb(...it.color) });
+          sheet.drawLine({ start: { x: x + w * 0.8, y: y - h * 0.2 }, end: { x: x + w * 0.2, y: y - h * 0.8 }, thickness: t, color: rgb(...it.color) });
+        }
       }
     }
     return await pdf.save();

@@ -1080,7 +1080,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     ...(safeNum(t.balance) > 0 ? [{ label: "Late rent notice", onClick: () => setPage("doc_builder", {
       templateKey: "late_fee_notice", tenantId: Number(t.id), returnTo: tenantReturnTo(t),
       values: { total_due: formatCurrency(t.balance), rent_period: rentPeriodLabel(formatLocalDate(new Date())) },
-    }) }] : []),
+    }) },
+    // The court's own Notice of Intent (DC-CV-115), filled from the ledger:
+    // the first step of a failure-to-pay-rent case (FtprFiling.js).
+    { label: "Notice of Intent to File (DC-CV-115)…", onClick: () => setPage("evictions", { tenantId: t.id }) },
+    { label: "Complaint / Warrant of Restitution (DC-CV-082, 081)…", onClick: () => setPage("evictions", { tenantId: t.id }) }] : []),
   ];
   const tenantReturnTo = (t) => ({ page: "tenants", action: { openTenantId: t.id, tenantName: t.name, panel: "detail" } });
   function createLeaseFor(tenant) {

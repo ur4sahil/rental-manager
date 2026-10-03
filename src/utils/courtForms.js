@@ -41,6 +41,212 @@ export const DCCV115 = {
   remove: ["Reset"],
 };
 
+// DC-CV-082, the complaint, in the version the court publishes for MDEC
+// e-filing ("bulk filing"): a fillable PDF, three copies of the complaint
+// (one set of fields fills all three), a return-of-service page for the
+// process server and the notice to the tenant. public/dccv082.pdf is the
+// court's file, unchanged. The counter still wants its carbonless paper
+// form; this one is for e-filing (or to copy from).
+export const DCCV082 = {
+  file: "/dccv082.pdf",
+  revision: "DC-CV-082 (Rev. 10/01/2024), MDEC bulk-filing version",
+  sha256: "9f6b81d883666fbaaf304e2e9026f272f8d7bb227083f89c55aaff4f5ba9abfa",
+  text: {
+    courtAddress: "Court Address",
+    landlordName: "Text2", landlordAddress: "Text3", landlordCity: "Text4", landlordState: "Text5", landlordZip: "Text6",
+    tenant1: "Text7", tenant2: "Text8", tenant3: "Text9", tenant4: "Text10",
+    tenantAddress: "Text11", tenantCity: "Text12", tenantState: "Text13", tenantZip: "Text14",
+    propertyName: "Text24", propertyAddress: "Text25",
+    licenseNumber: "Text30", licenseOther: "T 100", mdeCertificate: "Text36",
+    rent: "Text45", dueDay: "Text46", rentMonths: "Text47", rentTotal: "Text48", utilityCredits: "Text49", netRent: "Text50",
+    lateMonths: "Text54", lateAmount: "Text51", subtotal: "Text52", futureRent: "Text53", total: "Text58",
+    priorJudgments: "Text59", militaryFacts: "Text65", noticeDate: "Text70",
+    signerName: "Text71", signature: "Text72", attorneyNumber: "Text73", signedDate: "Text74", signerAddress: "Text75", signerPhone: "Text76",
+  },
+  checks: {
+    licenseNo: "Check Box28", licenseYes: "Check Box29", unlicensed: "Check Box26", unlicensedExempt: "Check 27", unlicensedReasons: "Check 28", unlicensedOther: "Check 29",
+    leadNotAffected: "Check Box31", leadAffected: "Check Box32", leadRegistrationCurrent: "Check Box33", leadOwnerUnable: "Check Box37", leadExempt: "Check 34", leadNonCooperation: "Check 35",
+    moneyJudgment: "Check Box38",
+    notSubsidized: "Check Box39", subsidized: "Check Box40", section8: "Check Box34", subsidyOther: "Check Box35",
+    perWeek: "Check Box41", perMonth: "Check Box42", rentWeeks: "Check Box43", rentMonths: "Check Box44", lateWeeks: "Check Box55", lateMonths: "Check Box56",
+    futureRent: "Check Box57", deceased: "Check Box60", dodVerified: "Check Box61",
+    allTenantsListed: "Check Box6", someMilitary: "Check Box9", noMilitary: "Check Box5", unknownMilitary: "Check Box7",
+    noticeMail: "Check Box8", noticePosted: "Check Box10", noticeElectronic: "Check Box11",
+  },
+  dropdowns: { district: "District" },
+  remove: ["Reset"],
+  // The court locations the form itself offers.
+  districts: ["Allegany County", "Anne Arundel County - Annapolis", "Anne Arundel County - Glen Burnie", "Baltimore City - Eastside", "Baltimore City - Hubbard", "Baltimore City - Hargrove", "Baltimore City - Wabash", "Baltimore County - Catonsville", "Baltimore County - Essex", "Baltimore County - Towson", "Calvert County", "Caroline County", "Carroll County", "Cecil County", "Charles County", "Dorchester County", "Frederick County", "Garrett County", "Harford County", "Howard County", "Kent County", "Montgomery County - Rockville", "Montgomery County - Silver Spring", "Prince George's County - Hyattsville", "Prince George's County - Upper Marlboro", "Queen Anne's County", "Somerset County", "St. Mary's County", "Talbot County", "Washington County", "Wicomico County", "Worcester County - Ocean City", "Worcester County - Snow Hill"],
+};
+/** The court locations that serve a county (the form's own names). */
+export function districtsFor(county, city = "") {
+  const c = String(county || "").replace(/\s+county$/i, "").trim().toLowerCase();
+  const key = /^baltimore city$/.test(c) || (!c && /^baltimore$/i.test(String(city).trim())) ? "baltimore city" : c;
+  if (!key) return [];
+  return DCCV082.districts.filter(d => d.toLowerCase().startsWith(key));
+}
+
+/**
+ * What goes in each field of the DC-CV-082 (e-filing version).
+ * Inputs are what the dialog collects; see FtprFiling.js.
+ * @returns {{ ok, problems: string[], text, checks: string[], dropdowns, total, subtotal }}
+ */
+export function dccv082Values({
+  district = "", courtAddress = "", landlord = {}, tenants = [], premises = {}, propertyName = "",
+  license = { status: "yes", number: "", expires: "", reason: "" },      // status: yes | no | unlicensed (reason: exempt | reasons | other + text)
+  lead = { status: "not_affected", certificate: "", reason: "" },        // status: not_affected | affected | owner_unable (reason: exempt | non_cooperation)
+  moneyJudgment = false, subsidized = false, subsidyKind = "s8",
+  monthlyRent = 0, dueDay = 1, perWeek = false, claim, utilityCredits = 0, futureRent = 0,
+  priorJudgments = "", deceased = false, military = "", militaryFacts = "", dodVerified = false, allTenantsListed = true,
+  notice = {}, signer = {}, signature = "", signedDate = "",
+} = {}) {
+  const T = DCCV082.text, C = DCCV082.checks, problems = [], text = {}, checks = [], dropdowns = {};
+  const put = (key, v) => { const s = String(v ?? "").trim(); if (s) text[T[key]] = s; };
+  const tick = (key) => checks.push(C[key]);
+  const names = (tenants || []).map(t => String(t?.name || "").trim()).filter(Boolean);
+  const rent = money(claim?.rent?.amount), fees = money(claim?.lateFees?.amount), credits = money(utilityCredits);
+  const net = money(rent - credits), subtotal = money(net + fees), future = money(futureRent), total = money(subtotal + future);
+  const period = (c) => (c && isIso(c.from) && isIso(c.to) ? usDate(c.from) + " to " + usDate(c.to) : "");
+
+  if (!DCCV082.districts.includes(district)) problems.push("Choose the court (the District Court location for the property's county).");
+  if (!String(landlord.name || "").trim() || !String(landlord.address || "").trim()) problems.push("The landlord's name and address are missing (Settings › Company Details).");
+  if (!names.length) problems.push("There is no tenant to name.");
+  if (names.length > 4) problems.push("The form has room for four tenants; this tenancy has " + names.length + ".");
+  if (!String(premises.address || "").trim()) problems.push("The address of the rented home is missing.");
+  if (!(rent > 0)) problems.push("No rent is past due. A failure-to-pay-rent complaint needs unpaid rent.");
+  if (rent > 0 && !period(claim?.rent)) problems.push("The period the unpaid rent covers is missing.");
+  if (license.status === "yes" && !String(license.number || "").trim()) problems.push("The rental licence number is missing. Enter it, or say the property is not required to be licensed.");
+  if (license.status === "unlicensed" && license.reason === "other" && !String(license.text || "").trim()) problems.push("Say why the property is unlicensed.");
+  if (lead.status === "affected" && !String(lead.certificate || "").trim()) problems.push("The MDE lead inspection certificate number is missing.");
+  if (!["none", "some", "unknown"].includes(military)) problems.push("Say what is known about military service.");
+  if (military === "none" && !String(militaryFacts || "").trim()) problems.push("The form requires the facts supporting 'no tenant is in the military service' (e.g. 'DOD SCRA search on <date>, no active duty found').");
+  if (!isIso(notice.providedOn) || !noticeMethod(notice.method)) problems.push("The date and method of the Notice of Intent are not recorded.");
+  if (!String(signer.name || "").trim()) problems.push("The signer's name is missing.");
+  if (!(Number(monthlyRent) > 0)) problems.push("The monthly rent is missing.");
+
+  dropdowns[DCCV082.dropdowns.district] = DCCV082.districts.includes(district) ? district : " ";
+  put("courtAddress", courtAddress);
+  put("landlordName", landlord.name); put("landlordAddress", landlord.address);
+  put("landlordCity", landlord.city); put("landlordState", landlord.state); put("landlordZip", landlord.zip);
+  names.slice(0, 4).forEach((n, i) => put("tenant" + (i + 1), n));
+  put("tenantAddress", premises.address); put("tenantCity", premises.city); put("tenantState", premises.state); put("tenantZip", premises.zip);
+  put("propertyName", propertyName); put("propertyAddress", [premises.address, premises.city].filter(Boolean).join(", "));
+  if (license.status === "no") tick("licenseNo");
+  else if (license.status === "unlicensed") { tick("unlicensed"); tick(license.reason === "exempt" ? "unlicensedExempt" : license.reason === "reasons" ? "unlicensedReasons" : "unlicensedOther"); if (license.reason === "other") put("licenseOther", license.text); }
+  else { tick("licenseYes"); put("licenseNumber", [license.number, license.expires && isIso(license.expires) ? "expires " + usDate(license.expires) : license.expires].filter(Boolean).join(", ")); }
+  if (lead.status === "affected") { tick("leadAffected"); tick("leadRegistrationCurrent"); put("mdeCertificate", lead.certificate); }
+  else if (lead.status === "owner_unable") { tick("leadAffected"); tick("leadOwnerUnable"); tick(lead.reason === "non_cooperation" ? "leadNonCooperation" : "leadExempt"); }
+  else tick("leadNotAffected");
+  if (moneyJudgment) tick("moneyJudgment");
+  if (subsidized) { tick("subsidized"); tick(subsidyKind === "other" ? "subsidyOther" : "section8"); } else tick("notSubsidized");
+  put("rent", usMoney(monthlyRent)); put("dueDay", ordinal(dueDay)); tick(perWeek ? "perWeek" : "perMonth");
+  tick(perWeek ? "rentWeeks" : "rentMonths"); put("rentMonths", period(claim?.rent)); put("rentTotal", usMoney(rent));
+  put("utilityCredits", credits > 0 ? usMoney(credits) : ""); put("netRent", usMoney(net));
+  if (fees > 0) { tick(perWeek ? "lateWeeks" : "lateMonths"); put("lateMonths", period(claim?.lateFees)); put("lateAmount", usMoney(fees)); }
+  put("subtotal", usMoney(subtotal));
+  if (future > 0) { tick("futureRent"); put("futureRent", usMoney(future)); }
+  put("total", usMoney(total));
+  put("priorJudgments", priorJudgments);
+  if (deceased) tick("deceased");
+  if (dodVerified) tick("dodVerified");
+  if (allTenantsListed && names.length <= 4) tick("allTenantsListed");
+  if (military === "some") tick("someMilitary"); else if (military === "none") { tick("noMilitary"); put("militaryFacts", militaryFacts); } else if (military === "unknown") tick("unknownMilitary");
+  put("noticeDate", usDate(notice.providedOn));
+  const m = noticeMethod(notice.method);
+  if (m) tick(m.key === "mail" ? "noticeMail" : m.key === "posted" ? "noticePosted" : "noticeElectronic");
+  put("signerName", signer.name); put("signature", signature); put("attorneyNumber", signer.attorneyNumber);
+  put("signedDate", usDate(signedDate)); put("signerAddress", signer.address); put("signerPhone", signer.phone);
+  return { ok: problems.length === 0, problems, text, checks, dropdowns, subtotal, total, net };
+}
+
+/**
+ * Fill the court's e-filing PDF. Left fillable (not flattened): the clerk's
+ * and the process server's parts are still to be written on it.
+ */
+export async function fillDccv082(PDFLib, bytes, values) {
+  const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+  const form = pdf.getForm();
+  const have = new Set(form.getFields().map(f => f.getName()));
+  const need = [...Object.values(DCCV082.text), ...Object.values(DCCV082.checks), ...Object.values(DCCV082.dropdowns)];
+  const missing = need.filter(n => !have.has(n));
+  if (missing.length) throw new Error("The court's complaint form has changed and can no longer be filled in automatically (missing: " + missing.slice(0, 3).join(", ") + "). Download the current DC-CV-082 from mdcourts.gov and fill it in by hand.");
+  for (const [name, value] of Object.entries(values.text || {})) form.getTextField(name).setText(pdfSafe(value));
+  for (const name of values.checks || []) form.getCheckBox(name).check();
+  for (const [name, value] of Object.entries(values.dropdowns || {})) { try { form.getDropdown(name).select(value); } catch (_e) { /* a location the form does not list */ } }
+  for (const name of DCCV082.remove) { if (have.has(name)) { try { form.removeField(form.getField(name)); } catch (_e) { /* harmless */ } } }
+  pdf.setTitle("Failure to Pay Rent - Landlord's Complaint for Repossession of Rented Property (DC-CV-082)");
+  return pdf.save({ updateFieldAppearances: true });
+}
+
+// DC-CV-081, Petition for Warrant of Restitution: after judgment for
+// possession, the ask for the warrant the sheriff acts on. Fillable;
+// public/dccv081.pdf is the court's file, unchanged.
+export const DCCV081 = {
+  file: "/dccv081.pdf",
+  revision: "DC-CV-081, Petition for Warrant of Restitution (court form, 2 pages)",
+  sha256: "ff25db87f65dc16a05a1a006dba734029c320a8ef1e9e26fd8670d022b01685d",
+  text: {
+    courtAddress: "Court Address", courtPhone: "Court Telephone Number", caseNumber: "Case Number",
+    landlordName: "Plaintiff/Landlord/Agent Name", landlordAddress: "Plaintiff/Landlord/Agent Street Address", landlordCity: "Plaintiff/Landlord/Agent City", landlordState: "Plaintiff/Landlord/Agent State", landlordZip: "Plaintiff/Landlord/Agent Zip",
+    tenant1: "Defendant/Tenant 1 Name", tenant2: "Defendant/Tenant 2 Name", tenant3: "Defendant/Tenant 3 Name", tenant4: "Defendant/Tenant 4 Name",
+    tenantAddress: "Defendant(s)/Tenant(s) Street Address", tenantCity: "Defendant(s)/Tenant(s) City", tenantState: "Defendant(s)/Tenant(s) State", tenantZip: "Defendant(s)/Tenant(s) Zip",
+    judgmentDate: "Date", amountDue: "Amount Due", costs: "Amount of Costs", premises: "Description of premises", amountPaid: "Amount Paid", balance: "Amount of Balance",
+    signedDate: "Date of Signature", signature: "Signature of Plaintiff/ Landlord/Agent/Attorney", attorneyNumber: "Attorney Number",
+    phone: "Telephone Number", signerName: "Printed Name", fax: "Fax", signerAddress: "Street Address", email: "E-mail", signerCityStateZip: "City, State, Zip",
+  },
+  checks: { failureToPayRent: "Failure to Pay Rent", otherCase: "Other Case Types", determinedAmount: "Determined the amount due to be", orderedPossession: "Ordered that possession of the premises described as", noRightToRedeem: "Found the defendant/tenant does not have the right to redeem", hasPaid: "Has paid (if any)" },
+  dropdowns: { district: "City/County" },
+  remove: ["Reset Form"],
+};
+/**
+ * What goes in each field of the DC-CV-081.
+ * @returns {{ ok, problems, text, checks, dropdowns }}
+ */
+export function dccv081Values({ district = "", courtAddress = "", courtPhone = "", caseNumber = "", landlord = {}, tenants = [], premises = {}, judgmentDate = "", amountDue = 0, costs = 0, premisesDescription = "", noRightToRedeem = false, amountPaid = 0, signer = {}, signedDate = "", signature = "" } = {}) {
+  const T = DCCV081.text, C = DCCV081.checks, problems = [], text = {}, checks = [], dropdowns = {};
+  const put = (key, v) => { const s = String(v ?? "").trim(); if (s) text[T[key]] = s; };
+  const names = (tenants || []).map(t => String(t?.name || "").trim()).filter(Boolean);
+  const due = money(amountDue), paid = money(amountPaid), balance = money(Math.max(0, due - paid));
+  if (!DCCV082.districts.includes(district)) problems.push("Choose the court.");
+  if (!String(caseNumber || "").trim()) problems.push("The case number is missing (the court gave it when the complaint was filed).");
+  if (!isIso(judgmentDate)) problems.push("The date of the judgment is missing.");
+  if (!(due > 0)) problems.push("The amount the court determined to be due is missing.");
+  if (!String(premisesDescription || premises.address || "").trim()) problems.push("The address of the rented home is missing.");
+  if (!names.length) problems.push("There is no tenant to name.");
+  if (names.length > 4) problems.push("The form has room for four tenants; this tenancy has " + names.length + ".");
+  if (!String(landlord.name || "").trim()) problems.push("The landlord's name is missing (Settings › Company Details).");
+  if (!String(signer.name || "").trim()) problems.push("The signer's name is missing.");
+  dropdowns[DCCV081.dropdowns.district] = DCCV082.districts.includes(district) ? district : " ";
+  put("courtAddress", courtAddress); put("courtPhone", courtPhone); put("caseNumber", caseNumber);
+  put("landlordName", landlord.name); put("landlordAddress", landlord.address); put("landlordCity", landlord.city); put("landlordState", landlord.state); put("landlordZip", landlord.zip);
+  names.slice(0, 4).forEach((n, i) => put("tenant" + (i + 1), n));
+  put("tenantAddress", premises.address); put("tenantCity", premises.city); put("tenantState", premises.state); put("tenantZip", premises.zip);
+  checks.push(C.failureToPayRent);
+  put("judgmentDate", usDate(judgmentDate));
+  checks.push(C.determinedAmount); put("amountDue", usMoney(due)); put("costs", usMoney(costs));
+  checks.push(C.orderedPossession); put("premises", premisesDescription || [premises.address, premises.city, premises.state, premises.zip].filter(Boolean).join(", "));
+  if (noRightToRedeem) checks.push(C.noRightToRedeem);
+  if (paid > 0) { checks.push(C.hasPaid); put("amountPaid", usMoney(paid)); }
+  put("balance", usMoney(balance));
+  put("signedDate", usDate(signedDate)); put("signature", signature); put("attorneyNumber", signer.attorneyNumber);
+  put("phone", signer.phone); put("signerName", signer.name); put("fax", signer.fax); put("signerAddress", signer.address); put("email", signer.email); put("signerCityStateZip", signer.cityStateZip);
+  return { ok: problems.length === 0, problems, text, checks, dropdowns, balance };
+}
+export async function fillDccv081(PDFLib, bytes, values) {
+  const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+  const form = pdf.getForm();
+  const have = new Set(form.getFields().map(f => f.getName()));
+  const need = [...Object.values(DCCV081.text), ...Object.values(DCCV081.checks), ...Object.values(DCCV081.dropdowns)];
+  const missing = need.filter(n => !have.has(n));
+  if (missing.length) throw new Error("The court's petition form has changed and can no longer be filled in automatically (missing: " + missing.slice(0, 3).join(", ") + "). Download the current DC-CV-081 from mdcourts.gov and fill it in by hand.");
+  for (const [name, value] of Object.entries(values.text || {})) form.getTextField(name).setText(pdfSafe(value));
+  for (const name of values.checks || []) form.getCheckBox(name).check();
+  for (const [name, value] of Object.entries(values.dropdowns || {})) { try { form.getDropdown(name).select(value); } catch (_e) { /* not listed */ } }
+  for (const name of DCCV081.remove) { if (have.has(name)) { try { form.removeField(form.getField(name)); } catch (_e) { /* harmless */ } } }
+  pdf.setTitle("Petition for Warrant of Restitution (DC-CV-081)");
+  return pdf.save({ updateFieldAppearances: true });
+}
+
 // How the notice may be provided, in the form's own words.
 export const NOTICE_METHODS = [
   { key: "mail", label: "First-class mail, with a certificate of mailing", electronic: false },

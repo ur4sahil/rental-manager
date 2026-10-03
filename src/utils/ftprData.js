@@ -152,13 +152,16 @@ export async function saveNotice({ companyId, ctx, parties, claim, noticeDate, m
 }
 
 /** The complaint worksheet was made: store it on the case. */
-export async function saveWorksheet({ companyId, ctx, evCase, claim, total, answers, pdfBytes, userEmail }) {
+export async function saveWorksheet({ companyId, ctx, evCase, claim, total, answers, pdfBytes, userEmail, worksheet = false }) {
   const today = formatLocalDate(new Date());
+  const who = ctx.tenant?.name || evCase.tenant_name || "Tenant";
   const stored = await storeCourtDoc({
     companyId, ctx, kind: "ftpr_complaint", pdfBytes, userEmail,
-    name: "Complaint worksheet (DC-CV-082) — " + (ctx.tenant?.name || evCase.tenant_name || "Tenant") + " " + today,
-    summary: `<p>Worksheet for the Failure to Pay Rent complaint, court form DC-CV-082, stored as a PDF. The court requires its own paper form; this lists every answer to copy onto it.</p><p>Total: $${money(total).toFixed(2)}.</p>`,
-    fields: { prepared_on: today, claim: snapshot(claim), total: money(total), answers },
+    name: (worksheet ? "Complaint worksheet (DC-CV-082) — " : "Complaint (DC-CV-082) — ") + who + " " + today,
+    summary: worksheet
+      ? `<p>Worksheet for the Failure to Pay Rent complaint, court form DC-CV-082, stored as a PDF. The counter requires the court's own paper form; this lists every answer to copy onto it.</p><p>Total: $${money(total).toFixed(2)}.</p>`
+      : `<p>Failure to Pay Rent — Landlord's Complaint for Repossession of Rented Property, court form DC-CV-082 (MDEC e-filing version), filled in and stored as a PDF.</p><p>Total: $${money(total).toFixed(2)}.</p>`,
+    fields: { prepared_on: today, claim: snapshot(claim), total: money(total), answers, worksheet },
     extra: { eviction_case_id: evCase.id },
   });
   if (stored.error) return stored;
@@ -166,6 +169,17 @@ export async function saveWorksheet({ companyId, ctx, evCase, claim, total, answ
   const entry = { stage: evCase.current_stage, date: today, note: `Complaint worksheet (DC-CV-082) prepared: $${money(total).toFixed(2)}.`, cost: 0, by: userEmail || "" };
   const { error } = await supabase.from("eviction_cases").update({ complaint_doc_id: stored.docId, claim_detail: detail, stage_history: JSON.stringify([...historyOf(evCase), entry]) }).eq("company_id", companyId).eq("id", evCase.id);
   if (error) { pmError("PM-8006", { raw: error, context: "attach complaint worksheet" }); return { error: "The worksheet was saved, but the case could not be updated.", docId: stored.docId, path: stored.path }; }
+  return { ok: true, docId: stored.docId, path: stored.path };
+}
+
+/** Any other court form made for a case (the warrant petition): stored and noted on the case. */
+export async function saveCaseForm({ companyId, ctx, evCase, kind = "court_other", name, summary, fields, pdfBytes, userEmail, note }) {
+  const today = formatLocalDate(new Date());
+  const stored = await storeCourtDoc({ companyId, ctx, kind, pdfBytes, userEmail, name, summary, fields, extra: { eviction_case_id: evCase.id } });
+  if (stored.error) return stored;
+  const entry = { stage: evCase.current_stage, date: today, note: note || name, cost: 0, by: userEmail || "" };
+  const { error } = await supabase.from("eviction_cases").update({ stage_history: JSON.stringify([...historyOf(evCase), entry]) }).eq("company_id", companyId).eq("id", evCase.id);
+  if (error) pmError("PM-8006", { raw: error, context: "note court form on case", silent: true });
   return { ok: true, docId: stored.docId, path: stored.path };
 }
 
