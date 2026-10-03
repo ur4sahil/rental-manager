@@ -10,7 +10,7 @@ import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
 import { HOUSY, housyKindForDocument, extractPdfText, queueHousyJob } from "../utils/housy";
 import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
-import { PARSE_OPTIONS, attachPageSetup, splitPageSetup } from "../utils/docKit";
+import { PARSE_OPTIONS, DEFAULT_PAGE_SETUP, attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { htmlToDocx, docxFileName } from "../utils/docxExport";
 import { SIGNATURE_BLOCK_TOKEN, SIGNATURE_BLOCK_KEY, hasSignatureBlock, signatureRows, expandSignatureBlock } from "../utils/signatureBlock";
 import { stampSignatures } from "../utils/signatureStamp";
@@ -1916,7 +1916,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="p-3 space-y-3">
   {/* Page setup — header/footer printed on every page (HTML templates) */}
   {templateForm.template_type === "html" && (() => {
-  const ps = { headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", firstPageDifferent: false, firstHeaderLeft: "", firstHeaderRight: "", firstFooterLeft: "", firstFooterRight: "", pageWidth: 816, pageHeight: 1056, marginTop: 96, marginBottom: 96, ...(templateForm.field_config?.page_setup || {}) };
+  const ps = { ...DEFAULT_PAGE_SETUP, headerLeft: "", headerRight: "", footerLeft: "", footerRight: "Page {page}", firstPageDifferent: false, firstHeaderLeft: "", firstHeaderRight: "", firstFooterLeft: "", firstFooterRight: "", ...(templateForm.field_config?.page_setup || {}) };
   const setPs = (key, value) => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), page_setup: { ...ps, [key]: value } } }));
   const slot = (key, label) => (
   <div>
@@ -1928,7 +1928,42 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="bg-white border border-neutral-100 rounded-xl p-3">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Page Setup</h3>
-  <p className="text-2xs text-neutral-400 mb-2">{+(ps.pageWidth / 96).toFixed(2)} × {+(ps.pageHeight / 96).toFixed(2)} in page, {+(ps.marginTop / 96).toFixed(2)} in top and {+(ps.marginBottom / 96).toFixed(2)} in bottom margins. Header and footer repeat on every page. Type <code className="bg-neutral-100 px-1 rounded">{"{page}"}</code> for the page number.</p>
+  {(() => {
+    const SIZES = [["Letter", 816, 1056], ["Legal", 816, 1344], ["A4", 794, 1123]];
+    const sizeKey = (SIZES.find(z => z[1] === ps.pageWidth && z[2] === ps.pageHeight) || ["Custom"])[0];
+    const inch = (key, label, min, max) => (
+      <label className="flex flex-col gap-0.5 text-2xs text-neutral-500">
+        <span className="uppercase tracking-wider font-medium">{label}</span>
+        <span className="flex items-center gap-1">
+          <input type="number" step="0.05" min={min} max={max} value={+(ps[key] / 96).toFixed(2)} aria-label={label}
+            onChange={e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) setPs(key, Math.round(Math.max(min, Math.min(max, v)) * 96)); }}
+            className="w-full text-xs border border-neutral-200 rounded-lg px-2 py-1 focus:outline-none focus:border-brand-400 tnum" />
+          <span className="text-neutral-400">in</span>
+        </span>
+      </label>
+    );
+    return (
+      <div className="mb-3">
+        <label className="flex items-center justify-between gap-2 text-2xs text-neutral-500 mb-2">
+          <span className="uppercase tracking-wider font-medium">Paper</span>
+          <select value={sizeKey} aria-label="Paper size" onChange={e => { const z = SIZES.find(x => x[0] === e.target.value); if (z) setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), page_setup: { ...ps, pageWidth: z[1], pageHeight: z[2] } } })); }}
+            className="text-xs border border-neutral-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:border-brand-400">
+            {SIZES.map(z => <option key={z[0]} value={z[0]}>{z[0]} ({+(z[1] / 96).toFixed(1)} × {+(z[2] / 96).toFixed(1)} in)</option>)}
+            {sizeKey === "Custom" && <option value="Custom">Custom</option>}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {inch("marginTop", "Top margin", 0.25, 3)}
+          {inch("marginBottom", "Bottom margin", 0.25, 3)}
+          {inch("marginLeft", "Left margin", 0.25, 3)}
+          {inch("marginRight", "Right margin", 0.25, 3)}
+          {inch("headerDistance", "Header from top", 0, 2.5)}
+          {inch("footerDistance", "Footer from bottom", 0, 2.5)}
+        </div>
+        <p className="text-2xs text-neutral-400 mt-1.5">Or drag the markers on the rulers beside the page. Header and footer repeat on every page.</p>
+      </div>
+    );
+  })()}
   <div className="grid grid-cols-2 gap-2">
   {slot("headerLeft", "Header left")}
   {slot("headerRight", "Header right")}
@@ -2219,6 +2254,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   paperCanvas
   showFieldChips={false}
   pageSetup={templateForm.field_config?.page_setup || null}
+  onPageSetupChange={patch => setTemplateForm(prev => ({ ...prev, field_config: { ...(prev.field_config || {}), page_setup: { ...DEFAULT_PAGE_SETUP, ...(prev.field_config?.page_setup || {}), ...patch } } }))}
   onEditorReady={setHtmlEditor}
   />
   )}

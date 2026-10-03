@@ -141,6 +141,8 @@ function cleanPastedHtml(html) {
 //  minHeight       — min editor height, default "400px".
 //  grow            — paperCanvas only: the pane grows to its pages and the
 //                    window scrolls, instead of scrolling inside itself.
+//  onPageSetupChange(patch) — paperCanvas only: the rulers can then drag the
+//                    page margins and the header/footer distances (px).
 
 function ToolbarBtn({ onClick, active, title, children }) {
   return (
@@ -428,7 +430,20 @@ function ToolbarInner({ editor, compact }) {
 // current paragraph's indents as markers you can drag. Default tab stops
 // every half inch (index.css tab-size), shown as ticks. Sized to the sheet
 // at the current zoom so the inch marks line up with the text.
-export function Ruler({ editor, setup, zoom = 1 }) {
+// Page setup edits from the rulers: a value in page px, snapped to a
+// sixteenth of an inch and kept inside the page.
+export const PAGE_SETUP_LIMITS = {
+  marginLeft: (g) => [24, g.pageWidth / 2 - 48], marginRight: (g) => [24, g.pageWidth / 2 - 48],
+  marginTop: (g) => [Math.max(24, g.headerDistance + 12), g.pageHeight / 3], marginBottom: (g) => [Math.max(24, g.footerDistance + 12), g.pageHeight / 3],
+  headerDistance: (g) => [0, g.marginTop - 12], footerDistance: (g) => [0, g.marginBottom - 12],
+};
+export function snapPageSetup(key, px, g) {
+  const [lo, hi] = PAGE_SETUP_LIMITS[key] ? PAGE_SETUP_LIMITS[key](g) : [0, Infinity];
+  return Math.round(Math.max(lo, Math.min(hi, px)) / 6) * 6;
+}
+const fmtIn = (px) => (px / 96).toFixed(2) + '"';
+
+export function Ruler({ editor, setup, zoom = 1, onSetupChange = null }) {
   const st = useEditorState({ editor, selector: ({ editor: e }) => {
     const a = e.isActive("heading") ? e.getAttributes("heading") : e.getAttributes("paragraph");
     return { left: lengthToInches(a.marginLeft), right: lengthToInches(a.marginRight), first: lengthToInches(a.textIndent), has: e.isActive("paragraph") || e.isActive("heading") };
@@ -447,6 +462,11 @@ export function Ruler({ editor, setup, zoom = 1 }) {
     editor.chain().setParagraphFormat(attrs).run();
   };
   const onDown = (kind, startVal) => (e) => { e.preventDefault(); setDrag({ kind, startX: e.clientX, startVal }); };
+  // The page's own left/right margins: dragged on the ruler, committed on
+  // release (every change re-flows every page).
+  const [pageDrag, setPageDrag] = useState(null);   // { key, startX, startVal (px), value (px) }
+  const geom = { ...g, headerDistance: setup.headerDistance ?? 48, footerDistance: setup.footerDistance ?? 48 };
+  const onPageDown = (key) => (e) => { e.preventDefault(); e.stopPropagation(); setPageDrag({ key, startX: e.clientX, startVal: g[key], value: g[key] }); };
   useEffect(() => {
     if (!drag) return undefined;
     const move = (e) => apply(drag.kind, drag.startVal + (e.clientX - drag.startX) / pxPerIn * (drag.kind === "right" ? -1 : 1));
@@ -455,9 +475,19 @@ export function Ruler({ editor, setup, zoom = 1 }) {
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag]);
+  useEffect(() => {
+    if (!pageDrag) return undefined;
+    const move = (e) => setPageDrag(d => ({ ...d, value: snapPageSetup(d.key, d.startVal + (e.clientX - d.startX) / zoom * (d.key === "marginRight" ? -1 : 1), geom) }));
+    const up = () => { setPageDrag(d => { if (d && onSetupChange && d.value !== d.startVal) onSetupChange({ [d.key]: d.value }); return null; }); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!pageDrag]);
+  const liveL = (pageDrag?.key === "marginLeft" ? pageDrag.value : g.marginLeft) * zoom;
+  const liveR = (pageDrag?.key === "marginRight" ? pageDrag.value : g.marginRight) * zoom;
   const marker = (kind, left, title, shape, color) => (
     <button type="button" aria-label={title} title={title} onMouseDown={onDown(kind, kind === "left" ? st.left : kind === "right" ? st.right : st.first)}
-      className="absolute p-0 border-0 bg-transparent cursor-ew-resize" style={{ left: left - 6, top: shape === "down" ? 1 : 13, width: 12, height: 12, lineHeight: 0 }}>
+      className="absolute p-0 border-0 bg-transparent cursor-ew-resize" style={{ left: left - 6, top: shape === "down" ? 1 : 13, width: 12, height: 12, minHeight: 0, lineHeight: 0 }}>
       {shape === "down"
         ? <svg width="12" height="9" viewBox="0 0 12 9"><path d="M1 0h10L6 8z" fill={color} /></svg>
         : <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 0l5 5v7H1V5z" fill={color} /></svg>}
@@ -477,11 +507,72 @@ export function Ruler({ editor, setup, zoom = 1 }) {
       {st.has && marker("first", x(st.left + st.first), `First-line indent ${st.first.toFixed(2)}"`, "down", "#4f46e5")}
       {st.has && marker("left", x(st.left), `Left indent ${st.left.toFixed(2)}"`, "up", "#4f46e5")}
       {st.has && marker("right", x(textWidth / pxPerIn - st.right), `Right indent ${st.right.toFixed(2)}"`, "up", "#4f46e5")}
+      {onSetupChange && (
+        <>
+          <button type="button" aria-label={`Left page margin ${fmtIn(g.marginLeft)}`} title={`Left page margin ${fmtIn(g.marginLeft)} — drag`} onMouseDown={onPageDown("marginLeft")}
+            className="absolute inset-y-0 p-0 border-0 bg-transparent cursor-ew-resize hover:bg-brand-100/60" style={{ left: liveL - 3, width: 6 }} />
+          <button type="button" aria-label={`Right page margin ${fmtIn(g.marginRight)}`} title={`Right page margin ${fmtIn(g.marginRight)} — drag`} onMouseDown={onPageDown("marginRight")}
+            className="absolute inset-y-0 p-0 border-0 bg-transparent cursor-ew-resize hover:bg-brand-100/60" style={{ left: width - liveR - 3, width: 6 }} />
+          {pageDrag && <div className="absolute top-0 px-1 rounded bg-neutral-800 text-white" style={{ left: (pageDrag.key === "marginLeft" ? liveL : width - liveR) + 6, fontSize: 10 }}>{fmtIn(pageDrag.value)}</div>}
+        </>
+      )}
     </div>
   );
 }
 
-export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, grow = false, paperCanvas = false, pageSetup = null, readOnly = false, showRuler = true, showFieldChips = true }) {
+// The vertical ruler beside page 1: the top and bottom margins (where the
+// body starts and ends) and the header and footer distances (where their
+// text sits), each a handle to drag. Inches, like Word. A change is
+// committed on release and re-flows the document.
+export function VRuler({ setup, zoom = 1, onSetupChange }) {
+  // The raw page setup (pageGeometry() re-maps marginTop to the add-on's
+  // own meaning, so it is not read here).
+  const num = (v, d) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d);
+  const d = DEFAULT_PAGE_SETUP;
+  const g = { pageWidth: num(setup.pageWidth, d.pageWidth), pageHeight: num(setup.pageHeight, d.pageHeight), marginTop: num(setup.marginTop, d.marginTop), marginBottom: num(setup.marginBottom, d.marginBottom) };
+  const geom = { ...g, headerDistance: Math.min(num(setup.headerDistance, d.headerDistance), g.marginTop), footerDistance: Math.min(num(setup.footerDistance, d.footerDistance), g.marginBottom) };
+  const pxPerIn = 96 * zoom;
+  const height = g.pageHeight * zoom;
+  const [drag, setDrag] = useState(null);   // { key, startY, startVal, value } in page px
+  const onDown = (key) => (e) => { e.preventDefault(); setDrag({ key, startY: e.clientY, startVal: geom[key], value: geom[key] }); };
+  useEffect(() => {
+    if (!drag) return undefined;
+    const fromBottom = (k) => k === "marginBottom" || k === "footerDistance";
+    const move = (e) => setDrag(d => ({ ...d, value: snapPageSetup(d.key, d.startVal + (e.clientY - d.startY) / zoom * (fromBottom(d.key) ? -1 : 1), geom) }));
+    const up = () => { setDrag(d => { if (d && onSetupChange && d.value !== d.startVal) onSetupChange({ [d.key]: d.value }); return null; }); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!drag]);
+  const val = (k) => (drag?.key === k ? drag.value : geom[k]);
+  const y = { headerDistance: val("headerDistance") * zoom, marginTop: val("marginTop") * zoom, marginBottom: height - val("marginBottom") * zoom, footerDistance: height - val("footerDistance") * zoom };
+  const inches = Math.floor(g.pageHeight / 96);
+  const handle = (key, top, title, color, flip) => (
+    <button type="button" aria-label={title} title={title + " — drag"} onMouseDown={onDown(key)}
+      className="absolute p-0 border-0 bg-transparent cursor-ns-resize" style={{ top: top - 6, left: 4, width: 14, height: 12, minHeight: 0, lineHeight: 0 }}>
+      <svg width="14" height="12" viewBox="0 0 14 12" style={{ display: "block" }}>{flip ? <path d="M1 11h12L7 2z" fill={color} /> : <path d="M1 1h12L7 10z" fill={color} />}</svg>
+    </button>
+  );
+  return (
+    <div className="absolute select-none bg-white border border-neutral-200 rounded-md text-2xs text-neutral-500 overflow-visible" style={{ left: -30, top: 0, width: 22, height }} aria-label="Vertical ruler">
+      <div className="absolute inset-x-0 top-0 bg-neutral-100" style={{ height: y.marginTop }} />
+      <div className="absolute inset-x-0 bottom-0 bg-neutral-100" style={{ height: height - y.marginBottom }} />
+      {Array.from({ length: Math.floor(g.pageHeight / 48) + 1 }, (_, i) => i / 2).map(inch => (
+        <div key={inch} className="absolute bg-neutral-400" style={{ top: inch * pxPerIn, left: inch % 1 === 0 ? 12 : 15, height: 1, width: inch % 1 === 0 ? 8 : 4 }} />
+      ))}
+      {Array.from({ length: inches }, (_, i) => i + 1).map(n => <span key={n} className="absolute" style={{ top: n * pxPerIn + 2, left: 2, fontSize: 9 }}>{n}</span>)}
+      <div className="absolute inset-x-0 border-t border-dashed border-brand-300" style={{ top: y.headerDistance }} />
+      <div className="absolute inset-x-0 border-t border-dashed border-brand-300" style={{ top: y.footerDistance }} />
+      {handle("headerDistance", y.headerDistance, `Header from top ${fmtIn(val("headerDistance"))}`, "#c2410c", false)}
+      {handle("marginTop", y.marginTop, `Top margin ${fmtIn(val("marginTop"))}`, "#4f46e5", true)}
+      {handle("marginBottom", y.marginBottom, `Bottom margin ${fmtIn(val("marginBottom"))}`, "#4f46e5", false)}
+      {handle("footerDistance", y.footerDistance, `Footer from bottom ${fmtIn(val("footerDistance"))}`, "#c2410c", true)}
+      {drag && <div className="absolute px-1 rounded bg-neutral-800 text-white whitespace-nowrap" style={{ left: 26, top: y[drag.key] - 8, fontSize: 10 }}>{drag.key.replace(/([A-Z])/g, " $1").toLowerCase()} {fmtIn(drag.value)}</div>}
+    </div>
+  );
+}
+
+export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, grow = false, onPageSetupChange = null, paperCanvas = false, pageSetup = null, readOnly = false, showRuler = true, showFieldChips = true }) {
   const [dragOver, setDragOver] = useState(false);
   const setup = { ...DEFAULT_PAGE_SETUP, ...(pageSetup || {}) };
   const setupKey = JSON.stringify(setup);
@@ -725,9 +816,12 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         >
           {/* Sticky: the page area scrolls, the ruler stays at the top of
               it on every page (it used to scroll away with page 1). */}
-          {!readOnly && showRuler && <div className="sticky -top-6 z-10 -mx-6 -mt-6 px-6 pt-6 pb-2 mb-2" style={{ background: PAGE_GUTTER }} onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} /></div>}
+          {!readOnly && showRuler && <div className="sticky -top-6 z-10 -mx-6 -mt-6 px-6 pt-6 pb-2 mb-2" style={{ background: PAGE_GUTTER }} onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} onSetupChange={onPageSetupChange} /></div>}
+          <div className="relative mx-auto w-max">
+          {!readOnly && showRuler && onPageSetupChange && <div onClick={e => e.stopPropagation()}><VRuler setup={setup} zoom={zoom} onSetupChange={onPageSetupChange} /></div>}
           <div className="mx-auto w-max" style={{ fontFamily: DOC_FONT_FAMILY, fontSize: DOC_FONT_SIZE, lineHeight: DOC_LINE_HEIGHT, zoom }} onClick={e => e.stopPropagation()}>
             <EditorContent editor={editor} className="paged-editor prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:bg-white [&_.ProseMirror]:text-neutral-900 [&_.ProseMirror]:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto" />
+          </div>
           </div>
         </div>
       </div>

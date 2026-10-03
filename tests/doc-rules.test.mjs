@@ -62,7 +62,8 @@ ok("keep-with-next and page breaks come in from Word", /keepNext/.test(imp) && /
 ok("the layout pass only runs on real pages", /\.\.\.\(paged \? \[LayoutFixups\] : \[\]\)/.test(kit));
 ok("checkboxes, highlights and bullet shapes are drawn in the PDF, not sent as glyphs the fonts lack", /type: "box"/.test(pdf) && /type: "fill"/.test(pdf) && /type: "ring"/.test(pdf) && /isCheckboxChar/.test(pdf));
 ok("the toolbar offers indent, outdent, colours, highlight, super/subscript, strike, paragraph, lists, table, checkbox, page break and find", ["outdent()", "indent()", "setColor(c)", "setBackgroundColor(c)", "toggleSuperscript()", "toggleSubscript()", "toggleStrike()", "setParagraphFormat(", "setListStyle(o.key)", "setBullet(b.key)", "restartListAt(1)", "continueList()", "mergeCells()", "setTableBorders(", "insertCheckbox()", "insertPageBreak()", "setSearch(", "replaceAll("].every(s => rte.includes(s)));
-ok("the ruler draws from the page setup and drags the paragraph's indents", /export function Ruler\(/.test(rte) && /setParagraphFormat\(attrs\)/.test(rte) && /<Ruler editor=\{editor\} setup=\{setup\} zoom=\{zoom\} \/>/.test(rte));
+ok("the ruler draws from the page setup and drags the paragraph's indents", /export function Ruler\(/.test(rte) && /setParagraphFormat\(attrs\)/.test(rte) && /<Ruler editor=\{editor\} setup=\{setup\} zoom=\{zoom\} onSetupChange=\{onPageSetupChange\} \/>/.test(rte));
+ok("the vertical ruler drags the page margins and header/footer distances, snapped and clamped", /export function VRuler\(/.test(rte) && /snapPageSetup\(d\.key/.test(rte) && ["headerDistance", "marginTop", "marginBottom", "footerDistance"].every(k => rte.includes(`handle("${k}"`)) && /onSetupChange\(\{ \[d\.key\]: d\.value \}\)/.test(rte));
 
 // ── the PDF renderer's sheet pitch ──────────────────────────────────
 // A different first-page footer moves the first page gap's TOP (the gap
