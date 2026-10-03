@@ -7,7 +7,8 @@ import { Modal } from "./shared";
 import { fmtDate, fmtDateTime } from "../utils/helpers";
 import { splitPageSetup } from "../utils/docKit";
 import { notifyNextSigners } from "../utils/docService";
-import { signatureText, signedDateText } from "../utils/signatureStamp";
+import { signatureText, signedDateText, initialsRoster } from "../utils/signatureStamp";
+import { initialsBoxRect } from "../utils/initialsStamp";
 
 // Public page rendered at /sign/:token — no auth required.
 // Uses anon-callable SECURITY DEFINER RPCs:
@@ -70,20 +71,27 @@ export default function PublicSignPage({ token }) {
     const next = Array.from(host.querySelectorAll(`span[data-sig-role="${esc(role)}"], span[data-sig-date="${esc(role)}"]`))
       .map(el => ({ kind: el.hasAttribute("data-sig-date") ? "date" : "sign", el, ...rel(el.getBoundingClientRect()) }))
       .filter(sl => sl.width > 0);
-    // Per-page initial tabs only on a document that has signature lines;
-    // an older document (no block) takes initials on the pad instead, so
-    // the signer is not asked twice.
-    if (wantsInitials && next.some(sl => sl.kind === "sign")) {
-      // One per page, where the signed copy carries the initials: the
-      // foot of the page, at the right (initialsStamp's first box).
+    // The initials boxes at the foot of every page: one per signer in the
+    // document's order (the roster), exactly where the signed copy draws
+    // them. The signer's own box is the "Initial" tab; the others are
+    // printed outlines with the signer's label. An older document (no
+    // signature block) takes initials on the pad instead.
+    const roster = initialsRoster(payload?.doc_body);
+    const mine = roster.findIndex(r => r.role === role);
+    if (wantsInitials && mine >= 0) {
       const pm = host.querySelector(".ProseMirror");
       const footers = Array.from(host.querySelectorAll(".ProseMirror .rm-page-footer"));
-      const zoom = pm ? pm.getBoundingClientRect().width / 816 : 1;
+      const pmRect = pm ? pm.getBoundingClientRect() : null;
+      const zoom = pmRect ? pmRect.width / 816 : 1;
+      const PT = 1 / 0.75;   // pt -> page px
       footers.forEach((f, page) => {
         const r = f.getBoundingClientRect();
-        if (!r.width) return;
-        const w = 72 * zoom, h = 29 * zoom;
-        next.push({ kind: "initial", page, el: f, top: r.bottom - base.top - 24 * zoom - h, left: r.right - base.left - 53 * zoom - w, width: w, height: h });
+        if (!r.width || !pmRect) return;
+        roster.forEach((who, i) => {
+          const b = initialsBoxRect(i, 612);
+          const w = b.width * PT * zoom, h = b.height * PT * zoom;
+          next.push({ kind: i === mine ? "initial" : "initialOther", page, el: f, label: who.label, top: r.bottom - base.top - (b.y * PT * zoom) - h, left: pmRect.right - base.left - ((612 - b.x) * PT * zoom), width: w, height: h });
+        });
       });
     }
     setSlots(prev => (prev.length === next.length && prev.every((p, i) => p.el === next[i].el && p.kind === next[i].kind && Math.abs(p.top - next[i].top) < 0.5 && Math.abs(p.left - next[i].left) < 0.5 && Math.abs(p.width - next[i].width) < 0.5) ? prev : next));
@@ -460,13 +468,21 @@ export default function PublicSignPage({ token }) {
             if (sl.kind === "date") {
               return adopted && signedSlots.size ? <div key={i} aria-label="Date signed" style={{ ...style, pointerEvents: "none" }} className="flex items-end pb-1 pl-1 text-2xs text-brand-900">{today}</div> : null;
             }
+            if (sl.kind === "initialOther") {
+              return (
+                <div key={i} aria-hidden="true" style={{ ...style, pointerEvents: "none" }} className="rounded border border-neutral-400 bg-white/70">
+                  <div className="absolute left-0 right-0 text-neutral-500 text-center" style={{ top: "100%", fontSize: 7 }}>{sl.label}</div>
+                </div>
+              );
+            }
             if (sl.kind === "initial") {
               const isDone = initialedPages.has(sl.page);
               return (
                 <button key={i} type="button" onClick={() => clickInitial(sl)} aria-label={isDone ? "Initialed page " + (sl.page + 1) : "Initial here, page " + (sl.page + 1)} data-initial-page={sl.page} data-done={isDone ? "1" : "0"}
                   style={style}
-                  className={"flex items-center justify-center rounded border text-xs font-bold transition-colors " + (isDone ? "bg-brand-50 border-brand-300 text-brand-900 italic" : "bg-warn-200/80 hover:bg-warn-300 border-warn-500 text-neutral-900")}>
+                  className={"relative flex items-center justify-center rounded border text-xs font-bold transition-colors " + (isDone ? "bg-brand-50 border-brand-300 text-brand-900 italic" : "bg-warn-200/80 hover:bg-warn-300 border-warn-500 text-neutral-900")}>
                   {isDone ? <span style={{ fontFamily: docFont }}>{initials}</span> : "Initial"}
+                  <span className="absolute left-0 right-0 text-neutral-500 text-center font-normal not-italic" style={{ top: "100%", fontSize: 7 }}>{sl.label}</span>
                 </button>
               );
             }

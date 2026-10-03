@@ -135,11 +135,16 @@ module.exports = async (req, res) => {
       const { data: rows } = await sb.from("doc_signatures").select("signer_role, signature_data, signed_at, status").eq("doc_id", doc_id).eq("status", "signed");
       if (rows && rows.length) pdfBytes = Buffer.from(await stampSignatures(require("pdf-lib"), pdfBytes, rows, anchors));
     }
-    const { data: inis } = await sb.from("doc_signatures").select("initials_data, signer_role, signer_name, sign_order").eq("doc_id", doc_id).eq("status", "signed").not("initials_data", "is", null).order("sign_order");
-    if (inis && inis.length) {
+    // Initials boxes: one per signer in the document's own order (the
+    // roster), filled where the signer gave initials; older documents
+    // (no signature block) get a box per signer with initials, by order.
+    const { initialsRoster } = require("./_signature-stamp");
+    const roster = initialsRoster(doc.rendered_body);
+    const { data: inis } = await sb.from("doc_signatures").select("initials_data, signer_role, signer_name, sign_order").eq("doc_id", doc_id).eq("status", "signed").order("sign_order");
+    if ((inis || []).some(r => r.initials_data)) {
       const PDFLib = require("pdf-lib");
       const { stampInitials } = require("./_initials-stamp");
-      pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: bodyPages }));
+      pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages: bodyPages, roster: roster.length ? roster : null }));
     }
   } catch (e) { console.error("[finalize] signature/initials stamp skipped:", e.message); }
   const pdfHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");

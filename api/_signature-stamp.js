@@ -26,6 +26,38 @@ function signedDateText(iso) {
   return String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0") + "/" + d.getFullYear();
 }
 
+/** A signer role's printed label: tenant -> Tenant, tenant_2 -> Co-tenant 2, witness_x -> Witness, landlord -> Landlord. */
+function roleLabel(role) {
+  const r = String(role || "").toLowerCase();
+  if (!r) return "";
+  if (r.startsWith("witness_")) return "Witness (" + roleLabel(r.slice(8)) + ")";
+  if (/^tenant(_1)?$/.test(r)) return "Tenant";
+  const m = r.match(/^tenant_(\d+)$/);
+  if (m) return "Co-tenant " + m[1];
+  if (/landlord/.test(r)) return "Landlord";
+  return r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * The initials roster: every signer with a signature line in the document,
+ * in document order, [{ role, label }]. The initials boxes at the foot of
+ * each page follow this order -- on the signing screen, on the unsigned
+ * copy and on the signed copy alike. Empty for a document without a
+ * signature block (older documents, stamped by sign_order instead).
+ */
+function initialsRoster(html) {
+  const out = [], seen = new Set();
+  const re = /data-sig-role="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(String(html || "")))) {
+    const role = m[1].replace(/&quot;/g, "\"");
+    if (!role || seen.has(role)) continue;
+    seen.add(role);
+    out.push({ role, label: roleLabel(role) });
+  }
+  return out;
+}
+
 /** Anchors a document carries that are safe to draw: numbers finite, on a page. */
 function validAnchors(anchors, pageCount = Infinity) {
   if (!Array.isArray(anchors)) return [];
@@ -91,4 +123,4 @@ async function stampSignatures(PDFLib, pdfBytes, signers, anchors) {
   return pdf.save();
 }
 
-module.exports = { stampSignatures, signatureText, signedDateText, validAnchors };
+module.exports = { stampSignatures, signatureText, signedDateText, validAnchors, roleLabel, initialsRoster };

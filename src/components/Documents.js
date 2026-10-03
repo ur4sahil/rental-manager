@@ -13,7 +13,7 @@ import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 import { PARSE_OPTIONS, DEFAULT_PAGE_SETUP, attachPageSetup, splitPageSetup } from "../utils/docKit";
 import { htmlToDocx, docxFileName } from "../utils/docxExport";
 import { SIGNATURE_BLOCK_TOKEN, SIGNATURE_BLOCK_KEY, hasSignatureBlock, signatureRows, expandSignatureBlock } from "../utils/signatureBlock";
-import { stampSignatures } from "../utils/signatureStamp";
+import { stampSignatures, initialsRoster } from "../utils/signatureStamp";
 import { stampInitials } from "../utils/initialsStamp";
 import { deriveValues, FIELD_FORMATS } from "../utils/docFields";
 import { ensureStandardTemplates } from "../utils/standardTemplates";
@@ -1169,7 +1169,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   try {
   showToast("Generating PDF…", "info");
   const paged = pagedBody(doc, template, values);
-  const bytes = await renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc?.name || template?.name });
+  let bytes = await renderPagedPdf({ html: paged.html, pageSetup: paged.pageSetup, title: doc?.name || template?.name });
+  // A document that takes initials on every page prints its labelled
+  // initials boxes (one per signer) at the foot of each page, empty.
+  if (doc?.field_values?._initials_each_page || (!doc && template?.field_config?.initials_each_page)) {
+    const roster = initialsRoster(paged.html);
+    if (roster.length) bytes = await stampInitials(await import("pdf-lib"), bytes, [], { roster });
+  }
   const { saveAs } = await import("file-saver");
   saveAs(new Blob([bytes], { type: "application/pdf" }), pdfFileName(doc?.name || template?.name));
   showToast("PDF downloaded", "success");
@@ -1314,7 +1320,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
           const signed = sigs.filter(s => s.status === "signed");
           const PDFLib = await import("pdf-lib");
           let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors) : bytes;
-          if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: anchors.length ? undefined : null });
+          const roster = initialsRoster(paged.html);
+          if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: null, roster: roster.length ? roster : null });
           return out;
         }),
       html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
