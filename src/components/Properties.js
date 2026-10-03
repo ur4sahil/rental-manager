@@ -4632,9 +4632,10 @@ function Properties({ addNotification, userRole, allowedPages, userProfile, comp
   )}
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
   <PageHeader title="Properties" />
-  <div className="flex items-center gap-3">
+  {/* Wraps on a phone: in one row the tab pills pushed Export off the left edge. */}
+  <div className="flex items-center gap-3 flex-wrap">
   <Btn variant="secondary" onClick={exportProperties}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
-  <div className="flex gap-1">
+  <div className="flex gap-1 flex-wrap">
   <FilterPill active={!showArchived && !showDrafts} onClick={() => { setShowArchived(false); setShowDrafts(false); }}>Active ({properties.length})</FilterPill>
   <FilterPill active={showDrafts} onClick={async () => {
     setShowDrafts(true); setShowArchived(false);

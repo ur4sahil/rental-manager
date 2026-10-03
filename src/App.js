@@ -1384,10 +1384,13 @@ function AppInner() {
       but it no longer takes the whole bar, because the palette needs a
       visible home. On small screens the search collapses to its icon
       rather than squeezing the name out. */}
-  <div className="min-w-0 shrink text-sm font-semibold text-neutral-700 truncate">
+  {/* On a phone the name gives way first (it truncates), the search box
+      second (down to its icon), and the avatar and bell never shrink: a
+      long company name used to push the avatar under the search button. */}
+  <div className="min-w-0 shrink text-sm font-semibold text-neutral-700 truncate max-w-[45%] md:max-w-none">
   {activeCompany?.name || (effectivePage || page).replace(/_/g, " ")}
   </div>
-  <div className="flex-1 min-w-0 max-w-md">
+  <div className="flex-1 min-w-[44px] max-w-md">
   <SearchTrigger onOpen={() => setPaletteOpen(true)} hint={`${MOD}K`} />
   </div>
   {/* ml-auto, because the search is flex-1 capped at max-w-md: once it
@@ -1395,7 +1398,7 @@ function AppInner() {
       controls end up stranded mid-bar with empty space to their right.
       They belong at the far edge, which is where a person looks for
       them. */}
-  <div className="relative ml-auto">
+  <div className="relative ml-auto shrink-0">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
   <span className="hidden md:inline text-xs font-semibold text-neutral-700">{userProfile?.name || currentUser?.email?.split("@")[0] || "User"}</span>
@@ -1415,7 +1418,7 @@ function AppInner() {
   </div>
   </>}
   </div>
-  <div className="relative">
+  <div className="relative shrink-0">
   <button onClick={() => {
   setShowNotifications(!showNotifications);
   // Mark all as read in DB

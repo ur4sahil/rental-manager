@@ -97,7 +97,7 @@ export default function PublicSignPage({ token }) {
         const r = f.getBoundingClientRect();
         if (!r.width || !pmRect) return;
         roster.forEach((who, i) => {
-          const b = initialsBoxRect(i, 612);
+          const b = initialsBoxRect(i, 612, roster);
           const w = b.width * PT * zoom, h = b.height * PT * zoom;
           next.push({ kind: i === mine ? "initial" : "initialOther", page, el: f, label: who.label, other: signedOthers.find(o => o.role === who.role) || null, top: r.bottom - base.top - (b.y * PT * zoom) - h, left: pmRect.right - base.left - ((612 - b.x) * PT * zoom), width: w, height: h });
         });
@@ -271,6 +271,7 @@ export default function PublicSignPage({ token }) {
         signed_pdf_path: j.signed_pdf_path,
         signed_pdf_hash: j.signed_pdf_hash,
         download_url: j.download_url,
+        certificate_url: j.certificate_url,
         signers_queued: j.signers_queued,
       }));
     } catch (e) {
@@ -379,15 +380,23 @@ export default function PublicSignPage({ token }) {
             </div>
           )}
           {doneInfo?.download_url && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
             <a
               href={doneInfo.download_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
             >
               <span className="material-icons-outlined text-base">download</span>
               Download your signed copy
             </a>
+            {doneInfo?.certificate_url && (
+              <a href={doneInfo.certificate_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-brand-200 text-brand-700 text-sm font-semibold hover:bg-brand-50 transition-colors">
+                <span className="material-icons-outlined text-base">verified</span>
+                Certificate of completion
+              </a>
+            )}
+            </div>
           )}
           {doneInfo?.all_signed && doneInfo?.signers_queued > 0 && (
             <p className="text-2xs text-neutral-400 mt-2">

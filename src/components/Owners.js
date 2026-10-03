@@ -539,9 +539,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   {ownerProps.length > 0 && (
   <div className="flex flex-wrap gap-1 mb-2">
-  {ownerProps.map(p => (
-  <span key={p.id} className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">{p.address?.length > 25 ? p.address.slice(0, 25) + "..." : p.address}</span>
-  ))}
+  {/* A property with no address yet shows as "(no address)" instead of an empty pill. */}
+  {ownerProps.map(p => { const label = p.short_name || p.address || ""; return (
+  <span key={p.id} className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">{label ? (label.length > 25 ? label.slice(0, 25) + "..." : label) : "(no address)"}</span>
+  ); })}
   </div>
   )}
   <div className="grid grid-cols-3 gap-2 text-xs mb-2">
@@ -773,12 +774,13 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="max-w-4xl mx-auto">
   {/* Header */}
   <div className="bg-gradient-to-r from-brand-600 to-highlight-600 rounded-2xl p-6 mb-6 text-white">
-  <div className="flex justify-between items-start">
-  <div>
-  <h1 className="text-2xl font-bold mb-1">Welcome, {ownerData.name}</h1>
+  {/* The fee drops under the title on a phone (beside it, a long name ran into it). */}
+  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+  <div className="min-w-0">
+  <h1 className="text-2xl font-bold mb-1 break-words">Welcome, {ownerData.name}</h1>
   <p className="text-brand-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} · {ownerData.company || "Individual Owner"}</p>
   </div>
-  <div className="text-right">
+  <div className="sm:text-right shrink-0">
   <div className="text-sm text-brand-200">Management Fee</div>
   <div className="text-lg font-bold">{resolveMgmtFeePct(ownerData).isSet ? resolveMgmtFeePct(ownerData).pct + "%" : "Not set"}</div>
   </div>

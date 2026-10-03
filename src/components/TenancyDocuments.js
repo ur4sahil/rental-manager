@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, TextLink, DetailCard, MenuItem } from "../ui";
+import { Btn, TextLink, DetailCard, MenuItem, Popover } from "../ui";
 import { fmtDate, fmtDateTime, getSignedUrl } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { resendSignatureRequest, voidEnvelope, summarizeSends, signingMailto } from "../utils/docService";
@@ -51,6 +51,7 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
   const [sigs, setSigs] = useState([]);
   const [busy, setBusy] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
   const [serving, setServing] = useState(null);   // { doc, date, method } while recording how a notice was served
 
   // A caller's inline array is a new object every render; key on its contents.
@@ -134,15 +135,12 @@ export function TenancyDocuments({ companyId, tenantId = null, leaseId = null, t
       ? <TextLink tone="brand" size="xs" onClick={() => start(actions[0])}>{actions[0].label}</TextLink>
       : (
         <div className="relative">
-          <Btn variant="secondary" size="sm" onClick={() => setMenuOpen(o => !o)} aria-haspopup="menu" aria-expanded={menuOpen}>New…</Btn>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div role="menu" className="absolute right-0 mt-1 z-20 w-60 bg-white border border-neutral-200 rounded-xl shadow-pop py-1">
-                {actions.map(a => <MenuItem key={(a.templateKey || "") + a.label} onClick={() => start(a)}>{a.label}</MenuItem>)}
-              </div>
-            </>
-          )}
+          <span ref={menuBtnRef} className="inline-flex"><Btn variant="secondary" size="sm" onClick={() => setMenuOpen(o => !o)} aria-haspopup="menu" aria-expanded={menuOpen}>New…</Btn></span>
+          {/* Drawn at the document root: the card clips anything inside it,
+              and this menu is taller than the card's empty state. */}
+          <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={menuBtnRef} align="right" width={260} className="py-1">
+            {actions.map(a => <MenuItem key={(a.templateKey || "") + a.label} onClick={() => { setMenuOpen(false); start(a); }}>{a.label}</MenuItem>)}
+          </Popover>
         </div>
       );
 

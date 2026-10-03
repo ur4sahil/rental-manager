@@ -391,10 +391,11 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   {expiringSoon.length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="font-semibold text-warn-800 text-sm mb-2">Leases Expiring Soon</div>
+  {/* Each row stacks on a phone: side by side, the name wrapped into the day count. */}
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
-  <div key={l.id} className="flex justify-between items-center py-1 text-sm">
-  <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => setLeaseChangeFor({ kind: "renewal", lease: l })}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn></div>
+  <div key={l.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-3 py-1.5 text-sm">
+  <span className="text-warn-700 min-w-0">{l.tenant_name} — {l.property}</span>
+  <div className="flex items-center gap-2 flex-wrap shrink-0"><span className="text-warn-600 font-bold whitespace-nowrap">{d} days</span><Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn><Btn variant="warning-fill" size="xs" onClick={() => setLeaseChangeFor({ kind: "renewal", lease: l })}>Renew</Btn><Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>{canManage(userRole) ? "Terminate" : "Request termination"}</Btn></div>
   </div>
   ); })}
   </div>

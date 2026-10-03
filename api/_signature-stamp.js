@@ -51,7 +51,8 @@ function initialsRoster(html) {
   let m;
   while ((m = re.exec(String(html || "")))) {
     const role = m[1].replace(/&quot;/g, "\"");
-    if (!role || seen.has(role)) continue;
+    // A witness signs once, on the last page: no initials line.
+    if (!role || seen.has(role) || role.startsWith("witness_")) continue;
     seen.add(role);
     out.push({ role, label: roleLabel(role) });
   }
@@ -97,10 +98,11 @@ async function stampEnvelopeId(PDFLib, pdfBytes, envelopeId, { pages = null } = 
   return pdf.save();
 }
 
-/** The tag under a signature line: "Signed via Housify · ID 1A2B3C4D" (the signature's own hash, else the envelope's). */
+/** The tag under a signature line: "Signed via Housify · 10/03/2026 · ID 1A2B3C4D" (the date given; the signature's own hash, else the envelope's). The block has no date line, as the paper lease has none. */
 function signatureTag(signer, envelopeId) {
   const key = String(signer?.integrity_hash || envelopeId || "").replace(/-/g, "").slice(0, 8).toUpperCase();
-  return "Signed via Housify" + (key ? " \u00b7 ID " + key : "");
+  const when = signedDateText(signer?.signed_at);
+  return "Signed via Housify" + (when ? " \u00b7 " + when : "") + (key ? " \u00b7 ID " + key : "");
 }
 
 /**
@@ -140,24 +142,28 @@ async function stampSignatures(PDFLib, pdfBytes, signers, anchors, { envelopeId 
       if (text) page.drawText(text, { x: x + 2, y: base + 1, size: DATE_SIZE_PT, font: plain, color: ink });
       continue;
     }
-    // The tag sits on the right end of the line, above the rule (there is
-    // no room under it: "Print Name" follows at once); the signature keeps
-    // to the room left of it.
+    // The signature takes the whole line; the tag (date, ID) sits in the
+    // blank line ABOVE it, right-aligned, in 5pt -- there is no room under
+    // the rule ("Print Name" follows at once) and beside the name it
+    // collided with it.
     const tag = envelopeId ? signatureTag(s, envelopeId) : "";
-    const tagW = tag ? plain.widthOfTextAtSize(tag, 5) + 4 : 0;
-    const room = w - 4 - tagW;
+    const tagW = tag ? plain.widthOfTextAtSize(tag, 5) : 0;
+    const room = w - 4;
     const typed = signatureText(s.signature_data);
+    let sigTop = base;
     if (typed !== null) {
       let size = TYPED_SIZE_PT;
       while (size > 9 && italic.widthOfTextAtSize(typed, size) > room) size -= 1;
       page.drawText(typed, { x: x + 2, y: base + 2, size, font: italic, color: ink });
+      sigTop = base + 2 + size * 0.75;
     } else if (images.get(s)) {
       const img = images.get(s);
       let h = MAX_SIG_HEIGHT_PT, iw = img.width * (h / img.height);
       if (iw > room) { iw = room; h = img.height * (iw / img.width); }
       page.drawImage(img, { x: x + 2, y: base, width: iw, height: h });
+      sigTop = base + h;
     }
-    if (tag) page.drawText(tag, { x: x + w - tagW, y: base + 1.5, size: 5, font: plain, color: rgb(0.35, 0.35, 0.4) });
+    if (tag) page.drawText(tag, { x: x + w - tagW, y: sigTop + 2.5, size: 5, font: plain, color: rgb(0.35, 0.35, 0.4) });
   }
   return pdf.save();
 }

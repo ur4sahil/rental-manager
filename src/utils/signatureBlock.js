@@ -1,8 +1,11 @@
 // The signature block: one signature line per signer on the document,
 // however many tenants the lease has. A template carries one token,
 // {{signature_block}}; when a document is generated the token becomes a
-// block with a row for each signer (every tenant on the lease, then the
-// landlord), each row carrying a signature slot and a date slot. The
+// block with a row for each signer (the landlord, then every tenant on
+// the lease -- the order of Sigma's own lease), each row carrying a
+// signature slot; the date a signature was given is printed in the small
+// tag under it and on the certificate, as the paper lease has no date
+// line. The
 // slots are where the real signatures land on the signed PDF
 // (signatureStamp.js), so they are marked up to survive every pass the
 // body goes through: the sanitizer (data-* attributes are allowed), the
@@ -22,7 +25,6 @@ const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").
 // Line lengths that fit half a 6.5in text column at 12pt with room for
 // " (SEAL)" after the signature line (an underscore is about 6pt wide).
 const SIGN_LINE = "_".repeat(26);
-const DATE_LINE = "_".repeat(12);
 const WITNESS_LINE = "_".repeat(22);
 
 /** A role's printed heading: "TENANT:", "CO-TENANT 2:", "LANDLORD:". */
@@ -34,10 +36,13 @@ export function signerHeading(signer) {
 const WITNESS_PREFIX = "witness_";
 const isWitness = (role) => String(role || "").startsWith(WITNESS_PREFIX);
 
+const isLandlord = (role) => /landlord|lessor|owner|manager/.test(String(role || "").toLowerCase());
+
 /**
- * The rows a block shows, in signing order: every tenant row first (the
- * template's slots plus the extra adults effectiveSignerRoles adds), then
- * the rest. A witness role ("witness_tenant") is not a row of its own: it
+ * The rows a block shows, in the lease's own order: the landlord first,
+ * then every tenant (the template's slots plus the extra adults
+ * effectiveSignerRoles adds), then anyone else -- whatever the SIGNING
+ * order is (a sequential envelope still asks the tenant first). A witness role ("witness_tenant") is not a row of its own: it
  * becomes the witness line beside the row it witnesses. Rows with no name
  * are kept -- a lease with an optional co-tenant slot left empty would
  * otherwise lose the line -- unless `dropUnnamedOptional` says to drop
@@ -49,7 +54,8 @@ const isWitness = (role) => String(role || "").startsWith(WITNESS_PREFIX);
  */
 export function signatureRows(roles, names = {}, { dropUnnamedOptional = true } = {}) {
   const list = (Array.isArray(roles) ? roles : []).map((r, i) => ({ ...r, _i: i }));
-  list.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || a._i - b._i);
+  const rank = (r) => (isLandlord(r.role) ? 0 : /tenant/.test(String(r.role || "").toLowerCase()) ? 1 : 2);
+  list.sort((a, b) => rank(a) - rank(b) || (Number(a.order) || 0) - (Number(b.order) || 0) || a._i - b._i);
   const witnesses = new Map(list.filter(r => isWitness(r.role)).map(r => [String(r.role).slice(WITNESS_PREFIX.length), r]));
   return list
     .filter(r => !isWitness(r.role))
@@ -64,11 +70,13 @@ export function signatureRows(roles, names = {}, { dropUnnamedOptional = true } 
 }
 
 /**
- * The block's HTML. `rows` from signatureRows(). Each signer is one row
- * of a borderless two-column table: the witness on the left (a signature
- * slot of its own when the template asks for witnesses; a plain line
- * otherwise, for a witness who signs on paper), the signer on the right,
- * as the Maryland lease lays it out. A row stays on one page.
+ * The block's HTML, laid out as Sigma's paper lease lays it out. Each
+ * signer is one row of a borderless two-column table: on the left
+ * "WITNESS:" over a line (a signature slot of its own when the template
+ * asks for witnesses; a plain line otherwise, for a witness who signs on
+ * paper); on the right the signer's heading, their line with "(SEAL)",
+ * and "Print Name:". No date line: the date goes in the tag under the
+ * signature and on the certificate. A row stays on one page.
  * `witness` false drops the witness column altogether.
  */
 export function signatureBlockHtml(rows, { witness = true } = {}) {
@@ -79,16 +87,15 @@ export function signatureBlockHtml(rows, { witness = true } = {}) {
     const role = esc(r.role);
     const right =
       `<p data-keep-next="1">${esc(signerHeading(r))}</p>` +
+      `<p data-keep-next="1">&nbsp;</p>` +
       `<p data-keep-next="1"><span data-sig-role="${role}">${SIGN_LINE}</span> (SEAL)</p>` +
-      `<p data-keep-next="1">Print Name: ${esc(r.name)}</p>` +
-      `<p>Date: <span data-sig-date="${role}">${DATE_LINE}</span></p>`;
+      `<p>Print Name: ${esc(r.name)}</p>`;
     let left = "";
     if (witness && r.witness) {
       const wr = esc(r.witness.role);
-      left = `<p data-keep-next="1">WITNESS:</p>` +
+      left = `<p data-keep-next="1">WITNESS:</p><p data-keep-next="1">&nbsp;</p>` +
         `<p data-keep-next="1"><span data-sig-role="${wr}">${WITNESS_LINE}</span></p>` +
-        `<p data-keep-next="1">Print Name: ${esc(r.witness.name)}</p>` +
-        `<p>Date: <span data-sig-date="${wr}">${DATE_LINE}</span></p>`;
+        `<p>${r.witness.name ? "Print Name: " + esc(r.witness.name) : "&nbsp;"}</p>`;
     } else if (witness) {
       left = `<p data-keep-next="1">WITNESS:</p><p data-keep-next="1">&nbsp;</p><p data-keep-next="1">${WITNESS_LINE}</p><p>&nbsp;</p>`;
     }

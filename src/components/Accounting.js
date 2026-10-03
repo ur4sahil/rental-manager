@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
+import { useIsPhone, AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, canKeepBooks, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
@@ -1233,6 +1233,7 @@ const blankJEForm = () => ({ date: acctToday(), description: "", reference: "", 
 // The parent remounts this via `key` on each open, so `seed` is only
 // ever read as the initial state — no sync effect needed.
 function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vendors = [], companyId, showToast, onClose, onSave }) {
+  const isPhone = useIsPhone();
   const [form, setForm] = useState(() => seed || blankJEForm());
   const [showNewAcct, setShowNewAcct] = useState(null); // line index that triggered it
   const [newAcctForm, setNewAcctForm] = useState({ code: "", name: "", type: "Expense" });
@@ -1395,9 +1396,12 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
   <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineAccount}>Create & Select</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewAcct(null)}>Cancel</Btn></div>
   </div>
   )}
-  <div className="rounded-xl border border-neutral-200 overflow-x-auto">
-  <DataTable
-    columns={[
+  {(() => {
+  // One column list for both layouts. On a phone the table (1,180px of
+  // columns) only ever showed Account and half of Class, with Debit and
+  // Credit off-screen and nothing to say so: there each line is a stacked
+  // card instead.
+  const lineColumns = [
       // Widths chosen so the real values FIT rather than being clipped to a
       // few characters: an account reads "1100-012 AR - Tavon Singletary", a
       // class reads a full property address. Both were being cut to about
@@ -1445,7 +1449,35 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
         render: (line, i) => (
           <TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="disabled:opacity-20">✕</TextLink>
         ) },
-    ]}
+    ];
+  if (isPhone) return (
+  <div className="space-y-3">
+    {form.lines.map((line, i) => (
+      <div key={i} data-je-line={i} className="rounded-xl border border-neutral-200 bg-white p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-2xs font-semibold uppercase tracking-wide text-neutral-400">Line {i + 1}</span>
+          <TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length <= 2} className="disabled:opacity-20">Remove</TextLink>
+        </div>
+        {lineColumns.filter(c => !["remove", "debit", "credit"].includes(c.key)).map(c => (
+          <div key={c.key}><label className="text-xs text-neutral-500 block mb-1">{c.label}</label>{c.render(line, i)}</div>
+        ))}
+        <div className="grid grid-cols-2 gap-2">
+          {lineColumns.filter(c => ["debit", "credit"].includes(c.key)).map(c => (
+            <div key={c.key}><label className="text-xs text-neutral-500 block mb-1">{c.label}</label>{c.render(line, i)}</div>
+          ))}
+        </div>
+      </div>
+    ))}
+    <div className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
+      <span className="font-semibold text-neutral-700">Totals</span>
+      <span className={`tnum ${validation.isValid ? "text-success-700" : "text-danger-600"}`}>Dr {acctFmt(totalDebit)} · Cr {acctFmt(totalCredit)}</span>
+    </div>
+  </div>
+  );
+  return (
+  <div className="rounded-xl border border-neutral-200 overflow-x-auto">
+  <DataTable
+    columns={lineColumns}
     resizable
     storageKey="je-lines"
     rows={form.lines}
@@ -1464,6 +1496,8 @@ function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vend
     empty="Nothing to show"
   />
   </div>
+  );
+  })()}
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-lg px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
   {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-lg px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">

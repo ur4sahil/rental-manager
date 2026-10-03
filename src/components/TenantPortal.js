@@ -833,8 +833,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm, addNotif
   <p className="text-sm text-neutral-400 mb-5">Pay securely with Stripe</p>
   <div className="mb-4">
   <label className="text-xs text-neutral-400 mb-1 block">Current Balance</label>
+  {/* A credit reads as "$100.00 credit", not "$-100" (and agrees with the
+      banner's "Balance Due $0.00"). */}
   <div className={"text-2xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-danger-600" : "text-positive-600")}>
-  ${safeNum(tenantData.balance).toLocaleString()}
+  {safeNum(tenantData.balance) < 0
+    ? formatCurrency(-safeNum(tenantData.balance)) + " credit"
+    : formatCurrency(safeNum(tenantData.balance))}
   </div>
   </div>
   <div className="mb-4">

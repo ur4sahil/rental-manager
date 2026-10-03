@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, MoneyInput, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView} from "../ui";
+import { Input, MoneyInput, Textarea, Select, Btn, MultiSelect, PageHeader, TextLink, DataTable, EmptyState, usePersistedView, Popover } from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV, fmtDate, fmtDateTime, getSignedUrl, payablePortalFor, canManage, canKeepBooks} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -81,6 +81,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [menuOpenId, setMenuOpenId] = useState(null); // account id whose ⋯ overflow menu is open (card view)
   const [tableMenu, setTableMenu] = useState(null); // { id, top, right } — table ⋯ menu, positioned fixed so the scroll container can't clip it
   const [showFilters, setShowFilters] = useState(false); // filter popover open
+  const filtersBtnRef = useRef(null);
   const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill awaiting payment authorisation
   const [payingBill, setPayingBill] = useState(null); // bill being paid in the streamed secure browser
   const [utilReceipts, setUtilReceipts] = useState([]); // confirmed payments with a receipt PDF
@@ -1028,12 +1029,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex gap-2 mb-4 items-center">
   <Input placeholder="Search provider or property…" value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="flex-1 min-w-0" />
   <div className="relative">
-  <Btn variant="secondary" onClick={() => setShowFilters(!showFilters)} className="whitespace-nowrap">
+  <span ref={filtersBtnRef} className="inline-flex"><Btn variant="secondary" onClick={() => setShowFilters(!showFilters)} className="whitespace-nowrap">
     Filters{activeFilters ? <span className="ml-1.5 text-2xs bg-brand-500 text-white rounded-full px-1.5 py-0.5">{activeFilters}</span> : ""}
-  </Btn>
-  {showFilters && (<>
-  <div className="fixed inset-0 z-10" onClick={() => setShowFilters(false)} />
-  <div className="absolute right-0 top-11 z-20 w-80 bg-white border border-neutral-200 rounded-xl shadow-pop p-4 space-y-3.5">
+  </Btn></span>
+  {/* Drawn at the document root and kept on screen: positioned inside the
+      row it opened off the LEFT edge of a phone, controls unreachable. */}
+  <Popover open={showFilters} onClose={() => setShowFilters(false)} anchorRef={filtersBtnRef} align="right" width={320} role="dialog" className="p-4 space-y-3.5">
   <div>
     <label className="text-2xs uppercase tracking-wide text-neutral-400 mb-1 block">Status</label>
     <Select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="w-full">
@@ -1075,8 +1076,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     <input type="checkbox" checked={utilHideZero} onChange={e => setUtilHideZero(e.target.checked)} className="accent-brand-500 w-4 h-4" />
   </label>
   {activeFilters > 0 && <button onClick={() => { setUtilFilterStatus("all"); setUtilFilterResp("all"); setUtilHideZero(false); setUtilFilterProviders([]); setUtilFilterProps([]); }} className="text-xs text-brand-600 hover:underline">Clear all filters</button>}
-  </div>
-  </>)}
+  <div className="pt-1 text-right"><Btn size="sm" onClick={() => setShowFilters(false)}>Done</Btn></div>
+  </Popover>
   </div>
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
@@ -1110,9 +1111,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
       ...(tenantOwed > 0 ? [[formatCurrency(tenantOwed), "Tenants' share", "text-neutral-800"]] : []),
     ];
     return (
-      <div className="flex mb-4 bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
+      /* Six figures in one strip on a wide screen; on a phone they wrap
+         three to a row (one row forced them to overprint each other). */
+      <div className="grid grid-cols-3 md:flex mb-4 bg-white rounded-xl border border-neutral-200 shadow-card overflow-hidden">
         {cells.map(([v, l, c], i) => (
-          <div key={l} className={`flex-1 min-w-0 px-3 py-2.5 ${i < cells.length - 1 ? "border-r border-neutral-100" : ""}`}>
+          <div key={l} className={`flex-1 min-w-0 px-3 py-2.5 border-neutral-100 ${i < cells.length - 1 ? "md:border-r" : ""} ${i % 3 !== 2 && i < cells.length - 1 ? "border-r" : ""} ${i >= 3 ? "border-t md:border-t-0" : ""}`}>
             <div className={`text-base font-bold tabular-nums ${c}`}>{v}</div>
             <div className="text-2xs uppercase tracking-wide text-neutral-400 mt-0.5">{l}</div>
           </div>

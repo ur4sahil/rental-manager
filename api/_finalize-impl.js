@@ -97,49 +97,73 @@ async function finalizeFromBytes(sb, req, doc, { pdfBytes, bodyPages, anchors })
       const { stampInitials } = require("./_initials-stamp");
       pdfBytes = Buffer.from(await stampInitials(PDFLib, pdfBytes, inis, { pages, roster: roster.length ? roster : null }));
     }
+    // The body pages only: the certificate of completion is its own PDF
+    // (below), not pages added to the lease. A browser-made PDF from an
+    // older envelope may carry its own certificate pages after the body;
+    // they are dropped.
     if (pages) {
-      const { certificatePdf, withCertificate } = require("./_certificate");
-      const { data: all } = await sb.from("doc_signatures")
-        .select("signer_role, signer_name, signer_email, sign_order, status, signed_at, signing_method, signer_ip, user_agent, integrity_hash, e_records_consented, e_records_consent_at, e_records_consent_version, hardware_software_acknowledged, viewed_at, paper_copy_requested_at, consent_withdrawn_at, initials_data, created_at")
-        .eq("doc_id", doc.id);
-      const { data: co } = await sb.from("companies").select("name").eq("id", doc.company_id).maybeSingle();
-      const cert = await certificatePdf({ doc, signers: all || [], companyName: co?.name || "" });
-      pdfBytes = Buffer.from(await withCertificate(pdfBytes, pages, cert));
+      const { withCertificate } = require("./_certificate");
+      pdfBytes = Buffer.from(await withCertificate(pdfBytes, pages, null));
     }
   } catch (e) { console.error("[finalize] signature/initials stamp skipped:", e.message); }
   const pdfHash = crypto.createHash("sha256").update(pdfBytes).digest("hex");
+  // The certificate of completion: every signer's name, email, time, IP,
+  // method, initials, consent and the hashes. Stored beside the signed copy
+  // and emailed as a second attachment.
+  let certBytes = null;
+  try {
+    const { certificatePdf } = require("./_certificate");
+    const { data: all } = await sb.from("doc_signatures")
+      .select("signer_role, signer_name, signer_email, sign_order, status, signed_at, signing_method, signer_ip, user_agent, integrity_hash, e_records_consented, e_records_consent_at, e_records_consent_version, hardware_software_acknowledged, viewed_at, paper_copy_requested_at, consent_withdrawn_at, initials_data, created_at")
+      .eq("doc_id", doc.id);
+    const { data: co } = await sb.from("companies").select("name").eq("id", doc.company_id).maybeSingle();
+    certBytes = Buffer.from(await certificatePdf({ doc: { ...doc, signed_pdf_hash: pdfHash }, signers: all || [], companyName: co?.name || "" }));
+  } catch (e) { console.error("[finalize] certificate skipped:", e.message); }
 
   // Store. The path carries a timestamp so a repeat never overwrites.
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const path = `${doc.company_id}/${doc.id}/signed-${ts}.pdf`;
   const { error: upErr } = await sb.storage.from(BUCKET).upload(path, pdfBytes, { contentType: "application/pdf", upsert: false });
   if (upErr) throw Object.assign(new Error("upload failed: " + upErr.message), { status: 500 });
+  let certPath = null;
+  if (certBytes) {
+    certPath = `${doc.company_id}/${doc.id}/certificate-${ts}.pdf`;
+    const { error: cErr } = await sb.storage.from(BUCKET).upload(certPath, certBytes, { contentType: "application/pdf", upsert: false });
+    if (cErr) { console.error("[finalize] certificate upload failed:", cErr.message); certPath = null; certBytes = null; }
+  }
 
   // Record path + hash (service-role RPC; also queues a notification per
   // signer, migration 20260424000012).
   const { data: setRes, error: setErr } = await sb.rpc("set_signed_pdf", { p_doc_id: doc.id, p_pdf_path: path, p_pdf_hash: pdfHash });
   if (setErr) {
-    sb.storage.from(BUCKET).remove([path]).catch(() => {});
+    sb.storage.from(BUCKET).remove([path, certPath].filter(Boolean)).catch(() => {});
     throw Object.assign(new Error("recording the signed copy failed: " + setErr.message), { status: 500 });
+  }
+  if (certPath) {
+    const { error: cpErr } = await sb.from("doc_generated").update({ certificate_pdf_path: certPath }).eq("id", doc.id);
+    if (cpErr) console.error("[finalize] certificate path not recorded:", cpErr.message);
   }
 
   // A 24h link for the signer on screen. Emailed links go through our own
   // domain (the /docs rewrite) in production only.
-  let downloadUrl = null;
-  try {
-    const { data: signed } = await sb.storage.from(BUCKET).createSignedUrl(path, 24 * 60 * 60);
+  let downloadUrl = null, certificateUrl = null;
+  const link = async (p) => {
+    if (!p) return null;
+    const { data: signed } = await sb.storage.from(BUCKET).createSignedUrl(p, 24 * 60 * 60);
     const MARK = "/storage/v1/object/sign/";
     const raw = signed?.signedUrl || null;
     const base = (process.env.APP_URL || "").replace(/\/$/, "");
-    downloadUrl = raw && base && raw.includes(MARK) && (process.env.VERCEL_ENV || "") === "production"
+    return raw && base && raw.includes(MARK) && (process.env.VERCEL_ENV || "") === "production"
       ? base + "/docs/" + raw.slice(raw.indexOf(MARK) + MARK.length)
       : raw;
-  } catch (_e) { /* the row is recorded; the email worker can sign a link later */ }
+  };
+  try { downloadUrl = await link(path); certificateUrl = await link(certPath); }
+  catch (_e) { /* the row is recorded; the email worker can sign a link later */ }
 
   // File it under Documents, email each signer, tell the sender.
   let after = { copies: [] };
   if (!setRes?.already_set) {
-    try { after = await afterSignedPdfStored(sb, req, doc, pdfBytes); }
+    try { after = await afterSignedPdfStored(sb, req, doc, pdfBytes, certBytes); }
     catch (e) { console.error("[finalize] follow-up failed:", e.message); }
   }
   return {
@@ -147,6 +171,8 @@ async function finalizeFromBytes(sb, req, doc, { pdfBytes, bodyPages, anchors })
     signed_pdf_hash: pdfHash,
     bytes: pdfBytes.length,
     download_url: downloadUrl,
+    certificate_pdf_path: certPath,
+    certificate_url: certificateUrl,
     signers_queued: (after.copies || []).filter(c => c.status === "sent").length,
     filed_document_id: after.filed_document_id || null,
     already_set: !!setRes?.already_set,

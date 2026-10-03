@@ -116,9 +116,12 @@ async function withCertificate(bodyBytes, keep, certBytes) {
   const n = Number.isFinite(keep) && keep > 0 ? Math.min(keep, body.getPageCount()) : body.getPageCount();
   const pages = await out.copyPages(body, Array.from({ length: n }, (_, i) => i));
   pages.forEach(p => out.addPage(p));
-  const cert = await PDFDocument.load(certBytes);
-  const cpages = await out.copyPages(cert, cert.getPageIndices());
-  cpages.forEach(p => out.addPage(p));
+  // certBytes null: the body pages alone (the certificate is its own file).
+  if (certBytes) {
+    const cert = await PDFDocument.load(certBytes);
+    const cpages = await out.copyPages(cert, cert.getPageIndices());
+    cpages.forEach(p => out.addPage(p));
+  }
   const title = body.getTitle();
   if (title) out.setTitle(title);
   out.setProducer("Housify");

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 // ============================================================
 // Reusable UI Component Library
@@ -507,8 +508,25 @@ export function TabBar({ tabs, active, onChange, size = "md", variant = "underli
   const wrap = variant === "pill"
     ? "flex gap-1 overflow-x-auto no-scrollbar"
     : "flex gap-1 overflow-x-auto no-scrollbar border-b border-neutral-200";
+  // A strip wider than the screen scrolls, but nothing said so: on a phone
+  // the last tab was simply cut off ("Terminated/All", "Error Log",
+  // "History (200)"). A fade and a chevron now show while more is hidden
+  // to the right.
+  const stripRef = useRef(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = stripRef.current; if (!el) return undefined;
+    const check = () => setMore(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(check) : null;
+    if (ro) ro.observe(el);
+    return () => { el.removeEventListener("scroll", check); window.removeEventListener("resize", check); if (ro) ro.disconnect(); };
+  }, [items.length]);
   return (
-    <div className={`${wrap} ${className}`} role="tablist">
+    <div className={`relative min-w-0 ${className}`}>
+    <div ref={stripRef} className={wrap} role="tablist">
       {items.map(t => {
         const on = active === t.id;
         const look = variant === "pill"
@@ -532,6 +550,12 @@ export function TabBar({ tabs, active, onChange, size = "md", variant = "underli
           </button>
         );
       })}
+    </div>
+    {more && (
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-r from-transparent to-white flex items-center justify-end pr-0.5">
+        <span className="material-icons-outlined text-neutral-400 text-base">chevron_right</span>
+      </div>
+    )}
     </div>
   );
 }
@@ -998,6 +1022,53 @@ const MENU_TONE = {
   positive: "text-positive-600 hover:bg-positive-50",
   brand:    "text-brand-700 hover:bg-brand-50",
 };
+// A floating panel that opens off a trigger and is drawn at the document
+// root, so no card's overflow:hidden can clip it (the tenant page's "New…"
+// lease menu showed 2 of its 5 actions; the Utilities filter panel opened
+// off the left edge of a phone). It stays inside the viewport, closes on
+// an outside tap or Escape, and on a phone takes the full width.
+//   <Popover open={open} onClose={...} anchorRef={btnRef} align="right" width={240}>…</Popover>
+export function Popover({ open, onClose, anchorRef, align = "right", width = 240, className = "", children, role = "menu" }) {
+  const [pos, setPos] = useState(null);
+  const panelRef = useRef(null);
+  const place = useCallback(() => {
+    const a = anchorRef?.current; if (!a) return;
+    const r = a.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 8;
+    const phone = vw < 480;
+    const w = phone ? vw - 2 * gap : Math.min(width, vw - 2 * gap);
+    let left = phone ? gap : (align === "right" ? r.right - w : r.left);
+    left = Math.max(gap, Math.min(left, vw - w - gap));
+    const h = panelRef.current ? panelRef.current.scrollHeight : 0;
+    const below = r.bottom + 4, spaceBelow = vh - below - gap;
+    // Below the trigger when it fits; else above it when that fits; else
+    // moved up over the trigger so the whole panel is on screen (it has a
+    // backdrop, so covering the button is fine).
+    let top = below;
+    if (h && h > spaceBelow) top = r.top - 4 - h > gap ? r.top - 4 - h : Math.max(gap, vh - h - gap);
+    setPos({ left, top, width: w, maxHeight: Math.max(120, vh - top - gap) });
+  }, [anchorRef, align, width]);
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return undefined; }
+    place();
+    const raf = requestAnimationFrame(place);
+    window.addEventListener("resize", place); window.addEventListener("scroll", place, true);
+    const key = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", key);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); document.removeEventListener("keydown", key); };
+  }, [open, place, onClose]);
+  if (!open) return null;
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[1090]" onClick={() => onClose?.()} aria-hidden="true" />
+      <div ref={panelRef} role={role} style={pos ? { position: "fixed", left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight, visibility: "visible" } : { position: "fixed", left: -9999, top: 0, visibility: "hidden" }}
+        className={`z-[1100] overflow-y-auto bg-white border border-neutral-200 rounded-xl shadow-pop ${className}`}>
+        {children}
+      </div>
+    </>,
+    document.body);
+}
+
 export function MenuItem({ icon, tone = "neutral", onClick, disabled, children, className = "" }) {
   return (
     <button
@@ -1231,17 +1302,31 @@ export function SearchTrigger({ onOpen, hint = "K", placeholder = "Search or jum
       type="button"
       onClick={onOpen}
       aria-label={`${placeholder} (keyboard shortcut ${hint})`}
-      className={"group flex items-center gap-2 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left " +
+      className={"group flex items-center gap-2 w-full min-w-0 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left " +
         "hover:border-brand-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 " +
         "focus-visible:ring-offset-1 transition-colors " + className}
     >
       <span className="material-icons-outlined text-base text-neutral-400 group-hover:text-brand-500">search</span>
-      <span className="flex-1 truncate text-xs text-neutral-400">{placeholder}</span>
+      <span className="flex-1 min-w-0 truncate text-xs text-neutral-400">{placeholder}</span>
       <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-lg border border-neutral-200 bg-white px-1.5 py-0.5 text-2xs font-semibold text-neutral-400">
         {hint}
       </kbd>
     </button>
   );
+}
+
+// True on a phone-width screen (under Tailwind's md breakpoint, 767px);
+// tracks the viewport. Used wherever a desktop layout (two panes, a wide
+// table) gets a stacked phone layout instead.
+export function useIsPhone() {
+  const [phone, setPhone] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false));
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
+  }, []);
+  return phone;
 }
 
 // ---- COMPANY SCOPE ----

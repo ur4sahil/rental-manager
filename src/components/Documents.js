@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
+import { useIsPhone, Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink, DataTable, TabBar} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, DOC_TYPES, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue, propertyLabel, fmtDate, fmtDateTime} from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, printTable } from "../utils/theme";
@@ -38,17 +38,7 @@ function useDebounced(value, ms) {
 }
 
 // Phones get one pane at a time in the builder (the two-pane layouts do
-// not fit). Tracks the viewport; 767px is Tailwind's md breakpoint.
-function useIsPhone() {
-  const [phone, setPhone] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false));
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const on = () => setPhone(mq.matches);
-    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
-    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
-  }, []);
-  return phone;
-}
+// not fit): useIsPhone, from ui.js.
 
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [docs, setDocs] = useState([]);
@@ -1250,33 +1240,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ---- Signed PDF + Certificate of Completion (envelope flow) ----
   function escapeForHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-  function renderSignaturesBlock(sigs) {
-  if (!sigs || sigs.length === 0) return "";
-  const rows = sigs.map(s => {
-    const dateStr = s.signed_at ? fmtDateTime(s.signed_at) : "";
-    let sigVisual = "";
-    if (s.signature_data) {
-      if (s.signature_data.startsWith("data:image")) {
-        sigVisual = '<img src="' + escapeForHtml(s.signature_data) + '" style="max-height:52px;max-width:220px;border-bottom:1px solid ' + printTheme.inkStrong + ';display:block;" alt="signature" />';
-      } else if (s.signature_data.startsWith("typed:")) {
-        const nm = s.signature_data.slice(6).split("|")[0];
-        sigVisual = '<div style="font-family:\'Brush Script MT\',cursive;font-size:28px;color:' + printTheme.signatureInk + ';border-bottom:1px solid ' + printTheme.inkStrong + ';padding-bottom:4px;">' + escapeForHtml(nm) + '</div>';
-      }
-    } else {
-      sigVisual = '<div style="color:' + printTheme.inkSubtle + ';font-style:italic;border-bottom:1px solid ' + printTheme.borderMed + ';padding-bottom:4px;">(awaiting signature)</div>';
-    }
-    return ''
-      + '<div style="margin-bottom:28px;">'
-      + '<div style="font-size:11px;color:' + printTheme.inkMuted + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + escapeForHtml(s.signer_role || "signer") + '</div>'
-      + sigVisual
-      + '<div style="font-size:12px;color:' + printTheme.inkStrong + ';margin-top:4px;"><strong>' + escapeForHtml(s.signer_name || "") + '</strong>'
-      + (s.signer_email ? ' <span style="color:' + printTheme.inkMuted + ';">&middot; ' + escapeForHtml(s.signer_email) + '</span>' : '')
-      + '</div>'
-      + (dateStr ? '<div style="font-size:11px;color:' + printTheme.inkMuted + ';">Signed ' + escapeForHtml(dateStr) + '</div>' : '')
-      + '</div>';
-  }).join("");
-  return '<div style="margin-top:40px;padding-top:20px;border-top:2px solid ' + printTheme.signatureInk + ';"><h3 style="font-family:Georgia,serif;color:' + printTheme.signatureInk + ';margin-bottom:16px;">Signed By</h3>' + rows + '</div>';
-  }
 
   function renderCertificateHtml(doc, sigs, companyName) {
   const signedCount = (sigs || []).filter(s => s.status === "signed").length;
@@ -1336,6 +1299,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   async function downloadCertificate(doc) {
+  // The server's certificate (every signer, real IPs, hashes) when stored.
+  if (doc.certificate_pdf_path) {
+    const url = await getSignedUrl("signed-documents", doc.certificate_pdf_path);
+    if (url) { window.open(url, "_blank", "noopener,noreferrer"); return; }
+  }
   showToast("Generating certificate…", "info");
   const sigs = await loadSignaturesForDoc(doc.id);
   const html2pdf = (await import("html2pdf.js")).default;
@@ -1364,39 +1332,38 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // its own pages, exactly as it was sent, then the signatures and the
   // certificate of completion on pages of their own (images and a table,
   // which the picture renderer still draws best).
+  // The document's pages, unsigned, with where the signature lines are
+  // (what the server needs to finish an envelope). Page count from the
+  // PDF itself.
+  async function renderBodyForEnvelope(doc) {
+  const paged = pagedBody(doc, doc._template || selectedTemplate || templates.find(t => t.id === doc.template_id), doc.field_values || fieldValues || {});
+  const { bytes, anchors } = await renderPagedPdfWithAnchors({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
+  const { PDFDocument } = await import("pdf-lib");
+  const pages = (await PDFDocument.load(bytes)).getPageCount();
+  return { bytes, anchors: anchors || [], pages, roster: initialsRoster(paged.html) };
+  }
+
+  // A signed copy made here, for an envelope that has none stored: the
+  // body pages with every signature on its line, the initials at the foot
+  // of each page and the envelope ID -- the lease only. The certificate of
+  // completion is a separate file (Certificate button).
   async function buildSignedPdfBytes(doc) {
   const sigs = await loadSignaturesForDoc(doc.id);
-  const html2pdf = (await import("html2pdf.js")).default;
-  const signedBlock = renderSignaturesBlock(sigs);
-  const certBlock = renderCertificateHtml(doc, sigs, doc._companyName);
-  const container = document.createElement("div");
-  container.innerHTML = ''
-    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">' + signedBlock + '</div>'
-    + '<div style="page-break-before:always;"></div>'
-    + certBlock;
-  document.body.appendChild(container);
-  try {
-    const paged = pagedBody(doc, doc._template || templates.find(t => t.id === doc.template_id), doc.field_values || {});
-    const [bodyPdf, tailPdf] = await Promise.all([
-      renderPagedPdfWithAnchors({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name })
-        .then(async ({ bytes, anchors }) => {
-          const signed = sigs.filter(s => s.status === "signed");
-          const PDFLib = await import("pdf-lib");
-          let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors, { envelopeId: doc.id }) : bytes;
-          const roster = initialsRoster(paged.html);
-          if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: null, roster: roster.length ? roster : null });
-          out = await stampEnvelopeId(PDFLib, out, doc.id);
-          return out;
-        }),
-      html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).outputPdf("arraybuffer"),
-    ]);
-    return await concatPdfs([bodyPdf, tailPdf]);
-  } finally {
-    document.body.removeChild(container);
-  }
+  const { bytes, anchors, roster } = await renderBodyForEnvelope(doc);
+  const signed = sigs.filter(s => s.status === "signed");
+  const PDFLib = await import("pdf-lib");
+  let out = anchors.length ? await stampSignatures(PDFLib, bytes, signed, anchors, { envelopeId: doc.id }) : bytes;
+  if (signed.some(s => s.initials_data)) out = await stampInitials(PDFLib, out, signed, { pages: null, roster: roster.length ? roster : null });
+  out = await stampEnvelopeId(PDFLib, out, doc.id);
+  return out;
   }
 
   async function downloadSignedPDF(doc) {
+  // The stored copy of record when there is one (what the signers were sent).
+  if (doc.signed_pdf_path) {
+    const url = await getSignedUrl("signed-documents", doc.signed_pdf_path);
+    if (url) { window.open(url, "_blank", "noopener,noreferrer"); return; }
+  }
   showToast("Generating signed document…", "info");
   try {
     const bytes = await buildSignedPdfBytes(doc);
@@ -1574,11 +1541,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // signed copy used to be made by the last signer's browser after Finish,
   // and a closed tab left the envelope with no copy and no emails.
   async function storeBodyForEnvelope(doc) {
-  const paged = pagedBody(doc, doc._template || selectedTemplate || templates.find(t => t.id === doc.template_id), doc.field_values || fieldValues || {});
-  const { bytes, anchors } = await renderPagedPdfWithAnchors({ html: paged.html, pageSetup: paged.pageSetup, title: doc.name });
-  const { PDFDocument } = await import("pdf-lib");
-  const bodyPages = (await PDFDocument.load(bytes)).getPageCount();
-  return storeEnvelopeBody(companyId, doc.id, { pdfBytes: bytes, bodyPages, anchors: anchors || [] });
+  const r = await renderBodyForEnvelope(doc);
+  return storeEnvelopeBody(companyId, doc.id, { pdfBytes: r.bytes, bodyPages: r.pages, anchors: r.anchors });
   }
 
   // A completed envelope with no signed copy: the server finishes it from
@@ -1589,8 +1553,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   try {
   let r = await finalizeOnServer(companyId, d.id);
   if (!r.ok && r.status === 404) {
-    const bytes = await buildSignedPdfBytes(d);
-    r = await storeSignedPdf(companyId, d.id, bytes);
+    // The pages are rendered here; the server stamps, files and emails.
+    const b = await renderBodyForEnvelope(d);
+    r = await storeSignedPdf(companyId, d.id, { pdfBytes: b.bytes, bodyPages: b.pages, anchors: b.anchors });
   }
   if (!r.ok) { showToast("Could not store the signed copy: " + r.error, "error"); return; }
   showToast("Signed copy stored and filed under Documents" + (r.signers_queued ? "; " + r.signers_queued + " emailed" : ""), "success");
@@ -2947,7 +2912,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Btn variant="danger" size="xs" onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} title="PDF">PDF</Btn>
   <Btn variant="secondary" size="xs" onClick={() => exportDOCX(d)} title="DOCX">DOCX</Btn>
   <Btn variant="slate" size="xs" onClick={() => exportTXT(d)} title="TXT">TXT</Btn>
-  {d.envelope_status === "completed" && <Btn variant="success-fill" size="xs" onClick={() => downloadSignedPDF(d)} title="Download the doc with every signature + a cert of completion appended">Signed PDF</Btn>}
+  {d.envelope_status === "completed" && <Btn variant="success-fill" size="xs" onClick={() => downloadSignedPDF(d)} title="The signed lease (every signature, initials on each page, envelope ID)">Signed PDF</Btn>}
   {hasEnvelope && <Btn variant="purple" size="xs" onClick={() => downloadCertificate(d)} title="Audit certificate with signer identity/IP/hash">Certificate</Btn>}
   {!hasEnvelope && <Btn variant="success-fill" size="xs" onClick={() => {
   setSendModal(d);

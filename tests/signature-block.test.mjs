@@ -26,14 +26,16 @@ const roles = [
 ];
 {
   const rows = signatureRows(roles, { tenant: "A", landlord: "L" });
-  ok("unnamed optional slots are dropped; required ones kept", rows.map(r => r.role).join() === "tenant,landlord");
+  // The block follows Sigma's paper lease: the landlord's row first, then
+  // the tenants (whatever the signing order).
+  ok("unnamed optional slots are dropped; required ones kept", rows.map(r => r.role).join() === "landlord,tenant");
   const rows2 = signatureRows(roles, { tenant: "A", tenant_2: "B", landlord: "L" });
-  ok("a named co-tenant gets a row, in signing order", rows2.map(r => r.role).join() === "tenant,tenant_2,landlord");
-  ok("rows keep the printed name", rows2[1].name === "B");
+  ok("a named co-tenant gets a row: landlord first, then the tenants in signing order", rows2.map(r => r.role).join() === "landlord,tenant,tenant_2");
+  ok("rows keep the printed name", rows2[2].name === "B");
   const kept = signatureRows(roles, {}, { dropUnnamedOptional: false });
   ok("a template preview can keep every slot", kept.length === 4);
   const unordered = signatureRows([{ role: "landlord", order: 2, required: true }, { role: "tenant", order: 1, required: true }], {});
-  ok("rows sort by signing step, not by array position", unordered.map(r => r.role).join() === "tenant,landlord");
+  ok("rows sort landlord first, then by signing step, not by array position", unordered.map(r => r.role).join() === "landlord,tenant");
   ok("heading is the label, upper-cased, with a colon", signerHeading({ label: "Co-tenant 2" }) === "CO-TENANT 2:" && signerHeading({ role: "landlord" }) === "LANDLORD:");
 }
 
@@ -49,7 +51,7 @@ const roles = [
   const ctx = { signers: { tenants: [{ name: "T", email: "t@x.com" }], landlord: { name: "L", email: "l@x.com" } } };
   ok("a witness is never prefilled from the tenancy", signerDefaultFor("witness_tenant", ctx).name === "" && signerDefaultFor("witness_landlord", ctx).email === "");
   const rows = signatureRows(w, { tenant: "A", witness_tenant: "W", landlord: "L" });
-  ok("witness rides on its signer's row, not a row of its own", rows.length === 2 && rows[0].witness.role === "witness_tenant" && rows[0].witness.name === "W" && rows[1].witness.role === "witness_landlord" && rows[1].witness.name === "");
+  ok("witness rides on its signer's row, not a row of its own", rows.length === 2 && rows[1].witness.role === "witness_tenant" && rows[1].witness.name === "W" && rows[0].witness.role === "witness_landlord" && rows[0].witness.name === "");
 }
 
 // ── html ────────────────────────────────────────────────────────────
@@ -58,7 +60,9 @@ const roles = [
   const html = signatureBlockHtml(rows);
   ok("one table row per signer", (html.match(/<tr>/g) || []).length === 3);
   ok("names are escaped", html.includes("Jane &lt;b&gt;Doe&lt;/b&gt;") && !html.includes("<b>Doe"));
-  ok("every signer has a sign slot and a date slot", slotsIn(html).filter(s => s.kind === "sign").map(s => s.role).join() === "witness_tenant,tenant,witness_tenant_2,tenant_2,witness_landlord,landlord");
+  ok("every signer has a sign slot, landlord row first", slotsIn(html).filter(s => s.kind === "sign").map(s => s.role).join() === "witness_landlord,landlord,witness_tenant,tenant,witness_tenant_2,tenant_2");
+  ok("no date slots: the paper lease has no date line (the date is in the tag and on the certificate)", slotsIn(html).filter(s => s.kind === "date").length === 0 && !/Date:/.test(html));
+  ok("the right column reads heading, line + (SEAL), Print Name, as the paper lease does", /<p data-keep-next="1">LANDLORD:<\/p><p data-keep-next="1">&nbsp;<\/p><p data-keep-next="1"><span data-sig-role="landlord">_+<\/span> \(SEAL\)<\/p><p>Print Name: /.test(html));
   ok("(SEAL) follows the signature line", /data-sig-role="tenant">_+<\/span> \(SEAL\)/.test(html));
   ok("a named witness gets slots; an unnamed one still a printed line", html.includes('data-sig-role="witness_tenant_2"') && /Print Name: W</.test(html));
   ok("the table is borderless", html.includes('data-borders="none"'));
@@ -120,6 +124,21 @@ ok("anchor list is capped", validAnchors(Array.from({ length: 500 }, () => ({ ki
   ok("nothing to draw -> the same bytes back", (await stampSignatures(PDFLib, bytes, [], anchors)) === bytes && (await stampSignatures(PDFLib, bytes, signers, [])) === bytes);
   const bad = await stampSignatures(PDFLib, bytes, [{ signer_role: "tenant", signature_data: "data:image/png;base64,not-a-png", signed_at: "2026-10-03", status: "signed" }], anchors);
   ok("a broken image is skipped, not thrown", Buffer.from(bad.slice(0, 4)).toString() === "%PDF");
+}
+
+// ── initials lines: landlord left, tenants right, no witness ─────────
+{
+  const { initialsBoxRect, INITIALS_BOX } = await import("../src/utils/initialsStamp.js");
+  const { initialsRoster } = await import("../src/utils/signatureStamp.js");
+  const roster = initialsRoster('<span data-sig-role="witness_landlord"></span><span data-sig-role="landlord"></span><span data-sig-role="witness_tenant"></span><span data-sig-role="tenant"></span><span data-sig-role="tenant_2"></span>');
+  ok("the roster has no witness: they sign once, on the last page", roster.map(r => r.role).join() === "landlord,tenant,tenant_2");
+  const L = initialsBoxRect(0, 612, roster), T = initialsBoxRect(1, 612, roster), T2 = initialsBoxRect(2, 612, roster);
+  ok("the landlord's line is at the left margin", L.x === INITIALS_BOX.left);
+  ok("the tenant's line is at the right margin", T.x + T.width === 612 - INITIALS_BOX.right);
+  ok("a second tenant's line sits inside the first's", T2.x + T2.width < T.x && T2.x > L.x + L.width);
+  const api = read("api/_initials-stamp.js"), web = read("src/utils/initialsStamp.js");
+  const strip2 = (t) => t.replace(/^\/\/.*$/gm, "").replace(/^export /gm, "").replace(/module\.exports.*$/m, "").replace(/\s+/g, " ").trim();
+  ok("server and browser initials stamps are the same code", strip2(api) === strip2(web));
 }
 
 console.log(`signature-block: ${pass} passed, ${fail} failed`);

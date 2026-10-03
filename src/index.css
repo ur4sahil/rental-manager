@@ -602,3 +602,13 @@ select {
 .hx-sig-block { width: 100%; border-collapse: collapse; margin-top: 12px; }
 .hx-sig-block td { border: 0 !important; }
 .hx-sig-slot { white-space: nowrap; letter-spacing: 0; }
+
+/* iOS Safari zooms the whole page in when a field with text under 16px is
+   focused, and leaves it zoomed (the "page jumps when I tap a box" effect;
+   the mobile audit counted 1-5 such fields on most pages and 55 on Opening
+   Balances). On touch phones every field is set at 16px. */
+@media (max-width: 767px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
+    font-size: 16px !important;
+  }
+}

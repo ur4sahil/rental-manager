@@ -256,9 +256,12 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
           value={value}
           onChange={e => onChange(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={placeholder || "Type a message…"}
+          // A long name ("Message Maria Johnson…") wrapped to a second
+          // line and was cut off in the one-row box; on a narrow box the
+          // short form is used.
+          placeholder={placeholder && placeholder.length > 22 && typeof window !== "undefined" && window.innerWidth < 480 ? "Message…" : (placeholder || "Type a message…")}
           disabled={disabled}
-          className="flex-1 resize-none max-h-32"
+          className="flex-1 min-w-0 resize-none max-h-32"
         />
         <Btn variant="primary" onClick={onSend} disabled={!canSend}>
           {sending ? "Sending…" : "Send"}

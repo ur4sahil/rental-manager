@@ -1685,10 +1685,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
 
-  {/* Toolbar */}
-  <div className="flex items-center justify-between mb-3">
+  {/* Toolbar: wraps on a phone, where the view switch + Sort + Export in
+      one row ran past the edge and cut the Sort control off. */}
+  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
   <PageHeader title="Tenants" />
-  <div className="flex gap-2 items-center">
+  <div className="flex gap-2 items-center flex-wrap">
   <div className="flex bg-brand-50 rounded-lg p-0.5">
   {[["card","\u25A6","Cards"],["table","\u2630","Table"],["compact","\u2261","Compact"]].map(([m,icon,label]) => (
   <button key={m} onClick={() => setTenantView(m)} title={label} aria-label={label + " view"} aria-pressed={tenantView === m} className={`px-3 py-1.5 text-sm rounded-lg ${tenantView === m ? "bg-white shadow-card text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
@@ -2129,7 +2130,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : formatCurrency(0)}</div></div>
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
-  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2">
+  {/* Wraps when the card is narrow (two cards across an iPad): the Invite
+      button used to hang outside the card. */}
+  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2 flex-wrap">
   <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="font-medium shrink-0">Ledger</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openMessages(t); }} className="font-medium shrink-0">Msg</TextLink>
   <TextLink tone="info" size="xs" underline={false} onClick={e => { e.stopPropagation(); startEdit(t); }} className="font-medium shrink-0">Edit</TextLink>
@@ -2139,7 +2142,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     onClick={e => { e.stopPropagation(); inviteTenant(t); }}
     disabled={!t.email || !!invitingTenant[t.id || t.email || ""]}
     title={!t.email ? "Add an email to this tenant first" : portalStatus === "invited" ? "Re-send the portal invite email" : "Send portal access invite to this tenant"}
-    className={"ml-auto text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors " + (!t.email ? "bg-neutral-100 text-neutral-400 cursor-not-allowed" : portalStatus === "invited" ? "bg-highlight-50 text-highlight-700 hover:bg-highlight-100 border border-highlight-200" : "bg-brand-600 text-white hover:bg-brand-700")}
+    className={"ml-auto text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 whitespace-nowrap transition-colors " + (!t.email ? "bg-neutral-100 text-neutral-400 cursor-not-allowed" : portalStatus === "invited" ? "bg-highlight-50 text-highlight-700 hover:bg-highlight-100 border border-highlight-200" : "bg-brand-600 text-white hover:bg-brand-700")}
   >
     <span className="material-icons-outlined text-xs">{portalStatus === "invited" ? "refresh" : "mail"}</span>
     {invitingTenant[t.id || t.email || ""]

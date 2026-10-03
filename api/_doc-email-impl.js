@@ -150,7 +150,7 @@ async function remindSigner(sb, req, { sig, doc, company, createdBy = null }) {
 
 // After the signed PDF is stored: file it where people look, send every
 // signer their copy, tell the person who sent it.
-async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
+async function afterSignedPdfStored(sb, req, doc, pdfBytes, certBytes = null) {
   const out = { filed_document_id: null, copies: [] };
   const company = await companyOf(sb, doc.company_id);
 
@@ -189,46 +189,27 @@ async function afterSignedPdfStored(sb, req, doc, pdfBytes) {
   // 2. A copy to each person who signed.
   const { data: sigs } = await sb.from("doc_signatures").select("id, signer_name, signer_email").eq("doc_id", doc.id).eq("status", "signed");
   const seen = new Set();
-  const attach = pdfBytes.length <= 8 * 1024 * 1024 ? [{ filename: (doc.name || "document").replace(/[^a-zA-Z0-9 _.-]+/g, "_").slice(0, 80) + " (signed).pdf", content: pdfBytes }] : null;
+  // The signed lease and, as a second file, its certificate of completion.
+  const safeName = (doc.name || "document").replace(/[^a-zA-Z0-9 _.-]+/g, "_").slice(0, 80);
+  const attach = pdfBytes.length <= 8 * 1024 * 1024 ? [
+    { filename: safeName + " (signed).pdf", content: pdfBytes },
+    ...(certBytes && certBytes.length <= 4 * 1024 * 1024 ? [{ filename: safeName + " (certificate of completion).pdf", content: certBytes }] : []),
+  ] : null;
   for (const sig of sigs || []) {
     const email = String(sig.signer_email || "").toLowerCase();
     if (!email || seen.has(email)) continue;
     seen.add(email);
     const html = shell("Your signed copy",
-      `<p>${sig.signer_name ? "Hello " + esc(sig.signer_name) + "," : "Hello,"}</p><p>Everyone has signed <strong>${esc(doc.name)}</strong>. ${attach ? "Your copy is attached to this email." : "Reply to this email to request your copy."}</p><p>Please keep it for your records.</p>`,
+      `<p>${sig.signer_name ? "Hello " + esc(sig.signer_name) + "," : "Hello,"}</p><p>Everyone has signed <strong>${esc(doc.name)}</strong>. ${attach ? "Your signed copy is attached" + (attach.length > 1 ? ", with its certificate of completion as a second file" : "") + "." : "Reply to this email to request your copy."}</p><p>Please keep ${attach && attach.length > 1 ? "them" : "it"} for your records.</p>`,
       company.name);
     const r = await deliver(sb, { companyId: doc.company_id, docId: doc.id, signatureId: sig.id, kind: "signed_copy", to: email, subject: "Signed copy: " + doc.name,
       html, text: `Everyone has signed "${doc.name}". Your copy is attached.`, attachments: attach, replyTo: company.email });
     out.copies.push({ email, status: r.status, delivered_to: r.to });
   }
 
-  // 3. The person who sent it.
-  if (doc.created_by && EMAIL_RE.test(doc.created_by) && !seen.has(String(doc.created_by).toLowerCase())) {
-    // A prospect's lease: say what happens next, and who lost out. Other
-    // applicants sent a lease for the same property were cancelled by the
-    // database the moment this one was fully signed; they are NOT emailed,
-    // so the person who sent this is the one who has to know.
-    let extra = "", extraText = "", where = "/document-builder", whereLabel = "Open Document Builder";
-    if (doc.prospect_id) {
-      where = "/prospects"; whereLabel = "Open Prospects";
-      extra = `<p>The lease is signed, but they are not a tenant yet. Convert them on the Prospects page once the property is vacant: that is what adds the tenant, the deposit and the rent.</p>`;
-      extraText = " Convert them to a tenant on the Prospects page once the property is vacant.";
-      try {
-        const { data: lost } = await sb.from("doc_generated").select("prospect_id").eq("company_id", doc.company_id).eq("voided_by_doc_id", doc.id);
-        const ids = [...new Set((lost || []).map(r => r.prospect_id).filter(Boolean))];
-        if (ids.length) {
-          const { data: names } = await sb.from("prospects").select("name").in("id", ids);
-          const list = (names || []).map(n => n.name).filter(Boolean);
-          if (list.length) {
-            extra += `<p><strong>Cancelled automatically:</strong> the lease${list.length === 1 ? "" : "s"} sent to ${esc(list.join(", "))} for the same property. ${list.length === 1 ? "They have" : "They have"} not been told.</p>`;
-            extraText += ` Cancelled automatically (not told): ${list.join(", ")}.`;
-          }
-        }
-      } catch (e) { console.error("[doc] could not list cancelled prospect leases:", e.message); }
-    }
-    const html = shell("Fully signed", `<p><strong>${esc(doc.name)}</strong> has been signed by everyone.</p>` + extra + button(`${appUrl(req)}${where}`, whereLabel), company.name);
-    await deliver(sb, { companyId: doc.company_id, docId: doc.id, kind: "completed_staff", to: doc.created_by, subject: "Fully signed: " + doc.name, html, text: `"${doc.name}" has been signed by everyone.` + extraText, attachments: attach });
-  }
+  // No email to the person who sent the envelope (Sahil, 2026-10-03): the
+  // signed copy is filed under the tenant, prospect or lease, and History
+  // shows the envelope as completed.
   return out;
 }
 
