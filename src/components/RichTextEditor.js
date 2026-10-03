@@ -719,7 +719,9 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
           onDrop={handleDrop}
           onClick={() => { if (!readOnly) editor.chain().focus().run(); }}
         >
-          {!readOnly && showRuler && <div className="mb-2" onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} /></div>}
+          {/* Sticky: the page area scrolls, the ruler stays at the top of
+              it on every page (it used to scroll away with page 1). */}
+          {!readOnly && showRuler && <div className="sticky -top-6 z-10 -mx-6 -mt-6 px-6 pt-6 pb-2 mb-2" style={{ background: PAGE_GUTTER }} onClick={e => e.stopPropagation()}><Ruler editor={editor} setup={setup} zoom={zoom} /></div>}
           <div className="mx-auto w-max" style={{ fontFamily: DOC_FONT_FAMILY, fontSize: DOC_FONT_SIZE, lineHeight: DOC_LINE_HEIGHT, zoom }} onClick={e => e.stopPropagation()}>
             <EditorContent editor={editor} className="paged-editor prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:bg-white [&_.ProseMirror]:text-neutral-900 [&_.ProseMirror]:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] [&_.ProseMirror]:[overflow-wrap:anywhere] [&_.ProseMirror_img]:max-w-full [&_.ProseMirror_img]:h-auto" />
           </div>
