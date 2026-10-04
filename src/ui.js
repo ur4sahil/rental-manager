@@ -1329,6 +1329,23 @@ export function useIsPhone() {
   return phone;
 }
 
+// True below a tablet-landscape width (1100px): where a list table no longer
+// fits beside the sidebar. An iPad (810px portrait, 1080px landscape) is
+// over the phone breakpoint but the Loans and Journal Entries tables are
+// 1,281-1,304px wide, so they overflowed there exactly as on a phone.
+export function useIsCompact(max = 1100) {
+  const q = `(max-width: ${max}px)`;
+  const [m, setM] = useState(() => (typeof window !== "undefined" ? window.matchMedia(q).matches : false));
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const on = () => setM(mq.matches);
+    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
+    on();
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
+  }, [q]);
+  return m;
+}
+
 // ---- COMPANY SCOPE ----
 // The active company id, provided once at the app root.
 //
@@ -1563,7 +1580,7 @@ export function DataTable({
 }) {
   const td = TD[density] || TD.normal;
   const th = TH[density] || TH.normal;
-  const isPhone = useIsPhone();
+  const isPhone = useIsCompact();   // phones AND tablets: see useIsCompact
 
   const [colWidths, setColWidths] = useState(() => {
     if (!resizable || !storageKey) return {};

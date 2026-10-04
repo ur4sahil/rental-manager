@@ -607,7 +607,7 @@ select {
    focused, and leaves it zoomed (the "page jumps when I tap a box" effect;
    the mobile audit counted 1-5 such fields on most pages and 55 on Opening
    Balances). On touch phones every field is set at 16px. */
-@media (max-width: 767px) and (pointer: coarse) {
+@media (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
     font-size: 16px !important;
   }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { useIsPhone, AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
+import { useIsCompact, AccountPicker, Btn, Checkbox, DetailAlert, FilterPill, IconBtn, Input, MoneyInput, Select, TextLink, Textarea, DataTable, DRILL_LINK, useCompanyScope, PageHeader, TabBar, EmptyState} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, canManage, canKeepBooks, escapeFilterValue, emailFilterValue, ACTIVE_LEASE, sameAddress, propertyLabel, cleanLedgerDesc, requiredLicenses, fmtDate, fmtDateTime, excelDate, EXCEL_DATE_FMT, isBankAccount } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { pathForPage, pageForPath, subPathFor, reportSlug, reportIdFromSlug } from "../utils/routes";
@@ -1233,7 +1233,7 @@ const blankJEForm = () => ({ date: acctToday(), description: "", reference: "", 
 // The parent remounts this via `key` on each open, so `seed` is only
 // ever read as the initial state — no sync effect needed.
 function AcctJEFormModal({ mode, je, seed, accounts, classes, tenants = [], vendors = [], companyId, showToast, onClose, onSave }) {
-  const isPhone = useIsPhone();
+  const isPhone = useIsCompact();   // stacked lines on phones and tablets
   const [form, setForm] = useState(() => seed || blankJEForm());
   const [showNewAcct, setShowNewAcct] = useState(null); // line index that triggered it
   const [newAcctForm, setNewAcctForm] = useState({ code: "", name: "", type: "Expense" });
